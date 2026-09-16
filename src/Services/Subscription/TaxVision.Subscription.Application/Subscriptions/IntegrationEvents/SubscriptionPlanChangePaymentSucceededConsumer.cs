@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
@@ -20,9 +21,12 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
         SubscriptionPlanChangePaymentSucceededIntegrationEvent evt,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        ITenantAddOnRepository tenantAddOns,
+        IAddOnDefinitionRepository addOnDefinitions,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionMetrics metrics,
         ILogger<TenantSubscription> logger,
         CancellationToken ct
     )
@@ -83,6 +87,21 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
                 );
                 return;
             }
+
+            // Absorción: el plan destino ya cubre el módulo → cancelar el add-on para no cobrar doble.
+            await AddOnAbsorptionService.AbsorbCoveredByPlanAsync(
+                subscription.TenantId,
+                toPlanVersion,
+                tenantAddOns,
+                addOnDefinitions,
+                bus,
+                metrics,
+                correlationId,
+                request.RequestedByUserId,
+                evt.PaidAtUtc,
+                logger,
+                ct
+            );
 
             await unitOfWork.SaveChangesAsync(ct);
             await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);

@@ -16,7 +16,7 @@ namespace TaxVision.Inventory.Api.Controllers;
 [ApiController]
 [Route("inventory/suppliers")]
 [Authorize]
-[AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
     public sealed record SupplierRequest(
@@ -112,7 +112,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 [ApiController]
 [Route("inventory/item-suppliers")]
 [Authorize]
-[AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
     public sealed record UpsertRequest(

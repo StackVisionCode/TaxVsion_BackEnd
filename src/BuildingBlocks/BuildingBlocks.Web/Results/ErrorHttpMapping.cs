@@ -62,6 +62,7 @@ public static class ErrorHttpMapping
             or "Onboarding.TokenReferenceNotFound"
             or "Onboarding.NotFound"
             or "Onboarding.ChallengeNotFound"
+            or "Onboarding.ReceiptNotFound"
             // Notes Fase 7 (hardening post-Fase-6): Note.NotFound/AttachmentNotFound no tenían
             // entrada explícita y caían al default (400) en vez del 404 semánticamente correcto —
             // mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.

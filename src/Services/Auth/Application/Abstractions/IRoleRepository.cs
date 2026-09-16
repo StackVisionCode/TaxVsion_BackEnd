@@ -29,5 +29,10 @@ public interface IRoleRepository
     /// <summary>Crea los roles de sistema del tenant si no existen (idempotente).</summary>
     Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Garantiza+commitea los roles de sistema del tenant tolerando una siembra concurrente
+    /// (TenantCreatedConsumer): si el otro camino ya los creó entre el chequeo y el commit, el
+    /// duplicate-key del índice único se trata como no-op (los roles ya existen).</summary>
+    Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default);
 }

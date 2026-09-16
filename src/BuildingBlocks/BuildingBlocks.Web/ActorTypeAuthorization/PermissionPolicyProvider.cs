@@ -1,7 +1,11 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace BuildingBlocks.Web.ActorTypeAuthorization;
@@ -40,7 +44,49 @@ public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> opti
                     var source = httpContext.RequestServices.GetRequiredService<IUserPermissionsSource>();
                     var allowed = await source.HasPermissionAsync(context.User, permission, httpContext.RequestAborted);
 
-                    httpContext.RequestServices.GetRequiredService<AuthorizationMetrics>().RecordDecision(allowed, "1");
+                    var metrics = httpContext.RequestServices.GetRequiredService<AuthorizationMetrics>();
+                    metrics.RecordDecision(allowed, "1");
+
+                    // Gate de Entitlements/módulo: si el permiso pasó pero pertenece a un módulo que el
+                    // plan del tenant no habilita, loguea (log-only) o lanza 403 según el flag
+                    // Authorization:ModuleGate:Enforce. Opt-in: solo corre donde se registró
+                    // ITenantModuleEntitlementsSource; un permiso transversal (ModuleFor == null) no se toca.
+                    if (allowed)
+                    {
+                        var moduleSource = httpContext.RequestServices.GetService<ITenantModuleEntitlementsSource>();
+                        var module = PermissionModuleMap.ModuleFor(permission);
+                        if (moduleSource is not null && module is not null)
+                        {
+                            var moduleEnabled = await moduleSource.IsModuleEnabledAsync(
+                                context.User,
+                                module,
+                                httpContext.RequestAborted
+                            );
+                            metrics.RecordModuleDecision(moduleEnabled, module);
+                            if (!moduleEnabled)
+                            {
+                                var enforce = httpContext
+                                    .RequestServices.GetRequiredService<IConfiguration>()
+                                    .GetValue("Authorization:ModuleGate:Enforce", false);
+                                if (enforce)
+                                    throw new ModuleUnavailableException(
+                                        "Authz.ModuleUnavailable",
+                                        $"Your plan does not include the '{module}' module required for this action."
+                                    );
+
+                                httpContext
+                                    .RequestServices.GetRequiredService<ILoggerFactory>()
+                                    .CreateLogger("BuildingBlocks.Web.ModuleGate")
+                                    .LogInformation(
+                                        "Module gate (log-only): permission {Permission} belongs to module {Module} "
+                                            + "which is NOT enabled for the tenant; would 403 once enforced.",
+                                        permission,
+                                        module
+                                    );
+                            }
+                        }
+                    }
+
                     return allowed;
                 })
                 .Build();

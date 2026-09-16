@@ -32,6 +32,10 @@ public static class SignaturePermissions
     public const string DocumentDownload = "signature.document.download";
     public const string DocumentAuditRead = "signature.document.audit.read";
 
+    // Colocar/levantar retención legal (legal hold) sobre una firma. Es gobernanza que escribe estado
+    // (bloquea el borrado), no una lectura — por eso no va bajo DocumentAuditRead.
+    public const string LegalHoldManage = "signature.legal.manage";
+
     // Plantillas de firma reutilizables
     public const string TemplateCreate = "signature.template.create";
     public const string TemplateUpdate = "signature.template.update";

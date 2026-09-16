@@ -1,0 +1,74 @@
+{
+  "title": "TaxVision — Authorization",
+  "uid": "taxvision-authorization",
+  "tags": ["taxvision", "authorization", "rbac"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Decisiones por resultado (allow/deny)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(authz_decision_total[5m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Denegaciones por capa (1=permiso, 2=actor-type, 3b=ownership)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(authz_decision_total{result=\"deny\"}[5m])) by (layer)", "legendFormat": "capa {{layer}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Gate de módulo — decisiones por módulo y resultado",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(authz_module_decision_total[5m])) by (module, result)", "legendFormat": "{{module}} — {{result}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Gate de módulo — DENY por módulo (falsos 403 / módulo no contratado)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "thresholdsStyle": { "mode": "line" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(authz_module_decision_total{result=\"deny\"}[5m])) by (module)", "legendFormat": "{{module}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Session denylist no resuelto (Redis caído: fail_open/fail_closed)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "thresholdsStyle": { "mode": "line" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(authz_session_denylist_unavailable_total[5m])) by (outcome)", "legendFormat": "{{outcome}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Denegaciones por servicio",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(authz_decision_total{result=\"deny\"}[5m])) by (job)", "legendFormat": "{{job}}", "refId": "A" }
+      ]
+    }
+  ]
+}

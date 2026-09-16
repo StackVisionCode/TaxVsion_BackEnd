@@ -24,6 +24,9 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             ct
         );
 
+    public Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default) =>
+        db.TenantOnboardings.FirstOrDefaultAsync(onboarding => onboarding.ReceiptFileId == receiptFileId, ct);
+
     public async Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default) =>
         await db.TenantOnboardings.AddAsync(onboarding, ct);
 
@@ -40,6 +43,22 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
                 && (onboarding.NextRetryAtUtc == null || onboarding.NextRetryAtUtc <= nowUtc)
             )
             .OrderBy(onboarding => onboarding.NextRetryAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.Where(onboarding =>
+                onboarding.Status == TenantOnboardingStatus.RegistrationPending
+                && onboarding.RegistrationEmailSentAtUtc == null
+                && onboarding.PaymentCompletedAtUtc != null
+                && onboarding.PaymentCompletedAtUtc <= cutoffUtc
+            )
+            .OrderBy(onboarding => onboarding.PaymentCompletedAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 

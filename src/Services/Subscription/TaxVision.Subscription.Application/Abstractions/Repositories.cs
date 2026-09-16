@@ -13,6 +13,9 @@ public interface IPlanRepository
     Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default);
     Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default);
+
+    /// <summary>Plan trackeado (con versiones e hijas) para autoría; el resto de reads son AsNoTracking.</summary>
+    Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default);
 }
 
 public interface ISubscriptionRepository
@@ -61,6 +64,15 @@ public interface ISubscriptionRepository
     Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
         int page,
         int pageSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Ids de tenants suscritos a un plan, paginado por keyset (TenantId &gt; afterTenantId).
+    /// Cross-tenant — lo usa el recálculo masivo de entitlements.</summary>
+    Task<IReadOnlyList<Guid>> GetTenantIdsByPlanAsync(
+        Guid planId,
+        Guid afterTenantId,
+        int batchSize,
         CancellationToken ct = default
     );
 }
@@ -119,12 +131,17 @@ public interface IAddOnDefinitionRepository
     Task<IReadOnlyList<AddOnDefinition>> GetPublishedAsync(CancellationToken ct = default);
     Task<AddOnDefinition?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<AddOnDefinition?> GetByIdAsync(Guid addOnDefinitionId, CancellationToken ct = default);
+    Task AddAsync(AddOnDefinition definition, CancellationToken ct = default);
+    Task<AddOnDefinition?> GetByIdForUpdateAsync(Guid addOnDefinitionId, CancellationToken ct = default);
 }
 
 public interface ITenantAddOnRepository
 {
     Task<TenantAddOn?> GetByIdAsync(Guid tenantAddOnId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Add-ons del tenant trackeados (para mutar y persistir, ej. absorción en upgrade).</summary>
+    Task<IReadOnlyList<TenantAddOn>> GetByTenantIdForUpdateAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantAddOn addOn, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>

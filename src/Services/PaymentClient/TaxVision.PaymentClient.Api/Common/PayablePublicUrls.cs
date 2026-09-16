@@ -17,7 +17,11 @@ public static class PayablePublicUrls
     public static string CheckoutPageUrl(PaymentClientPublicOptions options, string? subDomain, string token) =>
         $"{TenantBaseOrFallback(options, subDomain, options.CheckoutPageBaseUrl)}/pay/{token}";
 
-    private static string TenantBaseOrFallback(PaymentClientPublicOptions options, string? subDomain, string fallbackBase)
+    private static string TenantBaseOrFallback(
+        PaymentClientPublicOptions options,
+        string? subDomain,
+        string fallbackBase
+    )
     {
         if (!string.IsNullOrWhiteSpace(subDomain) && !string.IsNullOrWhiteSpace(options.TenantBaseDomain))
         {

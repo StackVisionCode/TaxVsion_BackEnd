@@ -57,13 +57,58 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(TenantOnboardingStatus.RegistrationPending.ToString(), result.Value.Status);
         Assert.StartsWith("https://app.example.com/register?token=", result.Value.RegistrationUrl);
+        Assert.False(string.IsNullOrWhiteSpace(result.Value.PayerEmail));
         Assert.Equal(paymentId, paymentApp.LastReconcileRequest!.PaymentId);
         Assert.Equal(TenantOnboardingStatus.RegistrationPending, onboarding.Status);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.NotNull(tokenReferences.Stored);
-        Assert.Contains(bus.Published, message => message is OnboardingRegistrationReadyIntegrationEvent);
+        // Carril pagado (reconcile): el email "completa tu oficina" se DIFIERE — el reconcile ya devuelve
+        // la RegistrationUrl in-session; el email lo publica el sweeper si el comprador no termina.
+        Assert.DoesNotContain(bus.Published, message => message is OnboardingRegistrationReadyIntegrationEvent);
         Assert.Contains(bus.Published, message => message is OnboardingFinalizeCommand);
         Assert.Contains(bus.Published, message => message is RequestOnboardingReceiptCommand);
+    }
+
+    [Fact]
+    public async Task Reference_path_completes_the_payment_but_suppresses_the_registration_url()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = CreatePaymentProcessingOnboarding(now, out var paymentId);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var paymentApp = PaymentAppWithReconcile(
+            new PaymentAppReconcileResult(
+                paymentId,
+                OnboardingPaymentStatus.Succeeded,
+                4900,
+                "USD",
+                FailureCode: null,
+                FailureMessage: null,
+                ProviderPaymentReference: "CAPTURE-123",
+                PaidAtUtc: now
+            )
+        );
+        var tokenReferences = new FakeTokenReferenceStore();
+        var bus = new FakeMessageBus();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReconcileOnboardingPaymentHandler.Handle(
+            new ReconcileOnboardingPaymentCommand(onboarding.Id, IncludeRegistrationUrl: false),
+            onboardings,
+            paymentApp,
+            BuildCompleter(tokenReferences, bus),
+            new FakePlanCatalogClient("Enterprise"),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.RegistrationPending.ToString(), result.Value.Status);
+        // Camino por referencia (más expuesta que la cookie): el pago se completa y el token se emite,
+        // pero la registrationUrl NO se devuelve — sigue llegando solo por email.
+        Assert.Null(result.Value.RegistrationUrl);
+        Assert.Null(result.Value.PayerEmail);
+        Assert.NotNull(tokenReferences.Stored);
     }
 
     [Fact]

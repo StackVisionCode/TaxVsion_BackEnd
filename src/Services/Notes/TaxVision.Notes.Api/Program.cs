@@ -55,6 +55,12 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "notes-service
 // Autorización por permiso ([HasPermission("notes.read")], Fase 3); los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
+builder.Services.AddScoped<
+    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
+    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
+>();
+
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.

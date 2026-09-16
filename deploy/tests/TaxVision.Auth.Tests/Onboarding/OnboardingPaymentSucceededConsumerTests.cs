@@ -35,7 +35,7 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         );
 
     [Fact]
-    public async Task Completes_payment_publishes_registration_ready_and_enqueues_finalize()
+    public async Task Completes_payment_defers_registration_email_and_enqueues_finalize()
     {
         var now = DateTime.UtcNow;
         var onboarding = OnboardingTestFactory.NewOnboarding(now);
@@ -75,12 +75,10 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.NotNull(tokenReferences.Stored);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
-        var ready = Assert.IsType<OnboardingRegistrationReadyIntegrationEvent>(
-            bus.Published.Single(p => p is OnboardingRegistrationReadyIntegrationEvent)
-        );
-        Assert.Equal(onboarding.Id, ready.OnboardingId);
-        Assert.Equal(tokenReferences.StoredReference, ready.TokenReference);
-        Assert.Equal("49.00 USD", ready.PriceFormatted);
+        // Carril pagado: el email "completa tu oficina" se DIFIERE (el redirect in-session ya lleva al
+        // formulario). No sale ahora ni se marca enviado; lo publica el sweeper si el comprador no termina.
+        Assert.DoesNotContain(bus.Published, p => p is OnboardingRegistrationReadyIntegrationEvent);
+        Assert.Null(onboarding.RegistrationEmailSentAtUtc);
 
         var finalize = Assert.IsType<OnboardingFinalizeCommand>(
             bus.Published.Single(p => p is OnboardingFinalizeCommand)
@@ -162,7 +160,8 @@ public sealed class OnboardingPaymentSucceededConsumerTests
                 providerPaymentReference: "pi_123",
                 paymentMethodMasked: "Visa **** 4242",
                 correlationId: "corr-test",
-                CancellationToken.None
+                sendRegistrationEmailNow: false,
+                ct: CancellationToken.None
             );
 
         Assert.True(result.IsFailure);

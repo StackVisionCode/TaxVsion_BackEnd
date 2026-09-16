@@ -29,6 +29,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
 
         builder.Property(onboarding => onboarding.RegistrationTokenHash).HasMaxLength(64);
         builder.Property(onboarding => onboarding.RegistrationTokenReference);
+        builder.Property(onboarding => onboarding.RegistrationEmailSentAtUtc);
 
         builder.Property(onboarding => onboarding.OfficeName).HasMaxLength(256);
         builder.Property(onboarding => onboarding.RequestedSubdomain).HasMaxLength(63);
@@ -64,10 +65,14 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.RetryAttempt).IsRequired();
         builder.Property(onboarding => onboarding.NextRetryAtUtc);
 
+        builder.Property(onboarding => onboarding.PaymentRetryCount).IsRequired().HasDefaultValue(0);
+
         builder
             .HasIndex(onboarding => onboarding.RegistrationTokenHash)
             .IsUnique()
             .HasFilter("[RegistrationTokenHash] IS NOT NULL");
+
+        builder.HasIndex(onboarding => onboarding.ReceiptFileId).IsUnique().HasFilter("[ReceiptFileId] IS NOT NULL");
 
         builder.HasIndex(onboarding => new { onboarding.Email, onboarding.Status });
         builder.HasIndex(onboarding => new { onboarding.Status, onboarding.CreatedAtUtc });

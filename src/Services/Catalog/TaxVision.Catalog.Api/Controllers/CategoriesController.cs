@@ -17,7 +17,7 @@ namespace TaxVision.Catalog.Api.Controllers;
 [ApiController]
 [Route("catalog/categories")]
 [Authorize]
-[AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
     public sealed record CreateCategoryRequest(string Name, string? Description, Guid? ParentCategoryId);

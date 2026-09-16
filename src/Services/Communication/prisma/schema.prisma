@@ -75,6 +75,7 @@ model TenantCommunicationLimits {
   RecordingEnabled       Boolean  @default(false)
   SupportEnabled         Boolean  @default(true)
   IsSuspended            Boolean  @default(false)
+  EnabledModulesJson     String   @default("[]") @db.NVarChar(Max)
   UpdatedAtUtc           DateTime @default(now()) @updatedAt @db.DateTime2
 }
 

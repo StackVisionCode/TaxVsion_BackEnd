@@ -29,6 +29,8 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindCorrespondenceConsumers } from './application/event-handlers/correspondence-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
+import { moduleFor } from './domain/shared/permission-module-map.js';
+import { configureModuleGate } from './domain/shared/permissions.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
 import { bindCalendarConsumers } from './application/event-handlers/calendar-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
@@ -128,6 +130,25 @@ async function main(): Promise<void> {
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
     planCodeCache: container.planCodeCache,
+    modulesCache: container.tenantModulesCache,
+  });
+
+  // Gate de modulo (Entitlements en runtime), modo LOG-ONLY — espejo del hook de
+  // PermissionPolicyProvider.cs (.NET). Tras conceder un permiso, observa si el tenant tiene el
+  // modulo del permiso y lo loguea SIN bloquear. PlatformAdmin ya bypasea en checkPermission; aca se
+  // bypasea el actor Service (M2M). `null` del reader = sin proyeccion aun -> no gatea.
+  configureModuleGate(async (subject, required) => {
+    if (subject.actorType === 'Service') return;
+    const module = moduleFor(required);
+    if (!module) return;
+    const enabledModules = await container.tenantModulesCache.getEnabledModules(subject.tenantId);
+    if (enabledModules === null) return;
+    if (!enabledModules.includes(module)) {
+      logger.info(
+        { permission: required, module, tenantId: subject.tenantId },
+        'Module gate (log-only): permiso pertenece a un modulo NO habilitado para el tenant; seria 403 al enforzar',
+      );
+    }
   });
   bindCloudStorageConsumers(consumers.register.bind(consumers), {
     attachmentTracking: container.attachmentTracking,

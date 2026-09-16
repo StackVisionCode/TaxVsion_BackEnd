@@ -1,3 +1,4 @@
+using System.Linq;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -139,6 +140,177 @@ public sealed class SubscriptionPlan : BaseEntity
         Status = PlanStatus.Archived;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Publica una versión nueva idéntica a la actual pero con otro conjunto de módulos (module.*),
+    /// superando la anterior. Una versión publicada es inmutable, por eso se versiona en vez de editar.
+    /// Los límites, precios y features no-módulo se conservan.
+    /// </summary>
+    public Result ReviseModules(IReadOnlyCollection<string> modules, Guid actorUserId, DateTime nowUtc)
+    {
+        var published = FindPublishedVersion();
+        if (published is null)
+            return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no published version to revise."));
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            published.VersionNumber + 1,
+            published.TrialDaysDefault,
+            published.SupportedBillingCycles.ToArray()
+        );
+        if (draft.IsFailure)
+            return Result.Failure(draft.Error);
+
+        var version = draft.Value;
+
+        foreach (var entitlement in published.Entitlements)
+        {
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        foreach (var tier in published.PriceTiers)
+        {
+            // UnitAmount es owned type: hay que clonar el Money, no reusar la instancia del tier viejo.
+            var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
+            if (amount.IsFailure)
+                return Result.Failure(amount.Error);
+            var clone = PlanPriceTier.Create(
+                version.Id,
+                tier.BillingCycle,
+                tier.MinQuantity,
+                tier.MaxQuantity,
+                amount.Value
+            );
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddPriceTier(clone.Value);
+        }
+
+        foreach (var feature in published.Features)
+        {
+            if (feature.FeatureKey.Value.StartsWith("module.", StringComparison.Ordinal))
+                continue;
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddFeature(clone.Value);
+        }
+
+        foreach (
+            var module in modules
+                .Select(m => m.Trim())
+                .Where(m => m.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+        )
+        {
+            var key = EntitlementKey.Create($"module.{module}");
+            if (key.IsFailure)
+                return Result.Failure(key.Error);
+            var feature = PlanFeature.Create(
+                version.Id,
+                key.Value,
+                defaultEnabled: true,
+                description: $"module.{module}"
+            );
+            if (feature.IsFailure)
+                return Result.Failure(feature.Error);
+            version.AddFeature(feature.Value);
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return added;
+
+        return PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
+    }
+
+    /// <summary>
+    /// Publica una versión nueva idéntica a la actual pero con otro precio mensual/anual, superando
+    /// la anterior. Como una versión publicada es inmutable, se versiona en vez de editar. Módulos,
+    /// límites y demás features se conservan; el precio nuevo aplica a las compras/renovaciones futuras.
+    /// </summary>
+    public Result RevisePrices(decimal monthlyUsd, decimal yearlyUsd, Guid actorUserId, DateTime nowUtc)
+    {
+        var published = FindPublishedVersion();
+        if (published is null)
+            return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no published version to revise."));
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            published.VersionNumber + 1,
+            published.TrialDaysDefault,
+            published.SupportedBillingCycles.ToArray()
+        );
+        if (draft.IsFailure)
+            return Result.Failure(draft.Error);
+
+        var version = draft.Value;
+
+        foreach (var entitlement in published.Entitlements)
+        {
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        foreach (var feature in published.Features)
+        {
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddFeature(clone.Value);
+        }
+
+        var tiers = BuildPriceTiers(version, monthlyUsd, yearlyUsd);
+        if (tiers.IsFailure)
+            return Result.Failure(tiers.Error);
+        foreach (var tier in tiers.Value)
+            version.AddPriceTier(tier);
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return added;
+
+        return PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
+    }
+
+    // Un tramo por ciclo soportado (cantidad 1+): anual con su propio precio, mensual con el suyo.
+    private static Result<IReadOnlyList<PlanPriceTier>> BuildPriceTiers(
+        SubscriptionPlanVersion version,
+        decimal monthlyUsd,
+        decimal yearlyUsd
+    )
+    {
+        var tiers = new List<PlanPriceTier>();
+        foreach (var cycle in version.SupportedBillingCycles)
+        {
+            var amount = Money.Create(cycle == BillingCycle.Yearly ? yearlyUsd : monthlyUsd, "USD");
+            if (amount.IsFailure)
+                return Result.Failure<IReadOnlyList<PlanPriceTier>>(amount.Error);
+            var tier = PlanPriceTier.Create(version.Id, cycle, minQuantity: 1, maxQuantity: null, amount.Value);
+            if (tier.IsFailure)
+                return Result.Failure<IReadOnlyList<PlanPriceTier>>(tier.Error);
+            tiers.Add(tier.Value);
+        }
+
+        return Result.Success<IReadOnlyList<PlanPriceTier>>(tiers);
     }
 
     public SubscriptionPlanVersion? GetPublishedVersion() => FindPublishedVersion();

@@ -15,4 +15,9 @@ public static class CorrespondencePermissions
 
     /// <summary>Fase 14 — enviar un <c>Draft</c> ya redactado: <c>POST /correspondence/drafts/{id}/send</c>. Separado de <see cref="Compose"/> (plan §27: redactar/editar es reversible, enviar no lo es — mismo criterio de riesgo distinto que ya separaba Compose de Reply).</summary>
     public const string Send = "correspondence.send";
+
+    /// <summary>Gestionar la bandeja: archivar, enviar a papelera, restaurar y borrar definitivamente
+    /// mensajes/hilos. Separado de <see cref="Read"/> porque son acciones de gestión (incluida la purga
+    /// permanente) — leer la bandeja no debe implicar poder destruirla.</summary>
+    public const string Manage = "correspondence.manage";
 }

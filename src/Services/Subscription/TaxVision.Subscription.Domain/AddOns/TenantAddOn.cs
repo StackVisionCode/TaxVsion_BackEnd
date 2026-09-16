@@ -86,6 +86,21 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success(addOn);
     }
 
+    /// <summary>Co-terminación: alinea el fin de período y la próxima renovación al de la suscripción
+    /// base, para que el add-on venza/renueve en el aniversario del plan y no se desfase.</summary>
+    public Result CoTermTo(DateTime subscriptionPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
+    {
+        if (subscriptionPeriodEndUtc <= CurrentPeriodStartUtc)
+            return Result.Failure(
+                new Error("AddOn.InvalidCoTerm", "The base period end must be after the add-on period start.")
+            );
+
+        CurrentPeriodEndUtc = subscriptionPeriodEndUtc;
+        NextRenewalAtUtc = subscriptionPeriodEndUtc;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result MarkPastDueBecauseRenewalFailed(string failureCode, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnStatus.Active)
@@ -173,6 +188,24 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Absorción: el tenant subió a un plan que ya incluye el módulo de este add-on, así que se
+    /// cancela para no cobrar dos veces por la misma feature. Distinto de <see cref="CancelActive"/> por
+    /// la intención (lo dispara el sistema en el upgrade, no el usuario) — de ahí el método explícito.</summary>
+    public Result SupersedeByPlan(string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue, AddOnStatus.GracePeriod))
+            return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot supersede from {Status}."));
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("AddOn.InvalidReason", "Reason is required."));
+
+        Status = AddOnStatus.Cancelled;
+        CancelledAtUtc = nowUtc;
+        CancellationReason = reason.Length > 500 ? reason[..500] : reason;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result ExpireAfterCancellationPeriodEnded(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnStatus.Cancelled)
@@ -195,9 +228,36 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Programa una renovación de este add-on, independiente de la suscripción
-    /// base y de los seats. Idempotente por <paramref name="idempotencyKey"/>.</summary>
-    public Result BeginRenewal(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    /// <summary>Programa el cargo del período parcial inicial (prorrateado) sobre el período ACTUAL del
+    /// add-on. A diferencia de <see cref="BeginRenewal"/> no avanza el período; solo materializa un
+    /// registro para que el flujo de pago (éxito/fallo) quede trazado. Idempotente por <paramref name="idempotencyKey"/>.</summary>
+    public Result BeginInitialCharge(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != AddOnStatus.Active)
+            return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot begin initial charge from {Status}."));
+
+        if (FindRenewalByKey(idempotencyKey) is not null)
+            return Result.Success();
+
+        var renewalResult = TenantAddOnRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            CurrentPeriodStartUtc,
+            CurrentPeriodEndUtc,
+            nowUtc
+        );
+        if (renewalResult.IsFailure)
+            return Result.Failure(renewalResult.Error);
+
+        _renewals.Add(renewalResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Programa una renovación de este add-on hasta <paramref name="newPeriodEndUtc"/>, que el
+    /// llamador co-termina al aniversario de la suscripción base. Idempotente por <paramref name="idempotencyKey"/>.</summary>
+    public Result BeginRenewal(string idempotencyKey, DateTime newPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnStatus.Active)
             return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot begin renewal from {Status}."));
@@ -205,7 +265,6 @@ public sealed class TenantAddOn : TenantEntity
         if (FindRenewalByKey(idempotencyKey) is not null)
             return Result.Success();
 
-        var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc);
         var renewalResult = TenantAddOnRenewal.Schedule(
             Id,
             TenantId,

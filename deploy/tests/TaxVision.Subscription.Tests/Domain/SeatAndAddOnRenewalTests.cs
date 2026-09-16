@@ -41,18 +41,34 @@ public sealed class SeatAndAddOnRenewalTests
     {
         var addOn = CreateActiveAddOn();
 
-        addOn.BeginRenewal("addon-key-1", Guid.Empty, DateTime.UtcNow);
-        var result = addOn.BeginRenewal("addon-key-1", Guid.Empty, DateTime.UtcNow);
+        addOn.BeginRenewal("addon-key-1", DateTime.UtcNow.AddMonths(2), Guid.Empty, DateTime.UtcNow);
+        var result = addOn.BeginRenewal("addon-key-1", DateTime.UtcNow.AddMonths(2), Guid.Empty, DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
         Assert.Single(addOn.Renewals);
     }
 
     [Fact]
+    public void AddOn_CompleteRenewal_advances_to_the_co_termed_end_passed_to_BeginRenewal()
+    {
+        var addOn = CreateActiveAddOn();
+        // Fin del período de la base al que se co-termina la renovación.
+        var coTermEnd = addOn.CurrentPeriodEndUtc.AddMonths(1);
+        addOn.BeginRenewal("addon-key-1", coTermEnd, Guid.Empty, DateTime.UtcNow);
+        var renewalId = addOn.Renewals.First().Id;
+
+        var result = addOn.CompleteRenewal(renewalId, "ext-ref", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(coTermEnd, addOn.CurrentPeriodEndUtc);
+        Assert.Equal(coTermEnd, addOn.NextRenewalAtUtc);
+    }
+
+    [Fact]
     public void AddOn_FailRenewal_without_retry_moves_the_addon_to_past_due_without_touching_seats_or_subscription()
     {
         var addOn = CreateActiveAddOn();
-        addOn.BeginRenewal("addon-key-1", Guid.Empty, DateTime.UtcNow);
+        addOn.BeginRenewal("addon-key-1", DateTime.UtcNow.AddMonths(2), Guid.Empty, DateTime.UtcNow);
         var renewalId = addOn.Renewals.First().Id;
 
         var result = addOn.FailRenewal(

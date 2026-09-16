@@ -67,6 +67,81 @@ public sealed class TenantAddOnTests
         Assert.Equal("AddOn.InvalidTransition", result.Error.Code);
     }
 
+    [Fact]
+    public void CoTermTo_aligns_period_end_and_next_renewal_to_the_subscription()
+    {
+        var addOn = CreateAddOn();
+        var subscriptionPeriodEndUtc = addOn.CurrentPeriodStartUtc.AddDays(93);
+
+        var result = addOn.CoTermTo(subscriptionPeriodEndUtc, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(subscriptionPeriodEndUtc, addOn.CurrentPeriodEndUtc);
+        Assert.Equal(subscriptionPeriodEndUtc, addOn.NextRenewalAtUtc);
+    }
+
+    [Fact]
+    public void CoTermTo_fails_when_the_target_is_not_after_the_period_start()
+    {
+        var addOn = CreateAddOn();
+
+        var result = addOn.CoTermTo(addOn.CurrentPeriodStartUtc, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("AddOn.InvalidCoTerm", result.Error.Code);
+    }
+
+    [Fact]
+    public void BeginInitialCharge_schedules_a_charge_for_the_current_period_without_advancing_it()
+    {
+        var addOn = CreateAddOn();
+        var periodEndBefore = addOn.CurrentPeriodEndUtc;
+
+        var result = addOn.BeginInitialCharge("addon-initial-1", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        var renewal = Assert.Single(addOn.Renewals);
+        Assert.Equal(addOn.CurrentPeriodStartUtc, renewal.PeriodStartUtc);
+        Assert.Equal(addOn.CurrentPeriodEndUtc, renewal.PeriodEndUtc);
+        Assert.Equal(periodEndBefore, addOn.CurrentPeriodEndUtc); // no avanza el período
+    }
+
+    [Fact]
+    public void BeginInitialCharge_is_idempotent_by_key()
+    {
+        var addOn = CreateAddOn();
+
+        addOn.BeginInitialCharge("addon-initial-1", Guid.Empty, DateTime.UtcNow);
+        var result = addOn.BeginInitialCharge("addon-initial-1", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(addOn.Renewals);
+    }
+
+    [Fact]
+    public void SupersedeByPlan_cancels_with_the_given_reason()
+    {
+        var addOn = CreateAddOn();
+
+        var result = addOn.SupersedeByPlan("Absorbed by plan upgrade", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AddOnStatus.Cancelled, addOn.Status);
+        Assert.Equal("Absorbed by plan upgrade", addOn.CancellationReason);
+    }
+
+    [Fact]
+    public void SupersedeByPlan_fails_from_a_terminal_status()
+    {
+        var addOn = CreateAddOn();
+        addOn.CancelActive("user cancelled", Guid.Empty, DateTime.UtcNow);
+
+        var result = addOn.SupersedeByPlan("Absorbed by plan upgrade", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("AddOn.InvalidTransition", result.Error.Code);
+    }
+
     private static TenantAddOn CreateAddOn()
     {
         var definition = AddOnDefinition

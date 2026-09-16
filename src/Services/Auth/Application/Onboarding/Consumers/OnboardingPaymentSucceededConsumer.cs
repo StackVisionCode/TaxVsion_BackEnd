@@ -55,7 +55,8 @@ public static class OnboardingPaymentSucceededConsumer
                 evt.ProviderPaymentReference,
                 evt.PaymentMethodMasked,
                 correlationId,
-                ct
+                sendRegistrationEmailNow: false,
+                ct: ct
             );
             if (completed.IsFailure)
                 return;

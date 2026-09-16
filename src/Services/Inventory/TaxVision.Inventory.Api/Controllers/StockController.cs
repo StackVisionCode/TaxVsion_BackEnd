@@ -18,7 +18,7 @@ namespace TaxVision.Inventory.Api.Controllers;
 [ApiController]
 [Route("inventory/stock")]
 [Authorize]
-[AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class StockController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
     public sealed record AdjustRequest(StockMovementType Type, int Quantity, string? Reference, string? Notes);

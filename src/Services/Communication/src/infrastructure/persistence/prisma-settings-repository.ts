@@ -132,11 +132,13 @@ export class PrismaLimitsRepository implements LimitsRepository {
       recordingEnabled: row.RecordingEnabled,
       supportEnabled: row.SupportEnabled,
       isSuspended: row.IsSuspended,
+      enabledModules: parseEnabledModules(row.EnabledModulesJson),
       updatedAtUtc: row.UpdatedAtUtc,
     };
   }
 
   async upsert(s: TenantCommunicationLimitsSnapshot): Promise<void> {
+    const enabledModulesJson = JSON.stringify(s.enabledModules);
     await this.prisma.tenantCommunicationLimits.upsert({
       where: { TenantId: s.tenantId },
       create: {
@@ -149,6 +151,7 @@ export class PrismaLimitsRepository implements LimitsRepository {
         RecordingEnabled: s.recordingEnabled,
         SupportEnabled: s.supportEnabled,
         IsSuspended: s.isSuspended,
+        EnabledModulesJson: enabledModulesJson,
       },
       update: {
         PlanCode: s.planCode,
@@ -159,6 +162,7 @@ export class PrismaLimitsRepository implements LimitsRepository {
         RecordingEnabled: s.recordingEnabled,
         SupportEnabled: s.supportEnabled,
         IsSuspended: s.isSuspended,
+        EnabledModulesJson: enabledModulesJson,
       },
     });
   }
@@ -168,5 +172,19 @@ export class PrismaLimitsRepository implements LimitsRepository {
       where: { TenantId: tenantId },
       data: { IsSuspended: suspended },
     }).catch(() => undefined);
+  }
+}
+
+/**
+ * Deserializa `EnabledModulesJson`. Tolera "" (default de columna en filas preexistentes a la
+ * migracion), null y JSON invalido -> [], y descarta entradas no-string.
+ */
+function parseEnabledModules(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
   }
 }

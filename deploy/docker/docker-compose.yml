@@ -524,6 +524,12 @@ services:
       # actor_type=Service via la policy ServiceOnly.
       ServiceAuth__Clients__24__ClientId: ${CALENDAR_SERVICE_CLIENT_ID:-calendar-worker}
       ServiceAuth__Clients__24__Secret: ${CALENDAR_SERVICE_CLIENT_SECRET:-}
+      # M2M para la recuperación pull de permisos (H-04) de Catalog e Inventory. Sin permisos
+      # configurados: el endpoint interno de snapshot solo exige ActorType.Service, no un permiso.
+      ServiceAuth__Clients__25__ClientId: ${CATALOG_SERVICE_CLIENT_ID:-catalog-worker}
+      ServiceAuth__Clients__25__Secret: ${CATALOG_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__26__ClientId: ${INVENTORY_SERVICE_CLIENT_ID:-inventory-worker}
+      ServiceAuth__Clients__26__Secret: ${INVENTORY_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1143,6 +1149,12 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # M2M a Auth — recuperación pull de la proyección de permisos (H-04): sin estas credenciales el
+      # acquirer devuelve null y ProjectionPermissionsSource sigue fail-closed (403) para usuarios sin
+      # fila local. El client catalog-worker debe existir en auth-api (ServiceAuth__Clients).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CATALOG_SERVICE_CLIENT_ID:-catalog-worker}
+      ServiceAuthClient__ClientSecret: ${CATALOG_SERVICE_CLIENT_SECRET:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1176,6 +1188,12 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # M2M a Auth — recuperación pull de la proyección de permisos (H-04): sin estas credenciales el
+      # acquirer devuelve null y ProjectionPermissionsSource sigue fail-closed (403). El client
+      # inventory-worker debe existir en auth-api (ServiceAuth__Clients).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${INVENTORY_SERVICE_CLIENT_ID:-inventory-worker}
+      ServiceAuthClient__ClientSecret: ${INVENTORY_SERVICE_CLIENT_SECRET:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

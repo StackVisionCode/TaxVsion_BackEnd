@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 4
+    int ContentVersion = 5
 );
 
 /// <summary>
@@ -55,6 +55,7 @@ public static class NotificationTemplateSeedSource
             OnboardingOtpRequested,
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
+            OnboardingPaymentFailed,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -90,6 +91,7 @@ public static class NotificationTemplateSeedSource
         ["onboarding.otp_code"] = "Here's your verification code to continue setting up your account.",
         ["onboarding.registration_ready"] = "Payment confirmed — finish creating your account to get started.",
         ["onboarding.receipt_ready"] = "Your payment receipt is ready to view and download.",
+        ["onboarding.payment_failed"] = "Your payment didn't go through — you can try again in a moment.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -712,6 +714,56 @@ public static class NotificationTemplateSeedSource
                     null,
                     "Link mediador de descarga del recibo (Auth), nunca vence."
                 ),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed OnboardingPaymentFailed { get; } =
+        new(
+            EventKey: "onboarding.payment_failed.v1",
+            TemplateKey: "onboarding.payment_failed",
+            Name: "Onboarding — Pago fallido",
+            Subject: "There was a problem with your {{ product_name }} payment",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Payment</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your payment didn't go through</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we couldn't process your payment for the {{ plan_name }} plan, so your account wasn't created. No charge was made. You can try again below:</td></tr>
+              {% if failure_reason != blank %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Reason: {{ failure_reason }}</td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ retry_url }}" style="height:46px;v-text-anchor:middle;width:150px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Try again</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ retry_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Try again</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">If you keep having trouble, reach out to support and we'll help you finish signing up.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del comprador."),
+                (
+                    "plan_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del plan (con fallback ya resuelto por el consumer)."
+                ),
+                (
+                    "failure_reason",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Motivo legible del fallo; si falta, se omite la línea."
+                ),
+                ("retry_url", VariableType.Url, true, null, "Entrada del landing con el plan/ciclo preseleccionados."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
             ]
         );

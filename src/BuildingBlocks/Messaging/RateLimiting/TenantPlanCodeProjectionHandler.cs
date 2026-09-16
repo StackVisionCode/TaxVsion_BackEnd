@@ -41,15 +41,20 @@ public static class TenantPlanCodeProjectionHandler
             )
         )
         {
+            // Módulos habilitados del snapshot (module.*). Los servicios que no persisten módulos los
+            // ignoran (default interface method), así que esto es no-op para ellos.
+            var enabledModules = evt.ExtractEnabledModules();
+
             var existing = await repository.GetAsync(evt.TenantId, ct);
             if (existing is null)
             {
                 var projection = create(evt.TenantId, evt.PlanCode, evt.RevisionNumber);
+                projection.ApplyIfNewer(evt.PlanCode, evt.RevisionNumber, enabledModules);
                 await repository.AddAsync(projection, ct);
             }
             else
             {
-                existing.ApplyIfNewer(evt.PlanCode, evt.RevisionNumber);
+                existing.ApplyIfNewer(evt.PlanCode, evt.RevisionNumber, enabledModules);
             }
 
             await unitOfWork.SaveChangesAsync(ct);

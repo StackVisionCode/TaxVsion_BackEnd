@@ -45,6 +45,13 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                     "Your session's permissions are out of date. Refresh your token and try again.",
                     staleToken.Message
                 ),
+                // Gate de módulo en enforce — el plan del tenant no incluye el módulo del permiso.
+                ModuleUnavailableException moduleUnavailable => (
+                    StatusCodes.Status403Forbidden,
+                    "Forbidden",
+                    moduleUnavailable.Message,
+                    moduleUnavailable.Code
+                ),
                 _ => (
                     StatusCodes.Status500InternalServerError,
                     "Internal Server Error",

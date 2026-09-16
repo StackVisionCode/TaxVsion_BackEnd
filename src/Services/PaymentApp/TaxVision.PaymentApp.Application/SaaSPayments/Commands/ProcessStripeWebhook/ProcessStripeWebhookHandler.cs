@@ -78,16 +78,20 @@ public static class ProcessStripeWebhookHandler
                 }
             );
         }
-        else if (payment.Status == PaymentStatus.Failed)
+        else if (payment.Status is PaymentStatus.Failed or PaymentStatus.Cancelled)
         {
+            // Para un onboarding, un cargo cancelado (ej. la sesión de checkout expiró y el proveedor
+            // anuló el intento) es tan terminal como uno declinado: el comprador no pagó. Se notifica igual.
+            var cancelled = payment.Status == PaymentStatus.Cancelled;
             await bus.PublishAsync(
                 new OnboardingPaymentFailedIntegrationEvent
                 {
                     TenantId = PlatformTenant.Id,
                     OnboardingId = payment.OnboardingId!.Value,
                     SaaSPaymentId = payment.Id,
-                    FailureCode = payment.FailureCode ?? "Unknown",
-                    FailureReason = payment.FailureReason ?? "The charge failed.",
+                    FailureCode = payment.FailureCode ?? (cancelled ? "Provider.Cancelled" : "Unknown"),
+                    FailureReason =
+                        payment.FailureReason ?? (cancelled ? "The payment was cancelled." : "The charge failed."),
                     CorrelationId = correlationId,
                 }
             );

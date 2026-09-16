@@ -212,6 +212,9 @@ public sealed class AcceptInvitationHandlerTests
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult(_roles.SingleOrDefault(r => r.TenantId == tenantId && r.Name == systemRoleName));
     }

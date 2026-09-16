@@ -40,4 +40,29 @@ public sealed class OnboardingOptions
     /// <summary>TTL de la sesión corta emitida al verificar el OTP. Autoriza únicamente el carril
     /// de onboarding pre-tenant y no reemplaza el JWT normal de usuarios autenticados.</summary>
     public int OnboardingSessionTtlMinutes { get; set; } = 30;
+
+    /// <summary>Minutos tras el pago liquidado antes de enviar el email "completa tu oficina", y
+    /// SOLO si el onboarding sigue en RegistrationPending (quien termina in-session no lo recibe).
+    /// El recibo y el carril $0 no se difieren. Lo evalúa el OnboardingRegistrationReminderScheduler.</summary>
+    public int RegistrationReminderDelayMinutes { get; set; } = 45;
+
+    /// <summary>TTL de la referencia Redis del raw token de registro cuando el email se difiere:
+    /// debe cubrir la ventana del recordatorio más el intervalo del sweeper. El mismo token ya vive
+    /// 72h en el buzón del comprador, así que una referencia acotada es MENOS exposición, no más. El
+    /// carril inmediato ($0) sigue usando el TTL corto por defecto del store.</summary>
+    public int RegistrationTokenReferenceTtlMinutes { get; set; } = 75;
+
+    /// <summary>Máximo de reintentos de pago sobre el MISMO onboarding tras un fallo, antes de exigir
+    /// empezar de cero. Lo aplica TenantOnboarding.ReopenForPaymentRetry.</summary>
+    public int PaymentRetryMaxAttempts { get; set; } = 3;
+
+    /// <summary>Ventana (desde la creación del onboarding) dentro de la cual se puede reintentar el
+    /// pago. Fuera de ella, el comprador debe iniciar un onboarding nuevo. Alineada al token de 72h.</summary>
+    public int PaymentRetryWindowHours { get; set; } = 72;
+
+    /// <summary>TTL de la referencia de retorno opaca que viaja en el successUrl del checkout, para que
+    /// el reconcile funcione al volver de Stripe aunque falte la cookie (otro navegador/incógnito).
+    /// Cubre la ventana pago→retorno; corto a propósito (NO es credencial de registro, solo resuelve el
+    /// onboardingId para consultar estado).</summary>
+    public int OnboardingReturnReferenceTtlMinutes { get; set; } = 30;
 }

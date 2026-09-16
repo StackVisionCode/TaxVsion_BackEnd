@@ -35,6 +35,7 @@ public static class ProcessOnboardingReceiptGenerationHandler
         IHtmlToPdfConverter pdfConverter,
         IDocumentStorageClient storageClient,
         IPlatformIssuerProvider issuerProvider,
+        ITenantLogoResolver tenantLogoResolver,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -69,7 +70,26 @@ public static class ProcessOnboardingReceiptGenerationHandler
             generation.Queue(now);
             generation.StartRendering(now);
 
-            var pdf = await RenderAndConvertAsync(command, issuerProvider.GetSnapshot(), renderer, pdfConverter, ct);
+            // El logo de marca de la plataforma (Company settings → TenantBrands del tenant plataforma,
+            // el que administra el PlatformAdmin) se baja on-demand como data URI, igual que la factura
+            // resuelve el logo de su tenant. Best-effort ESTRICTO: el logo NUNCA debe tumbar la generación
+            // del recibo (el pago ya está confirmado), así que cualquier fallo del resolver (proyección de
+            // logo ausente, storage caído) cae al logo de config y, si tampoco, el recibo sale sin logo.
+            string? brandLogo = null;
+            try
+            {
+                brandLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(PlatformTenant.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Onboarding receipt {GenerationId}: brand logo resolution failed; falling back to the configured logo.",
+                    command.GenerationId
+                );
+            }
+
+            var pdf = await RenderAndConvertAsync(command, issuerProvider.GetSnapshot(), brandLogo, renderer, pdfConverter, ct);
             if (pdf.IsFailure)
             {
                 await FailAsync(generation, command, pdf.Error, unitOfWork, bus, now, logger, ct);
@@ -135,12 +155,13 @@ public static class ProcessOnboardingReceiptGenerationHandler
     private static async Task<Result<byte[]>> RenderAndConvertAsync(
         ProcessOnboardingReceiptGenerationCommand command,
         IssuerSnapshot issuer,
+        string? brandLogoDataUri,
         IDocumentTemplateRenderer renderer,
         IHtmlToPdfConverter pdfConverter,
         CancellationToken ct
     )
     {
-        var data = BuildRenderData(command, issuer);
+        var data = BuildRenderData(command, issuer, brandLogoDataUri);
 
         var html = await renderer.RenderHtmlAsync(
             command.TemplateKey,
@@ -159,7 +180,8 @@ public static class ProcessOnboardingReceiptGenerationHandler
     // BuildRenderData de Invoice. Los montos llegan en centavos (long); acá se formatean a decimal.
     private static IReadOnlyDictionary<string, object?> BuildRenderData(
         ProcessOnboardingReceiptGenerationCommand command,
-        IssuerSnapshot issuer
+        IssuerSnapshot issuer,
+        string? brandLogoDataUri
     )
     {
         var receipt = command.Receipt;
@@ -190,14 +212,23 @@ public static class ProcessOnboardingReceiptGenerationHandler
                     ["phone"] = issuer.Phone,
                     ["email"] = issuer.Email,
                     ["website"] = issuer.Website,
-                    ["logo"] =
-                        issuer.LogoDataUri is { Length: > 0 } l
-                        && l.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-                            ? l
-                            : string.Empty,
+                    ["logo"] = ResolveLogo(brandLogoDataUri, issuer.LogoDataUri),
                 },
             },
         };
+    }
+
+    // Prefiere el logo de marca del tenant plataforma (dinámico, el que administra el PlatformAdmin);
+    // si no hay, el de config; validando que sea un data: URI embebible (la plantilla lo omite si queda
+    // vacío). Nunca falla el render por el logo — es best-effort.
+    private static string ResolveLogo(string? brandLogoDataUri, string? configLogoDataUri)
+    {
+        foreach (var candidate in new[] { brandLogoDataUri, configLogoDataUri })
+        {
+            if (candidate is { Length: > 0 } l && l.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                return l;
+        }
+        return string.Empty;
     }
 
     private static async Task FailAsync(

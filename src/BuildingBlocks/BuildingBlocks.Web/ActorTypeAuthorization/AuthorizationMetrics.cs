@@ -17,6 +17,7 @@ public sealed class AuthorizationMetrics : IDisposable
     private readonly Meter _meter = new(MeterName);
     private readonly Counter<int> _decisions;
     private readonly Counter<int> _sessionDenylistUnavailable;
+    private readonly Counter<int> _moduleDecisions;
 
     public AuthorizationMetrics()
     {
@@ -27,6 +28,10 @@ public sealed class AuthorizationMetrics : IDisposable
         _sessionDenylistUnavailable = _meter.CreateCounter<int>(
             "authz.session_denylist_unavailable",
             description: "Session denylist checks that could not be resolved (store unavailable)"
+        );
+        _moduleDecisions = _meter.CreateCounter<int>(
+            "authz.module_decision",
+            description: "Entitlement/module gate decisions (Phase 1 log-only) by module and result"
         );
     }
 
@@ -45,6 +50,19 @@ public sealed class AuthorizationMetrics : IDisposable
     /// <param name="outcome">"fail_open" (se dejó pasar) o "fail_closed" (se respondió 503).</param>
     public void RecordSessionDenylistUnavailable(string outcome) =>
         _sessionDenylistUnavailable.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
+
+    /// <summary>
+    /// Gate de módulo (Entitlements en runtime), Fase 1 en modo log-only: registra si el tenant tiene
+    /// habilitado el módulo al que pertenece un permiso, SIN cambiar la decisión. Sirve para medir
+    /// falsos "deny" (mapeo permiso→módulo mal, o servicios sin la proyección migrada) antes de enforzar
+    /// en Fase 2. <paramref name="module"/> es de cardinalidad acotada (≈12), seguro como tag.
+    /// </summary>
+    public void RecordModuleDecision(bool enabled, string module) =>
+        _moduleDecisions.Add(
+            1,
+            new KeyValuePair<string, object?>("result", enabled ? "allow" : "deny"),
+            new KeyValuePair<string, object?>("module", module)
+        );
 
     public void Dispose() => _meter.Dispose();
 }

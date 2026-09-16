@@ -22,10 +22,13 @@ public sealed class RedisTokenReferenceStore(IConnectionMultiplexer redis) : ITo
         return reference;
     }
 
-    public async Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default)
+    public Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default) =>
+        StoreAsync(reference, rawToken, Ttl, ct);
+
+    public async Task StoreAsync(Guid reference, string rawToken, TimeSpan ttl, CancellationToken ct = default)
     {
         var db = redis.GetDatabase();
-        await db.StringSetAsync(Key(reference), rawToken, Ttl);
+        await db.StringSetAsync(Key(reference), rawToken, ttl);
     }
 
     public async Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default)

@@ -14,6 +14,7 @@ public static class RenewAddOnHandler
     public static async Task<Result> Handle(
         RenewAddOnCommand command,
         ITenantAddOnRepository tenantAddOns,
+        ISubscriptionRepository subscriptions,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<TenantAddOn> logger,
@@ -24,7 +25,16 @@ public static class RenewAddOnHandler
         if (addOn is null)
             return Result.Failure(new Error("AddOn.NotFound", "Add-on does not exist."));
 
-        var result = BeginAndCompleteRenewal(addOn, command.RequestedByUserId);
+        var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
+        if (subscription is null)
+            return Result.Failure(new Error("Subscription.NotFound", "Subscription does not exist."));
+
+        // Co-terminación: la renovación llega al próximo aniversario de la base.
+        var result = BeginAndCompleteRenewal(
+            addOn,
+            subscription.NextCoTermEnd(addOn.CurrentPeriodEndUtc),
+            command.RequestedByUserId
+        );
         if (result.IsFailure)
             return result;
 
@@ -39,12 +49,12 @@ public static class RenewAddOnHandler
         return Result.Success();
     }
 
-    private static Result BeginAndCompleteRenewal(TenantAddOn addOn, Guid actorUserId)
+    private static Result BeginAndCompleteRenewal(TenantAddOn addOn, DateTime newPeriodEndUtc, Guid actorUserId)
     {
         var nowUtc = DateTime.UtcNow;
         var idempotencyKey = IdempotencyKeyFactory.AddOnRenewal(addOn.Id, addOn.CurrentPeriodEndUtc);
 
-        var beginResult = addOn.BeginRenewal(idempotencyKey, actorUserId, nowUtc);
+        var beginResult = addOn.BeginRenewal(idempotencyKey, newPeriodEndUtc, actorUserId, nowUtc);
         if (beginResult.IsFailure)
             return beginResult;
 

@@ -280,6 +280,14 @@ jobs:
           TASKS_SERVICE_CLIENT_ID=${{ secrets.TASKS_SERVICE_CLIENT_ID }}
           TASKS_SERVICE_CLIENT_SECRET=${{ secrets.TASKS_SERVICE_CLIENT_SECRET }}
 
+          # Catalog / Inventory: M2M para la recuperación pull de permisos (H-04). Sin esto, un usuario
+          # sin fila local en su UserPermissionsProjection queda fail-closed (403). El ClientId/Secret
+          # debe coincidir con ServiceAuth__Clients__25/26 de auth-api.
+          CATALOG_SERVICE_CLIENT_ID=${{ secrets.CATALOG_SERVICE_CLIENT_ID }}
+          CATALOG_SERVICE_CLIENT_SECRET=${{ secrets.CATALOG_SERVICE_CLIENT_SECRET }}
+          INVENTORY_SERVICE_CLIENT_ID=${{ secrets.INVENTORY_SERVICE_CLIENT_ID }}
+          INVENTORY_SERVICE_CLIENT_SECRET=${{ secrets.INVENTORY_SERVICE_CLIENT_SECRET }}
+
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
 
