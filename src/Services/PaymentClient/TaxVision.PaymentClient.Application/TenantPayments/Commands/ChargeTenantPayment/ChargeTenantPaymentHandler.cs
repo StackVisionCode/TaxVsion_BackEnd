@@ -149,7 +149,12 @@ public static class ChargeTenantPaymentHandler
             return;
         }
 
-        var credentials = new TenantProviderCredentials(secretKey, WebhookSecret: null);
+        var credentials = new TenantProviderCredentials(
+            secretKey,
+            WebhookSecret: null,
+            PublishableKey: config.PublishableKey,
+            ApiBaseUrl: config.ApiBaseUrl
+        );
         var adapter = providerFactory.Resolve(config.ProviderCode);
         var chargeRequest = BuildChargeRequest(payment, command, onBehalfOf: null, applicationFee: null);
 

@@ -52,6 +52,69 @@ public sealed class SaaSPaymentTests
     }
 
     [Fact]
+    public void PrepareForOnboardingRetry_reopens_a_failed_onboarding_payment_and_clears_the_old_session()
+    {
+        var payment = FailedOnboardingPayment();
+
+        var result = payment.PrepareForOnboardingRetry(DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Null(payment.ProviderCheckoutSessionId);
+        Assert.Null(payment.ExternalChargeReference);
+        Assert.Null(payment.FailureCode);
+    }
+
+    [Fact]
+    public void PrepareForOnboardingRetry_rejects_a_non_onboarding_payment()
+    {
+        var payment = CreatePendingPayment();
+
+        var result = payment.PrepareForOnboardingRetry(DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
+    }
+
+    [Fact]
+    public void PrepareForOnboardingRetry_rejects_a_non_failed_onboarding_payment()
+    {
+        var payment = PendingOnboardingPayment();
+
+        var result = payment.PrepareForOnboardingRetry(DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
+    }
+
+    private static SaaSPayment PendingOnboardingPayment() =>
+        SaaSPayment
+            .CreateForOnboarding(
+                Guid.NewGuid(),
+                IdempotencyKey.Create("onboarding-key-pending").Value,
+                Money.Create(4900, "USD").Value,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                DateTime.UtcNow
+            )
+            .Value;
+
+    private static SaaSPayment FailedOnboardingPayment()
+    {
+        var now = DateTime.UtcNow;
+        var payment = PendingOnboardingPayment();
+        payment.RecordHostedCheckoutSession(
+            "sess_1",
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_1").Value,
+            "https://checkout.example.com/1",
+            now
+        );
+        payment.MarkFailed("card_declined", "declined", willRetry: false, nextRetryAtUtc: null, Guid.Empty, now);
+        return payment;
+    }
+
+    [Fact]
     public void MarkFailed_from_Pending_succeeds_and_schedules_a_retry()
     {
         var payment = CreatePendingPayment();

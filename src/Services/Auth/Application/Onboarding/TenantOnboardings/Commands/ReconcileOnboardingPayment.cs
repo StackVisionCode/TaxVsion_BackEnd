@@ -8,7 +8,11 @@ using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 
 namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
 
-public sealed record ReconcileOnboardingPaymentCommand(Guid OnboardingId);
+/// <summary><see cref="IncludeRegistrationUrl"/> = false cuando el reconcile se resolvió por la
+/// referencia de retorno (más expuesta que la cookie, viaja en la URL): la respuesta trae solo estado,
+/// nunca la registrationUrl (que contiene el raw token de 72h). El token igual se emite; el link
+/// durable sigue llegando por email.</summary>
+public sealed record ReconcileOnboardingPaymentCommand(Guid OnboardingId, bool IncludeRegistrationUrl = true);
 
 public sealed record ReconcileOnboardingPaymentResponse(
     Guid OnboardingId,
@@ -16,12 +20,43 @@ public sealed record ReconcileOnboardingPaymentResponse(
     string Status,
     string? RegistrationUrl,
     string? FailureCode,
-    string? FailureMessage
+    string? FailureMessage,
+    // El email del comprador, para que la pantalla de fallo pueda reintentar el pago sobre el mismo
+    // onboarding. Solo en el camino de la cookie (segura); se suprime en el de la referencia.
+    string? PayerEmail = null
 );
 
 public static class ReconcileOnboardingPaymentHandler
 {
     public static async Task<Result<ReconcileOnboardingPaymentResponse>> Handle(
+        ReconcileOnboardingPaymentCommand command,
+        ITenantOnboardingRepository onboardings,
+        IPaymentAppOnboardingClient paymentApp,
+        OnboardingSuccessCompleter successCompleter,
+        IPlanCatalogClient planCatalog,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var result = await ReconcileAsync(
+            command,
+            onboardings,
+            paymentApp,
+            successCompleter,
+            planCatalog,
+            unitOfWork,
+            correlation,
+            ct
+        );
+
+        // Camino por referencia (más expuesta que la cookie): no devolvemos ni la registrationUrl ni el email.
+        return result.IsSuccess && !command.IncludeRegistrationUrl
+            ? Result.Success(result.Value with { RegistrationUrl = null, PayerEmail = null })
+            : result;
+    }
+
+    private static async Task<Result<ReconcileOnboardingPaymentResponse>> ReconcileAsync(
         ReconcileOnboardingPaymentCommand command,
         ITenantOnboardingRepository onboardings,
         IPaymentAppOnboardingClient paymentApp,
@@ -165,7 +200,8 @@ public static class ReconcileOnboardingPaymentHandler
             providerPaymentReference,
             paymentMethodMasked,
             correlationId,
-            ct
+            sendRegistrationEmailNow: false,
+            ct: ct
         );
         if (success.IsFailure)
             return Result.Failure<ReconcileOnboardingPaymentResponse>(success.Error);
@@ -203,6 +239,7 @@ public static class ReconcileOnboardingPaymentHandler
             onboarding.Status.ToString(),
             registrationUrl,
             failureCode,
-            failureMessage
+            failureMessage,
+            onboarding.Email
         );
 }

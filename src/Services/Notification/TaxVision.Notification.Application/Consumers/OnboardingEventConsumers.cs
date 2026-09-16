@@ -224,3 +224,54 @@ public static class OnboardingReceiptReadyConsumer
         }
     }
 }
+
+/// <summary>
+/// Envía el aviso "tu pago no pasó" con un link para reintentar. Auth publica el evento (con el email/
+/// nombre del comprador, que el evento de PaymentApp no trae) al marcar el onboarding como PaymentFailed.
+/// </summary>
+public static class OnboardingPaymentFailedNotificationConsumer
+{
+    public static async Task Handle(
+        OnboardingPaymentFailedNotificationRequestedIntegrationEvent evt,
+        IEmailDispatchGateway gateway,
+        IScribeRenderClient scribeClient,
+        IOptions<PortalOptions> portal,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
+        {
+            var render = (
+                await scribeClient.RenderAsync(
+                    "onboarding.payment_failed.v1",
+                    evt.TenantId,
+                    new Dictionary<string, object?>
+                    {
+                        ["first_name"] = evt.FirstName,
+                        ["plan_name"] = evt.PlanName ?? "tu plan",
+                        ["failure_reason"] = evt.FailureReason,
+                        ["retry_url"] = evt.RetryUrl,
+                        ["product_name"] = portal.Value.ProductName,
+                    },
+                    ct
+                )
+            ).EnsureRendered("onboarding.payment_failed.v1");
+
+            await gateway.QueueEmailAsync(
+                new EmailDispatchRequest(
+                    TenantId: evt.TenantId,
+                    To: evt.Email,
+                    Subject: render.Subject,
+                    HtmlBody: render.Html,
+                    TextBody: render.Text ?? string.Empty,
+                    TemplateKey: "onboarding.payment_failed",
+                    RelatedEventId: evt.EventId,
+                    CorrelationId: correlation.CorrelationId,
+                    InlineAssets: render.InlineAssets
+                ),
+                ct
+            );
+        }
+    }
+}

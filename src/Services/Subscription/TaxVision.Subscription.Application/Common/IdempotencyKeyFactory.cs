@@ -16,6 +16,11 @@ public static class IdempotencyKeyFactory
     public static string AddOnRenewal(Guid tenantAddOnId, DateTime periodEndUtc) =>
         $"addon-renewal-{tenantAddOnId:N}-{periodEndUtc:yyyyMMdd}";
 
+    /// <summary>Cargo prorrateado del período parcial inicial. Prefijo distinto de la renovación para
+    /// no colisionar aunque coincida la fecha con el fin del período co-terminado.</summary>
+    public static string AddOnInitialCharge(Guid tenantAddOnId, DateTime periodStartUtc) =>
+        $"addon-initial-{tenantAddOnId:N}-{periodStartUtc:yyyyMMdd}";
+
     /// <summary>No es determinista por período como las renovaciones — un upgrade de plan es
     /// un cargo puntual, no periódico. <paramref name="chargeToken"/> es un Guid generado una
     /// sola vez por el caller al crear el PlanChangeRequest; esta key solo protege contra

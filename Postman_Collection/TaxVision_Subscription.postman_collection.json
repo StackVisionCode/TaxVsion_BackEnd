@@ -1035,6 +1035,180 @@
             "description": "Fuerza el recalculo del TenantEntitlementSnapshot del tenant y republica TenantEntitlementsChangedIntegrationEvent. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant). Via de escape para reconciliar un tenant que quedo con TenantSubscription valida pero sin snapshot (p.ej. tras una falla transitoria en un intento anterior de RecalculateEntitlementsCommand) — ver README §32.6. Devuelve 204 en exito."
           },
           "response": []
+        },
+        {
+          "name": "CreateModuleAddOn (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/addons",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "addons"
+              ]
+            },
+            "description": "Crea y publica un add-on de modulo (habilita un module.*) con precio mensual/anual. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant). Un add-on de un modulo NUEVO exige antes su prefijo en PermissionModuleMap (codigo + deploy). Devuelve 201 con el Guid del add-on.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"addon-forms\",\n  \"name\": \"Forms\",\n  \"module\": \"forms\",\n  \"monthlyUsd\": 29,\n  \"yearlyUsd\": 290\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SetAddOnPrices (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/addons/{{addOnDefinitionId}}/prices",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "addons",
+                "{{addOnDefinitionId}}",
+                "prices"
+              ]
+            },
+            "description": "Actualiza el precio mensual/anual de un add-on. Afecta compras NUEVAS; las vigentes conservan su precio. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monthlyUsd\": 39,\n  \"yearlyUsd\": 390\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SetPlanModules (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/modules",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "modules"
+              ]
+            },
+            "description": "Fija los modulos (module.*) del plan: publica una version nueva (supersede la anterior) y encola el recalculo masivo de los tenants del plan. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 202.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modules\": [\n    \"customers\",\n    \"signatures\",\n    \"documents\",\n    \"planner\",\n    \"email\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SetPlanPrices (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/prices",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "prices"
+              ]
+            },
+            "description": "Revisa el precio mensual/anual del plan (publica una version nueva que supersede la anterior). No cambia entitlements, no dispara recalculo. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monthlyUsd\": 59,\n  \"yearlyUsd\": 590\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "RecalculateEntitlementsForPlan (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/recalculate-entitlements",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "recalculate-entitlements"
+              ]
+            },
+            "description": "Recalculo masivo: encola el recalculo de entitlements de TODOS los tenants del plan y republica TenantEntitlementsChanged. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 202."
+          },
+          "response": []
         }
       ]
     },

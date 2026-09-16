@@ -16,6 +16,7 @@ public sealed class TenantPaymentConfigConfiguration : IEntityTypeConfiguration<
         builder.Property(config => config.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(config => config.Mode).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(config => config.PublishableKey).HasMaxLength(500).IsRequired();
+        builder.Property(config => config.ApiBaseUrl).HasMaxLength(2048);
 
         builder
             .Property(config => config.SecretKeyEncrypted)

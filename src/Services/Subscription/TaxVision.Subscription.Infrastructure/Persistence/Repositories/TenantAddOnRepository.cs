@@ -18,6 +18,16 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
             .Where(addOn => addOn.TenantId == tenantId)
             .ToListAsync(ct);
 
+    // Trackeado (sin AsNoTracking) para absorber add-ons en el upgrade y persistir el cambio.
+    public async Task<IReadOnlyList<TenantAddOn>> GetByTenantIdForUpdateAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await WithRenewals(db.TenantAddOns)
+            .IgnoreQueryFilters()
+            .Where(addOn => addOn.TenantId == tenantId)
+            .ToListAsync(ct);
+
     public async Task AddAsync(TenantAddOn addOn, CancellationToken ct = default) =>
         await db.TenantAddOns.AddAsync(addOn, ct);
 

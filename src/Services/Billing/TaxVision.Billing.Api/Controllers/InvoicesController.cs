@@ -8,10 +8,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Billing.Api.Authorization;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
+using TaxVision.Billing.Application.Invoices.DeleteInvoice;
+using TaxVision.Billing.Application.Invoices.EditInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoice;
+using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
+using TaxVision.Billing.Application.Invoices.VoidInvoice;
 using Wolverine;
 
 namespace TaxVision.Billing.Api.Controllers;
@@ -140,5 +144,92 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Lectura rica (cliente + líneas) para prellenar la edición.</summary>
+    [HttpGet("{invoiceId:guid}/detail")]
+    [RateLimit("billing.f.invoice_read")]
+    [HasPermission(BillingPermissions.View)]
+    [ProducesResponseType<InvoiceDetailResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDetail(Guid invoiceId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<InvoiceDetailResponse>>(
+            new GetInvoiceDetailQuery(tenantId, invoiceId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record EditInvoiceRequest(
+        InvoiceCustomerInput Customer,
+        string Currency,
+        IReadOnlyList<InvoiceLineInput> Lines,
+        string? Notes
+    );
+
+    /// <summary>Edita una factura editable (borrador, o emitida/enviada sin pagos). Recalcula totales y,
+    /// si estaba emitida, reconcilia el stock (bloquea si falta), refresca el cobro y regenera el PDF.</summary>
+    [HttpPut("{invoiceId:guid}")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(BillingPermissions.Manage)]
+    [ProducesResponseType<EditInvoiceResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Edit(Guid invoiceId, EditInvoiceRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<EditInvoiceResult>>(
+            new EditInvoiceCommand(
+                tenantId,
+                invoiceId,
+                actorId,
+                request.Customer,
+                request.Currency,
+                request.Lines,
+                request.Notes
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Borra (soft) un BORRADOR. Emitida/pagada no se borra: usar <c>/void</c>.</summary>
+    [HttpDelete("{invoiceId:guid}")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(BillingPermissions.Manage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid invoiceId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new DeleteInvoiceCommand(tenantId, invoiceId, actorId), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record VoidInvoiceRequest(string? Reason);
+
+    /// <summary>Anula una factura emitida/pagada y repone el stock descontado al emitir.</summary>
+    [HttpPost("{invoiceId:guid}/void")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(BillingPermissions.Manage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Void(Guid invoiceId, VoidInvoiceRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new VoidInvoiceCommand(tenantId, invoiceId, actorId, request.Reason),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

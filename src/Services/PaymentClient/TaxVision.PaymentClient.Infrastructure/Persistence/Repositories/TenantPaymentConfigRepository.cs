@@ -49,6 +49,8 @@ public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : I
     public async Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         await db.TenantPaymentConfigs.AddAsync(config, ct);
 
+    public void Remove(TenantPaymentConfig config) => db.TenantPaymentConfigs.Remove(config);
+
     // IgnoreQueryFilters: los 3 métodos de arriba corren dentro de un handler de Wolverine
     // (bus.InvokeAsync), en un scope de DI distinto al de la request HTTP que pobló
     // ITenantContext vía JwtTenantContextMiddleware; el HasQueryFilter ambiental de

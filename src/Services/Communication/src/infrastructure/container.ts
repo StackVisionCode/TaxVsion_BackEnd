@@ -39,6 +39,7 @@ import { HttpCloudStorageDownloadClient } from './cloudstorage/http-cloudstorage
 import { HttpCloudStorageUploadClient } from './cloudstorage/http-cloudstorage-upload-client.js';
 import { HttpCustomerReconciliationClient } from './customer/http-customer-reconciliation-client.js';
 import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
+import { CachedTenantModulesReader } from './rate-limit/cached-tenant-modules-reader.js';
 import { HttpPlanRateLimitReader } from './rate-limit/http-plan-rate-limit-reader.js';
 import { TierAwareQuotaResolver } from './rate-limit/tier-aware-quota-resolver.js';
 import { config } from './config.js';
@@ -97,6 +98,7 @@ export interface AppContainer {
   readonly httpRateLimiter: HttpRateLimiter;
   readonly tierAwareQuota: TierAwareQuotaResolver;
   readonly planCodeCache: CachedPlanCodeReader;
+  readonly tenantModulesCache: CachedTenantModulesReader;
   readonly distributedLock: RedisDistributedLock;
   readonly notifications: NotificationRepository;
   readonly processedEvents: ProcessedEventStore;
@@ -137,6 +139,7 @@ export function buildContainer(): AppContainer {
   const serviceTokens = new ServiceTokenClient();
   const limitsRepository = new PrismaLimitsRepository(prisma);
   const planCodeCache = new CachedPlanCodeReader(limitsRepository);
+  const tenantModulesCache = new CachedTenantModulesReader(limitsRepository);
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   return {
     conversations: new PrismaConversationRepository(prisma),
@@ -154,6 +157,7 @@ export function buildContainer(): AppContainer {
     httpRateLimiter: new HttpRateLimiter(redis),
     tierAwareQuota: new TierAwareQuotaResolver(planCodeCache, planRateLimitReader, config.rateLimit.enforceTierQuotas),
     planCodeCache,
+    tenantModulesCache,
     distributedLock: new RedisDistributedLock(redis),
     notifications: new PrismaNotificationRepository(prisma),
     processedEvents: new PrismaProcessedEventStore(prisma),

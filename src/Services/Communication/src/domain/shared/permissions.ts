@@ -57,8 +57,24 @@ export type CommunicationPermission =
  */
 export interface PermissionSubject {
   readonly userId: string;
+  readonly tenantId: string;
   readonly actorType: string;
   readonly permissionVersion: number;
+}
+
+/**
+ * Gate de modulo (Entitlements en runtime), modo LOG-ONLY — espejo del hook en
+ * BuildingBlocks.Web/ActorTypeAuthorization/PermissionPolicyProvider.cs (.NET): tras conceder un
+ * permiso, observa si el tenant tiene habilitado el modulo al que pertenece ese permiso y lo
+ * loguea/mide SIN cambiar la decision. Opt-in: si `configureModuleGate` no se llamo (composition
+ * root), el gate no corre — igual que un servicio .NET que no registra `ITenantModuleEntitlementsSource`.
+ */
+export type ModuleGateObserver = (subject: PermissionSubject, required: CommunicationPermission) => Promise<void>;
+let moduleGateObserver: ModuleGateObserver | undefined;
+
+/** Configura el gate de modulo (log-only). Se llama una sola vez en el composition root (main.ts). */
+export function configureModuleGate(observer: ModuleGateObserver | undefined): void {
+  moduleGateObserver = observer;
 }
 
 export type PermissionCheckResult =
@@ -128,6 +144,17 @@ export async function checkPermission(
   if (!snapshot.permissions.includes(required)) {
     return { allowed: false, code: 'Auth.Forbidden', message: `Missing ${required}.` };
   }
+
+  // Gate de modulo LOG-ONLY — corre solo cuando el permiso YA paso por permisos reales (no para el
+  // bypass de PlatformAdmin de arriba). Nunca cambia la decision ni la puede romper.
+  if (moduleGateObserver) {
+    try {
+      await moduleGateObserver(subject, required);
+    } catch {
+      // log-only: jamas afectar la autorizacion por un fallo del gate.
+    }
+  }
+
   return { allowed: true };
 }
 

@@ -46,6 +46,7 @@ public sealed class CatalogItemHandlerTests
                     Money.Create(100, "USD").Value,
                     null,
                     null,
+                    0,
                     true,
                     null,
                     Now
@@ -71,6 +72,7 @@ public sealed class CatalogItemHandlerTests
             null,
             null,
             null,
+            0,
             true,
             null,
             null
@@ -173,7 +175,7 @@ public sealed class CatalogItemHandlerTests
         var h = new Harness();
         var item = h.SeedItem();
         var result = await UpdateCatalogItemHandler.Handle(
-            new UpdateCatalogItemCommand(Tenant, item.Id, "New Name", null, null, h.CategoryId, null, null, null),
+            new UpdateCatalogItemCommand(Tenant, item.Id, "New Name", null, null, h.CategoryId, null, 0, null, null),
             h.Items,
             h.Categories,
             h.Uow,

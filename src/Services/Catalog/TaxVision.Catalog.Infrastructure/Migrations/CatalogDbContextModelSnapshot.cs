@@ -119,6 +119,11 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<int>("TaxRateBasisPoints")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("TaxUserId")
                         .HasColumnType("uniqueidentifier");
 

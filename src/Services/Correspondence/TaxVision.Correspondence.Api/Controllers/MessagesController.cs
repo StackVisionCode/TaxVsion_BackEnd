@@ -38,7 +38,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     // A la papelera (soft-delete).
     [HttpPost("{id:guid}/trash")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Trash(Guid id, CancellationToken ct)
     {
@@ -51,7 +51,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     // Restaurar desde la papelera.
     [HttpPost("{id:guid}/restore")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
     {
@@ -64,7 +64,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     // Borrado permanente (solo desde la papelera).
     [HttpDelete("{id:guid}")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Purge(Guid id, CancellationToken ct)
     {

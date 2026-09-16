@@ -14,6 +14,8 @@ public sealed class TenantPlanCodeProjectionConfiguration : IEntityTypeConfigura
         builder.Property(p => p.PlanCode).HasMaxLength(100).IsRequired();
         builder.Property(p => p.RevisionNumber).IsRequired();
         builder.Property(p => p.UpdatedAtUtc).IsRequired();
+        builder.Property(p => p.EnabledModulesJson).HasColumnType("nvarchar(max)").IsRequired().HasDefaultValue("[]");
+        builder.Ignore(p => p.EnabledModules); // computada
 
         builder.HasIndex(p => p.TenantId).IsUnique();
     }

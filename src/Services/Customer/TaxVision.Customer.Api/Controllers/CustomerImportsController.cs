@@ -1,5 +1,6 @@
 using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
@@ -22,7 +23,8 @@ namespace TaxVision.Customer.Api.Controllers;
 
 [ApiController]
 [Route("customers/imports")]
-[Authorize(Roles = "TenantAdmin")]
+[Authorize]
+[HasPermission(CustomersPermissions.Import)]
 [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 {

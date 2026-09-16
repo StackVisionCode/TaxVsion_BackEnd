@@ -59,6 +59,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
             unitOfWork,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -106,6 +108,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -137,6 +141,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
             unitOfWork,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -171,6 +177,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
             unitOfWork,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -180,6 +188,49 @@ public sealed class StartOnboardingCheckoutHandlerTests
         Assert.Equal("Onboarding.PayerEmailMismatch", result.Error.Code);
         Assert.Null(paymentApp.LastRequest);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Uses_the_onboarding_email_as_payer_when_the_request_leaves_it_blank()
+    {
+        // Reanudación por token del email (/onboarding/resume-checkout): el request no trae el email
+        // porque el token ya autorizó — el pagador se toma del onboarding, no de una cookie de sesión.
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var paymentId = Guid.NewGuid();
+        var paymentApp = new FakePaymentAppOnboardingClient(
+            Result.Success(
+                new PaymentAppCheckoutResult(
+                    paymentId,
+                    "https://checkout.example.com/session",
+                    "sess_123",
+                    now.AddHours(1)
+                )
+            )
+        );
+
+        var result = await StartOnboardingCheckoutHandler.Handle(
+            new StartOnboardingCheckoutCommand(
+                onboarding.Id,
+                PayerEmail: string.Empty,
+                "https://app.example.com/success",
+                "https://app.example.com/cancel"
+            ),
+            onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
+            paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(onboarding.Email, paymentApp.LastRequest!.PayerEmail);
     }
 
     [Fact]
@@ -205,6 +256,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
+            new FakeOnboardingReturnReferenceStore(),
+            Options.Create(RegistrationOptions),
             unitOfWork,
             new FakeCorrelationContext(),
             CancellationToken.None

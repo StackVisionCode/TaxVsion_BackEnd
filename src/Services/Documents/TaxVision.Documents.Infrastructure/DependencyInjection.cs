@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Application.RateLimiting.Abstractions;
+using TaxVision.Documents.Infrastructure.Branding;
 using TaxVision.Documents.Infrastructure.Observability;
 using TaxVision.Documents.Infrastructure.Persistence;
 using TaxVision.Documents.Infrastructure.Persistence.Repositories;
@@ -33,6 +34,21 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<DocumentsDbContext>());
         services.AddScoped<IDocumentGenerationRepository, DocumentGenerationRepository>();
         services.AddScoped<IDocumentBrandingRepository, DocumentBrandingRepository>();
+        services.AddScoped<ITenantLogoRefRepository, TenantLogoRefRepository>();
+
+        // Logo del tenant en el PDF: proyección local (TenantLogoRef, alimentada por eventos de Tenant)
+        // + bajada on-demand de bytes desde CloudStorage vía M2M presignado. Best-effort (sin logo si falla).
+        services
+            .AddOptions<CloudStorageClientOptions>()
+            .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddHttpClient<ITenantLogoResolver, CloudStorageTenantLogoResolver>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
 
         // RBAC Fase 7 — proyección local de permisos. El repo de usuario se resuelve bajo dos puertos
         // (la MISMA instancia scoped): el rico para los consumers y el angosto que consulta
@@ -90,6 +106,11 @@ public static class DependencyInjection
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
+        // Gate de módulo Fase 1 — lector de módulos (la fuente se registra en Program.cs).
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
+            TaxVision.Documents.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader
+        >();
         services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
             sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
                 sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),

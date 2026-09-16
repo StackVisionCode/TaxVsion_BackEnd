@@ -107,6 +107,32 @@
       "response": []
     },
     {
+      "name": "MyEffectiveAccess",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/me/effective-access",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "me",
+            "effective-access"
+          ]
+        },
+        "description": "Debugging (RBAC Fase 7): acceso efectivo del usuario actual — por permiso, su modulo y si es efectivo (transversal o modulo habilitado). Responde \"por que 403\" sin leer logs. Cualquier actor autenticado."
+      },
+      "response": []
+    },
+    {
       "name": "Refresh",
       "request": {
         "method": "POST",
@@ -1247,6 +1273,69 @@
                 }
               }
             }
+          },
+          "response": []
+        },
+        {
+          "name": "GetUserEffectiveAccess",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/effective-access",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "effective-access"
+              ]
+            },
+            "description": "RBAC deny layer (read). Returns the target seat's actor type, active roles and role-granted permissions grouped by module, each flagged if currently denied, plus permissionsVersion. Feeds the CRM 'Edit access' drawer. Requires permission roles.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "SetPermissionOverrides",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/permission-overrides",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "permission-overrides"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deniedPermissionIds\": [\n    \"{{permissionId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "RBAC deny layer (write). Replaces the target user's per-user deny set (deny-only; to GRANT a permission you assign a role). Idempotent replace-set: an empty deniedPermissionIds clears every override. 204 on success. Guardrails: 400 User.SelfAction (cannot change your own), 400 Role.NotAssignableToActorType (deny outside the seat's actor type), 404 User.NotFound (cross-tenant). Requires permission roles.manage. Applies to the user on their next /auth/me (reload / re-login / token refresh)."
           },
           "response": []
         },

@@ -63,6 +63,17 @@ public sealed class PayableReference : TenantEntity
         return Result.Success(payable);
     }
 
+    /// <summary>Actualiza el monto cobrable (p. ej. la factura emitida se editó y cambió el total). No
+    /// cambia el <see cref="Reference"/> ni la identidad: la URL estable sigue siendo la misma. Rechaza
+    /// montos no positivos.</summary>
+    public Result UpdateAmount(Money amount)
+    {
+        if (amount.AmountCents <= 0)
+            return Result.Failure(new Error("PayableReference.InvalidAmount", "Amount must be greater than zero."));
+        Amount = amount;
+        return Result.Success();
+    }
+
     private static string GenerateReference()
     {
         var bytes = RandomNumberGenerator.GetBytes(32);

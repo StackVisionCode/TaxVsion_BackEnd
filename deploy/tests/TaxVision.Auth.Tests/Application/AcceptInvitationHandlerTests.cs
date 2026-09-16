@@ -212,6 +212,19 @@ public sealed class AcceptInvitationHandlerTests
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
+        public Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        public Task ReplaceUserDeniesAsync(
+            Guid userId,
+            IReadOnlyCollection<Guid> permissionIds,
+            Guid? deniedByUserId,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult(_roles.SingleOrDefault(r => r.TenantId == tenantId && r.Name == systemRoleName));
     }

@@ -1,8 +1,12 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Onboarding.Consumers;
 
@@ -21,6 +25,10 @@ public static class OnboardingPaymentFailedConsumer
     public static async Task Handle(
         OnboardingPaymentFailedIntegrationEvent evt,
         ITenantOnboardingRepository onboardings,
+        IMessageBus bus,
+        IPlanCatalogClient planCatalog,
+        IOnboardingReturnReferenceStore returnReferences,
+        IOptions<OnboardingOptions> onboardingOptions,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<OnboardingPaymentFailedIntegrationEvent> logger,
@@ -54,6 +62,39 @@ public static class OnboardingPaymentFailedConsumer
             );
             return;
         }
+
+        // Aviso al comprador: "tu pago no pasó" con link para reintentar. El evento de PaymentApp no
+        // trae email/nombre, así que Auth (que sí tiene el aggregate) publica el evento que Notification
+        // consume. Publish-before-save: se enrola en el outbox y sale solo si el commit prospera.
+        var planName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
+        var options = onboardingOptions.Value;
+
+        // Token de reanudación opaco (hash→onboardingId en Redis, TTL = ventana de reintento): el link del
+        // email cae directo en el paso de pago del MISMO onboarding (sin re-pedir email+OTP, sin doble
+        // cobro). El backend lo canjea en /onboarding/resume-checkout; no viaja credencial de registro en
+        // la URL. Si el token expira, el front cae al flujo normal con el plan preseleccionado.
+        var resumeReference = await returnReferences.IssueAsync(
+            onboarding.Id,
+            TimeSpan.FromHours(options.PaymentRetryWindowHours),
+            ct
+        );
+        var retryUrl =
+            $"{options.RegistrationUrlBase.TrimEnd('/')}/register?plan={onboarding.PlanId}&cycle={onboarding.BillingCycle}&r={Uri.EscapeDataString(resumeReference)}";
+
+        bus.TenantId = PlatformTenant.Id.ToString();
+        await bus.PublishAsync(
+            new OnboardingPaymentFailedNotificationRequestedIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                OnboardingId = onboarding.Id,
+                Email = onboarding.Email,
+                FirstName = onboarding.FirstName,
+                PlanName = planName,
+                FailureReason = evt.FailureReason,
+                RetryUrl = retryUrl,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

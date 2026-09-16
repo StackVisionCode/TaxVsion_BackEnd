@@ -186,9 +186,11 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         Assert.Equal("Onboarding.PasswordReferenceExpired", result.Error.Code);
         Assert.Null(users.Added);
         Assert.Empty(bus.Published);
-        // El ensure idempotente de roles corre ANTES de consumir el password (para no gastar el
-        // one-shot si el seed fallara) → 1 save de roles; el owner no se crea ni se publican eventos.
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        // El ensure idempotente de roles corre ANTES de consumir el password (para no gastar el one-shot
+        // si fallara), pero ahora commitea dentro de EnsureSystemRolesCommittedAsync (el repo, con su
+        // propio save tolerante a la carrera), no vía el UnitOfWork compartido — que no se llega a invocar
+        // porque el password expirado corta antes: el owner no se crea ni se publican eventos.
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -412,6 +414,19 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
                 _roles.Add(Role.Create(tenantId, Role.SystemTenantAdmin, "System role", isSystem: true).Value);
             return Task.CompletedTask;
         }
+
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
+        public Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        public Task ReplaceUserDeniesAsync(
+            Guid userId,
+            IReadOnlyCollection<Guid> permissionIds,
+            Guid? deniedByUserId,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
 
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult(_roles.SingleOrDefault(r => r.TenantId == tenantId && r.Name == systemRoleName));

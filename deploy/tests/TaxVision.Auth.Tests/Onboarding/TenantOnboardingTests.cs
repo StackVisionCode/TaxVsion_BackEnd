@@ -36,6 +36,92 @@ public sealed class TenantOnboardingTests
         return onboarding;
     }
 
+    [Fact]
+    public void MarkRegistrationEmailSent_stamps_the_timestamp_and_is_idempotent()
+    {
+        var onboarding = AtRegistrationPending();
+
+        var first = onboarding.MarkRegistrationEmailSent(Now);
+        var stamped = onboarding.RegistrationEmailSentAtUtc;
+        var second = onboarding.MarkRegistrationEmailSent(Now.AddMinutes(10));
+
+        Assert.True(first.IsSuccess);
+        Assert.Equal(Now, stamped);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(Now, onboarding.RegistrationEmailSentAtUtc);
+    }
+
+    [Fact]
+    public void MarkRegistrationEmailSent_fails_before_the_registration_token_is_issued()
+    {
+        var onboarding = AtPaymentCompleted();
+
+        var result = onboarding.MarkRegistrationEmailSent(Now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.RegistrationEmailNotReady", result.Error.Code);
+        Assert.Null(onboarding.RegistrationEmailSentAtUtc);
+    }
+
+    private static TenantOnboarding AtPaymentFailed()
+    {
+        var onboarding = AtPaymentProcessing();
+        onboarding.MarkPaymentFailed("Your card was declined.");
+        return onboarding;
+    }
+
+    [Fact]
+    public void ReopenForPaymentRetry_moves_a_failed_onboarding_back_to_pending_and_counts_the_attempt()
+    {
+        var onboarding = AtPaymentFailed();
+
+        var result = onboarding.ReopenForPaymentRetry(Now, maxRetries: 3, window: TimeSpan.FromHours(72));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.PendingPayment, onboarding.Status);
+        Assert.Equal(1, onboarding.PaymentRetryCount);
+    }
+
+    [Fact]
+    public void ReopenForPaymentRetry_fails_when_the_onboarding_is_not_payment_failed()
+    {
+        var onboarding = AtPaymentProcessing();
+
+        var result = onboarding.ReopenForPaymentRetry(Now, 3, TimeSpan.FromHours(72));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(TenantOnboardingStatus.PaymentProcessing, onboarding.Status);
+    }
+
+    [Fact]
+    public void ReopenForPaymentRetry_fails_once_the_attempt_cap_is_reached()
+    {
+        var onboarding = AtPaymentFailed();
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.True(onboarding.ReopenForPaymentRetry(Now, 3, TimeSpan.FromHours(72)).IsSuccess);
+            onboarding.MarkPaymentProcessing(Guid.NewGuid(), Guid.NewGuid().ToString("N"));
+            onboarding.MarkPaymentFailed("declined");
+        }
+
+        var result = onboarding.ReopenForPaymentRetry(Now, 3, TimeSpan.FromHours(72));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.PaymentRetryExhausted", result.Error.Code);
+        Assert.Equal(3, onboarding.PaymentRetryCount);
+    }
+
+    [Fact]
+    public void ReopenForPaymentRetry_fails_after_the_window_expires()
+    {
+        var onboarding = AtPaymentFailed();
+
+        var result = onboarding.ReopenForPaymentRetry(Now.AddHours(100), 3, TimeSpan.FromHours(72));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.PaymentRetryWindowExpired", result.Error.Code);
+    }
+
     private static TenantOnboarding AtProvisioning() => AtProvisioningAtStep(TenantProvisioningStep.Tenant, out _);
 
     private static TenantOnboarding AtProvisioningAtStep(TenantProvisioningStep step, out TenantOnboarding onboarding)

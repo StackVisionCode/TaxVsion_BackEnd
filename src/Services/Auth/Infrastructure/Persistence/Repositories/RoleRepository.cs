@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Roles;
@@ -74,8 +75,15 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     public async Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
         Guid userId,
         CancellationToken ct = default
-    ) =>
-        await db
+    )
+    {
+        // Per-user deny layer: subtract the permissions this user is explicitly denied from the union of
+        // their role permissions. Kept as a subquery so the subtraction runs in SQL (NOT IN), not in memory.
+        var deniedPermissionIds = db
+            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+            .Select(deny => deny.PermissionId);
+
+        return await db
             .UserRoles.Where(link => link.UserId == userId)
             .Join(
                 db.Roles.IgnoreQueryFilters().Where(role => role.IsActive),
@@ -89,6 +97,7 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
                 rolePermission => rolePermission.RoleId,
                 (roleId, rolePermission) => rolePermission.PermissionId
             )
+            .Where(permissionId => !deniedPermissionIds.Contains(permissionId))
             .Join(
                 db.Permissions,
                 permissionId => permissionId,
@@ -97,6 +106,7 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
             )
             .Distinct()
             .ToListAsync(ct);
+    }
 
     /// <summary>Reemplaza todas las asignaciones de rol del usuario por el conjunto indicado.</summary>
     public async Task ReplaceUserRolesAsync(
@@ -111,6 +121,28 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
 
         foreach (var roleId in roleIds.Distinct())
             await db.UserRoles.AddAsync(UserRole.Create(userId, roleId, assignedByUserId), ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
+        await db
+            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+            .Select(deny => deny.PermissionId)
+            .ToListAsync(ct);
+
+    /// <summary>Replaces the user's full deny set with the given permission ids. Mirrors
+    /// <see cref="ReplaceUserRolesAsync"/>.</summary>
+    public async Task ReplaceUserDeniesAsync(
+        Guid userId,
+        IReadOnlyCollection<Guid> permissionIds,
+        Guid? deniedByUserId,
+        CancellationToken ct = default
+    )
+    {
+        var existing = await db.UserPermissionDenies.Where(deny => deny.UserId == userId).ToListAsync(ct);
+        db.UserPermissionDenies.RemoveRange(existing);
+
+        foreach (var permissionId in permissionIds.Distinct())
+            await db.UserPermissionDenies.AddAsync(UserPermissionDeny.Create(userId, permissionId, deniedByUserId), ct);
     }
 
     /// <summary>Crea los roles de sistema del tenant (Admin, Empleado, Portal Cliente) que aún no existan, con sus permisos por defecto.</summary>
@@ -140,6 +172,35 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
             var permissionIds = permissionCodes.Select(PermissionCatalog.IdOf).ToList();
             roleResult.Value.SetPermissions(permissionIds, seeding: true);
             await db.Roles.AddAsync(roleResult.Value, ct);
+        }
+    }
+
+    public async Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (await GetSystemRoleAsync(tenantId, Role.SystemTenantAdmin, ct) is not null)
+            return;
+
+        await EnsureSystemRolesAsync(tenantId, ct);
+        try
+        {
+            // Commitea SOLO los roles (nada más pendiente en este punto del flujo) para que una query
+            // posterior los vea -- una consulta a DB no devuelve entidades Added sin persistir.
+            await db.SaveChangesAsync(ct);
+        }
+        catch (ConflictException)
+        {
+            // Carrera con TenantCreatedConsumer (siembra async de roles): entre el chequeo de arriba y
+            // este commit el otro camino sembró los mismos roles (unique IX_Roles_TenantId_Name). No es
+            // error -- los roles YA existen, que es justo lo que este método garantiza. Se descartan los
+            // insert en conflicto (siguen Added tras el fallo) para dejar el contexto limpio; el caller
+            // los resolverá con GetSystemRoleAsync.
+            foreach (
+                var entry in db
+                    .ChangeTracker.Entries()
+                    .Where(e => e.State == EntityState.Added && e.Entity is Role or RolePermission)
+                    .ToList()
+            )
+                entry.State = EntityState.Detached;
         }
     }
 

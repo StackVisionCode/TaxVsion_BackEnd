@@ -22,7 +22,8 @@ public static class ListTenantPaymentConfigsHandler
                 config.WebhookSecretEncrypted is not null,
                 config.StatementDescriptor.Value,
                 config.IsActive,
-                config.SettledAtUtc
+                config.SettledAtUtc,
+                config.ApiBaseUrl
             ))
             .ToList();
 

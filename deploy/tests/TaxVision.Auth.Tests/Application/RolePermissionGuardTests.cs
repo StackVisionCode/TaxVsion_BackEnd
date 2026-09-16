@@ -5,22 +5,27 @@ using TaxVision.Auth.Domain.Tenants;
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>
-/// Fase A0 — guardarraíl anti-escalada de permisos. RolePermissionGuard es una función
-/// pura (no toca infraestructura), así que se testea directo con instancias de
-/// Permission.Seed(...), sin mocks de IRoleRepository/ITenantPlanLimitsStore.
+/// Guardarraíl anti-escalada de permisos. RolePermissionGuard es una función pura (no toca
+/// infraestructura), así que se testea directo con instancias de Permission.Seed(...).
 /// </summary>
 public sealed class RolePermissionGuardTests
 {
+    private static readonly IReadOnlySet<string> NoModules = new HashSet<string>();
+
     private static Permission Assignable(int minPlanTier = 0) =>
         Permission.Seed(Guid.NewGuid(), "custom.assignable", "custom", "desc", minPlanTier: minPlanTier);
 
     private static Permission Reserved() =>
         Permission.Seed(Guid.NewGuid(), "billing.manage", "billing", "desc", isAssignableByTenant: false);
 
+    // Código de un permiso que sí pertenece a un módulo (signature. -> signatures).
+    private static Permission ModulePermission() =>
+        Permission.Seed(Guid.NewGuid(), "signature.request.read", "signature", "desc");
+
     [Fact]
     public void Empty_request_is_always_valid()
     {
-        var result = RolePermissionGuard.Validate([], [], PlanTier.Starter);
+        var result = RolePermissionGuard.Validate([], [], PlanTier.Starter, NoModules);
 
         Assert.True(result.IsSuccess);
     }
@@ -30,7 +35,7 @@ public sealed class RolePermissionGuardTests
     {
         var permission = Assignable(minPlanTier: (int)PlanTier.Starter);
 
-        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Starter);
+        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Starter, NoModules);
 
         Assert.True(result.IsSuccess);
     }
@@ -40,7 +45,7 @@ public sealed class RolePermissionGuardTests
     {
         var permission = Reserved();
 
-        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Enterprise);
+        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Enterprise, NoModules);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Role.PermissionNotAssignable", result.Error.Code);
@@ -52,7 +57,7 @@ public sealed class RolePermissionGuardTests
     {
         var permission = Assignable(minPlanTier: (int)PlanTier.Pro);
 
-        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Starter);
+        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Starter, NoModules);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Role.PermissionNotAssignable", result.Error.Code);
@@ -63,7 +68,7 @@ public sealed class RolePermissionGuardTests
     {
         var permission = Assignable(minPlanTier: (int)PlanTier.Pro);
 
-        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Enterprise);
+        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Enterprise, NoModules);
 
         Assert.True(result.IsSuccess);
     }
@@ -75,7 +80,7 @@ public sealed class RolePermissionGuardTests
         var reserved = Reserved();
         var catalog = new[] { ok, reserved };
 
-        var result = RolePermissionGuard.Validate(catalog, [ok.Id, reserved.Id], PlanTier.Enterprise);
+        var result = RolePermissionGuard.Validate(catalog, [ok.Id, reserved.Id], PlanTier.Enterprise, NoModules);
 
         Assert.True(result.IsFailure);
         Assert.Contains(reserved.Code, result.Error.Message);
@@ -87,7 +92,49 @@ public sealed class RolePermissionGuardTests
     {
         // La existencia la valida por separado CreateRoleHandler.ValidatePermissionIdsAsync
         // (Permission.NotFound) — el guardarraíl no debe duplicar ese error.
-        var result = RolePermissionGuard.Validate([], [Guid.NewGuid()], PlanTier.Starter);
+        var result = RolePermissionGuard.Validate([], [Guid.NewGuid()], PlanTier.Starter, NoModules);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Permission_of_a_module_not_in_the_plan_is_rejected()
+    {
+        var permission = ModulePermission();
+
+        var result = RolePermissionGuard.Validate(
+            [permission],
+            [permission.Id],
+            PlanTier.Enterprise,
+            new HashSet<string> { "documents" }
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("signature.request.read", result.Error.Message);
+    }
+
+    [Fact]
+    public void Permission_of_an_enabled_module_is_accepted()
+    {
+        var permission = ModulePermission();
+
+        var result = RolePermissionGuard.Validate(
+            [permission],
+            [permission.Id],
+            PlanTier.Enterprise,
+            new HashSet<string> { "signatures" }
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Empty_module_set_skips_the_module_ceiling()
+    {
+        var permission = ModulePermission();
+
+        // Sin datos de módulos (set vacío) no se aplica el ceiling — el gate en runtime es el enforcement real.
+        var result = RolePermissionGuard.Validate([permission], [permission.Id], PlanTier.Enterprise, NoModules);
 
         Assert.True(result.IsSuccess);
     }

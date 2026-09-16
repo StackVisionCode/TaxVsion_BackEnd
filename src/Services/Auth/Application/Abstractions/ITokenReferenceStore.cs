@@ -19,6 +19,11 @@ public interface ITokenReferenceStore
 {
     Task<Guid> StoreAsync(string rawToken, CancellationToken ct = default);
     Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default);
+
+    /// <summary>Igual que <see cref="StoreAsync(Guid, string, CancellationToken)"/> pero con TTL
+    /// explícito. Lo usa el carril de email diferido de Onboarding, donde el consumidor (Notification)
+    /// resuelve la referencia N minutos después, no en la ventana corta por defecto.</summary>
+    Task StoreAsync(Guid reference, string rawToken, TimeSpan ttl, CancellationToken ct = default);
     Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default);
     Task<string?> PeekAsync(Guid reference, CancellationToken ct = default);
 }

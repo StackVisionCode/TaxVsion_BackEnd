@@ -37,7 +37,8 @@ public static class CreateTenantPaymentConfigHandler
             command.Mode,
             command.PublishableKey,
             descriptorResult.Value,
-            nowUtc
+            nowUtc,
+            command.ApiBaseUrl
         );
         if (createResult.IsFailure)
             return Result.Failure<Guid>(createResult.Error);

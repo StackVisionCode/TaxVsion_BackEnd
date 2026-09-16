@@ -57,7 +57,7 @@ public sealed class OnboardingReceiptTemplateRenderingTests
         Assert.Contains("USD", html);
         Assert.Contains("TaxVision Inc.", html);
         Assert.Contains("Visa •••• 4242", html);
-        Assert.Contains("Pago confirmado", html);
+        Assert.Contains("Payment confirmed", html);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class OnboardingReceiptTemplateRenderingTests
         );
 
         Assert.True(result.IsSuccess);
-        Assert.DoesNotContain("Método de pago", result.Value);
+        Assert.DoesNotContain("Payment method", result.Value);
     }
 
     [Fact]

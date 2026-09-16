@@ -37,7 +37,7 @@ describe('permissions', () => {
     // Repo vacio a proposito: si el bypass no cortara antes de la proyeccion, esto fallaria cerrado.
     const repo = createFakeProjectionRepository([]);
     const result = await checkPermission(
-      { userId: 'u-platform-admin', actorType: 'PlatformAdmin', permissionVersion: 1 },
+      { userId: 'u-platform-admin', tenantId: 't-shared', actorType:'PlatformAdmin', permissionVersion: 1 },
       CommunicationPermissions.MeetingHost,
       repo,
     );
@@ -47,7 +47,7 @@ describe('permissions', () => {
   it('TenantAdmin without the permission in the projection is rejected (RBAC Fase 7.5.9 — ya no lee el claim perm del JWT)', async () => {
     const repo = createFakeProjectionRepository([fakeSnapshot({ userId: 'u-tenant-admin-1', permissions: [] })]);
     const result = await checkPermission(
-      { userId: 'u-tenant-admin-1', actorType: 'TenantAdmin', permissionVersion: 1 },
+      { userId: 'u-tenant-admin-1', tenantId: 't-shared', actorType:'TenantAdmin', permissionVersion: 1 },
       CommunicationPermissions.MeetingHost,
       repo,
     );
@@ -59,7 +59,7 @@ describe('permissions', () => {
       fakeSnapshot({ userId: 'u-tenant-admin-2', permissions: [CommunicationPermissions.MeetingHost] }),
     ]);
     const result = await checkPermission(
-      { userId: 'u-tenant-admin-2', actorType: 'TenantAdmin', permissionVersion: 1 },
+      { userId: 'u-tenant-admin-2', tenantId: 't-shared', actorType:'TenantAdmin', permissionVersion: 1 },
       CommunicationPermissions.MeetingHost,
       repo,
     );
@@ -69,7 +69,7 @@ describe('permissions', () => {
   it('regular actor needs the exact permission', async () => {
     const repoWithout = createFakeProjectionRepository([fakeSnapshot({ userId: 'u-employee-1', permissions: [] })]);
     const denied = await checkPermission(
-      { userId: 'u-employee-1', actorType: 'TenantEmployee', permissionVersion: 1 },
+      { userId: 'u-employee-1', tenantId: 't-shared', actorType:'TenantEmployee', permissionVersion: 1 },
       CommunicationPermissions.ChatStart,
       repoWithout,
     );
@@ -79,7 +79,7 @@ describe('permissions', () => {
       fakeSnapshot({ userId: 'u-employee-2', permissions: ['communication.chat.start'] }),
     ]);
     const granted = await checkPermission(
-      { userId: 'u-employee-2', actorType: 'TenantEmployee', permissionVersion: 1 },
+      { userId: 'u-employee-2', tenantId: 't-shared', actorType:'TenantEmployee', permissionVersion: 1 },
       CommunicationPermissions.ChatStart,
       repoWith,
     );
@@ -91,7 +91,7 @@ describe('permissions', () => {
       fakeSnapshot({ userId: 'u-employee-3', permissions: [CommunicationPermissions.ChatStart], permissionVersion: 2 }),
     ]);
     const result = await checkPermission(
-      { userId: 'u-employee-3', actorType: 'TenantEmployee', permissionVersion: 1 },
+      { userId: 'u-employee-3', tenantId: 't-shared', actorType:'TenantEmployee', permissionVersion: 1 },
       CommunicationPermissions.ChatStart,
       repo,
     );
@@ -102,7 +102,7 @@ describe('permissions', () => {
   it('a user with no projection row yet fails closed (never synced / consumer lag)', async () => {
     const repo = createFakeProjectionRepository([]);
     const result = await checkPermission(
-      { userId: 'u-never-synced', actorType: 'TenantEmployee', permissionVersion: 1 },
+      { userId: 'u-never-synced', tenantId: 't-shared', actorType:'TenantEmployee', permissionVersion: 1 },
       CommunicationPermissions.ChatStart,
       repo,
     );

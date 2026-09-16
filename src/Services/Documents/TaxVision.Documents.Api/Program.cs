@@ -63,6 +63,12 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 // Autorización por permiso humano ([HasPermission("documents.*")]). Resuelve las políticas perm:* .
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
+builder.Services.AddScoped<
+    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
+    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
+>();
+
 // Endpoints M2M internos: solo tokens de servicio (actor_type=Service). Mismo patrón que Customer.
 builder
     .Services.AddAuthorizationBuilder()

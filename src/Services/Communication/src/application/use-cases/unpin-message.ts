@@ -47,6 +47,7 @@ export async function unpinMessage(
     const permCheck = await checkPermission(
       {
         userId: cmd.actorUserId,
+        tenantId: cmd.tenantId,
         actorType: cmd.actorType,
         permissionVersion: cmd.actorPermissionVersion,
       },

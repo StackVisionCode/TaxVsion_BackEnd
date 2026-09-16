@@ -718,6 +718,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int>("PaymentRetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("PaymentStatus")
                         .HasMaxLength(24)
                         .HasColumnType("nvarchar(24)");
@@ -739,6 +744,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("RegistrationCompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RegistrationEmailSentAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("RegistrationTokenExpiresAtUtc")
@@ -803,6 +811,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("NextRetryAtUtc")
                         .HasDatabaseName("IX_TenantOnboardings_NextRetryAtUtc")
                         .HasFilter("[NextRetryAtUtc] IS NOT NULL");
+
+                    b.HasIndex("ReceiptFileId")
+                        .IsUnique()
+                        .HasFilter("[ReceiptFileId] IS NOT NULL");
 
                     b.HasIndex("RegistrationTokenHash")
                         .IsUnique()
@@ -1127,6 +1139,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.manage",
                             Description = "Crear y editar clientes",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-00000000009c"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "customers.import",
+                            Description = "Importar clientes en bloque (CSV/Excel)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -1513,6 +1538,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-00000000009a"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "correspondence.manage",
+                            Description = "Archivar, enviar a papelera, restaurar y borrar definitivamente correspondencia",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000077"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "connectors.accounts.read",
@@ -1881,6 +1919,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.audit.read",
                             Description = "Consultar el audit trail de una firma",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "signature",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-00000000009b"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "signature.legal.manage",
+                            Description = "Colocar y levantar retención legal (legal hold) sobre una firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -2426,7 +2477,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000102"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.log.view",
-                            Description = "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
+                            Description = "Ver el historial de notificaciones del tenant (email/SMS/in-app) para auditoría y soporte",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -3360,6 +3411,27 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("RolePermissions", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.UserPermissionDeny", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PermissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("DeniedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeniedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("UserId", "PermissionId");
+
+                    b.HasIndex("PermissionId");
+
+                    b.ToTable("UserPermissionDenies", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Roles.UserRole", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -3853,6 +3925,21 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Auth.Domain.Roles.Role", null)
                         .WithMany("Permissions")
                         .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.UserPermissionDeny", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Roles.Permission", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

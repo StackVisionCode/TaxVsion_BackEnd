@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Admin.Queries;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers.Admin;
@@ -83,5 +84,21 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     {
         var result = await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(tenantId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Recalculo masivo: encola el recalculo de entitlements de TODOS los tenants del plan y republica
+    /// su TenantEntitlementsChangedIntegrationEvent. Se usa tras editar los modulos de un plan para
+    /// propagar el cambio sin intervencion manual. Devuelve cuantos tenants se encolaron.
+    /// </summary>
+    [HttpPost("plans/{planId:guid}/recalculate-entitlements")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<int>(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> RecalculateEntitlementsForPlan(Guid planId, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<int>>(new RecalculateEntitlementsForPlanCommand(planId), ct);
+        return result.IsSuccess
+            ? Accepted(new { queuedTenants = result.Value })
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

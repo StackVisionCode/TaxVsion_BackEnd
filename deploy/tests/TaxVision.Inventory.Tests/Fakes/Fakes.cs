@@ -46,6 +46,31 @@ internal sealed class FakeStockRepository : IStockRepository
     public Task<StockLevel?> GetByCatalogItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default) =>
         Task.FromResult(Levels.FirstOrDefault(s => s.TenantId == tenantId && s.CatalogItemId == catalogItemId));
 
+    public Task<IReadOnlyList<StockLevel>> GetByCatalogItemsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> catalogItemIds,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyList<StockLevel> result =
+            catalogItemIds.Count == 0
+                ? []
+                : Levels.Where(s => s.TenantId == tenantId && catalogItemIds.Contains(s.CatalogItemId)).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(
+        Guid tenantId,
+        string reference,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyList<StockMovement> result = Movements
+            .Where(m => m.TenantId == tenantId && m.Reference == reference)
+            .ToList();
+        return Task.FromResult(result);
+    }
+
     public Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default)
     {
         Levels.Add(level);

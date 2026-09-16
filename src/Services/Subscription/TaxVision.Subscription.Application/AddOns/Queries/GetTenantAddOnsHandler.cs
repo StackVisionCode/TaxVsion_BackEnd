@@ -27,7 +27,10 @@ public static class GetTenantAddOnsHandler
                     addOn.CurrentPeriodEndUtc,
                     addOn.NextRenewalAtUtc,
                     addOn.AutoRenew,
-                    addOn.PurchasedAtUtc
+                    addOn.PurchasedAtUtc,
+                    addOn.UnitPrice.Amount,
+                    addOn.UnitPrice.Currency,
+                    addOn.CancellationReason
                 )
             );
         }

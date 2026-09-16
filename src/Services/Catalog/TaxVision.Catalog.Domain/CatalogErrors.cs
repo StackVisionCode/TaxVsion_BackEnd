@@ -11,6 +11,8 @@ public static class CatalogErrors
         new("catalog.invalidName", "Name is required and must be within the max length.");
     public static Error InvalidSku => new("catalog.invalidSku", "SKU exceeds the maximum length.");
     public static Error InvalidAmount => new("catalog.invalidAmount", "Amount must be zero or positive.");
+    public static Error InvalidTaxRate =>
+        new("catalog.invalidTaxRate", "Tax rate (basis points) must be between 0 and 100000.");
     public static Error InvalidCurrency => new("catalog.invalidCurrency", "Currency must be a 3-letter ISO 4217 code.");
     public static Error InvalidAttribute => new("catalog.invalidAttribute", "Attribute key and value are required.");
 

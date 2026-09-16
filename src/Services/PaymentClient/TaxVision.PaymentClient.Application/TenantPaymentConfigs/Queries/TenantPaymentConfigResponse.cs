@@ -12,5 +12,6 @@ public sealed record TenantPaymentConfigResponse(
     bool HasWebhookSecret,
     string StatementDescriptor,
     bool IsActive,
-    DateTime? SettledAtUtc
+    DateTime? SettledAtUtc,
+    string? ApiBaseUrl
 );

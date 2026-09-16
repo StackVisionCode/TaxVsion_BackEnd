@@ -12,6 +12,8 @@ export interface TenantCommunicationLimitsSnapshot {
   readonly recordingEnabled: boolean;
   readonly supportEnabled: boolean;
   readonly isSuspended: boolean;
+  /** Modulos comerciales habilitados por el plan (los `module.*` del snapshot de entitlements). Gate de modulo. */
+  readonly enabledModules: readonly string[];
   readonly updatedAtUtc: Date;
 }
 

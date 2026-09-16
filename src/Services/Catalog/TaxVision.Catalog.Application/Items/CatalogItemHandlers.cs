@@ -26,6 +26,7 @@ public sealed record CreateCatalogItemCommand(
     decimal? CostAmount,
     string? CostCurrency,
     string? Unit,
+    int TaxRateBasisPoints,
     bool TrackInventory,
     string? ImageUrl,
     IReadOnlyList<CatalogItemAttributeDto>? Attributes
@@ -39,6 +40,7 @@ public sealed record UpdateCatalogItemCommand(
     string? Barcode,
     Guid CategoryId,
     string? Unit,
+    int TaxRateBasisPoints,
     string? ImageUrl,
     IReadOnlyList<CatalogItemAttributeDto>? Attributes
 );
@@ -92,6 +94,7 @@ public static class CreateCatalogItemHandler
             price,
             cost,
             command.Unit,
+            command.TaxRateBasisPoints,
             command.TrackInventory,
             command.ImageUrl,
             DateTime.UtcNow
@@ -170,6 +173,7 @@ public static class UpdateCatalogItemHandler
             command.Barcode,
             command.CategoryId,
             command.Unit,
+            command.TaxRateBasisPoints,
             command.ImageUrl,
             DateTime.UtcNow
         );

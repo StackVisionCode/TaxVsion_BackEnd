@@ -19,8 +19,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
+using TaxVision.Subscription.Infrastructure.Observability;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Scheduling;
 using Wolverine;
@@ -46,7 +48,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "subscription-service",
+    SubscriptionMetrics.MeterName
+);
+builder.Services.AddSingleton<ISubscriptionMetrics, SubscriptionMetrics>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 
@@ -184,6 +191,7 @@ await using (var seedScope = app.Services.CreateAsyncScope())
 {
     var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
     await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
+    await SubscriptionAddOnCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())

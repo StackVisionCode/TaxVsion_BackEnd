@@ -129,3 +129,26 @@ public sealed class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
         builder.HasOne<Role>().WithMany().HasForeignKey(link => link.RoleId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+/// <summary>EF Core mapping for UserPermissionDeny: the per-user permission denial link, with a composite
+/// key (UserId, PermissionId) and cascade relations to the user and the permission. Mirrors
+/// <see cref="UserRoleConfiguration"/>.</summary>
+public sealed class UserPermissionDenyConfiguration : IEntityTypeConfiguration<UserPermissionDeny>
+{
+    public void Configure(EntityTypeBuilder<UserPermissionDeny> builder)
+    {
+        builder.ToTable("UserPermissionDenies");
+        builder.HasKey(link => new { link.UserId, link.PermissionId });
+        builder.Property(link => link.DeniedAtUtc).IsRequired();
+
+        builder.HasIndex(link => link.PermissionId);
+
+        builder.HasOne<User>().WithMany().HasForeignKey(link => link.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        builder
+            .HasOne<Permission>()
+            .WithMany()
+            .HasForeignKey(link => link.PermissionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

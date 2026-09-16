@@ -59,12 +59,41 @@ public sealed class WebhookEvent : BaseEntity
         );
     }
 
+    /// <summary>
+    /// Un evento en estado terminal ya fue resuelto: reintentos posteriores del provider son
+    /// duplicados que deben descartarse. Los NO terminales (Received/Processing/Failed) quedaron a
+    /// medias — un fallo transitorio a mitad de proceso — y una nueva entrega debe re-procesarlos.
+    /// </summary>
+    public bool IsTerminal =>
+        Status
+            is WebhookEventStatus.Applied
+                or WebhookEventStatus.Rejected
+                or WebhookEventStatus.Duplicate
+                or WebhookEventStatus.Stale;
+
     public Result MarkProcessing(DateTime nowUtc)
     {
         if (Status != WebhookEventStatus.Received)
             return Result.Failure(new Error("WebhookEvent.InvalidTransition", $"Cannot process from {Status}."));
 
         Status = WebhookEventStatus.Processing;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Re-conduce a Processing un evento NO terminal ante una entrega repetida del provider: la fila
+    /// se insertó (idempotencia por unique index) pero un fallo transitorio la dejó sin aplicar. El
+    /// re-proceso es idempotente a nivel de SaaSPayment (la transición del pago y el MarkApplied
+    /// viven en el mismo commit, así que si no se aplicó, el pago sigue en su estado previo). Los
+    /// estados terminales nunca llegan acá — el caller los corta antes con <see cref="IsTerminal"/>.
+    /// </summary>
+    public Result MarkReprocessing(DateTime nowUtc)
+    {
+        if (IsTerminal)
+            return Result.Failure(new Error("WebhookEvent.InvalidTransition", $"Cannot reprocess from {Status}."));
+
+        Status = WebhookEventStatus.Processing;
+        ProcessingError = null;
         return Result.Success();
     }
 

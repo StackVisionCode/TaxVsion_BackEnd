@@ -69,6 +69,19 @@ public sealed class RoleCommandsTests
 
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) => Task.CompletedTask;
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
+        public Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        public Task ReplaceUserDeniesAsync(
+            Guid userId,
+            IReadOnlyCollection<Guid> permissionIds,
+            Guid? deniedByUserId,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult<Role?>(null);
     }

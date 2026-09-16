@@ -57,6 +57,7 @@ export async function pinMessage(
     const permCheck = await checkPermission(
       {
         userId: cmd.actorUserId,
+        tenantId: cmd.tenantId,
         actorType: cmd.actorType,
         permissionVersion: cmd.actorPermissionVersion,
       },

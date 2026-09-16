@@ -290,6 +290,9 @@ public static class AssignUserRolesHandler
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();
 
+        // The user's own deny layer still applies after a role change: effective = roles − denies.
+        var deniedPermissionIds = await roles.GetDeniedPermissionIdsAsync(target.Id, ct);
+
         await bus.PublishAsync(
             new UserRolesChangedIntegrationEvent
             {
@@ -298,7 +301,11 @@ public static class AssignUserRolesHandler
                 PermissionsVersion = target.PermissionsVersion,
                 RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                 RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(
+                    tenantRoles,
+                    catalog,
+                    deniedPermissionIds
+                ),
                 ActorType = target.ActorType.ToString(),
                 CorrelationId = correlation.CorrelationId,
             }
@@ -323,27 +330,5 @@ public static class AssignUserRolesHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
-    }
-
-    /// <summary>
-    /// Códigos de permiso efectivos del set de roles NUEVO, calculados en memoria a partir
-    /// de <paramref name="tenantRoles"/> (ya resuelto por el handler) y el catálogo. No usa
-    /// <see cref="IRoleRepository.GetEffectivePermissionCodesAsync"/> porque esa consulta
-    /// golpea la base directamente y en este punto todavía no se llamó SaveChangesAsync —
-    /// devolvería los permisos VIEJOS, no los que se están por persistir.
-    /// </summary>
-    private static string[] ResolveEffectivePermissionCodes(
-        IReadOnlyList<Role> tenantRoles,
-        IReadOnlyList<Permission> catalog
-    )
-    {
-        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
-        return tenantRoles
-            .SelectMany(role => role.Permissions)
-            .Select(rolePermission => rolePermission.PermissionId)
-            .Distinct()
-            .Where(codeByPermissionId.ContainsKey)
-            .Select(permissionId => codeByPermissionId[permissionId])
-            .ToArray();
     }
 }

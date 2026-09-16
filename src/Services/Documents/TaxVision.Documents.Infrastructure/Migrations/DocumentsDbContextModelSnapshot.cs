@@ -67,6 +67,26 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.ToTable("DocumentBrandings", "documents");
                 });
 
+            modelBuilder.Entity("TaxVision.Documents.Domain.Branding.TenantLogoRef", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantLogoRefs", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Documents.Domain.Generations.DocumentGeneration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -265,6 +285,12 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EnabledModulesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("PlanCode")
                         .IsRequired()

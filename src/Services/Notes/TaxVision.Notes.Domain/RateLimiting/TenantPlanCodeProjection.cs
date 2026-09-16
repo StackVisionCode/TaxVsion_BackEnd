@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BuildingBlocks.Domain;
 using BuildingBlocks.RateLimiting;
 
@@ -8,6 +9,8 @@ namespace TaxVision.Notes.Domain.RateLimiting;
 /// mismo patrón que CloudStorage/Correspondence y que <c>UserPermissionsProjection</c> (RBAC Fase 3)
 /// dentro de este mismo servicio. Implementa <see cref="ITenantPlanCodeProjection"/> para que el
 /// handler compartido de BuildingBlocks pueda operar sobre ella genéricamente.
+///
+/// <para>Gate de módulo Fase 1 (opt-in): persiste además los módulos habilitados del plan.</para>
 /// </summary>
 public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProjection
 {
@@ -16,6 +19,11 @@ public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProj
     public string PlanCode { get; private set; } = string.Empty;
     public long RevisionNumber { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    public string EnabledModulesJson { get; private set; } = "[]";
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> EnabledModules => Deserialize(EnabledModulesJson);
 
     public static TenantPlanCodeProjection Create(Guid tenantId, string planCode, long revisionNumber)
     {
@@ -30,12 +38,25 @@ public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProj
         return projection;
     }
 
-    public void ApplyIfNewer(string planCode, long revisionNumber)
+    public void ApplyIfNewer(string planCode, long revisionNumber) =>
+        ApplyIfNewer(planCode, revisionNumber, EnabledModules);
+
+    /// <summary>
+    /// Override del default de <see cref="ITenantPlanCodeProjection"/>: además de plan+revisión,
+    /// persiste los módulos habilitados. Idempotente por revisión monotónica.
+    /// </summary>
+    public void ApplyIfNewer(string planCode, long revisionNumber, IReadOnlyList<string> enabledModules)
     {
         if (revisionNumber < RevisionNumber)
             return;
         PlanCode = planCode;
         RevisionNumber = revisionNumber;
+        EnabledModulesJson = Serialize(enabledModules);
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    private static string Serialize(IReadOnlyList<string> modules) => JsonSerializer.Serialize(modules);
+
+    private static IReadOnlyList<string> Deserialize(string json) =>
+        string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<string>>(json) ?? [];
 }

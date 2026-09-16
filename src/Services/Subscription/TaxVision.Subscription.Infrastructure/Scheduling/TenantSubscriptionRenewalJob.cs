@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
@@ -37,6 +38,9 @@ public sealed class TenantSubscriptionRenewalJob(
         // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
         using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var tenantAddOns = services.GetRequiredService<ITenantAddOnRepository>();
+        var addOnDefinitions = services.GetRequiredService<IAddOnDefinitionRepository>();
+        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
         var logger = services.GetRequiredService<ILogger<TenantSubscriptionRenewalJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -44,7 +48,19 @@ public sealed class TenantSubscriptionRenewalJob(
 
         foreach (var subscription in due)
         {
-            await ApplyPendingDowngradeIfAnyAsync(subscription, plans, unitOfWork, bus, logger, nowUtc, ct);
+            await ApplyPendingDowngradeIfAnyAsync(
+                subscription,
+                plans,
+                tenantAddOns,
+                addOnDefinitions,
+                metrics,
+                unitOfWork,
+                bus,
+                correlation,
+                logger,
+                nowUtc,
+                ct
+            );
 
             var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
             var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
@@ -103,8 +119,12 @@ public sealed class TenantSubscriptionRenewalJob(
     private static async Task ApplyPendingDowngradeIfAnyAsync(
         TenantSubscription subscription,
         IPlanRepository plans,
+        ITenantAddOnRepository tenantAddOns,
+        IAddOnDefinitionRepository addOnDefinitions,
+        ISubscriptionMetrics metrics,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<TenantSubscriptionRenewalJob> logger,
         DateTime nowUtc,
         CancellationToken ct
@@ -145,6 +165,21 @@ public sealed class TenantSubscriptionRenewalJob(
             );
             return;
         }
+
+        // Absorción: si el plan destino ya cubre el módulo del add-on, cancelarlo (sin doble cobro).
+        await AddOnAbsorptionService.AbsorbCoveredByPlanAsync(
+            subscription.TenantId,
+            toPlanVersion,
+            tenantAddOns,
+            addOnDefinitions,
+            bus,
+            metrics,
+            correlation.CorrelationId,
+            actorUserId: Guid.Empty,
+            nowUtc,
+            logger,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

@@ -59,7 +59,11 @@ public sealed class OnboardingSessionControllerTests
             InvokeHandler = _ =>
                 Result.Success(new CreateOnboardingResponse(Guid.NewGuid(), "owner@castillotax.com", Guid.NewGuid())),
         };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()))
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -100,7 +104,7 @@ public sealed class OnboardingSessionControllerTests
             InvokeHandler = _ =>
                 Result.Success(new CreateOnboardingResponse(onboardingId, "owner@castillotax.com", planId)),
         };
-        var controller = new OnboardingCheckoutController(bus, sessions)
+        var controller = new OnboardingCheckoutController(bus, sessions, new FakeOnboardingReturnReferenceStore())
         {
             ControllerContext = new ControllerContext
             {
@@ -134,7 +138,11 @@ public sealed class OnboardingSessionControllerTests
     public async Task Payment_options_rejects_missing_onboarding_session_before_invoking_bus()
     {
         var bus = new FakeMessageBus { InvokeHandler = _ => Result.Success(new OnboardingPaymentOptionsResponse([])) };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()))
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -172,7 +180,7 @@ public sealed class OnboardingSessionControllerTests
                 );
             },
         };
-        var controller = new OnboardingCheckoutController(bus, sessions)
+        var controller = new OnboardingCheckoutController(bus, sessions, new FakeOnboardingReturnReferenceStore())
         {
             ControllerContext = new ControllerContext
             {
@@ -223,7 +231,7 @@ public sealed class OnboardingSessionControllerTests
                 );
             },
         };
-        var controller = new OnboardingCheckoutController(bus, sessions)
+        var controller = new OnboardingCheckoutController(bus, sessions, new FakeOnboardingReturnReferenceStore())
         {
             ControllerContext = new ControllerContext
             {
@@ -265,7 +273,11 @@ public sealed class OnboardingSessionControllerTests
                     )
                 ),
         };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()))
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -275,6 +287,51 @@ public sealed class OnboardingSessionControllerTests
         var rejected = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status401Unauthorized, rejected.StatusCode);
         Assert.Empty(bus.Invoked);
+    }
+
+    [Fact]
+    public async Task Reconcile_payment_falls_back_to_the_return_reference_without_a_cookie()
+    {
+        var onboardingId = Guid.NewGuid();
+        var returnReferences = new FakeOnboardingReturnReferenceStore { Resolves = onboardingId };
+        var bus = new FakeMessageBus
+        {
+            InvokeHandler = message =>
+            {
+                var command = Assert.IsType<ReconcileOnboardingPaymentCommand>(message);
+                Assert.Equal(onboardingId, command.OnboardingId);
+                // Referencia (más expuesta que la cookie) → la respuesta no debe traer la registrationUrl.
+                Assert.False(command.IncludeRegistrationUrl);
+                return Result.Success(
+                    new ReconcileOnboardingPaymentResponse(
+                        onboardingId,
+                        Guid.NewGuid(),
+                        "RegistrationPending",
+                        RegistrationUrl: null,
+                        FailureCode: null,
+                        FailureMessage: null
+                    )
+                );
+            },
+        };
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            returnReferences
+        )
+        {
+            // Sin cookie: fuerza el camino de la referencia.
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+
+        var result = await controller.ReconcilePayment(
+            new OnboardingCheckoutController.ReconcilePaymentRequest("return-ref-123"),
+            CancellationToken.None
+        );
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, ok.StatusCode);
+        Assert.Single(bus.Invoked);
     }
 
     [Fact]
@@ -314,7 +371,7 @@ public sealed class OnboardingSessionControllerTests
                 );
             },
         };
-        var controller = new OnboardingCheckoutController(bus, sessions)
+        var controller = new OnboardingCheckoutController(bus, sessions, new FakeOnboardingReturnReferenceStore())
         {
             ControllerContext = new ControllerContext
             {

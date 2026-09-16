@@ -19,4 +19,8 @@ public static class CustomersPermissions
     /// un TenantAdmin puede delegarlo puntualmente sin dar acceso de edición completo.
     /// </summary>
     public const string PreparerManage = "customers.preparer.manage";
+
+    /// <summary>Importar customers en bloque (CSV/Excel). Operación administrativa — antes vivía bajo
+    /// <c>[Authorize(Roles="TenantAdmin")]</c>; ahora es un permiso propio, admin-only por defecto.</summary>
+    public const string Import = "customers.import";
 }

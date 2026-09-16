@@ -25,6 +25,10 @@ public sealed class CatalogItem : TenantEntity
     public ItemKind Kind { get; private set; }
     public Money Price { get; private set; } = default!;
     public Money? Cost { get; private set; }
+
+    /// <summary>Tasa de impuesto por defecto del ítem, en puntos básicos (825 = 8.25%). 0 = sin impuesto.
+    /// La factura la copia a la línea al agregar el ítem (editable). Rango [0, 100000].</summary>
+    public int TaxRateBasisPoints { get; private set; }
     public string? Unit { get; private set; }
     public bool TrackInventory { get; private set; }
     public bool IsActive { get; private set; }
@@ -50,6 +54,7 @@ public sealed class CatalogItem : TenantEntity
         Money price,
         Money? cost,
         string? unit,
+        int taxRateBasisPoints,
         bool trackInventory,
         string? imageUrl,
         DateTime nowUtc
@@ -61,6 +66,8 @@ public sealed class CatalogItem : TenantEntity
             return Result.Failure<CatalogItem>(CatalogErrors.InvalidCategory);
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > NameMax)
             return Result.Failure<CatalogItem>(CatalogErrors.InvalidName);
+        if (taxRateBasisPoints is < 0 or > 100_000)
+            return Result.Failure<CatalogItem>(CatalogErrors.InvalidTaxRate);
 
         var normalizedSku = Normalize(sku)?.ToUpperInvariant();
         if (normalizedSku is { Length: > SkuMax })
@@ -77,8 +84,9 @@ public sealed class CatalogItem : TenantEntity
             Kind = kind,
             Price = price,
             Cost = cost,
-            Unit = Normalize(unit),
-            // Un servicio nunca rastrea stock.
+            TaxRateBasisPoints = taxRateBasisPoints,
+            // Un servicio es incontable: no lleva unidad ni rastrea stock. Solo los productos sí.
+            Unit = kind == ItemKind.Service ? null : Normalize(unit),
             TrackInventory = kind != ItemKind.Service && trackInventory,
             IsActive = true,
             ImageUrl = Normalize(imageUrl),
@@ -96,6 +104,7 @@ public sealed class CatalogItem : TenantEntity
         string? barcode,
         Guid categoryId,
         string? unit,
+        int taxRateBasisPoints,
         string? imageUrl,
         DateTime nowUtc
     )
@@ -104,12 +113,16 @@ public sealed class CatalogItem : TenantEntity
             return Result.Failure(CatalogErrors.InvalidCategory);
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > NameMax)
             return Result.Failure(CatalogErrors.InvalidName);
+        if (taxRateBasisPoints is < 0 or > 100_000)
+            return Result.Failure(CatalogErrors.InvalidTaxRate);
 
         Name = name.Trim();
         Description = Normalize(description);
         Barcode = Normalize(barcode);
         CategoryId = categoryId;
-        Unit = Normalize(unit);
+        TaxRateBasisPoints = taxRateBasisPoints;
+        // Un servicio es incontable: nunca conserva unidad, aunque el update la traiga.
+        Unit = Kind == ItemKind.Service ? null : Normalize(unit);
         ImageUrl = Normalize(imageUrl);
         UpdatedAtUtc = nowUtc;
         return Result.Success();

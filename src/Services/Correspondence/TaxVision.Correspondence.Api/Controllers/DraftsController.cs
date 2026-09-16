@@ -146,7 +146,7 @@ public sealed class DraftsController(
 
     // Enviado a la papelera / restaurar / borrar permanente.
     [HttpPost("/correspondence/sent/{id:guid}/trash")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> TrashSent(Guid id, CancellationToken ct)
     {
@@ -158,7 +158,7 @@ public sealed class DraftsController(
     }
 
     [HttpPost("/correspondence/sent/{id:guid}/restore")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> RestoreSent(Guid id, CancellationToken ct)
     {
@@ -170,7 +170,7 @@ public sealed class DraftsController(
     }
 
     [HttpDelete("/correspondence/sent/{id:guid}")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> PurgeSent(Guid id, CancellationToken ct)
     {

@@ -19,6 +19,8 @@ public enum PaymentAuditAction
     TenantPaymentConfigSecretsUpdated = 13,
     TenantPaymentConfigActivated = 14,
     TenantPaymentConfigDeactivated = 15,
+    TenantPaymentConfigUpdated = 34,
+    TenantPaymentConfigDeleted = 35,
     PaymentLinkCreated = 16,
     PaymentLinkRevoked = 17,
     PaymentLinkExpired = 18,

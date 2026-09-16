@@ -71,37 +71,57 @@ public static class ProcessConnectWebhookHandler
             return Result.Success();
         }
 
-        var alreadyReceived = await webhookEvents.ExistsAsync(
+        var nowUtc = DateTime.UtcNow;
+
+        // Idempotencia STATUS-AWARE (F1): un evento terminal ya resuelto se descarta como duplicado;
+        // uno no terminal (Failed) quedó a medias por un fallo transitorio y se re-procesa.
+        var existing = await webhookEvents.GetByProviderEventIdAsync(
             connectAccount.TenantId,
             PaymentProviderCode.Stripe,
             evt.ProviderEventId,
             ct
         );
-        if (alreadyReceived)
+        WebhookEvent webhookEvent;
+        if (existing is not null)
         {
-            logger.LogInformation(
-                "Stripe Connect webhook {ProviderEventId} already processed; skipping (idempotent).",
-                evt.ProviderEventId
+            if (existing.IsTerminal)
+            {
+                logger.LogInformation(
+                    "Stripe Connect webhook {ProviderEventId} already {Status}; skipping (idempotent).",
+                    evt.ProviderEventId,
+                    existing.Status
+                );
+                return Result.Success();
+            }
+
+            var reprocessResult = existing.MarkReprocessing(nowUtc);
+            if (reprocessResult.IsFailure)
+                return Result.Failure(reprocessResult.Error);
+            webhookEvent = existing;
+            logger.LogWarning(
+                "Stripe Connect webhook {ProviderEventId} was not applied on a previous delivery ({Status}); reprocessing.",
+                evt.ProviderEventId,
+                existing.Status
             );
-            return Result.Success();
         }
+        else
+        {
+            var receiveResult = WebhookEvent.Receive(
+                connectAccount.TenantId,
+                PaymentProviderCode.Stripe,
+                evt.ProviderEventId,
+                evt.EventType,
+                command.RawPayload,
+                command.SignatureHeader,
+                nowUtc
+            );
+            if (receiveResult.IsFailure)
+                return Result.Failure(receiveResult.Error);
 
-        var nowUtc = DateTime.UtcNow;
-        var receiveResult = WebhookEvent.Receive(
-            connectAccount.TenantId,
-            PaymentProviderCode.Stripe,
-            evt.ProviderEventId,
-            evt.EventType,
-            command.RawPayload,
-            command.SignatureHeader,
-            nowUtc
-        );
-        if (receiveResult.IsFailure)
-            return Result.Failure(receiveResult.Error);
-
-        var webhookEvent = receiveResult.Value;
-        await webhookEvents.AddAsync(webhookEvent, ct);
-        webhookEvent.MarkProcessing(nowUtc);
+            webhookEvent = receiveResult.Value;
+            await webhookEvents.AddAsync(webhookEvent, ct);
+            webhookEvent.MarkProcessing(nowUtc);
+        }
 
         var applyResult = evt.EventType switch
         {

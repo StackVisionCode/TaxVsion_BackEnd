@@ -11,7 +11,7 @@ public sealed class WebhookEventRepository(PaymentClientDbContext db) : IWebhook
     // en un scope de DI distinto al de la request HTTP que pobló ITenantContext vía
     // JwtTenantContextMiddleware; el HasQueryFilter ambiental de PaymentClientDbContext ve
     // Guid.Empty ahí. tenantId ya viene explícito y validado desde el evento de webhook.
-    public Task<bool> ExistsAsync(
+    public Task<WebhookEvent?> GetByProviderEventIdAsync(
         Guid tenantId,
         PaymentProviderCode code,
         string providerEventId,
@@ -19,7 +19,7 @@ public sealed class WebhookEventRepository(PaymentClientDbContext db) : IWebhook
     ) =>
         db
             .WebhookEvents.IgnoreQueryFilters()
-            .AnyAsync(
+            .FirstOrDefaultAsync(
                 e => e.TenantId == tenantId && e.ProviderCode == code && e.ProviderEventId == providerEventId,
                 ct
             );

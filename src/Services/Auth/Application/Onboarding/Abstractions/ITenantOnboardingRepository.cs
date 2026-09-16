@@ -14,12 +14,26 @@ public interface ITenantOnboardingRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Resuelve el onboarding dueño de un recibo por su FileId. Respalda el endpoint público
+    /// de descarga: solo un FileId que sea realmente un recibo emitido puede resolverse, así el
+    /// endpoint anónimo deja de ser un resolver genérico de archivos por GUID.</summary>
+    Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default);
+
     Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default);
 
     /// <summary>PayFlow (Fase 17) — onboardings ProvisioningFailed con reintento automático
     /// programado y vencido. <c>OnboardingRetryScheduler</c> los recorre en cada tick.</summary>
     Task<IReadOnlyList<TenantOnboarding>> GetDueForRetryAsync(
         DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Onboardings pagados que siguen en RegistrationPending, sin email de registro enviado,
+    /// cuyo pago se liquidó antes del corte (ventana del recordatorio ya vencida). Los recorre el
+    /// OnboardingRegistrationReminderScheduler para publicar el email diferido.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
     );

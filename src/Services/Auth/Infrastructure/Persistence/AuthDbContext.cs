@@ -50,6 +50,7 @@ public sealed class AuthDbContext(
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
+    public DbSet<UserPermissionDeny> UserPermissionDenies => Set<UserPermissionDeny>();
     public DbSet<MfaMethod> MfaMethods => Set<MfaMethod>();
     public DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
     public DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();

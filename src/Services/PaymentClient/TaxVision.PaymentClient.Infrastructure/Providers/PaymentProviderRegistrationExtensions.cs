@@ -15,6 +15,10 @@ public static class PaymentProviderRegistrationExtensions
 {
     public static IServiceCollection AddPaymentProviders(this IServiceCollection services)
     {
+        // Algunos adapters (p.ej. PayPal) hacen HTTP server-to-server y necesitan IHttpClientFactory.
+        // Idempotente: registrarlo de nuevo no rompe si ya estaba.
+        services.AddHttpClient();
+
         var providerTypes = Assembly
             .GetExecutingAssembly()
             .GetTypes()

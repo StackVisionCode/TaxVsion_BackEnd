@@ -4,6 +4,7 @@ using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.Entitlements;
 
@@ -15,6 +16,19 @@ namespace TaxVision.Subscription.Application.Entitlements;
 /// </summary>
 public static class EntitlementSnapshotBuilder
 {
+    private const string ModuleFeaturePrefix = "module.";
+
+    // Estados que dan acceso: se mantiene el acceso durante toda la ventana de morosidad
+    // (PastDue = reintento de cobro, GracePeriod = gracia) para no cortar por un blip de pago.
+    // Fuera de este conjunto (Draft/Suspended/Cancelled/Expired) los módulos se apagan (fail-closed).
+    private static readonly SubscriptionStatus[] AccessGrantingStatuses =
+    [
+        SubscriptionStatus.Trialing,
+        SubscriptionStatus.Active,
+        SubscriptionStatus.PastDue,
+        SubscriptionStatus.GracePeriod,
+    ];
+
     public static async Task<Result<TenantEntitlementSnapshot>> BuildAsync(
         Guid tenantId,
         ISubscriptionRepository subscriptions,
@@ -39,8 +53,13 @@ public static class EntitlementSnapshotBuilder
                 new Error("Plan.NoPublishedVersion", "Plan has no published version.")
             );
 
-        var entries = SeedEntriesFromPlan(planVersion);
-        await MergeActiveAddOnsAsync(tenantId, tenantAddOns, addOnDefinitions, entries, ct);
+        // Enforcement status-aware: si la base no da acceso, los módulos del plan se apagan y
+        // los add-ons (dependientes) no cuentan. Los límites/cuotas se conservan (el gate es por módulo).
+        var grantsAccess = Array.IndexOf(AccessGrantingStatuses, subscription.Status) >= 0;
+
+        var entries = SeedEntriesFromPlan(planVersion, grantsAccess);
+        if (grantsAccess)
+            await MergeActiveAddOnsAsync(tenantId, tenantAddOns, addOnDefinitions, entries, ct);
 
         var (seatCount, availableSeatCount) = await CountSeatsAsync(tenantId, seats, ct);
         var previousRevision = (await snapshots.GetByTenantIdAsync(tenantId, ct))?.RevisionNumber ?? 0;
@@ -58,7 +77,10 @@ public static class EntitlementSnapshotBuilder
         );
     }
 
-    private static Dictionary<string, EntitlementEntry> SeedEntriesFromPlan(SubscriptionPlanVersion planVersion)
+    private static Dictionary<string, EntitlementEntry> SeedEntriesFromPlan(
+        SubscriptionPlanVersion planVersion,
+        bool grantsAccess
+    )
     {
         var entries = new Dictionary<string, EntitlementEntry>();
 
@@ -76,11 +98,14 @@ public static class EntitlementSnapshotBuilder
 
         foreach (var feature in planVersion.Features)
         {
+            var isModule = feature.FeatureKey.Value.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal);
+            // Un módulo solo se enciende si el plan lo trae Y la base da acceso; el gate lee el valor.
+            var enabled = isModule ? grantsAccess && feature.DefaultEnabled : feature.DefaultEnabled;
             entries[feature.FeatureKey.Value] = new EntitlementEntry(
                 feature.FeatureKey,
                 EntitlementValueType.Bool,
-                feature.DefaultEnabled.ToString(),
-                EntitlementStatus.Active,
+                enabled.ToString(),
+                isModule && !grantsAccess ? EntitlementStatus.Disabled : EntitlementStatus.Active,
                 EntitlementSource.Plan,
                 ExpiresAtUtc: null
             );

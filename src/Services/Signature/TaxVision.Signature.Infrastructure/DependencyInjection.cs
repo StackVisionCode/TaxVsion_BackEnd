@@ -243,6 +243,14 @@ public static class DependencyInjection
             sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
             sp.GetRequiredService<EfTenantPlanCodeReader>()
         ));
+
+        // Gate de módulo Fase 1 (piloto Signature) — lector de módulos de la misma proyección. La
+        // fuente ITenantModuleEntitlementsSource (BuildingBlocks.Web) que lo consume se registra en
+        // Program.cs, donde el Api ya referencia Web.
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
+            RateLimiting.EfTenantEntitlementModulesReader
+        >();
         services.AddScoped<
             BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
             TenantPlanCodeCacheInvalidator
