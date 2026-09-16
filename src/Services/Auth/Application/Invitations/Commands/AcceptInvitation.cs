@@ -166,7 +166,7 @@ public static class AcceptInvitationHandler
                     PermissionsVersion = user.PermissionsVersion,
                     RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                     RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                    PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                    PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(tenantRoles, catalog),
                     ActorType = user.ActorType.ToString(),
                     CorrelationId = correlation.CorrelationId,
                 }
@@ -229,23 +229,6 @@ public static class AcceptInvitationHandler
         {
             return [];
         }
-    }
-
-    // Mismo cálculo que UserManagementCommands.ResolveEffectivePermissionCodes — duplicado a
-    // propósito (helper privado de 6 líneas, no amerita una abstracción compartida nueva).
-    private static string[] ResolveEffectivePermissionCodes(
-        IReadOnlyList<Role> tenantRoles,
-        IReadOnlyList<Permission> catalog
-    )
-    {
-        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
-        return tenantRoles
-            .SelectMany(role => role.Permissions)
-            .Select(rolePermission => rolePermission.PermissionId)
-            .Distinct()
-            .Where(codeByPermissionId.ContainsKey)
-            .Select(permissionId => codeByPermissionId[permissionId])
-            .ToArray();
     }
 
     private static UserResponse ToResponse(User user) =>

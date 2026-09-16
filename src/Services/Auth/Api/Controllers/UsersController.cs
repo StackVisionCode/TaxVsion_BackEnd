@@ -7,6 +7,8 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
+using TaxVision.Auth.Application.Permissions.Commands;
+using TaxVision.Auth.Application.Permissions.Queries;
 using TaxVision.Auth.Application.Tenants.Queries;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
@@ -103,6 +105,55 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
         var result = await bus.InvokeAsync<Result>(
             new AssignUserRolesCommand(tenantId, userId, request.RoleIds, requesterId),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>The target seat's actor type, active roles and role-granted permissions (grouped by
+    /// module, each flagged if currently denied) plus the permission version — everything the "Edit
+    /// access" drawer needs to render its toggles in one call. Managing access is gated by roles.manage.</summary>
+    [HttpGet("{userId:guid}/effective-access")]
+    [HasPermission(PermissionCatalog.RolesManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.f.user_read")]
+    [ProducesResponseType<UserEffectiveAccessResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetEffectiveAccess(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<UserEffectiveAccessResponse>>(
+            new GetUserEffectiveAccessQuery(tenantId, userId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record SetPermissionOverridesRequest(IReadOnlyList<Guid> DeniedPermissionIds);
+
+    /// <summary>Replaces the target user's per-user deny set (the RBAC deny layer). Deny-only: to grant a
+    /// permission you assign a role. Idempotent — the given set fully replaces the previous one (an empty
+    /// set removes every override). All guardrails (anti self-lockout, tenant isolation, actor-type
+    /// coherence) run in the handler. Gated by roles.manage.</summary>
+    [HttpPut("{userId:guid}/permission-overrides")]
+    [HasPermission(PermissionCatalog.RolesManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.user_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SetPermissionOverrides(
+        Guid userId,
+        SetPermissionOverridesRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var requesterId) || !User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new SetUserPermissionOverridesCommand(tenantId, userId, request.DeniedPermissionIds ?? [], requesterId),
             ct
         );
 

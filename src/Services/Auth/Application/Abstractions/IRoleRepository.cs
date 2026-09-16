@@ -26,6 +26,19 @@ public interface IRoleRepository
         CancellationToken ct = default
     );
 
+    /// <summary>The permission ids this user is explicitly denied (the per-user RBAC deny layer). The
+    /// effective permission set is the union of the user's role permissions minus these.</summary>
+    Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Replaces the user's full deny set with the given permission ids (idempotent). Mirrors
+    /// <see cref="ReplaceUserRolesAsync"/>.</summary>
+    Task ReplaceUserDeniesAsync(
+        Guid userId,
+        IReadOnlyCollection<Guid> permissionIds,
+        Guid? deniedByUserId,
+        CancellationToken ct = default
+    );
+
     /// <summary>Crea los roles de sistema del tenant si no existen (idempotente).</summary>
     Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default);
 

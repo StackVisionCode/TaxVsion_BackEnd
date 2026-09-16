@@ -108,7 +108,7 @@ public static class CreateTenantOwnerFromOnboardingHandler
                 PermissionsVersion = user.PermissionsVersion,
                 RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                 RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                PermissionCodes = UserAccessResolver.ResolveEffectivePermissionCodes(tenantRoles, catalog),
                 ActorType = user.ActorType.ToString(),
                 CorrelationId = correlation.CorrelationId,
             }
@@ -183,22 +183,5 @@ public static class CreateTenantOwnerFromOnboardingHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
-    }
-
-    // Mismo cálculo que AcceptInvitationHandler.ResolveEffectivePermissionCodes — duplicado a
-    // propósito, ver el comentario original ahí.
-    private static string[] ResolveEffectivePermissionCodes(
-        IReadOnlyList<Role> tenantRoles,
-        IReadOnlyList<Permission> catalog
-    )
-    {
-        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
-        return tenantRoles
-            .SelectMany(role => role.Permissions)
-            .Select(rolePermission => rolePermission.PermissionId)
-            .Distinct()
-            .Where(codeByPermissionId.ContainsKey)
-            .Select(permissionId => codeByPermissionId[permissionId])
-            .ToArray();
     }
 }

@@ -90,6 +90,7 @@ public static class AuthAuditAction
     public const string UserReactivated = "auth.user.reactivated";
     public const string UserProfileUpdated = "auth.user.profile_updated";
     public const string UserRolesChanged = "auth.user.roles_changed";
+    public const string UserPermissionOverridesChanged = "auth.user.permission_overrides_changed";
     public const string RoleCreated = "auth.role.created";
     public const string RoleUpdated = "auth.role.updated";
     public const string RoleDeactivated = "auth.role.deactivated";

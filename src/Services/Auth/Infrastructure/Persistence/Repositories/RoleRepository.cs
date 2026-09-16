@@ -75,8 +75,15 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     public async Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
         Guid userId,
         CancellationToken ct = default
-    ) =>
-        await db
+    )
+    {
+        // Per-user deny layer: subtract the permissions this user is explicitly denied from the union of
+        // their role permissions. Kept as a subquery so the subtraction runs in SQL (NOT IN), not in memory.
+        var deniedPermissionIds = db
+            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+            .Select(deny => deny.PermissionId);
+
+        return await db
             .UserRoles.Where(link => link.UserId == userId)
             .Join(
                 db.Roles.IgnoreQueryFilters().Where(role => role.IsActive),
@@ -90,6 +97,7 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
                 rolePermission => rolePermission.RoleId,
                 (roleId, rolePermission) => rolePermission.PermissionId
             )
+            .Where(permissionId => !deniedPermissionIds.Contains(permissionId))
             .Join(
                 db.Permissions,
                 permissionId => permissionId,
@@ -98,6 +106,7 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
             )
             .Distinct()
             .ToListAsync(ct);
+    }
 
     /// <summary>Reemplaza todas las asignaciones de rol del usuario por el conjunto indicado.</summary>
     public async Task ReplaceUserRolesAsync(
@@ -112,6 +121,28 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
 
         foreach (var roleId in roleIds.Distinct())
             await db.UserRoles.AddAsync(UserRole.Create(userId, roleId, assignedByUserId), ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
+        await db
+            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+            .Select(deny => deny.PermissionId)
+            .ToListAsync(ct);
+
+    /// <summary>Replaces the user's full deny set with the given permission ids. Mirrors
+    /// <see cref="ReplaceUserRolesAsync"/>.</summary>
+    public async Task ReplaceUserDeniesAsync(
+        Guid userId,
+        IReadOnlyCollection<Guid> permissionIds,
+        Guid? deniedByUserId,
+        CancellationToken ct = default
+    )
+    {
+        var existing = await db.UserPermissionDenies.Where(deny => deny.UserId == userId).ToListAsync(ct);
+        db.UserPermissionDenies.RemoveRange(existing);
+
+        foreach (var permissionId in permissionIds.Distinct())
+            await db.UserPermissionDenies.AddAsync(UserPermissionDeny.Create(userId, permissionId, deniedByUserId), ct);
     }
 
     /// <summary>Crea los roles de sistema del tenant (Admin, Empleado, Portal Cliente) que aún no existan, con sus permisos por defecto.</summary>
