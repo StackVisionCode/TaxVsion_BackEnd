@@ -290,6 +290,24 @@ builder.Services.AddRateLimiter(options =>
             )
     );
 
+    // El frontend POLLEA reconcile-payment cada pocos segundos al volver del hosted-checkout para
+    // detectar la confirmación del pago — NO puede compartir el bucket 5/min de checkout-create (lo
+    // agota en ~20s y devuelve 429, rompiendo la confirmación y el reintento del pago). 60/min es
+    // holgado para polling, mismo criterio que onboarding-status. Incidente prod 2026-09-16.
+    options.AddPolicy(
+        "onboarding-payment-poll",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
     // PayFlow (Fase 14) — check-y-reserva de subdominio; mismo límite que onboarding-registration-preview
     // (30/min), el frontend puede llamarlo varias veces mientras el usuario tipea.
     options.AddPolicy(

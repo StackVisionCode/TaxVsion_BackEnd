@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
+using TaxVision.PaymentApp.Application.SeatsCheckouts;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
@@ -112,8 +113,8 @@ public sealed class PendingChargeReconciliationJob(
         {
             case PaymentStatus.Succeeded:
                 var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
-                if (succeeded.IsSuccess && payment.Type == SaaSPaymentType.OnboardingInitial)
-                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
+                if (succeeded.IsSuccess)
+                    await PublishResultAsync(payment, bus, correlationId, ct);
                 return succeeded.IsSuccess;
 
             case PaymentStatus.Failed
@@ -126,8 +127,8 @@ public sealed class PendingChargeReconciliationJob(
                     Guid.Empty,
                     nowUtc
                 );
-                if (failed.IsSuccess && payment.Type == SaaSPaymentType.OnboardingInitial)
-                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
+                if (failed.IsSuccess)
+                    await PublishResultAsync(payment, bus, correlationId, ct);
                 return failed.IsSuccess;
 
             default:
@@ -135,5 +136,21 @@ public sealed class PendingChargeReconciliationJob(
                 // se reintenta en la próxima corrida.
                 return false;
         }
+    }
+
+    // Despacha el resultado por tipo de pago — mismo criterio que el handler del webhook
+    // (ProcessProviderWebhookHandler): sin esto, un pago de asientos resuelto out-of-band contra
+    // el provider quedaba Succeeded pero nunca disparaba la provisión (SeatsCheckoutPaid).
+    private static async ValueTask PublishResultAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        if (payment.Type == SaaSPaymentType.OnboardingInitial)
+            await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
+        else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
+            await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
     }
 }

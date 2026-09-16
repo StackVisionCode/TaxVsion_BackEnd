@@ -68,6 +68,7 @@ builder.Services.AddHostedService<SubscriptionExpirationJob>();
 builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
+builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
 // justo antes de facturar la renovación — no hay un job separado.
@@ -192,6 +193,7 @@ await using (var seedScope = app.Services.CreateAsyncScope())
     var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
     await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
     await SubscriptionAddOnCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
+    await SubscriptionSeatPricingSeeder.SeedAsync(seedDb, CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())

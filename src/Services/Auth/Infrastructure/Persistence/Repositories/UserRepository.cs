@@ -50,8 +50,18 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
     public async Task AddAsync(User user, CancellationToken ct = default) => await db.Users.AddAsync(user, ct);
 
+    // Solo cuentan asiento los usuarios STAFF (TenantEmployee/TenantAdmin). Los usuarios de portal
+    // (clientes) NO consumen asientos del plan — se invitan desde Clients y viven en su propio pool.
     public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.Users.IgnoreQueryFilters().CountAsync(user => user.TenantId == tenantId && user.IsActive, ct);
+        db
+            .Users.IgnoreQueryFilters()
+            .CountAsync(
+                user =>
+                    user.TenantId == tenantId
+                    && user.IsActive
+                    && (user.ActorType == UserActorType.TenantEmployee || user.ActorType == UserActorType.TenantAdmin),
+                ct
+            );
 
     public async Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,

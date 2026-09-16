@@ -13,6 +13,7 @@ using TaxVision.Subscription.Application.SeatAssignments.Commands.ReassignSeat;
 using TaxVision.Subscription.Application.SeatAssignments.Commands.ReleaseSeatFromUser;
 using TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
 using TaxVision.Subscription.Application.Seats.Commands.RenewSeat;
+using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Queries;
 using Wolverine;
 
@@ -61,6 +62,28 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Cotización server-authoritative (precio unitario + prorrateo a hoy) para comprar asientos.
+    /// Read: la usa el modal de compra para mostrar "Comprar N asientos (+$X, prorrateado)" antes de cobrar.</summary>
+    [HttpGet("quote")]
+    [RateLimit("subscription.f.seat_read")]
+    [ProducesResponseType<SeatQuoteResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetQuote(
+        [FromQuery] string seatType,
+        [FromQuery] int quantity,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<SeatQuoteResponse>>(
+            new GetSeatQuoteQuery(tenantId, seatType, quantity),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record PurchaseSeatsRequest(string SeatType, int Quantity, bool AutoRenew);
 
     [HttpPost("purchase")]
@@ -81,6 +104,67 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess
             ? StatusCode(StatusCodes.Status201Created, result.Value)
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record StartSeatCheckoutRequest(
+        string SeatType,
+        int Quantity,
+        bool AutoRenew,
+        string PayerEmail,
+        string SuccessUrl,
+        string CancelUrl,
+        string? Provider,
+        string? Method
+    );
+
+    /// <summary>Compra de asientos por HOSTED-CHECKOUT (redirect): para el tenant SIN método en archivo.
+    /// Devuelve la URL de checkout del provider; los asientos se aprovisionan al confirmarse el pago (webhook).
+    /// El tenant CON método usa <c>POST seats/purchase</c> (cobro off-session, sin redirect).</summary>
+    [HttpPost("checkout")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
+    [ProducesResponseType<StartSeatCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> StartCheckout(StartSeatCheckoutRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<StartSeatCheckoutResponse>>(
+            new StartSeatCheckoutCommand(
+                tenantId,
+                request.SeatType,
+                request.Quantity,
+                request.AutoRenew,
+                request.PayerEmail,
+                request.SuccessUrl,
+                request.CancelUrl,
+                string.IsNullOrWhiteSpace(request.Provider) ? "Stripe" : request.Provider,
+                string.IsNullOrWhiteSpace(request.Method) ? "Card" : request.Method,
+                userId
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Estado de una intención de checkout de asientos — lo consulta el front al volver del redirect
+    /// hasta que el webhook la deja en <c>Provisioned</c> (o <c>Failed</c>).</summary>
+    [HttpGet("checkout/{intentId:guid}")]
+    [RateLimit("subscription.f.seat_read")]
+    [ProducesResponseType<SeatCheckoutStatusResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetCheckoutStatus(Guid intentId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<SeatCheckoutStatusResponse>>(
+            new GetSeatCheckoutStatusQuery(tenantId, intentId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record AssignSeatRequest(Guid UserId);

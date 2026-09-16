@@ -361,6 +361,35 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Programa el cargo del período parcial INICIAL (compra) sobre el período vigente sin
+    /// avanzarlo — el equivalente de compra de <see cref="BeginRenewal"/>. Idempotente por
+    /// <paramref name="idempotencyKey"/>. Reusa el pipeline de renovación: al confirmarse el pago,
+    /// <see cref="CompleteRenewal"/> marca el intento exitoso sin mover el período (ya coincide con el
+    /// vigente); si falla, <see cref="FailRenewal"/> lo lleva a PastDue → dunning como una renovación.</summary>
+    public Result BeginInitialCharge(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != SeatStatus.Active)
+            return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot begin initial charge from {Status}."));
+
+        if (FindRenewalByKey(idempotencyKey) is not null)
+            return Result.Success();
+
+        var chargeResult = SubscriptionSeatRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            CurrentPeriodStartUtc!.Value,
+            CurrentPeriodEndUtc!.Value,
+            nowUtc
+        );
+        if (chargeResult.IsFailure)
+            return Result.Failure(chargeResult.Error);
+
+        _renewals.Add(chargeResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     /// <summary>Aplica una renovación exitosa: avanza el período del seat. No toca la
     /// suscripción base ni otros seats.</summary>
     public Result CompleteRenewal(Guid renewalId, string? externalPaymentReference, Guid actorUserId, DateTime nowUtc)

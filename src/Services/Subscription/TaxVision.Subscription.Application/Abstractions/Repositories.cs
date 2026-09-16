@@ -120,6 +120,41 @@ public interface ISubscriptionSeatRepository
     );
 }
 
+/// <summary>Intenciones de compra de asientos por hosted-checkout (el camino redirect, sin método en
+/// archivo). Molde: el <c>TenantOnboarding</c> de Auth para la compra por checkout.</summary>
+public interface ISeatPurchaseIntentRepository
+{
+    Task AddAsync(SeatPurchaseIntent intent, CancellationToken ct = default);
+
+    /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
+    Task<SeatPurchaseIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
+    /// tenant del evento antes de mutar (mismo patrón que los consumers de resultado de pago).</summary>
+    Task<SeatPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant (job de reconciliación): intenciones <c>Pending</c> con pago ya emitido
+    /// (<c>SaaSPaymentId</c> asignado) creadas antes de <paramref name="olderThanUtc"/> — las que pudieron
+    /// quedar sin aprovisionar si se perdió el evento de resultado. Ignora el filtro fail-closed; el job
+    /// arrastra el <c>TenantId</c> de cada fila.</summary>
+    Task<IReadOnlyList<SeatPurchaseIntent>> FindStalePendingWithPaymentAsync(
+        DateTime olderThanUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+}
+
+/// <summary>Catálogo GLOBAL singleton de precios de asiento (no por tenant) — el equivalente de
+/// <see cref="IAddOnDefinitionRepository"/> para seats. Sembrado al arrancar.</summary>
+public interface ISeatPricingRepository
+{
+    /// <summary>Catálogo con sus tramos, AsNoTracking — para resolver el precio al comprar.</summary>
+    Task<SeatPricing?> GetAsync(CancellationToken ct = default);
+
+    /// <summary>Catálogo trackeado (con tramos) para editar precios y persistir.</summary>
+    Task<SeatPricing?> GetForUpdateAsync(CancellationToken ct = default);
+}
+
 public interface ISubscriptionTenantSettingsRepository
 {
     Task<SubscriptionTenantSettings?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Admin.Queries;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForAllPlans;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
 using Wolverine;
 
@@ -99,6 +100,25 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
         var result = await bus.InvokeAsync<Result<int>>(new RecalculateEntitlementsForPlanCommand(planId), ct);
         return result.IsSuccess
             ? Accepted(new { queuedTenants = result.Value })
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Backfill masivo de TODA la flota: encola el recalculo de entitlements de todos los planes
+    /// publicados (y por ende de todos sus tenants) y republica su TenantEntitlementsChangedIntegrationEvent.
+    /// Idempotente y determinista — via de escape para reconciliar a los tenants EXISTENTES tras un cambio
+    /// de forma de los entitlements (p.ej. el cupo efectivo de staff MaxStaffUsers). No afecta a los tenants
+    /// nuevos: recalculan solos al crearse, republicar solo recomputa el mismo valor. Devuelve cuantos planes
+    /// se encolaron.
+    /// </summary>
+    [HttpPost("recalculate-entitlements/all")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<int>(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> RecalculateEntitlementsForAllPlans(CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<int>>(new RecalculateEntitlementsForAllPlansCommand(), ct);
+        return result.IsSuccess
+            ? Accepted(new { queuedPlans = result.Value })
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

@@ -287,6 +287,13 @@ jobs:
           CATALOG_SERVICE_CLIENT_SECRET=${{ secrets.CATALOG_SERVICE_CLIENT_SECRET }}
           INVENTORY_SERVICE_CLIENT_ID=${{ secrets.INVENTORY_SERVICE_CLIENT_ID }}
           INVENTORY_SERVICE_CLIENT_SECRET=${{ secrets.INVENTORY_SERVICE_CLIENT_SECRET }}
+          # Subscription: identidad M2M amplia (subscription-worker, audiencia TaxVision.Services,
+          # ServiceAuth__Clients__27 en docker-compose.yml). Sin esto, la recuperación pull de
+          # permisos (H-04) de Subscription queda fail-closed y toda compra de asientos da 403; y el
+          # checkout interno de asientos hacia PaymentApp no se autentica. Distinto de
+          # SUBSCRIPTION_GROWTH_* (audiencia acotada + scopes, solo referidos).
+          SUBSCRIPTION_SERVICE_CLIENT_ID=${{ secrets.SUBSCRIPTION_SERVICE_CLIENT_ID }}
+          SUBSCRIPTION_SERVICE_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_SERVICE_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}

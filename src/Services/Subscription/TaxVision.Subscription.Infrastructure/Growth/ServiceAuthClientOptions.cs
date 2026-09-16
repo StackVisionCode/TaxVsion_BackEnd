@@ -17,3 +17,11 @@ public sealed class GrowthClientOptions
 
     public string BaseUrl { get; set; } = "http://localhost:5187";
 }
+
+/// <summary>Base URL del microservicio PaymentApp (M2M para el checkout hosteado de asientos).</summary>
+public sealed class PaymentAppClientOptions
+{
+    public const string SectionName = "Subscription:PaymentApp";
+
+    public string BaseUrl { get; set; } = "http://localhost:5430";
+}

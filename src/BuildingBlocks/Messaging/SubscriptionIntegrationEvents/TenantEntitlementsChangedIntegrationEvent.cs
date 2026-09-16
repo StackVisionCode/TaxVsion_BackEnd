@@ -21,6 +21,16 @@ public sealed record TenantEntitlementsChangedIntegrationEvent : IntegrationEven
     public required int SeatCount { get; init; }
     public required int AvailableSeatCount { get; init; }
 
+    /// <summary>
+    /// Cupo efectivo de usuarios STAFF del tenant = `seats.max` incluido en el plan (3/10/25) + asientos
+    /// STAFF (<c>SeatType.Standard</c>) no terminales comprados. Auth lo proyecta a
+    /// <c>TenantPlanLimits.MaxUsers</c> y lo hace cumplir en <c>PlanGuard</c>. Distinto de
+    /// <see cref="SeatCount"/> (todas las licencias de cualquier tipo). NON-required a propósito
+    /// (evolución aditiva de un evento con ~7 consumidores): un mensaje viejo llega como null y Auth cae a
+    /// <c>EntitlementValues["seats.max"]</c> — nunca a <see cref="SeatCount"/>, que arranca en 0.
+    /// </summary>
+    public int? MaxStaffUsers { get; init; }
+
     /// <summary>Snapshot resuelto completo: EntitlementKey -&gt; valor stringificado
     /// (ej. "seats.max" -&gt; "15", "storage.max_bytes" -&gt; "107374182400",
     /// "module.signatures" -&gt; "True"). Mismo contenido que expondría
