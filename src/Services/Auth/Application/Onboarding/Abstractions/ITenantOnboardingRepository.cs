@@ -29,6 +29,15 @@ public interface ITenantOnboardingRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Onboardings pagados que siguen en RegistrationPending, sin email de registro enviado,
+    /// cuyo pago se liquidó antes del corte (ventana del recordatorio ya vencida). Los recorre el
+    /// OnboardingRegistrationReminderScheduler para publicar el email diferido.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>PayFlow (Fase 17) — listado paginado para <c>OnboardingAdminController</c>, filtrable
     /// por Status (típicamente ManualReview/ProvisioningFailed). Cross-tenant a propósito: es un
     /// endpoint PlatformAdmin-only, igual que el resto de los admin controllers del monorepo.</summary>

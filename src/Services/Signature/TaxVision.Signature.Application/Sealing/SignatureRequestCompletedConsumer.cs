@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
@@ -200,7 +201,10 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         var fields = BuildFieldRenders(request);
-        var footer = $"SignatureRequest={request.Id:D} • CompletedAt={evt.CompletedAtUtc:O}";
+        // Sin el id de la SignatureRequest: es un identificador interno sensible y no debe estamparse en
+        // cada página del documento firmado. La integridad ya la ancla el "Doc SHA-256" del pie, y la
+        // referencia del envelope vive en el Certificate of Completion (documento aparte).
+        var footer = $"Completed {evt.CompletedAtUtc:yyyy-MM-dd HH:mm} UTC";
         var sealingRequest = new SealingRequest(originalBytes, fields, evt.DocumentHashPre, footer);
         return sealer.Seal(sealingRequest);
     }
@@ -266,14 +270,31 @@ public static class SignatureRequestCompletedConsumer
         if (!request.GenerateCertificate)
             return Result.Success<Guid?>(null);
 
-        var (issuerName, tenantLogo) = await ResolveBrandingAsync(
+        // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
+        // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
+        // queda solo el del sistema; si el sistema tampoco, el renderer cae al logo de plataforma embebido.
+        var (issuerName, officeLogo) = await ResolveBrandingAsync(
             request.TenantId,
             brandingRepository,
             storage,
             logger,
             ct
         );
-        var model = BuildCertificateModel(request, sealResult, issuerName, tenantLogo);
+
+        byte[]? platformLogo = null;
+        if (request.TenantId != PlatformTenant.Id)
+        {
+            var (_, resolvedPlatformLogo) = await ResolveBrandingAsync(
+                PlatformTenant.Id,
+                brandingRepository,
+                storage,
+                logger,
+                ct
+            );
+            platformLogo = resolvedPlatformLogo;
+        }
+
+        var model = BuildCertificateModel(request, sealResult, issuerName, platformLogo, officeLogo);
         var rendered = renderer.Render(model);
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         var upload = new SignaturePdfUpload(
@@ -334,6 +355,7 @@ public static class SignatureRequestCompletedConsumer
         SignatureRequest request,
         SealingResult sealResult,
         string? issuerName,
+        byte[]? platformLogo,
         byte[]? tenantLogo
     ) =>
         new(
@@ -358,6 +380,7 @@ public static class SignatureRequestCompletedConsumer
                 ))
                 .ToList(),
             IssuerName: issuerName,
+            PlatformLogo: platformLogo,
             TenantLogo: tenantLogo
         );
 

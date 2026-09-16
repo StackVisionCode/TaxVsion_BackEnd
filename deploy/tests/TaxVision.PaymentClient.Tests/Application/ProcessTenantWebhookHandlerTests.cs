@@ -403,6 +403,8 @@ file sealed class FakeTenantPaymentConfigRepository(TenantPaymentConfig config) 
 
     public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         throw new NotImplementedException();
+
+    public void Remove(TenantPaymentConfig config) => throw new NotImplementedException();
 }
 
 file sealed class FakePaymentAuditLogWriter : IPaymentAuditLogWriter

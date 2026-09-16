@@ -47,6 +47,11 @@ public sealed class TenantOnboarding : BaseEntity
     public string? PaymentReference { get; private set; }
     public DateTime? PaymentCompletedAtUtc { get; private set; }
 
+    /// <summary>Reintentos de pago sobre este onboarding tras un fallo (distinto de RetryAttempt, que
+    /// cuenta reintentos de PROVISIONING). Lo incrementa ReopenForPaymentRetry; acota cuántas veces el
+    /// comprador puede reintentar el cobro sin empezar de cero.</summary>
+    public int PaymentRetryCount { get; private set; }
+
     // Gift/Referral: desglose comercial calculado por la reserva secuencial (apilada) en Growth.
     // Se congela antes del checkout. Null hasta que se aplica al menos un código; FullyCovered = neto 0.
     public Guid? ReferralAttributionId { get; private set; }
@@ -61,6 +66,11 @@ public sealed class TenantOnboarding : BaseEntity
     public Guid? RegistrationTokenReference { get; private set; }
     public DateTime? RegistrationTokenExpiresAtUtc { get; private set; }
     public DateTime? RegistrationTokenUsedAtUtc { get; private set; }
+
+    /// <summary>Cuándo se dio por enviado el email "completa tu oficina": envío inmediato del carril
+    /// $0, o publicación del sweeper para el carril pagado. Null = pendiente (el sweeper lo enviará al
+    /// vencer la ventana, si sigue en RegistrationPending). Garantiza exactamente un email por onboarding.</summary>
+    public DateTime? RegistrationEmailSentAtUtc { get; private set; }
 
     /// <summary>PayFlow (Fase 11) — FileId del recibo PDF en CloudStorage, guardado bajo
     /// <c>PlatformTenant.Id</c> (Documents Fase 10). Poblado por OnboardingReceiptGenerationCompletedConsumer.</summary>
@@ -288,6 +298,32 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Reabre un onboarding con pago fallido para reintentar el cobro (PaymentFailed →
+    /// PendingPayment), respetando el tope de intentos y la ventana desde la creación. El siguiente
+    /// checkout reusa el mismo SaaSPayment del lado de PaymentApp (con provider key por intento), así
+    /// que no hay doble cobro.</summary>
+    public Result ReopenForPaymentRetry(DateTime nowUtc, int maxRetries, TimeSpan window)
+    {
+        if (Status != TenantOnboardingStatus.PaymentFailed)
+            return Result.Failure(InvalidTransition());
+
+        if (PaymentRetryCount >= maxRetries)
+            return Result.Failure(
+                new Error("Onboarding.PaymentRetryExhausted", "The maximum number of payment retries has been reached.")
+            );
+
+        if (nowUtc - CreatedAtUtc > window)
+            return Result.Failure(
+                new Error("Onboarding.PaymentRetryWindowExpired", "The window to retry this payment has expired.")
+            );
+
+        PaymentRetryCount++;
+        PaymentStatus = null;
+        FailureReason = null;
+        Status = TenantOnboardingStatus.PendingPayment;
+        return Result.Success();
+    }
+
     public Result SetRegistrationToken(RegistrationTokenHash hash, DateTime expiresAtUtc, Guid? tokenReference = null)
     {
         if (Status != TenantOnboardingStatus.PaymentCompleted)
@@ -297,6 +333,23 @@ public sealed class TenantOnboarding : BaseEntity
         RegistrationTokenReference = tokenReference;
         RegistrationTokenExpiresAtUtc = expiresAtUtc;
         Status = TenantOnboardingStatus.RegistrationPending;
+        return Result.Success();
+    }
+
+    /// <summary>Marca el email "completa tu oficina" como enviado (envío inmediato del carril $0, o
+    /// publicación del sweeper). Idempotente: un segundo intento es no-op exitoso. Requiere que el
+    /// token de registro ya exista — nunca se marca antes del pago liquidado.</summary>
+    public Result MarkRegistrationEmailSent(DateTime nowUtc)
+    {
+        if (RegistrationEmailSentAtUtc is not null)
+            return Result.Success();
+
+        if (RegistrationTokenHash is null)
+            return Result.Failure(
+                new Error("Onboarding.RegistrationEmailNotReady", "The registration token has not been issued yet.")
+            );
+
+        RegistrationEmailSentAtUtc = nowUtc;
         return Result.Success();
     }
 

@@ -55,15 +55,14 @@ public static class CreateOnboardingCheckoutHandler
         if (providerResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(providerResult.Error);
 
-        var replay = await TryReplayExistingAsync(command, payments, logger, ct);
-        if (replay is not null)
-            return replay;
+        var resolution = await ResolvePaymentAsync(command, payments, planPricing, logger, ct);
+        if (resolution.IsFailure)
+            return Result.Failure<OnboardingCheckoutResponse>(resolution.Error);
+        if (resolution.Value.Replay is { } replay)
+            return Result.Success(replay);
 
-        var preparedResult = await ResolvePriceAndPreparePaymentAsync(command, planPricing, ct);
-        if (preparedResult.IsFailure)
-            return Result.Failure<OnboardingCheckoutResponse>(preparedResult.Error);
-
-        var payment = preparedResult.Value;
+        var payment = resolution.Value.Payment!;
+        var isNew = resolution.Value.IsNew;
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.Add(SessionLifetime);
 
@@ -85,7 +84,7 @@ public static class CreateOnboardingCheckoutHandler
         if (recordResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(recordResult.Error);
 
-        await PersistAndAuditAsync(command, payment, session, payments, audit, unitOfWork, correlation, nowUtc, ct);
+        await PersistAndAuditAsync(command, payment, session, isNew, payments, audit, unitOfWork, correlation, nowUtc, ct);
 
         logger.LogInformation(
             "Onboarding checkout {SaaSPaymentId} created for onboarding {OnboardingId}.",
@@ -176,34 +175,57 @@ public static class CreateOnboardingCheckoutHandler
         return Result.Success();
     }
 
-    private static async Task<Result<OnboardingCheckoutResponse>?> TryReplayExistingAsync(
+    private sealed record CheckoutPaymentResolution(OnboardingCheckoutResponse? Replay, SaaSPayment? Payment, bool IsNew);
+
+    /// <summary>Decide qué pago usar: replay del intento vigente (mismo key, sesión usable), reintento
+    /// de un intento fallido (reusa el aggregate vía <see cref="SaaSPayment.PrepareForOnboardingRetry"/>),
+    /// o un pago nuevo (primer intento). Un webhook viejo no puede colarse: al reintentar se limpia la
+    /// referencia externa del intento anterior, así que su webhook ya no resuelve a este pago.</summary>
+    private static async Task<Result<CheckoutPaymentResolution>> ResolvePaymentAsync(
         CreateOnboardingCheckoutCommand command,
         ISaaSPaymentRepository payments,
+        ISubscriptionPlanPricingClient planPricing,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
     {
         var existing = await payments.GetByIdempotencyKeyAsync(command.IdempotencyKey, ct);
         if (existing is null)
-            return null;
-
-        var replay = BuildResponse(existing);
-        if (replay is null)
         {
-            logger.LogWarning(
-                "Onboarding checkout for IdempotencyKey {Key} already exists but has no recorded checkout session.",
-                command.IdempotencyKey
-            );
-            return Result.Failure<OnboardingCheckoutResponse>(
-                new Error("Onboarding.Checkout.NoSession", "This checkout already exists in an unexpected state.")
-            );
+            var prepared = await ResolvePriceAndPreparePaymentAsync(command, planPricing, ct);
+            return prepared.IsFailure
+                ? Result.Failure<CheckoutPaymentResolution>(prepared.Error)
+                : Result.Success(new CheckoutPaymentResolution(null, prepared.Value, IsNew: true));
         }
 
-        logger.LogInformation(
-            "Onboarding checkout already exists for IdempotencyKey {Key}; replaying (idempotent).",
-            command.IdempotencyKey
+        if (
+            BuildResponse(existing) is { } replay
+            && existing.Status is PaymentStatus.Pending or PaymentStatus.Processing or PaymentStatus.RequiresAction
+        )
+        {
+            logger.LogInformation(
+                "Onboarding checkout already exists for IdempotencyKey {Key}; replaying (idempotent).",
+                command.IdempotencyKey
+            );
+            return Result.Success(new CheckoutPaymentResolution(replay, null, IsNew: false));
+        }
+
+        if (existing.Status is PaymentStatus.Failed or PaymentStatus.Cancelled)
+        {
+            var prep = existing.PrepareForOnboardingRetry(DateTime.UtcNow);
+            return prep.IsFailure
+                ? Result.Failure<CheckoutPaymentResolution>(prep.Error)
+                : Result.Success(new CheckoutPaymentResolution(null, existing, IsNew: false));
+        }
+
+        logger.LogWarning(
+            "Onboarding checkout for IdempotencyKey {Key} exists in non-retryable state {Status}.",
+            command.IdempotencyKey,
+            existing.Status
         );
-        return Result.Success(replay);
+        return Result.Failure<CheckoutPaymentResolution>(
+            new Error("Onboarding.Checkout.NotRetryable", $"This checkout cannot be re-created from {existing.Status}.")
+        );
     }
 
     private static async Task<Result<SaaSPayment>> ResolvePriceAndPreparePaymentAsync(
@@ -228,10 +250,20 @@ public static class CreateOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
+        // Provider key POR INTENTO: el primero usa el key base; cada reintento le añade el número de
+        // intento (= sesiones previas). Sin esto, reintentar reusaría el key del provider y Stripe
+        // devolvería la sesión vieja (idempotente) en vez de crear una nueva y cobrable.
+        var providerKeyResult =
+            payment.Attempts.Count == 0
+                ? Result.Success(payment.IdempotencyKey)
+                : IdempotencyKey.Create($"{payment.IdempotencyKey.Value}-{payment.Attempts.Count}");
+        if (providerKeyResult.IsFailure)
+            return Result.Failure<HostedCheckoutSessionResult>(providerKeyResult.Error);
+
         var sessionRequest = new HostedCheckoutSessionRequest(
             Amount: payment.Amount,
             Method: command.Method,
-            IdempotencyKey: payment.IdempotencyKey,
+            IdempotencyKey: providerKeyResult.Value,
             Descriptor: payment.StatementDescriptor,
             PayerEmail: command.PayerEmail,
             SuccessUrl: command.SuccessUrl,
@@ -316,6 +348,7 @@ public static class CreateOnboardingCheckoutHandler
         CreateOnboardingCheckoutCommand command,
         SaaSPayment payment,
         HostedCheckoutSessionResult session,
+        bool isNew,
         ISaaSPaymentRepository payments,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
@@ -324,7 +357,9 @@ public static class CreateOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
-        await payments.AddAsync(payment, ct);
+        // Reintento: el aggregate ya está rastreado (se cargó por key), solo se persiste. Nuevo: se inserta.
+        if (isNew)
+            await payments.AddAsync(payment, ct);
 
         await AuditEntryFactory.AppendAsync(
             audit,

@@ -115,6 +115,9 @@ public sealed class GetUsersHandlerTests
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }

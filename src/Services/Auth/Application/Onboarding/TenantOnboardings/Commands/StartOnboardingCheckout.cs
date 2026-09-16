@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
@@ -48,6 +49,8 @@ public static class StartOnboardingCheckoutHandler
         OnboardingSuccessCompleter successCompleter,
         IPlanCatalogClient planCatalog,
         IPaymentAppOnboardingClient paymentApp,
+        IOnboardingReturnReferenceStore returnReferences,
+        IOptions<OnboardingOptions> onboardingOptions,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -59,12 +62,32 @@ public static class StartOnboardingCheckoutHandler
                 new Error("Onboarding.NotFound", "Onboarding not found.")
             );
 
-        // 1) Reserva secuencial apilada de códigos (idempotente: si ya se aplicó, se salta).
-        if (!string.Equals(onboarding.Email, command.PayerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+        // El pagador es el email del onboarding. En sesión (cookie) el request lo trae y DEBE coincidir;
+        // en el resume por token del email (que ya autorizó) el request lo deja vacío y se usa el del
+        // onboarding directamente, sin exigir la cookie (el link puede abrirse en otro navegador).
+        var payerEmail = string.IsNullOrWhiteSpace(command.PayerEmail)
+            ? onboarding.Email
+            : command.PayerEmail.Trim();
+        if (!string.Equals(onboarding.Email, payerEmail, StringComparison.OrdinalIgnoreCase))
         {
             return Result.Failure<StartOnboardingCheckoutResponse>(
                 new Error("Onboarding.PayerEmailMismatch", "The payer email does not match this onboarding.")
             );
+        }
+
+        // Reintento: si el pago anterior falló, reabrimos (tope + ventana) antes de recobrar. El checkout
+        // de abajo reusa el mismo SaaSPayment del lado de PaymentApp con un provider key nuevo por intento,
+        // así que no hay doble cobro.
+        if (onboarding.Status == TenantOnboardingStatus.PaymentFailed)
+        {
+            var options = onboardingOptions.Value;
+            var reopen = onboarding.ReopenForPaymentRetry(
+                DateTime.UtcNow,
+                options.PaymentRetryMaxAttempts,
+                TimeSpan.FromHours(options.PaymentRetryWindowHours)
+            );
+            if (reopen.IsFailure)
+                return Result.Failure<StartOnboardingCheckoutResponse>(reopen.Error);
         }
 
         var codes = BuildCodeInputs(command);
@@ -103,12 +126,21 @@ public static class StartOnboardingCheckoutHandler
         var idempotencyKey = $"onboarding-checkout-{onboarding.Id:N}";
         var primaryReservation = onboarding.CodeReservations.OrderBy(r => r.Order).FirstOrDefault();
 
+        // Referencia de retorno opaca en el successUrl: permite reconciliar al volver de Stripe aunque
+        // falte la cookie (otro navegador/incógnito). No es credencial de registro; TTL corto.
+        var returnReference = await returnReferences.IssueAsync(
+            onboarding.Id,
+            TimeSpan.FromMinutes(onboardingOptions.Value.OnboardingReturnReferenceTtlMinutes),
+            ct
+        );
+        var successUrl = AppendReturnReference(command.SuccessUrl, returnReference);
+
         var checkoutResult = await paymentApp.CreateCheckoutAsync(
             new PaymentAppCheckoutRequest(
                 onboarding.Id,
                 onboarding.PlanId,
-                command.PayerEmail,
-                command.SuccessUrl,
+                payerEmail,
+                successUrl,
                 command.CancelUrl,
                 idempotencyKey,
                 Provider: command.Provider,
@@ -177,7 +209,8 @@ public static class StartOnboardingCheckoutHandler
             providerPaymentReference: null,
             paymentMethodMasked: null,
             correlationId,
-            ct
+            sendRegistrationEmailNow: true,
+            ct: ct
         );
         if (completed.IsFailure)
             return Result.Failure<StartOnboardingCheckoutResponse>(completed.Error);
@@ -196,6 +229,12 @@ public static class StartOnboardingCheckoutHandler
                 Currency: onboarding.Currency
             )
         );
+    }
+
+    private static string AppendReturnReference(string successUrl, string reference)
+    {
+        var separator = successUrl.Contains('?') ? '&' : '?';
+        return $"{successUrl}{separator}r={Uri.EscapeDataString(reference)}";
     }
 
     private static List<OnboardingCodeInput> BuildCodeInputs(StartOnboardingCheckoutCommand command)

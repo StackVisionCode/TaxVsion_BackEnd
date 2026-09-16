@@ -57,17 +57,13 @@ public static class CreateTenantOwnerFromOnboardingHandler
             return Result.Success();
 
         // Garantiza los roles de sistema del tenant ANTES de consumir el password y crear el owner.
-        // En el onboarding pago-primero este paso puede ganarle la carrera a TenantCreatedConsumer
-        // (que siembra los roles de forma async): si systemRole quedaba null, el owner nacía SIN rol,
-        // sin BumpPermissionsVersion (perm_v=0) y sin UserRolesChanged → proyección de permisos vacía
-        // en TODOS los servicios → 403 en todo. EnsureSystemRolesAsync es idempotente; el SaveChanges
-        // commitea SOLO los roles (nada más pendiente aún) para que GetSystemRoleAsync los vea (una
-        // query a DB no devuelve entidades Added sin persistir).
-        if (await roles.GetSystemRoleAsync(command.TenantId, Role.SystemTenantAdmin, ct) is null)
-        {
-            await roles.EnsureSystemRolesAsync(command.TenantId, ct);
-            await unitOfWork.SaveChangesAsync(ct);
-        }
+        // En el onboarding pago-primero este paso corre en paralelo con TenantCreatedConsumer (que
+        // también los siembra async): si systemRole quedaba null, el owner nacía SIN rol, sin
+        // BumpPermissionsVersion (perm_v=0) y sin UserRolesChanged → proyección de permisos vacía en
+        // TODOS los servicios → 403 en todo. EnsureSystemRolesCommittedAsync es idempotente incluso ante
+        // esa carrera: si el otro camino sembró los roles entre medio, el duplicate-key del índice único
+        // se trata como no-op (los roles ya existen) en vez de tumbar la saga con un ConflictException.
+        await roles.EnsureSystemRolesCommittedAsync(command.TenantId, ct);
 
         var passwordHash = await passwordHashReferences.ConsumeAsync(command.PasswordHashReference, ct);
         if (string.IsNullOrWhiteSpace(passwordHash))

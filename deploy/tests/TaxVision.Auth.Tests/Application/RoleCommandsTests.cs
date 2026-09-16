@@ -69,6 +69,9 @@ public sealed class RoleCommandsTests
 
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) => Task.CompletedTask;
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult<Role?>(null);
     }

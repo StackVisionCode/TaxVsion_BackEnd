@@ -91,6 +91,9 @@ public sealed class UserManagementCommandsTests
 
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) => throw NotExpected();
 
+        public Task EnsureSystemRolesCommittedAsync(Guid tenantId, CancellationToken ct = default) =>
+            EnsureSystemRolesAsync(tenantId, ct);
+
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             throw NotExpected();
     }

@@ -29,6 +29,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
 
         builder.Property(onboarding => onboarding.RegistrationTokenHash).HasMaxLength(64);
         builder.Property(onboarding => onboarding.RegistrationTokenReference);
+        builder.Property(onboarding => onboarding.RegistrationEmailSentAtUtc);
 
         builder.Property(onboarding => onboarding.OfficeName).HasMaxLength(256);
         builder.Property(onboarding => onboarding.RequestedSubdomain).HasMaxLength(63);
@@ -63,6 +64,8 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         // PayFlow (Fase 17) — retry automático de fallos Transient.
         builder.Property(onboarding => onboarding.RetryAttempt).IsRequired();
         builder.Property(onboarding => onboarding.NextRetryAtUtc);
+
+        builder.Property(onboarding => onboarding.PaymentRetryCount).IsRequired().HasDefaultValue(0);
 
         builder
             .HasIndex(onboarding => onboarding.RegistrationTokenHash)

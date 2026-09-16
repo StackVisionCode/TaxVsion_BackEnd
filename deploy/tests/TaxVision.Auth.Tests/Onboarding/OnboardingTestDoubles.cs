@@ -91,6 +91,14 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
         CancellationToken ct = default
     ) => Task.FromResult<IReadOnlyList<TenantOnboarding>>(Existing is null ? [] : [Existing]);
 
+    public IReadOnlyList<TenantOnboarding> RemindersDue { get; set; } = [];
+
+    public Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => Task.FromResult(RemindersDue);
+
     public Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
         TenantOnboardingStatus? status,
         int page,
@@ -101,6 +109,21 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
         IReadOnlyList<TenantOnboarding> items = Existing is null ? [] : [Existing];
         return Task.FromResult((items, items.Count));
     }
+}
+
+internal sealed class FakeOnboardingReturnReferenceStore : IOnboardingReturnReferenceStore
+{
+    public Guid? IssuedFor { get; private set; }
+    public Guid? Resolves { get; set; }
+    public string Issued { get; } = "return-ref-" + Guid.NewGuid().ToString("N");
+
+    public Task<string> IssueAsync(Guid onboardingId, TimeSpan ttl, CancellationToken ct = default)
+    {
+        IssuedFor = onboardingId;
+        return Task.FromResult(Issued);
+    }
+
+    public Task<Guid?> ResolveAsync(string reference, CancellationToken ct = default) => Task.FromResult(Resolves);
 }
 
 internal sealed class FakeOnboardingSessionStore : IOnboardingSessionStore
@@ -270,6 +293,16 @@ internal sealed class FakeTokenReferenceStore : ITokenReferenceStore
         StoredReference = reference;
         return Task.CompletedTask;
     }
+
+    public Task StoreAsync(Guid reference, string rawToken, TimeSpan ttl, CancellationToken ct = default)
+    {
+        Stored = rawToken;
+        StoredReference = reference;
+        StoredTtl = ttl;
+        return Task.CompletedTask;
+    }
+
+    public TimeSpan? StoredTtl { get; private set; }
 
     public Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default) =>
         Task.FromResult(reference == Reference || reference == StoredReference ? ToConsume : null);

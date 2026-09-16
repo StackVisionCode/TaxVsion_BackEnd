@@ -40,6 +40,7 @@ public sealed class OnboardingSuccessCompleter(
         string? providerPaymentReference,
         string? paymentMethodMasked,
         string correlationId,
+        bool sendRegistrationEmailNow,
         CancellationToken ct
     )
     {
@@ -67,25 +68,45 @@ public sealed class OnboardingSuccessCompleter(
             return Result.Failure<OnboardingSuccessCompletionResult>(setToken.Error);
         }
 
-        await tokenReferences.StoreAsync(tokenReference, rawToken, ct);
+        // Diferido (carril pagado): la referencia del raw token vive lo suficiente para que el sweeper
+        // publique el email más tarde. El mismo token ya vive 72h en el buzón del comprador, así que una
+        // referencia acotada es menos exposición. Inmediato ($0): TTL corto por defecto del store.
+        if (sendRegistrationEmailNow)
+            await tokenReferences.StoreAsync(tokenReference, rawToken, ct);
+        else
+            await tokenReferences.StoreAsync(
+                tokenReference,
+                rawToken,
+                TimeSpan.FromMinutes(onboardingOptions.Value.RegistrationTokenReferenceTtlMinutes),
+                ct
+            );
+
         var registrationUrl = BuildRegistrationUrl(onboardingOptions.Value.RegistrationUrlBase, rawToken);
 
         bus.TenantId = PlatformTenant.Id.ToString();
-        await bus.PublishAsync(
-            new OnboardingRegistrationReadyIntegrationEvent
-            {
-                TenantId = PlatformTenant.Id,
-                OnboardingId = onboarding.Id,
-                TokenReference = tokenReference,
-                Email = onboarding.Email,
-                FirstName = onboarding.FirstName,
-                PlanName = planName,
-                PriceFormatted = FormatPrice(amountPaidCents, currency),
-                PaidAtUtc = paidAtUtc,
-                RegistrationUrlBase = onboardingOptions.Value.RegistrationUrlBase,
-                CorrelationId = correlationId,
-            }
-        );
+
+        // El email "completa tu oficina" se difiere en el carril pagado (el redirect in-session ya lleva
+        // al formulario): lo publica OnboardingRegistrationReminderScheduler pasada la ventana, solo si el
+        // comprador no terminó. El carril $0 no tiene redirect de por medio, así que sale de inmediato.
+        if (sendRegistrationEmailNow)
+        {
+            await bus.PublishAsync(
+                new OnboardingRegistrationReadyIntegrationEvent
+                {
+                    TenantId = PlatformTenant.Id,
+                    OnboardingId = onboarding.Id,
+                    TokenReference = tokenReference,
+                    Email = onboarding.Email,
+                    FirstName = onboarding.FirstName,
+                    PlanName = planName,
+                    PriceFormatted = FormatPrice(amountPaidCents, currency),
+                    PaidAtUtc = paidAtUtc,
+                    RegistrationUrlBase = onboardingOptions.Value.RegistrationUrlBase,
+                    CorrelationId = correlationId,
+                }
+            );
+            onboarding.MarkRegistrationEmailSent(DateTime.UtcNow);
+        }
 
         // Carril pagado sin código: persiste lo efectivamente cobrado en el aggregate ANTES de leer el
         // desglose, para que una regeneración posterior del recibo (resend admin, reconcile-PaymentCompleted)

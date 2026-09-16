@@ -46,6 +46,22 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantOnboarding>> GetRegistrationRemindersDueAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.Where(onboarding =>
+                onboarding.Status == TenantOnboardingStatus.RegistrationPending
+                && onboarding.RegistrationEmailSentAtUtc == null
+                && onboarding.PaymentCompletedAtUtc != null
+                && onboarding.PaymentCompletedAtUtc <= cutoffUtc
+            )
+            .OrderBy(onboarding => onboarding.PaymentCompletedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
         TenantOnboardingStatus? status,
         int page,

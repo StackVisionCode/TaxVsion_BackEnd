@@ -166,6 +166,10 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
+        services.AddScoped<
+            TaxVision.Auth.Application.Onboarding.Abstractions.IOnboardingReturnReferenceStore,
+            TaxVision.Auth.Infrastructure.Onboarding.Sessions.RedisOnboardingReturnReferenceStore
+        >();
         // Login central (Opción A): el vale de handoff cross-dominio y la sesión de descubrimiento,
         // misma dependencia de Redis crudo.
         services.AddScoped<IHandoffTicketStore, RedisHandoffTicketStore>();
@@ -206,6 +210,7 @@ public static class DependencyInjection
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingFinalizer>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingSuccessCompleter>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingReservationCanceller>();
+        services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingRegistrationReminderProcessor>();
         services.AddScoped<OnboardingRetryProcessor>();
 
         // Gift/Referral en onboarding — cliente M2M Auth→Growth (codes + referrals).

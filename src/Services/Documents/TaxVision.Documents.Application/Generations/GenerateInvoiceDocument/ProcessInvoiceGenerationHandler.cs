@@ -81,10 +81,26 @@ public static class ProcessInvoiceGenerationHandler
 
             // Si no hay un logo embebido explícito (request u override guardado en Documents), usar el logo
             // de la marca del tenant (Company settings → TenantBrands), bajado on-demand de CloudStorage.
-            // Best-effort: si no hay logo o falla la bajada, el PDF sale sin logo (comportamiento actual).
+            // Best-effort ESTRICTO: el logo nunca debe tumbar la generación de la factura, así que si el
+            // resolver LANZA (proyección de logo ausente, storage caído) se sigue sin logo — no solo el
+            // caso null/empty. (Hueco encontrado en un E2E: el mismo resolver, sin proteger, tumbaba la
+            // generación del recibo de onboarding con Invalid object name 'TenantLogoRefs'.)
             if (string.IsNullOrWhiteSpace(effectiveBranding?.LogoDataUri))
             {
-                var tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(command.TenantId, ct);
+                string? tenantLogo = null;
+                try
+                {
+                    tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(command.TenantId, ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Invoice generation {GenerationId}: tenant logo resolution failed; rendering without the tenant logo.",
+                        command.GenerationId
+                    );
+                }
+
                 if (!string.IsNullOrEmpty(tenantLogo))
                     effectiveBranding = (effectiveBranding ?? new BrandingPayload(null, null, null, null)) with
                     {

@@ -348,6 +348,38 @@ public sealed class SaaSPayment : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>PayFlow — reabre un pago de onboarding Failed para un nuevo intento de checkout
+    /// iniciado por el comprador. A diferencia de <see cref="PrepareForRetry"/> (dunning, que exige un
+    /// retry agendado en <see cref="NextRetryAtUtc"/>), esto no depende de un agendado: lo dispara el
+    /// reintento manual. Limpia la sesión y la referencia externa del intento anterior para que se
+    /// registre una nueva — así un webhook tardío del intento viejo ya no resuelve a este pago
+    /// (<c>GetByExternalReferenceAsync</c> no lo encuentra) y no puede corromper el intento nuevo.</summary>
+    public Result PrepareForOnboardingRetry(DateTime nowUtc)
+    {
+        if (Type != SaaSPaymentType.OnboardingInitial)
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", "Only onboarding payments can be reopened this way.")
+            );
+
+        // Cancelled cuenta como fallo para onboarding (la sesión expiró y el proveedor anuló el intento):
+        // el comprador no pagó, así que puede reintentar igual que si lo hubieran declinado.
+        if (Status is not (PaymentStatus.Failed or PaymentStatus.Cancelled))
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot retry onboarding checkout from {Status}.")
+            );
+
+        Status = PaymentStatus.Pending;
+        FailureCode = null;
+        FailureReason = null;
+        NextRetryAtUtc = null;
+        ProviderCheckoutSessionId = null;
+        ExternalChargeReference = null;
+        NextActionType = null;
+        NextActionUrl = null;
+        Touch(Guid.Empty, nowUtc);
+        return Result.Success();
+    }
+
     public Result CancelByAdmin(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (IsLegalHeld)
