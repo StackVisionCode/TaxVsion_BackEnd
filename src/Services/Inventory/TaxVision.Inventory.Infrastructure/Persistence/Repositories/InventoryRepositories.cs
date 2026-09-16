@@ -15,6 +15,32 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
             .StockLevels.IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.CatalogItemId == catalogItemId, ct);
 
+    public async Task<IReadOnlyList<StockLevel>> GetByCatalogItemsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> catalogItemIds,
+        CancellationToken ct = default
+    )
+    {
+        if (catalogItemIds.Count == 0)
+            return [];
+        // Change-tracked a propósito: el caller (venta de factura) aplica RegisterMovement y persiste.
+        return await db
+            .StockLevels.IgnoreQueryFilters()
+            .Where(s => s.TenantId == tenantId && catalogItemIds.Contains(s.CatalogItemId))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(
+        Guid tenantId,
+        string reference,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .StockMovements.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Reference == reference)
+            .ToListAsync(ct);
+
     public async Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default) =>
         await db.StockLevels.AddAsync(level, ct);
 

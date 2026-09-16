@@ -39,7 +39,15 @@ public static class EnsureInvoicePayableHandler
             ct
         );
         if (existing is not null)
+        {
+            // La factura pudo editarse y cambiar el total: refrescar el monto (misma URL estable).
+            if (existing.Amount.AmountCents != amountResult.Value.AmountCents)
+            {
+                existing.UpdateAmount(amountResult.Value);
+                await unitOfWork.SaveChangesAsync(ct);
+            }
             return Result.Success(new EnsureInvoicePayableResponse(existing.Id, existing.Reference, subDomain));
+        }
 
         var created = PayableReference.Create(
             command.TenantId,

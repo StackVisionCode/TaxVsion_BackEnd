@@ -26,6 +26,9 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.PaymentMethod).HasConversion<string>().HasMaxLength(32);
         b.Property(i => i.ReceiptNumber).HasMaxLength(96);
         b.Property(i => i.ReceiptHash).HasMaxLength(64);
+        // Anulación (void): fecha + motivo. Nullable — solo se rellenan al anular.
+        b.Property(i => i.VoidedAtUtc);
+        b.Property(i => i.VoidReason).HasMaxLength(512);
         b.Property(i => i.RowVersion).IsRowVersion();
 
         // Onboarding pago-primero: factura pre-tenant keyed por OnboardingId (re-hospedada al activar).

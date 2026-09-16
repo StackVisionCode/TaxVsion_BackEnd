@@ -1660,6 +1660,8 @@ services:
       # Bases de los servicios destino (prod docker; en dev Documents corre en el host → override por .env).
       Billing__Documents__BaseUrl: ${BILLING_DOCUMENTS_BASE_URL:-http://documents-api:8080}
       Billing__PaymentClient__BaseUrl: ${BILLING_PAYMENTCLIENT_BASE_URL:-http://payment-client-api:8080}
+      # Billing → Inventory (M2M): descuento de stock al emitir la factura (Fase 3, cliente Platform).
+      Billing__Inventory__BaseUrl: ${BILLING_INVENTORY_BASE_URL:-http://inventory-api:8080}
       # Cuotas por tier: HttpPlanRateLimitReader va contra este host. Sin esto caía al default
       # localhost:5360 del binding, que dentro del contenedor no resuelve a nada.
       SubscriptionClient__BaseUrl: http://subscription-api:8080

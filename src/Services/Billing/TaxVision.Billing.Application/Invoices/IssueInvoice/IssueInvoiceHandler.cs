@@ -15,6 +15,7 @@ public static class IssueInvoiceHandler
         IssueInvoiceCommand command,
         IInvoiceRepository invoices,
         IInvoiceNumberSequenceRepository sequences,
+        IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         TimeProvider clock,
@@ -24,6 +25,21 @@ public static class IssueInvoiceHandler
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
         if (invoice is null)
             return Result.Failure<IssueInvoiceResult>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
+
+        // Fase 3 — descuento de stock BLOQUEANTE al emitir. Se envían las líneas trazadas a un ítem de
+        // catálogo (productos y servicios por igual); Inventory ignora servicios/no-rastreados y solo
+        // descuenta productos rastreados. Si falta stock (o Inventory no responde), NO se emite:
+        // fail-closed. Es idempotente por factura, así que un reintento de emisión no vuelve a descontar.
+        var saleLines = invoice
+            .Lines.Where(l => l.CatalogItemId is { } cid && cid != Guid.Empty && l.Quantity > 0)
+            .Select(l => new InvoiceSaleLine(l.CatalogItemId!.Value, l.Quantity))
+            .ToList();
+        if (saleLines.Count > 0)
+        {
+            var committed = await inventory.CommitInvoiceSaleAsync(command.TenantId, invoice.Id, saleLines, ct);
+            if (committed.IsFailure)
+                return Result.Failure<IssueInvoiceResult>(committed.Error);
+        }
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
         var periodKey = nowUtc.Year.ToString(CultureInfo.InvariantCulture);
