@@ -10,6 +10,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.RateLimiting.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.Permissions;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 using TaxVision.Subscription.Infrastructure.RateLimiting;
@@ -35,6 +36,9 @@ public static class DependencyInjection
         services.AddScoped<IPlanRepository, PlanRepository>();
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
+        services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
+        services.AddScoped<ISeatPurchaseIntentRepository, SeatPurchaseIntentRepository>();
+        services.AddScoped<IRenewalCheckoutIntentRepository, RenewalCheckoutIntentRepository>();
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
@@ -86,8 +90,53 @@ public static class DependencyInjection
             }
         );
 
+        // Seats Fase 5 — M2M contra PaymentApp para crear el hosted-checkout de una compra de asientos
+        // (tenant sin método en archivo). Reusa el service-token acquirer de arriba.
+        services
+            .AddOptions<PaymentAppClientOptions>()
+            .Bind(configuration.GetSection(PaymentAppClientOptions.SectionName));
+        services.AddHttpClient<ISeatCheckoutPaymentClient, PaymentApp.PaymentAppSeatCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Expiración/Dunning Fase 4 — M2M contra PaymentApp para el hosted-checkout de una renovación/
+        // reactivación self-service. Mismo cliente/patrón que el de seats de arriba.
+        services.AddHttpClient<IRenewalCheckoutPaymentClient, PaymentApp.PaymentAppRenewalCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        AddPermissionsPullRecovery(services);
+
         AddRateLimitTierQuotas(services);
         return services;
+    }
+
+    // Opción B — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
+    // usuario pre-Fase-7 nunca sincronizado, evento perdido o backfill pendiente dejan de ser un 403
+    // permanente. Reutiliza el IGrowthServiceTokenAcquirer y el ServiceAuthClientOptions que ya
+    // apuntan a Auth. Mismo patrón que Customer/Billing/Tasks/etc.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
     }
 
     // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento

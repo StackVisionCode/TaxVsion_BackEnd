@@ -62,7 +62,7 @@ public static class TenantEntitlementsChangedConsumer
 
         limits.Apply(
             evt.PlanCode,
-            maxUsers: evt.SeatCount,
+            maxUsers: ResolveMaxStaffUsers(evt),
             maxPendingInvitations: GetInt(evt.EntitlementValues, "invitations.max_pending", fallback: 0),
             storageQuotaBytes: GetLong(evt.EntitlementValues, "storage.max_bytes", fallback: 0),
             modulesJson
@@ -86,6 +86,13 @@ public static class TenantEntitlementsChangedConsumer
 
         return modules.ToArray();
     }
+
+    /// <summary>Cupo de usuarios STAFF a proyectar en <c>TenantPlanLimits.MaxUsers</c>. Prefiere
+    /// <c>MaxStaffUsers</c> (efectivo = `seats.max` incluido + asientos staff comprados, calculado por
+    /// Subscription). Si el mensaje es viejo y no lo trae, cae a `seats.max` (el cupo incluido del plan) —
+    /// NUNCA a <c>SeatCount</c>, que arranca en 0 y bloquearía toda invitación (bug histórico).</summary>
+    private static int ResolveMaxStaffUsers(TenantEntitlementsChangedIntegrationEvent evt) =>
+        evt.MaxStaffUsers is { } cap && cap > 0 ? cap : GetInt(evt.EntitlementValues, "seats.max", fallback: 0);
 
     private static int GetInt(IReadOnlyDictionary<string, string> entitlementValues, string key, int fallback) =>
         entitlementValues.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;

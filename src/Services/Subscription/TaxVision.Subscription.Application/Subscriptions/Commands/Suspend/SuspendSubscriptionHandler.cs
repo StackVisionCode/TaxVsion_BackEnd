@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -52,6 +54,13 @@ public static class SuspendSubscriptionHandler
         );
 
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
+        await bus.PublishStatusChangedAsync(
+            subscription,
+            previousStatus,
+            SubscriptionChangeReason.AdminSuspended,
+            command.RequestedByUserId,
+            correlationId: correlation.CorrelationId
+        );
 
         logger.LogWarning("Subscription suspended for tenant {TenantId}: {Reason}.", command.TenantId, command.Reason);
         return Result.Success();

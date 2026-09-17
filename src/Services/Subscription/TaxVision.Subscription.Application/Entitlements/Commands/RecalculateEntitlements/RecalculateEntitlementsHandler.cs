@@ -6,6 +6,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.Entitlements;
+using TaxVision.Subscription.Domain.Seats;
 using Wolverine;
 
 namespace TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
@@ -45,6 +46,7 @@ public static class RecalculateEntitlementsHandler
 
         var snapshot = rebuilt.Value;
         var changedKeys = ComputeChangedKeys(previous, snapshot);
+        var maxStaffUsers = await ComputeMaxStaffUsersAsync(command.TenantId, snapshot, seats, ct);
 
         await snapshots.UpsertAsync(snapshot, ct);
         await cache.RemoveAsync(EntitlementCacheKeys.Summary(command.TenantId), ct);
@@ -59,6 +61,7 @@ public static class RecalculateEntitlementsHandler
                 SubscriptionStatus = snapshot.SubscriptionStatus,
                 SeatCount = snapshot.SeatCount,
                 AvailableSeatCount = snapshot.AvailableSeatCount,
+                MaxStaffUsers = maxStaffUsers,
                 EntitlementValues = BuildEntitlementValues(snapshot),
                 CorrelationId = correlation.CorrelationId,
             }
@@ -72,6 +75,42 @@ public static class RecalculateEntitlementsHandler
             changedKeys.Length
         );
         return Result.Success();
+    }
+
+    private const string SeatsMaxKey = "seats.max";
+
+    /// <summary>Cupo efectivo de usuarios STAFF = `seats.max` incluido en el plan + asientos STAFF
+    /// (<see cref="SeatType.Standard"/>) no terminales comprados. Es lo que Auth hace cumplir; los tipos
+    /// de asiento no-staff (Portal/Signature/ReadOnly/ServiceAccount) son pools aparte y no cuentan.</summary>
+    private static async Task<int> ComputeMaxStaffUsersAsync(
+        Guid tenantId,
+        TenantEntitlementSnapshot snapshot,
+        ISubscriptionSeatRepository seats,
+        CancellationToken ct
+    )
+    {
+        var tenantSeats = await seats.GetByTenantIdAsync(tenantId, ct);
+        return ParseIncludedSeats(snapshot) + CountActiveStaffSeats(tenantSeats);
+    }
+
+    /// <summary>Asientos STAFF (<see cref="SeatType.Standard"/>) no terminales — los que suman al cupo de
+    /// usuarios del tenant, por encima del <c>seats.max</c> incluido en el plan. Los otros tipos
+    /// (Portal/Signature/ReadOnly/ServiceAccount) son pools aparte y no cuentan.</summary>
+    public static int CountActiveStaffSeats(IReadOnlyList<SubscriptionSeat> seats) =>
+        seats.Count(seat =>
+            seat.Type == SeatType.Standard
+            && seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Released)
+        );
+
+    private static int ParseIncludedSeats(TenantEntitlementSnapshot snapshot)
+    {
+        foreach (var entry in snapshot.Entries)
+        {
+            if (entry.Key.Value == SeatsMaxKey && int.TryParse(entry.Value, out var max))
+                return max;
+        }
+
+        return 0;
     }
 
     private static IReadOnlyDictionary<string, string> BuildEntitlementValues(TenantEntitlementSnapshot snapshot)

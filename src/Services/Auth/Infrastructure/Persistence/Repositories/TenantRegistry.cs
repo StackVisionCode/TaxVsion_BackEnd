@@ -41,4 +41,16 @@ public sealed class TenantRegistry(AuthDbContext db) : ITenantRegistry
         if (tenant is not null)
             tenant.SetActive(isActive);
     }
+
+    public async Task SetBillingBlockedAsync(
+        Guid tenantId,
+        bool blocked,
+        string? reason,
+        CancellationToken ct = default
+    )
+    {
+        var tenant = await db.Tenants.FirstOrDefaultAsync(value => value.Id == tenantId, ct);
+        if (tenant is not null)
+            tenant.SetBillingAccess(blocked, reason);
+    }
 }

@@ -63,6 +63,70 @@ public sealed class SubscriptionSeatTests
         Assert.Equal("Seat.InvalidTransition", result.Error.Code);
     }
 
+    [Fact]
+    public void BeginInitialCharge_schedules_a_charge_over_the_current_period_without_advancing()
+    {
+        var seat = CreateSeat();
+        var start = DateTime.UtcNow;
+        var end = start.AddMonths(1);
+        seat.Activate(start, end, Guid.Empty, start);
+
+        var result = seat.BeginInitialCharge("seat-initial-1", Guid.Empty, start);
+
+        Assert.True(result.IsSuccess);
+        var charge = Assert.Single(seat.Renewals);
+        Assert.Equal(start, charge.PeriodStartUtc);
+        Assert.Equal(end, charge.PeriodEndUtc);
+        // El período del asiento no se movió: sigue siendo el vigente (el cargo inicial no avanza).
+        Assert.Equal(start, seat.CurrentPeriodStartUtc);
+        Assert.Equal(end, seat.CurrentPeriodEndUtc);
+    }
+
+    [Fact]
+    public void BeginInitialCharge_is_idempotent_by_key()
+    {
+        var seat = CreateSeat();
+        var now = DateTime.UtcNow;
+        seat.Activate(now, now.AddMonths(1), Guid.Empty, now);
+
+        seat.BeginInitialCharge("seat-initial-1", Guid.Empty, now);
+        var second = seat.BeginInitialCharge("seat-initial-1", Guid.Empty, now);
+
+        Assert.True(second.IsSuccess);
+        Assert.Single(seat.Renewals);
+    }
+
+    [Fact]
+    public void BeginInitialCharge_requires_an_active_seat()
+    {
+        var seat = CreateSeat(); // Available
+
+        var result = seat.BeginInitialCharge("seat-initial-1", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Seat.InvalidTransition", result.Error.Code);
+    }
+
+    [Fact]
+    public void CompleteRenewal_after_an_initial_charge_keeps_the_same_period()
+    {
+        // Reusar el pipeline de renovación para el cargo inicial no debe avanzar el período:
+        // CompleteRenewal fija el período al del intento, que es el vigente.
+        var seat = CreateSeat();
+        var start = DateTime.UtcNow;
+        var end = start.AddMonths(1);
+        seat.Activate(start, end, Guid.Empty, start);
+        seat.BeginInitialCharge("seat-initial-1", Guid.Empty, start);
+        var chargeId = seat.Renewals.Single().Id;
+
+        var result = seat.CompleteRenewal(chargeId, "pi_123", Guid.Empty, start);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SeatStatus.Active, seat.Status);
+        Assert.Equal(start, seat.CurrentPeriodStartUtc);
+        Assert.Equal(end, seat.CurrentPeriodEndUtc);
+    }
+
     private static SubscriptionSeat CreateSeat() =>
         SubscriptionSeat
             .Purchase(

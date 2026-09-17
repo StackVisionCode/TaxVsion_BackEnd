@@ -124,4 +124,9 @@ public static class AuthAuditAction
 
     /// <summary>Fase L1.4 — ver TenantTermsAcceptance/TermsAcceptanceMiddleware.</summary>
     public const string TermsAccepted = "tenant.terms_accepted";
+
+    // Expiración/Dunning (Fase 2/6) — corte y reactivación de acceso por facturación (evento de sistema,
+    // sin userId ni IP). TargetType="TenantSubscription". DetailsJson lleva el status y las sesiones revocadas.
+    public const string SubscriptionAccessBlocked = "auth.subscription.access_blocked";
+    public const string SubscriptionAccessRestored = "auth.subscription.access_restored";
 }

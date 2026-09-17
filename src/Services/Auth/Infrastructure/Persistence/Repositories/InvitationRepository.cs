@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 
@@ -35,6 +36,8 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
     public async Task AddAsync(Invitation invitation, CancellationToken ct = default) =>
         await db.Invitations.AddAsync(invitation, ct);
 
+    // Solo cuentan asiento las invitaciones de STAFF (TenantEmployee/TenantAdmin). Las invitaciones de
+    // portal (clientes) NO consumen asientos del plan — se crean desde Clients y viven en su propio pool.
     public Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default) =>
         db
             .Invitations.IgnoreQueryFilters()
@@ -42,7 +45,11 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
                 invitation =>
                     invitation.TenantId == tenantId
                     && invitation.Status == InvitationStatus.Pending
-                    && invitation.ExpiresAtUtc > DateTime.UtcNow,
+                    && invitation.ExpiresAtUtc > DateTime.UtcNow
+                    && (
+                        invitation.ActorType == UserActorType.TenantEmployee
+                        || invitation.ActorType == UserActorType.TenantAdmin
+                    ),
                 ct
             );
 

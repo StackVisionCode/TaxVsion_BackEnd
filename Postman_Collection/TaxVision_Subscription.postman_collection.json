@@ -346,6 +346,85 @@
             "description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin (permiso: subscription.renew)."
           },
           "response": []
+        },
+        {
+          "name": "StartRenewCheckout (self-service renewal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/renew-checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "renew-checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4200/dashboard\",\n  \"cancelUrl\": \"http://localhost:4200/dashboard\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Renovación/reactivación self-service por HOSTED-CHECKOUT (owner/TenantAdmin) cuando la suscripción está en lapso (PastDue/GracePeriod/Suspended/Expired). Devuelve checkoutUrl del provider; al confirmarse el pago (webhook, o reconcile como fallback) la suscripción vuelve a Active. Permiso: subscription.plan_change."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    if (res.renewalIntentId) {",
+                  "        pm.environment.set(\"renewalIntentId\", res.renewalIntentId);",
+                  "        console.log(\"Renew checkout URL:\", res.checkoutUrl);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetRenewCheckoutStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/renew-checkout/{{renewalIntentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "renew-checkout",
+                "{{renewalIntentId}}"
+              ]
+            },
+            "description": "Estado de la intención de renovación (Pending/Paid/Provisioned/Failed) — se poll-ea al volver del checkout hasta Provisioned/Failed."
+          },
+          "response": []
         }
       ]
     },
@@ -477,6 +556,118 @@
               }
             }
           ]
+        },
+        {
+          "name": "GetSeatQuote",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/seats/quote?seatType=Standard&quantity=3",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "seats",
+                "quote"
+              ],
+              "query": [
+                {
+                  "key": "seatType",
+                  "value": "Standard"
+                },
+                {
+                  "key": "quantity",
+                  "value": "3"
+                }
+              ]
+            },
+            "description": "Cotización server-authoritative (precio unitario de período + prorrateo a hoy + total) para comprar N asientos. Read — la usa el modal de compra."
+          },
+          "response": []
+        },
+        {
+          "name": "StartSeatCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/seats/checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "seats",
+                "checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seatType\": \"Standard\",\n  \"quantity\": 2,\n  \"autoRenew\": true,\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4200/company/users\",\n  \"cancelUrl\": \"http://localhost:4200/company/users\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Compra por HOSTED-CHECKOUT (tenant SIN método en archivo). Devuelve la checkoutUrl del provider; los asientos se aprovisionan al confirmarse el pago (webhook). Permiso: seats.manage."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {\r",
+                  "    const res = pm.response.json();\r",
+                  "    if (res.seatPurchaseIntentId) {\r",
+                  "        pm.environment.set('seatPurchaseIntentId', res.seatPurchaseIntentId);\r",
+                  "        console.log('Checkout URL:', res.checkoutUrl);\r",
+                  "    }\r",
+                  "}\r"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetSeatCheckoutStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/seats/checkout/{{seatPurchaseIntentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "seats",
+                "checkout",
+                "{{seatPurchaseIntentId}}"
+              ]
+            },
+            "description": "Estado de una intención de checkout (Pending/Paid/Provisioned/Failed). El front lo poll-ea al volver del redirect hasta Provisioned."
+          },
+          "response": []
         },
         {
           "name": "AssignSeat",
@@ -1105,6 +1296,70 @@
                 }
               }
             }
+          },
+          "response": []
+        },
+        {
+          "name": "SetSeatPrices (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/seats/Standard/prices",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "seats",
+                "Standard",
+                "prices"
+              ]
+            },
+            "description": "Actualiza el precio mensual/anual del asiento de un tipo (Standard/Portal/Signature/ReadOnly/ServiceAccount). Afecta compras NUEVAS; las vigentes conservan su precio. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monthlyUsd\": 15,\n  \"yearlyUsd\": 150\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "RecalculateAllEntitlements (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/recalculate-entitlements/all",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "recalculate-entitlements",
+                "all"
+              ]
+            },
+            "description": "Backfill one-shot: abanica el recálculo de entitlements por cada plan publicado (reconcilia tenants EXISTENTES tras un cambio de forma del cupo, p.ej. el cap efectivo de staff = incluidos + asientos comprados). Idempotente; los tenants nuevos ya recalculan al crearse. Solo PlatformAdmin."
           },
           "response": []
         },

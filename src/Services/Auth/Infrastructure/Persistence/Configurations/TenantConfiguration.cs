@@ -22,6 +22,10 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
 
         builder.Property(tenant => tenant.IsActive).IsRequired();
 
+        builder.Property(tenant => tenant.BillingAccessBlocked).IsRequired().HasDefaultValue(false);
+
+        builder.Property(tenant => tenant.BillingBlockReason).HasMaxLength(50);
+
         builder.Property(tenant => tenant.CreatedAtUtc).IsRequired();
 
         builder.HasIndex(tenant => tenant.SubDomain).IsUnique();
@@ -35,6 +39,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
                 Kind = TenantKind.Platform,
                 DefaultTimeZoneId = "Etc/UTC",
                 IsActive = true,
+                BillingAccessBlocked = false,
                 CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc),
             }
         );

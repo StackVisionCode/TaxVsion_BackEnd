@@ -8,6 +8,9 @@ public interface IInvitationRepository
     Task<Invitation?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
     Task<bool> HasPendingAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task AddAsync(Invitation invitation, CancellationToken ct = default);
+
+    /// <summary>Cuenta invitaciones pendientes (no expiradas) que RESERVAN asiento: solo STAFF
+    /// (TenantEmployee/TenantAdmin). Las invitaciones de portal (clientes) no cuentan.</summary>
     Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default);
     Task<(IReadOnlyList<Invitation> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,

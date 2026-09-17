@@ -545,6 +545,9 @@ public sealed class CentralLoginHandlersTests
         public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
             Guid tenantId,
             int page,
@@ -576,6 +579,13 @@ public sealed class CentralLoginHandlersTests
 
         public Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task SetBillingBlockedAsync(
+            Guid tenantId,
+            bool blocked,
+            string? reason,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 
     private sealed class FakeMfaRepository : IMfaRepository

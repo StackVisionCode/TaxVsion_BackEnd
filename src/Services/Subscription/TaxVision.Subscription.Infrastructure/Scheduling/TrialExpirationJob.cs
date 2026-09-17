@@ -1,9 +1,11 @@
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -35,6 +37,7 @@ public sealed class TrialExpirationJob(
 
         foreach (var subscription in expired)
         {
+            var previousStatus = subscription.Status;
             var result = subscription.ExpireTrialWithoutConversion(actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
             {
@@ -53,6 +56,7 @@ public sealed class TrialExpirationJob(
             // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
             bus.TenantId = subscription.TenantId.ToString();
             await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
+            await bus.PublishStatusChangedAsync(subscription, previousStatus, SubscriptionChangeReason.TrialEnded);
         }
 
         if (expired.Count > 0)
