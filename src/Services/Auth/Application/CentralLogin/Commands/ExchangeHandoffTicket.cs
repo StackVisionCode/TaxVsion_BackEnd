@@ -85,6 +85,11 @@ public static class ExchangeHandoffTicketHandler
         if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
             return Result.Failure<HandoffSessionResponse>(invalid);
 
+        // Fase 2 — defensa en profundidad: DiscoverLogin ya excluye oficinas bloqueadas por billing para
+        // empleados/clientes, pero se re-chequea al materializar la sesión (el admin pasa).
+        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+            return Result.Failure<HandoffSessionResponse>(invalid);
+
         // Sesión única: si el usuario ya tiene una sesión activa en la oficina, se exige takeover en
         // vez de materializar; si no, se emite. El flag de enrolamiento MFA viaja en el vale.
         var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(

@@ -592,6 +592,46 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Renovación/reactivación self-service tras un pago confirmado por el dueño (Expiración/
+    /// Dunning, Fase 4). Válida desde los estados de lapso — PastDue/GracePeriod/Suspended/Expired — y
+    /// deja la suscripción Active con período nuevo, limpiando las marcas del lapso. A diferencia de
+    /// <see cref="ReactivateAfterAdminReview"/> (solo Suspended, acción de PlatformAdmin), esta la dispara
+    /// el propio tenant pagando; saca a Expired de ser terminal de forma controlada.</summary>
+    public Result ReactivateAfterSelfServicePayment(
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        if (
+            !IsOneOf(
+                Status,
+                SubscriptionStatus.PastDue,
+                SubscriptionStatus.GracePeriod,
+                SubscriptionStatus.Suspended,
+                SubscriptionStatus.Expired
+            )
+        )
+            return Result.Failure(
+                new Error("Subscription.InvalidTransition", $"Cannot self-service renew from {Status}.")
+            );
+
+        if (periodEndUtc <= periodStartUtc)
+            return Result.Failure(new Error("Subscription.InvalidPeriod", "Period end must be after period start."));
+
+        Status = SubscriptionStatus.Active;
+        SuspendedAtUtc = null;
+        SuspensionReason = null;
+        ExpiredAtUtc = null;
+        GracePeriodEndsAtUtc = null;
+        CurrentPeriodStartUtc = periodStartUtc;
+        CurrentPeriodEndUtc = periodEndUtc;
+        NextRenewalAtUtc = periodEndUtc;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result ExpireAfterSuspensionTimeout(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SubscriptionStatus.Suspended)

@@ -54,7 +54,10 @@ public sealed class ComposeInternalBaseUrlWiringTests
                 missing.Add($"{service} → {key}: {expected}");
         }
 
-        Assert.True(missing.Count == 0, "Overrides de base-URL interna faltantes en compose:\n" + string.Join("\n", missing));
+        Assert.True(
+            missing.Count == 0,
+            "Overrides de base-URL interna faltantes en compose:\n" + string.Join("\n", missing)
+        );
     }
 
     // Recorta el bloque de un servicio (desde "  <name>:" hasta el siguiente servicio al mismo nivel).
@@ -89,6 +92,8 @@ public sealed class ComposeInternalBaseUrlWiringTests
             dir = dir.Parent;
         }
 
-        throw new FileNotFoundException($"Could not locate '{relativePath}' walking up from {AppContext.BaseDirectory}.");
+        throw new FileNotFoundException(
+            $"Could not locate '{relativePath}' walking up from {AppContext.BaseDirectory}."
+        );
     }
 }

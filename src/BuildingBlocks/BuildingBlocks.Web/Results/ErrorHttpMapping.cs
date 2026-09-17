@@ -226,6 +226,10 @@ public static class ErrorHttpMapping
             or "Mfa.RequiredByPolicy"
             or "Auth.StepUpRequired"
             or "Subscription.Suspended"
+            // Expiración/Dunning (Fase 2): acceso cortado porque la suscripción de la oficina cayó en
+            // lapso. Es un bloqueo de autorización (como Tenant.Inactive/Subscription.Suspended), no un
+            // 400 genérico — el front lo detecta por el code para mostrar la pantalla de renovación.
+            or "Auth.SubscriptionInactive"
             or "StorageQuota.Suspended"
             or "File.NotAvailable"
             or "IncomingEmailAttachment.Blocked"

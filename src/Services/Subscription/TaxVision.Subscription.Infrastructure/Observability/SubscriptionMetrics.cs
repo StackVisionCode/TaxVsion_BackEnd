@@ -19,6 +19,8 @@ public sealed class SubscriptionMetrics : ISubscriptionMetrics, IDisposable
     private readonly Counter<long> _billedCentsTotal;
     private readonly Counter<long> _seatsPurchasedTotal;
     private readonly Counter<long> _seatsBilledCentsTotal;
+    private readonly Counter<long> _statusTransitionsTotal;
+    private readonly Counter<long> _selfServiceRenewalsTotal;
 
     public SubscriptionMetrics()
         : this(MeterName) { }
@@ -33,6 +35,8 @@ public sealed class SubscriptionMetrics : ISubscriptionMetrics, IDisposable
         _billedCentsTotal = _meter.CreateCounter<long>("subscription.addons.billed_cents_total");
         _seatsPurchasedTotal = _meter.CreateCounter<long>("subscription.seats.purchased_total");
         _seatsBilledCentsTotal = _meter.CreateCounter<long>("subscription.seats.billed_cents_total");
+        _statusTransitionsTotal = _meter.CreateCounter<long>("subscription.status.transitions_total");
+        _selfServiceRenewalsTotal = _meter.CreateCounter<long>("subscription.self_service.renewals_total");
     }
 
     public void RecordAddOnPurchased(string addOnCode) =>
@@ -52,6 +56,17 @@ public sealed class SubscriptionMetrics : ISubscriptionMetrics, IDisposable
 
     public void RecordSeatsBilled(string seatType, long amountCents) =>
         _seatsBilledCentsTotal.Add(amountCents, new KeyValuePair<string, object?>("seat_type", seatType));
+
+    public void RecordStatusTransition(string from, string to, string reason) =>
+        _statusTransitionsTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("from", from),
+            new KeyValuePair<string, object?>("to", to),
+            new KeyValuePair<string, object?>("reason", reason)
+        );
+
+    public void RecordSelfServiceRenewal(string outcome) =>
+        _selfServiceRenewalsTotal.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
 
     public void Dispose() => _meter.Dispose();
 }

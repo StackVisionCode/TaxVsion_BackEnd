@@ -51,7 +51,21 @@ public sealed class SeatCheckoutReconciliationJob(
         {
             try
             {
-                if (await ReconcileOneAsync(intent, subscriptions, seats, payments, audit, metrics, unitOfWork, bus, jobLogger, nowUtc, ct))
+                if (
+                    await ReconcileOneAsync(
+                        intent,
+                        subscriptions,
+                        seats,
+                        payments,
+                        audit,
+                        metrics,
+                        unitOfWork,
+                        bus,
+                        jobLogger,
+                        nowUtc,
+                        ct
+                    )
+                )
                     provisionedCount++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -93,7 +107,11 @@ public sealed class SeatCheckoutReconciliationJob(
             var subscription = await subscriptions.GetByTenantIdAsync(intent.TenantId, ct);
             if (subscription is null)
             {
-                logger.LogWarning("Reconcile: tenant {TenantId} has no subscription for intent {IntentId}.", intent.TenantId, intent.Id);
+                logger.LogWarning(
+                    "Reconcile: tenant {TenantId} has no subscription for intent {IntentId}.",
+                    intent.TenantId,
+                    intent.Id
+                );
                 return false;
             }
 

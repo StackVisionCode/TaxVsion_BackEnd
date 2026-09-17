@@ -63,9 +63,7 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
     /// <summary>Estado de un pago de asientos — lo consulta el job de reconciliación de Subscription para
     /// aprovisionar intenciones que quedaron Pending pese a un pago confirmado (evento de resultado perdido).</summary>
     [HttpGet("payments/{saaSPaymentId:guid}")]
-    [RateLimitExempt(
-        "M2M ServiceOnly — invocado por el reconcile de Subscription; nunca expuesto al Gateway público."
-    )]
+    [RateLimitExempt("M2M ServiceOnly — invocado por el reconcile de Subscription; nunca expuesto al Gateway público.")]
     [ProducesResponseType<SeatPaymentStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPaymentStatus(
         Guid saaSPaymentId,

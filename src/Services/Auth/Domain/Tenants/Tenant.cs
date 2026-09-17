@@ -14,6 +14,15 @@ public sealed class Tenant : BaseEntity
     public TenantKind Kind { get; private set; }
     public string DefaultTimeZoneId { get; private set; } = default!;
     public bool IsActive { get; private set; }
+
+    /// <summary>Acceso bloqueado por facturación (suscripción Suspended/Expired) — DISTINTO de
+    /// <see cref="IsActive"/> (suspensión admin/seguridad). Lo mueve el ciclo de vida de la suscripción,
+    /// no el admin de plataforma, para poder mostrarle al usuario el mensaje correcto ("renueva para
+    /// recuperar acceso" vs "cuenta suspendida"). Los gates de login lo consultan.</summary>
+    public bool BillingAccessBlocked { get; private set; }
+
+    public string? BillingBlockReason { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
 
     public static Result<Tenant> Register(
@@ -82,4 +91,11 @@ public sealed class Tenant : BaseEntity
     public void Activate() => IsActive = true;
 
     public void SetActive(bool isActive) => IsActive = isActive;
+
+    /// <summary>Marca/limpia el bloqueo de acceso por facturación. Idempotente.</summary>
+    public void SetBillingAccess(bool blocked, string? reason)
+    {
+        BillingAccessBlocked = blocked;
+        BillingBlockReason = blocked ? reason : null;
+    }
 }

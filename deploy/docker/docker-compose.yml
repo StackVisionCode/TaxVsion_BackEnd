@@ -707,6 +707,9 @@ services:
       Subscription__ServiceAuth__ClientId: ${SUBSCRIPTION_SERVICE_CLIENT_ID:-subscription-worker}
       Subscription__ServiceAuth__ClientSecret: ${SUBSCRIPTION_SERVICE_CLIENT_SECRET:-}
       Subscription__Growth__BaseUrl: http://growth-api:8080
+      # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
+      # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
+      Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1583,6 +1586,10 @@ services:
       # ({sub}.{TenantBaseDomain}/payments-client/invoices/{ref}) — el mismo host que la firma. Mismo
       # valor que Onboarding__TenantBaseDomain / TenantDomains__BaseDomain.
       PaymentClient__Public__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # Base (fallback) de la PAGINA de checkout del frontend ({base}/pay/{token}) para el caso SIN
+      # subdominio; con subdominio se usa TenantBaseDomain igual que la factura. Sin esto caia al
+      # default de dev localhost:4200. Overridable por PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL.
+      PaymentClient__Public__CheckoutPageBaseUrl: ${PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL:-https://taxproffice.com}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
       # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
       # humanos de config de pago (settings 2B). Mismo modo que documents-api.

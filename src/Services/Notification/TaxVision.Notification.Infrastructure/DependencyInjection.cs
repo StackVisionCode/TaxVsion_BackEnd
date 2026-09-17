@@ -196,6 +196,12 @@ public static class DependencyInjection
         // Módulo de campañas.
         services.AddScoped<IEmailCampaignRepository, EmailCampaignRepository>();
 
+        // Observabilidad del ciclo de vida de la suscripción (Expiración/Dunning, Fase 6).
+        services.AddSingleton<
+            TaxVision.Notification.Application.Abstractions.ISubscriptionEmailMetrics,
+            Observability.SubscriptionEmailMetrics
+        >();
+
         AddRateLimitTierQuotas(services, configuration);
 
         return services;

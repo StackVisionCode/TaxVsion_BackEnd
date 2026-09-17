@@ -144,6 +144,28 @@ public interface ISeatPurchaseIntentRepository
     );
 }
 
+/// <summary>Intenciones de renovación/reactivación self-service por hosted-checkout (Expiración/Dunning,
+/// Fase 4). Espejo de <see cref="ISeatPurchaseIntentRepository"/>.</summary>
+public interface IRenewalCheckoutIntentRepository
+{
+    Task AddAsync(SubscriptionRenewalIntent intent, CancellationToken ct = default);
+
+    /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
+    Task<SubscriptionRenewalIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
+    /// tenant del evento antes de mutar.</summary>
+    Task<SubscriptionRenewalIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant (job de reconciliación): intenciones <c>Pending</c> con pago ya emitido creadas
+    /// antes de <paramref name="olderThanUtc"/>. Ignora el filtro fail-closed; el job arrastra el TenantId.</summary>
+    Task<IReadOnlyList<SubscriptionRenewalIntent>> FindStalePendingWithPaymentAsync(
+        DateTime olderThanUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+}
+
 /// <summary>Catálogo GLOBAL singleton de precios de asiento (no por tenant) — el equivalente de
 /// <see cref="IAddOnDefinitionRepository"/> para seats. Sembrado al arrancar.</summary>
 public interface ISeatPricingRepository

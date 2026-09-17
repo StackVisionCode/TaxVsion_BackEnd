@@ -323,6 +323,9 @@ jobs:
           # (payment links, redirects post-checkout) apuntaba a localhost. Faltaba del
           # todo en este workflow.
           PAYMENTCLIENT_PUBLIC_BASE_URL=${{ secrets.PAYMENTCLIENT_PUBLIC_BASE_URL }}
+          # Pagina de checkout (frontend) para el fallback sin-subdominio; con subdominio se usa
+          # TenantBaseDomain. Default en compose https://taxproffice.com si el secret esta vacio.
+          PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL=${{ secrets.PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto

@@ -5,7 +5,7 @@ using TaxVision.Scribe.Application.Templates.Validation;
 namespace TaxVision.Scribe.Tests.Templates.Seed;
 
 /// <summary>
-/// Recorre los 23 seeds: cada Html/Subject debe parsear como Fluid (caza typos en {% if %}/{{ }}),
+/// Recorre los 27 seeds: cada Html/Subject debe parsear como Fluid (caza typos en {% if %}/{{ }}),
 /// el Html debe pasar el preflight de seguridad, y ninguno debe seguir mencionando la marca vieja.
 /// </summary>
 public sealed class NotificationTemplateSeedSourceTests

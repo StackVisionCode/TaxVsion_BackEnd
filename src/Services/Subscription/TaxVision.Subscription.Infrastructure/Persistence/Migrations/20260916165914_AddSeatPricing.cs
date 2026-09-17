@@ -18,12 +18,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SeatPricings", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SeatPriceTiers",
@@ -34,7 +35,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     SeatType = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     BillingCycle = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     UnitAmount = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: false),
-                    Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false)
+                    Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -44,24 +45,25 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.SeatPricingId,
                         principalTable: "SeatPricings",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SeatPriceTiers_SeatPricingId_SeatType_BillingCycle",
                 table: "SeatPriceTiers",
                 columns: new[] { "SeatPricingId", "SeatType", "BillingCycle" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SeatPriceTiers");
+            migrationBuilder.DropTable(name: "SeatPriceTiers");
 
-            migrationBuilder.DropTable(
-                name: "SeatPricings");
+            migrationBuilder.DropTable(name: "SeatPricings");
         }
     }
 }

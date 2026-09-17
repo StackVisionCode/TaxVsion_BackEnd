@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 5
+    int ContentVersion = 6
 );
 
 /// <summary>
@@ -56,6 +56,10 @@ public static class NotificationTemplateSeedSource
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
             OnboardingPaymentFailed,
+            SubscriptionPaymentFailed,
+            SubscriptionSuspended,
+            SubscriptionExpired,
+            SubscriptionReactivated,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -92,6 +96,10 @@ public static class NotificationTemplateSeedSource
         ["onboarding.registration_ready"] = "Payment confirmed — finish creating your account to get started.",
         ["onboarding.receipt_ready"] = "Your payment receipt is ready to view and download.",
         ["onboarding.payment_failed"] = "Your payment didn't go through — you can try again in a moment.",
+        ["subscription.payment_failed"] = "We couldn't renew your subscription — update your payment to keep access.",
+        ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
+        ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
+        ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -764,6 +772,165 @@ public static class NotificationTemplateSeedSource
                     "Motivo legible del fallo; si falta, se omite la línea."
                 ),
                 ("retry_url", VariableType.Url, true, null, "Entrada del landing con el plan/ciclo preseleccionados."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    // Ciclo de vida de la suscripción (plan de Expiración/Dunning, Fase 3). Auth resuelve el admin y
+    // publica el email-request; Notification elige uno de estos 4 por Status. Mismo palette/molde que
+    // OnboardingPaymentFailed. Todos usan {{ renew_url }} (login de la oficina) como CTA.
+    private static NotificationTemplateSeed SubscriptionPaymentFailed { get; } =
+        new(
+            EventKey: "subscription.payment_failed.v1",
+            TemplateKey: "subscription.payment_failed",
+            Name: "Suscripción — Pago de renovación fallido",
+            Subject: "Action needed: your {{ product_name }} subscription payment failed",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">We couldn't renew your subscription</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we couldn't process the renewal for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.{% if grace_end_date != blank %} Your access stays active until <strong style="color:#23384B;">{{ grace_end_date }}</strong>, but it will be paused if the payment isn't updated by then.{% else %} Please update your payment method to keep your access.{% endif %}</td></tr>
+              {% if failure_reason != blank %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Reason: {{ failure_reason }}</td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:46px;v-text-anchor:middle;width:190px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Update payment</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Update payment</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">If you've already updated your payment method, you can ignore this email.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                (
+                    "grace_end_date",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Fin de la ventana de gracia ya formateado; si falta, se omite la fecha."
+                ),
+                (
+                    "failure_reason",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Motivo legible del fallo; si falta, se omite la línea."
+                ),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para actualizar el pago."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionSuspended { get; } =
+        new(
+            EventKey: "subscription.suspended.v1",
+            TemplateKey: "subscription.suspended",
+            Name: "Suscripción — Suspendida",
+            Subject: "Your {{ product_name }} subscription is on hold",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your subscription is on hold</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan has been suspended because we couldn't collect payment. Your team's access is paused until the subscription is renewed — your data is safe in the meantime.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:46px;v-text-anchor:middle;width:210px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Renew subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Renew subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Need a hand? Reach out to support and we'll help you get back up and running.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para renovar."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionExpired { get; } =
+        new(
+            EventKey: "subscription.expired.v1",
+            TemplateKey: "subscription.expired",
+            Name: "Suscripción — Expirada",
+            Subject: "Your {{ product_name }} subscription has expired",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your subscription has expired</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan has expired and access is now closed. Renew whenever you're ready to pick up right where you left off — your data is safe and waiting.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:46px;v-text-anchor:middle;width:210px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Renew subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Renew subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">If you'd rather not renew, no action is needed. Your account will stay closed until you come back.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para renovar."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionReactivated { get; } =
+        new(
+            EventKey: "subscription.reactivated.v1",
+            TemplateKey: "subscription.reactivated",
+            Name: "Suscripción — Reactivada",
+            Subject: "Your {{ product_name }} subscription is active again",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You're all set — welcome back</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, good news: your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan is active again and full access has been restored for your whole team.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:46px;v-text-anchor:middle;width:210px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Go to your workspace</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Go to your workspace</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Thanks for staying with {{ product_name }}. If anything looks off, reach out to support anytime.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
             ]
         );

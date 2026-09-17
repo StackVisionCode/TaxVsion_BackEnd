@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
         services.AddScoped<ISeatPurchaseIntentRepository, SeatPurchaseIntentRepository>();
+        services.AddScoped<IRenewalCheckoutIntentRepository, RenewalCheckoutIntentRepository>();
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
@@ -95,6 +96,17 @@ public static class DependencyInjection
             .AddOptions<PaymentAppClientOptions>()
             .Bind(configuration.GetSection(PaymentAppClientOptions.SectionName));
         services.AddHttpClient<ISeatCheckoutPaymentClient, PaymentApp.PaymentAppSeatCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Expiración/Dunning Fase 4 — M2M contra PaymentApp para el hosted-checkout de una renovación/
+        // reactivación self-service. Mismo cliente/patrón que el de seats de arriba.
+        services.AddHttpClient<IRenewalCheckoutPaymentClient, PaymentApp.PaymentAppRenewalCheckoutClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;

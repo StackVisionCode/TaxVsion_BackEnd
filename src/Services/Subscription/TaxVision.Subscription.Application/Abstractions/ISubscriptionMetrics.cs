@@ -16,4 +16,12 @@ public interface ISubscriptionMetrics
 
     /// <summary>Ingreso facturado (intent de cobro) de asientos, en centavos.</summary>
     void RecordSeatsBilled(string seatType, long amountCents);
+
+    /// <summary>Transición de estado del ciclo de vida de la suscripción base (Expiración/Dunning). Tags
+    /// <c>from</c>/<c>to</c>/<c>reason</c> — nunca lleva tenantId (cardinalidad/PII).</summary>
+    void RecordStatusTransition(string from, string to, string reason);
+
+    /// <summary>Resultado de una renovación/reactivación self-service. <paramref name="outcome"/> =
+    /// <c>succeeded</c> | <c>failed</c>.</summary>
+    void RecordSelfServiceRenewal(string outcome);
 }

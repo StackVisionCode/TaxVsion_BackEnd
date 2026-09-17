@@ -6,6 +6,7 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
 using TaxVision.PaymentApp.Application.SeatsCheckouts;
+using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
@@ -76,11 +77,14 @@ public sealed class PendingChargeReconciliationJob(
             return false;
 
         var adapter = providerFactory.Resolve(payment.ProviderCode);
-        var statusResult =
-            payment.Type == SaaSPaymentType.OnboardingInitial
-            && !string.IsNullOrWhiteSpace(payment.ProviderCheckoutSessionId)
-                ? await adapter.FinalizeHostedCheckoutAsync(payment.ExternalChargeReference.Value, payment.Amount, ct)
-                : await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        // Cualquier pago por HOSTED-CHECKOUT guarda como referencia el id de la SESIÓN (cs_...), no el del
+        // PaymentIntent — así que hay que FINALIZAR la sesión (resolverla a su cargo real) para conocer su
+        // estado; GetChargeStatusAsync espera un PaymentIntent y no confirma una sesión. Aplica a onboarding,
+        // seats y renovación self-service por igual (antes solo onboarding lo hacía, dejando a los otros dos
+        // sin reconciliar cuando el webhook no llegaba — el gap que reveló el pago real de renovación).
+        var statusResult = !string.IsNullOrWhiteSpace(payment.ProviderCheckoutSessionId)
+            ? await adapter.FinalizeHostedCheckoutAsync(payment.ExternalChargeReference.Value, payment.Amount, ct)
+            : await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
         if (statusResult.IsFailure)
         {
             logger.LogWarning(
@@ -152,5 +156,7 @@ public sealed class PendingChargeReconciliationJob(
             await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
         else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
             await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
+        else if (payment.Type == SaaSPaymentType.SubscriptionRenewalCheckout)
+            await SubscriptionRenewalCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
     }
 }

@@ -140,7 +140,8 @@ builder
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "auth-service",
-    TaxVision.Auth.Infrastructure.Onboarding.Observability.OnboardingMetrics.MeterName
+    TaxVision.Auth.Infrastructure.Onboarding.Observability.OnboardingMetrics.MeterName,
+    TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics.MeterName
 );
 
 // Rate limiting para los endpoints públicos de resolución de tenant (Fase A4) —
@@ -480,6 +481,10 @@ builder.Host.UseWolverine(options =>
     // no tiene ninguna ruta para el mensaje y lo descarta en silencio — mismo patrón exacto que
     // Documents.Api Program.cs usa para el mismo evento (cola dedicada point-to-point).
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-external-uploads");
+    // Expiración/Dunning (Fase 3) — Auth resuelve el admin del tenant y republica el email-request para
+    // que Notification lo renderice y envíe. Sin esta ruta, Wolverine lo entregaría solo in-process y
+    // Notification (otro servicio) nunca se enteraría — mismo antipatrón que los comentarios de arriba.
+    options.PublishMessage<TenantSubscriptionEmailRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options

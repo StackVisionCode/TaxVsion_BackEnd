@@ -22,6 +22,10 @@ public interface IUserRepository
     /// <summary>Cuenta usuarios activos que CONSUMEN asiento: solo STAFF (TenantEmployee/TenantAdmin).
     /// Los usuarios de portal (clientes) no cuentan — no consumen asientos del plan.</summary>
     Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Admin/owner primario del tenant (TenantAdmin activo más antiguo) — destinatario de las
+    /// notificaciones de facturación/ciclo de vida de la suscripción. <c>null</c> si no hay ninguno.</summary>
+    Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default);
     Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,

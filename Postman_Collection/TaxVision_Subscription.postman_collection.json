@@ -346,6 +346,85 @@
             "description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin (permiso: subscription.renew)."
           },
           "response": []
+        },
+        {
+          "name": "StartRenewCheckout (self-service renewal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/renew-checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "renew-checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4200/dashboard\",\n  \"cancelUrl\": \"http://localhost:4200/dashboard\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Renovación/reactivación self-service por HOSTED-CHECKOUT (owner/TenantAdmin) cuando la suscripción está en lapso (PastDue/GracePeriod/Suspended/Expired). Devuelve checkoutUrl del provider; al confirmarse el pago (webhook, o reconcile como fallback) la suscripción vuelve a Active. Permiso: subscription.plan_change."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    if (res.renewalIntentId) {",
+                  "        pm.environment.set(\"renewalIntentId\", res.renewalIntentId);",
+                  "        console.log(\"Renew checkout URL:\", res.checkoutUrl);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetRenewCheckoutStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/renew-checkout/{{renewalIntentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "renew-checkout",
+                "{{renewalIntentId}}"
+              ]
+            },
+            "description": "Estado de la intención de renovación (Pending/Paid/Provisioned/Failed) — se poll-ea al volver del checkout hasta Provisioned/Failed."
+          },
+          "response": []
         }
       ]
     },

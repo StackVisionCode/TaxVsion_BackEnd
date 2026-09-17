@@ -63,6 +63,13 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
                 ct
             );
 
+    public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .Users.IgnoreQueryFilters()
+            .Where(user => user.TenantId == tenantId && user.IsActive && user.ActorType == UserActorType.TenantAdmin)
+            .OrderBy(user => user.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,

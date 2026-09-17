@@ -56,6 +56,13 @@ public sealed class TenantResolverTests
         ) => Task.CompletedTask;
 
         public Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task SetBillingBlockedAsync(
+            Guid tenantId,
+            bool blocked,
+            string? reason,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
     }
 
     private sealed class FakeTenantResolutionCache : ITenantResolutionCache
