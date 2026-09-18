@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { CallRepository } from '../ports/call-repository.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import { CallEventTypes, type CallEndedEvent } from '../../contracts/events/call-events.js';
 import type { CallStateDto } from '../../contracts/socket/call-socket-events.js';
 import type { CallEndReason } from '../../domain/calls/call.js';
+import { appendCallSystemMessage, callSystemMessageBody } from './append-call-system-message.js';
 
 /**
  * Comando: terminar una llamada activa. Solo caller o callee. Emite
@@ -27,8 +30,10 @@ export interface EndCallResult {
 
 export interface EndCallDeps {
   readonly calls: CallRepository;
+  readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
+  readonly emitter: RealtimeEmitter;
 }
 
 export async function endCall(
@@ -90,6 +95,25 @@ export async function endCall(
     recordingFileId: snapshot.recordingFileId,
   };
   await deps.publisher.enqueue(endedEvent);
+
+  // Registrar en el historial del chat (estilo WhatsApp): "Call · 2:34" / "Video call · 2:34". Solo llega
+  // acá si la llamada fue contestada (el guard del dominio exige Accepted/Active para end) → siempre es una
+  // llamada COMPLETADA, no perdida. Best-effort: no rompe el fin de la llamada si falla.
+  if (snapshot.conversationId) {
+    await appendCallSystemMessage(
+      {
+        tenantId: command.tenantId,
+        conversationId: snapshot.conversationId,
+        body: callSystemMessageBody({
+          status: 'Ended',
+          kind: snapshot.kind,
+          durationSeconds: snapshot.durationSeconds,
+        }),
+        now,
+      },
+      deps,
+    ).catch(() => undefined);
+  }
 
   const result: EndCallResult = {
     state: {

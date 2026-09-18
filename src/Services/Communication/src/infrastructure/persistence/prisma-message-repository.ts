@@ -16,6 +16,27 @@ import { toDomainMessage } from './conversation-mapper.js';
 export class PrismaMessageRepository implements MessageRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  /**
+   * Reintenta una operación ante un deadlock/write-conflict de SQL Server (Prisma P2034), que es
+   * TRANSITORIO — el propio Prisma pide reintentar. Sin esto, dos `mark_read` concurrentes sobre los
+   * mismos receipts se pisaban y el throw subía sin capturar hasta el handler de socket → unhandled
+   * rejection → **caída de TODO el servicio**. Backoff corto y creciente; tras agotar, re-lanza.
+   */
+  private async runWithDeadlockRetry<T>(op: () => Promise<T>, attempts = 4): Promise<T> {
+    for (let i = 1; ; i++) {
+      try {
+        return await op();
+      } catch (err) {
+        const code = (err as { code?: unknown }).code;
+        if (code === 'P2034' && i < attempts) {
+          await new Promise((resolve) => setTimeout(resolve, 20 * i));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   async findById(tenantId: string, messageId: string): Promise<Message | null> {
     const row = await this.prisma.message.findFirst({
       where: { Id: messageId, TenantId: tenantId },
@@ -179,10 +200,11 @@ export class PrismaMessageRepository implements MessageRepository {
     //   1) buscar los receipts existentes de este usuario en los ids objetivo;
     //   2) createMany solo con los que faltan;
     //   3) updateMany para marcar ReadAtUtc en los que estan pero sin leer.
-    await this.prisma.$transaction(async (tx) => {
-      for (const chunk of chunks(targetMessageIds, 200)) {
-        const ids = chunk.map((m) => m.Id);
-        const existing = await tx.messageReceipt.findMany({
+    await this.runWithDeadlockRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        for (const chunk of chunks(targetMessageIds, 200)) {
+          const ids = chunk.map((m) => m.Id);
+          const existing = await tx.messageReceipt.findMany({
           where: { UserId: input.userId, TenantId: input.tenantId, MessageId: { in: ids } },
           select: { MessageId: true },
         });
@@ -209,7 +231,8 @@ export class PrismaMessageRepository implements MessageRepository {
           data: { ReadAtUtc: input.now },
         });
       }
-    });
+      }),
+    );
     return { markedCount: targetMessageIds.length };
   }
 
@@ -267,10 +290,11 @@ export class PrismaMessageRepository implements MessageRepository {
 
     // Idempotente y delivered-only (NO toca ReadAtUtc): createMany solo los que faltan.
     // Un receipt existente ya tiene DeliveredAtUtc (read setea ambos), así que no hay update.
-    await this.prisma.$transaction(async (tx) => {
-      for (const chunk of chunks(targetMessageIds, 200)) {
-        const ids = chunk.map((m) => m.Id);
-        const existing = await tx.messageReceipt.findMany({
+    await this.runWithDeadlockRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        for (const chunk of chunks(targetMessageIds, 200)) {
+          const ids = chunk.map((m) => m.Id);
+          const existing = await tx.messageReceipt.findMany({
           where: { UserId: input.userId, TenantId: input.tenantId, MessageId: { in: ids } },
           select: { MessageId: true },
         });
@@ -287,7 +311,8 @@ export class PrismaMessageRepository implements MessageRepository {
           });
         }
       }
-    });
+      }),
+    );
     return { markedCount: targetMessageIds.length };
   }
 

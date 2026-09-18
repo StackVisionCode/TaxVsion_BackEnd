@@ -25,6 +25,10 @@ export interface RespondCommand {
 export interface RespondResult {
   readonly state: CallStateDto;
   readonly peer: CallPeerDto | null;
+  /** Participantes — para que el handler enrute el estado terminal a sus user rooms (el callee que aún
+   * NO aceptó no está en el room de la call; sin esto su modal de "incoming" no se cierra al cancelar). */
+  readonly callerUserId: string;
+  readonly calleeUserId: string;
 }
 
 export interface RespondCallDeps {
@@ -139,7 +143,12 @@ export async function respondToCall(
         }
       : null;
 
-  const result: RespondResult = { state, peer };
+  const result: RespondResult = {
+    state,
+    peer,
+    callerUserId: snapshot.callerUserId,
+    calleeUserId: snapshot.calleeUserId,
+  };
   await deps.idempotency.commit({
     tenantId: command.tenantId,
     userId: command.actorUserId,

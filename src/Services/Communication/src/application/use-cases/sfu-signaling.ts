@@ -1,6 +1,6 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
-import type { SfuService, TransportInfo, ConsumerInfo, RemoteProducerInfo } from '../ports/sfu-service.js';
+import type { SfuService, TransportInfo, ConsumerInfo, RemoteProducerInfo, SfuMediaSource } from '../ports/sfu-service.js';
 import type { TurnCredentialFactory, IceServer } from '../ports/turn-credential-factory.js';
 import type { types as MediasoupTypes } from 'mediasoup';
 
@@ -107,6 +107,7 @@ export async function produceSfuMedia(
     transportId: string;
     kind: MediasoupTypes.MediaKind;
     rtpParameters: MediasoupTypes.RtpParameters;
+    source?: SfuMediaSource;
   },
   deps: SfuDeps,
 ): Promise<Result<{ producerId: string }>> {

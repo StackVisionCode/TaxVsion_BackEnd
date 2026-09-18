@@ -4,6 +4,13 @@ import { MessageKind } from './message-kind.js';
 import { makeMessageBody, type MessageBody } from './message-body.js';
 
 /**
+ * Sentinel `senderId` de los mensajes de sistema (kind=System): NO es un usuario
+ * real de Auth, así que nunca coincide con un userId → el front lo pinta centrado
+ * (nunca como "mi" burbuja). UUID nil por claridad.
+ */
+export const SYSTEM_SENDER_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
  * Entidad hija del aggregate Conversation. NO se persiste directamente por
  * repos externos — se muta a traves del root (Conversation).
  *
@@ -120,6 +127,44 @@ export class Message {
         editedAtUtc: null,
         audioDurationMs: input.audioDurationMs ?? null,
         audioWaveform: input.audioWaveform ?? null,
+      }),
+    );
+  }
+
+  /**
+   * Evento del sistema (kind=System): generado por el server, no por un usuario
+   * (p.ej. "Missed call"). No pasa por el guard de participante — el emisor no es
+   * un usuario sino el sentinel `SYSTEM_SENDER_ID`. El front lo pinta centrado.
+   * No editable ni borrable (createText/edit exigen kind=Text).
+   */
+  static createSystem(input: {
+    conversationId: string;
+    tenantId: string;
+    body: string;
+    now?: Date;
+  }): Result<Message> {
+    return Result.ok(
+      new Message({
+        id: randomUUID(),
+        conversationId: input.conversationId,
+        tenantId: input.tenantId,
+        senderId: SYSTEM_SENDER_ID,
+        senderDisplayName: 'System',
+        kind: MessageKind.System,
+        body: input.body.trim().slice(0, 4000),
+        attachmentFileId: null,
+        replyToMessageId: null,
+        forwardedFromMessageId: null,
+        isEdited: false,
+        isDeleted: false,
+        isPinned: false,
+        pinnedAtUtc: null,
+        pinnedByUserId: null,
+        deletedAtUtc: null,
+        createdAtUtc: input.now ?? new Date(),
+        editedAtUtc: null,
+        audioDurationMs: null,
+        audioWaveform: null,
       }),
     );
   }

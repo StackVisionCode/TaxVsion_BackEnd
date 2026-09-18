@@ -320,6 +320,26 @@ export class Conversation {
   }
 
   /**
+   * Evento del sistema (kind=System): p.ej. "Missed call". Generado por el
+   * server, no por un usuario → NO pasa por `ensureActiveParticipant`. Se
+   * materializa como mensaje normal (persiste + emite) para que quede en el
+   * historial de la conversación en ambos lados.
+   */
+  appendSystemMessage(input: { body: string; now?: Date }): Result<Message> {
+    const now = input.now ?? new Date();
+    const messageResult = Message.createSystem({
+      conversationId: this.state.id,
+      tenantId: this.state.tenantId,
+      body: input.body,
+      now,
+    });
+    if (!messageResult.isSuccess) return messageResult;
+
+    this.applyNewMessage(messageResult.value, now);
+    return messageResult;
+  }
+
+  /**
    * Group o Meeting: agrega un miembro.
    *
    * Group: el actor debe ser ya participante activo (invita a otro) — la

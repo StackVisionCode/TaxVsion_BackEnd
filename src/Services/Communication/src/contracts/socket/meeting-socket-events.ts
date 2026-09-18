@@ -178,6 +178,9 @@ export const SfuProducePayloadSchema = z.object({
   transportId: z.string().min(1),
   kind: z.enum(['audio', 'video']),
   rtpParameters: z.record(z.string(), z.unknown()),
+  // Distingue la cámara del screen-share cuando un participante produce DOS videos a la vez (Zoom-style).
+  // Opcional/retrocompatible: un cliente viejo que no lo manda queda como 'camera'.
+  source: z.enum(['camera', 'screen']).optional().default('camera'),
 });
 export type SfuProducePayload = z.infer<typeof SfuProducePayloadSchema>;
 
@@ -306,6 +309,8 @@ export interface SfuNewProducerDto {
   userId: string;
   producerId: string;
   kind: 'audio' | 'video';
+  /** 'camera' (default) o 'screen' — para que el receptor pinte cámara vs pantalla en tiles separados. */
+  source: 'camera' | 'screen';
 }
 
 export interface SfuProducerClosedDto {

@@ -39,7 +39,26 @@ import { startPresenceChangedWatcher } from './infrastructure/redis/presence-cha
 import { redisSub } from './infrastructure/redis/redis-client.js';
 import { seedDefaultNotificationActionMappings } from './infrastructure/seed/seed-notification-action-mappings.js';
 
+/**
+ * Red de seguridad del proceso: un error async no capturado en un handler de socket (p.ej. un deadlock
+ * transitorio de Prisma, P2034) NO debe tumbar TODO el servicio de realtime — eso deja sin chat/llamadas
+ * a todos los tenants conectados. Se registra y se sigue. Los errores esperables ya se manejan en su sitio;
+ * esto es la última línea para lo imprevisto (Node por defecto termina el proceso ante estos eventos).
+ */
+function installProcessSafetyNet(): void {
+  process.on('unhandledRejection', (reason) => {
+    logger.error(
+      { err: reason instanceof Error ? reason.message : String(reason), stack: reason instanceof Error ? reason.stack : undefined },
+      'Unhandled promise rejection — logged and swallowed to keep the service alive',
+    );
+  });
+  process.on('uncaughtException', (err) => {
+    logger.error({ err: err.message, stack: err.stack }, 'Uncaught exception — logged; service kept alive');
+  });
+}
+
 async function main(): Promise<void> {
+  installProcessSafetyNet();
   // Fase Backend 11 — sin `announcedIp`, mediasoup (SFU, meetings >4
   // participantes) anuncia `listenIp` (tipicamente 0.0.0.0 o una IP privada de
   // contenedor/VM) en los ICE candidates: cualquier peer detras de NAT nunca
@@ -75,8 +94,10 @@ async function main(): Promise<void> {
     { intervalSeconds: 30, ringingTimeoutSeconds: 60 },
     {
       calls: container.calls,
+      conversations: container.conversations,
       publisher: container.publisher,
       presence: container.presence,
+      emitter,
       lock: container.distributedLock,
     },
   );
