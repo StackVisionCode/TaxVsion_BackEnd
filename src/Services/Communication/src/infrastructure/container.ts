@@ -34,6 +34,7 @@ import { HttpRateLimiter } from './redis/http-rate-limiter.js';
 import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
+import { HttpTenantHostResolver } from './auth/tenant-host-resolver.js';
 import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
 import { HttpCloudStorageDownloadClient } from './cloudstorage/http-cloudstorage-download-client.js';
 import { HttpCloudStorageUploadClient } from './cloudstorage/http-cloudstorage-upload-client.js';
@@ -73,6 +74,7 @@ import type {
 } from '../application/ports/recording-repository.js';
 import type { SfuService } from '../application/ports/sfu-service.js';
 import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
+import type { TenantHostResolver } from '../application/ports/tenant-host-resolver.js';
 import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
 import type { CloudStorageDownloadClient } from '../application/ports/cloudstorage-download-client.js';
 import type { CloudStorageUploadClient } from '../application/ports/cloudstorage-upload-client.js';
@@ -122,6 +124,7 @@ export interface AppContainer {
   readonly cloudStorageDownload: CloudStorageDownloadClient;
   readonly cloudStorageUpload: CloudStorageUploadClient;
   readonly customerReconciliation: HttpCustomerReconciliationClient;
+  readonly tenantHostResolver: TenantHostResolver;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
    * Socket.IO server, porque `SocketRealtimeEmitter` necesita el `io` que a
@@ -181,5 +184,6 @@ export function buildContainer(): AppContainer {
     cloudStorageDownload: new HttpCloudStorageDownloadClient(serviceTokens),
     cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
     customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
+    tenantHostResolver: new HttpTenantHostResolver(serviceTokens),
   };
 }

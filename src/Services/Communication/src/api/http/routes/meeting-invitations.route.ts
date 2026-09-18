@@ -17,6 +17,9 @@ const ShortCodeParams = z.object({ shortCode: z.string().min(1).max(16) });
 const MeetingInviteeInputSchema = z.object({
   kind: z.enum(['employee', 'customer', 'external']),
   userId: z.string().uuid().optional(),
+  // Solo customer: permite resolver su userId de portal activo para que el meeting aparezca en su
+  // lista y le llegue el aviso realtime (su customerId no es un userId de Auth).
+  customerId: z.string().uuid().optional(),
   email: z.string().email().optional(),
   name: z.string().min(1).max(120).optional(),
 });
@@ -61,6 +64,7 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
         invitees: body.invitees.map((invitee) => ({
           kind: InviteeKindMap[invitee.kind],
           ...(invitee.userId !== undefined ? { userId: invitee.userId } : {}),
+          ...(invitee.customerId !== undefined ? { customerId: invitee.customerId } : {}),
           ...(invitee.email !== undefined ? { email: invitee.email } : {}),
           ...(invitee.name !== undefined ? { name: invitee.name } : {}),
         })),

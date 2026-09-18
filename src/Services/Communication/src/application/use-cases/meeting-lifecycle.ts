@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import {
   MeetingEventTypes,
   type MeetingEndedEvent,
   type MeetingStartedEvent,
 } from '../../contracts/events/meeting-events.js';
+import { MeetingSocketEvents, type MeetingListChangedDto } from '../../contracts/socket/meeting-socket-events.js';
 
 export interface StartMeetingCommand {
   readonly tenantId: string;
@@ -19,7 +21,12 @@ export interface StartMeetingCommand {
 
 export async function startMeeting(
   cmd: StartMeetingCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
+  deps: {
+    meetings: MeetingRepository;
+    publisher: IntegrationEventPublisher;
+    /** Opcional (best-effort): empuja `meeting.started` a invitados/participantes. */
+    emitter?: RealtimeEmitter;
+  },
 ): Promise<Result<{ startedAtUtc: string }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -44,6 +51,34 @@ export async function startMeeting(
     startedAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
+
+  // Realtime: los invitados/participantes ven el meeting pasar a "live" (join disponible) sin
+  // recargar. Se excluye al host (que ya parchea su fila localmente). Best-effort.
+  if (deps.emitter) {
+    const snapshot = meeting.toSnapshot();
+    const invitations = await deps.meetings.listInvitationsByMeeting(cmd.tenantId, cmd.meetingId);
+    const inviteeUserIds = invitations
+      .map((inv) => inv.toSnapshot())
+      .filter((s) => s.revokedAtUtc === null && s.inviteeUserId !== null)
+      .map((s) => s.inviteeUserId!);
+    const targets = new Set<string>([...inviteeUserIds, ...snapshot.participants.map((p) => p.userId)]);
+    targets.delete(cmd.hostUserId);
+    const dto: MeetingListChangedDto = { meetingId: cmd.meetingId };
+    for (const userId of targets) {
+      deps.emitter.emitToUser({
+        tenantId: cmd.tenantId,
+        userId,
+        event: MeetingSocketEvents.Started,
+        envelope: {
+          eventId: randomUUID(),
+          correlationId: cmd.correlationId,
+          emittedAtUtc: now.toISOString(),
+          payload: dto,
+        },
+      });
+    }
+  }
+
   return Result.ok({ startedAtUtc: now.toISOString() });
 }
 
@@ -56,7 +91,12 @@ export interface EndMeetingCommand {
 
 export async function endMeeting(
   cmd: EndMeetingCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
+  deps: {
+    meetings: MeetingRepository;
+    publisher: IntegrationEventPublisher;
+    /** Opcional (best-effort): avisa `meeting.ended` a las listas de participantes/invitados. */
+    emitter?: RealtimeEmitter;
+  },
 ): Promise<Result<{ endedAtUtc: string; durationSeconds: number }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -65,6 +105,29 @@ export async function endMeeting(
   if (!result.isSuccess) return Result.fail(result.error);
   await deps.meetings.save(meeting);
   const snapshot = meeting.toSnapshot();
+
+  // Realtime: participantes/invitados ven la fila pasar de "upcoming" a "past" sin recargar.
+  if (deps.emitter) {
+    const invitations = await deps.meetings.listInvitationsByMeeting(cmd.tenantId, cmd.meetingId);
+    const inviteeUserIds = invitations
+      .map((inv) => inv.toSnapshot())
+      .filter((s) => s.revokedAtUtc === null && s.inviteeUserId !== null)
+      .map((s) => s.inviteeUserId!);
+    const dto: MeetingListChangedDto = { meetingId: cmd.meetingId };
+    for (const uid of new Set<string>([...snapshot.participants.map((p) => p.userId), ...inviteeUserIds])) {
+      deps.emitter.emitToUser({
+        tenantId: cmd.tenantId,
+        userId: uid,
+        event: MeetingSocketEvents.Ended,
+        envelope: {
+          eventId: randomUUID(),
+          correlationId: cmd.correlationId,
+          emittedAtUtc: now.toISOString(),
+          payload: dto,
+        },
+      });
+    }
+  }
 
   const event: MeetingEndedEvent = {
     eventId: randomUUID(),

@@ -130,6 +130,114 @@ async function clearMeetingBusyFor(
   );
 }
 
+/**
+ * Gracia de reconexión ante un `disconnect`: en vez de sacar al participante de una vez (lo que hacía
+ * que un blip de red o un cambio de pestaña del host terminara el meeting — host se va sin cohost →
+ * Meeting.end()), se AGENDA su salida tras {@link DISCONNECT_GRACE_MS}. Si el MISMO usuario reconecta
+ * (join/rejoin) dentro de la ventana, se cancela. Registro en memoria por (tenant:meeting:user); es
+ * válido en la flota local single-instance (el churn de cloudflared reconecta en segundos).
+ */
+const DISCONNECT_GRACE_MS = 30_000;
+const pendingLeaves = new Map<string, ReturnType<typeof setTimeout>>();
+const leaveKey = (tenantId: string, meetingId: string, userId: string): string =>
+  `${tenantId}:${meetingId}:${userId}`;
+
+function cancelPendingLeave(tenantId: string, meetingId: string, userId: string): void {
+  const key = leaveKey(tenantId, meetingId, userId);
+  const timer = pendingLeaves.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingLeaves.delete(key);
+  }
+}
+
+/**
+ * Ejecuta la salida real de un participante cuya gracia venció (no reconectó). Réplica de la lógica
+ * que antes vivía inline en el handler `disconnect`, más el aviso `meeting.ended` a las LISTAS cuando
+ * el meeting terminó en cascada (host sin cohost) para que el UX de meetings mueva la fila a "past".
+ */
+async function performLeaveAfterGrace(
+  container: AppContainer,
+  emitter: SocketRealtimeEmitter,
+  tenantId: string,
+  meetingId: string,
+  userId: string,
+): Promise<void> {
+  const result = await leaveMeeting(
+    { tenantId, correlationId: `disconnect:${userId}`, meetingId, userId },
+    container,
+  ).catch((err: unknown) => {
+    logger.warn({ err, meetingId }, 'leave meeting after grace failed');
+    return null;
+  });
+  if (!result || !result.isSuccess) return;
+
+  // Cerrar el SFU del que se fue: avisar a los demás que sus producers desaparecen y liberar transports.
+  for (const p of container.sfu.listProducersForUser(meetingId, userId)) {
+    emitter.emitToMeeting({
+      tenantId,
+      meetingId,
+      event: MeetingSocketEvents.SfuProducerClosed,
+      envelope: envelope({ meetingId, userId, producerId: p.producerId } satisfies SfuProducerClosedDto),
+    });
+  }
+  await container.sfu
+    .closeParticipant(meetingId, userId)
+    .catch((err: unknown) => logger.warn({ err, meetingId, userId }, 'sfu closeParticipant failed'));
+
+  const snap = (await container.meetings.findById(tenantId, meetingId))?.toSnapshot();
+  if (snap?.status === 'Ended') {
+    await container.sfu
+      .closeMeeting(meetingId)
+      .catch((err: unknown) => logger.warn({ err, meetingId }, 'sfu closeMeeting failed'));
+    await clearMeetingBusyFor(container, tenantId, meetingId, snap.participants.map((p) => p.userId));
+  } else {
+    await clearMeetingBusyFor(container, tenantId, meetingId, [userId]);
+  }
+  emitter.emitToMeeting({
+    tenantId,
+    meetingId,
+    event: MeetingSocketEvents.StateChanged,
+    envelope: envelope({
+      meetingId,
+      status: snap?.status ?? 'Live',
+      isLocked: snap?.isLocked ?? false,
+      hostUserId: snap?.hostUserId ?? userId,
+      sequence: 0,
+    }),
+  });
+  if (snap?.status === 'Ended') {
+    await emitMeetingEndedToLists(container, emitter, tenantId, meetingId, snap.participants.map((p) => p.userId));
+  }
+}
+
+/**
+ * Avisa a las LISTAS de meetings (room de usuario `t:{tenant}:u:{userId}`) que un meeting terminó, para
+ * que participantes e invitados vean la fila pasar de "upcoming" a "past" sin recargar. Se usa tanto en
+ * el fin explícito (endMeeting) como en la cascada por disconnect.
+ */
+async function emitMeetingEndedToLists(
+  container: AppContainer,
+  emitter: SocketRealtimeEmitter,
+  tenantId: string,
+  meetingId: string,
+  participantUserIds: readonly string[],
+): Promise<void> {
+  const invitations = await container.meetings.listInvitationsByMeeting(tenantId, meetingId);
+  const inviteeUserIds = invitations
+    .map((inv) => inv.toSnapshot())
+    .filter((s) => s.revokedAtUtc === null && s.inviteeUserId !== null)
+    .map((s) => s.inviteeUserId!);
+  for (const uid of new Set<string>([...participantUserIds, ...inviteeUserIds])) {
+    emitter.emitToUser({
+      tenantId,
+      userId: uid,
+      event: MeetingSocketEvents.Ended,
+      envelope: envelope({ meetingId }),
+    });
+  }
+}
+
 function wireMeetingSocket(
   socket: CommunicationSocket,
   io: CommunicationIoServer,
@@ -194,7 +302,12 @@ function wireMeetingSocket(
 
     const guestDisplayName = typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
     const guestInvitationId = typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
-    const selfDisplayName = isGuest ? (guestDisplayName ?? 'Invitado') : await resolveDisplayName(container.userDirectory, userId);
+    // Fallback legible cuando el directorio no tiene fila (owner viejo de onboarding / race): el email
+    // del JWT, para que la tile del participante nunca muestre el GUID crudo.
+    const selfEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
+    const selfDisplayName = isGuest
+      ? (guestDisplayName ?? 'Invitado')
+      : await resolveDisplayName(container.userDirectory, userId, selfEmail);
     const result = await joinMeeting(
       {
         tenantId,
@@ -217,9 +330,24 @@ function wireMeetingSocket(
     if (result.value.snapshot.conversationId) {
       await socket.join(`t:${tenantId}:c:${result.value.snapshot.conversationId}`);
     }
+    // Reconectó / volvió a entrar: cancelar cualquier salida agendada por un disconnect anterior.
+    cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
     ack?.({ ok: true, value: result.value });
+    // Avisar a la room del cambio de participante — SIEMPRE, entre directo (status Joined) o en sala de
+    // espera (status Waiting). El caso Waiting es clave: sin este emit el host NUNCA se enteraba de que
+    // alguien esperaba admisión (antes solo se emitía en el join directo), así que su UX de
+    // admitir/denegar quedaba vacía y el que esperaba nunca era admitido.
+    const me = result.value.snapshot.participants.find((p) => p.userId === userId);
+    if (me) {
+      emitter.emitToMeeting({
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        event: MeetingSocketEvents.ParticipantChanged,
+        envelope: envelope({ meetingId: parsed.data.meetingId, participant: me, sequence: 0 }),
+      });
+    }
     if (!result.value.requiresAdmission) {
-      // Entra directo (sin sala de espera) -> ya esta Joined de verdad.
+      // Entra directo (sin sala de espera) -> ya esta Joined de verdad: reservar presencia "busy".
       await container.presence
         .markBusy({
           tenantId,
@@ -229,15 +357,6 @@ function wireMeetingSocket(
           leaseSeconds: MEETING_BUSY_LEASE_SECONDS,
         })
         .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (meeting join) failed'));
-      const me = result.value.snapshot.participants.find((p) => p.userId === userId);
-      if (me) {
-        emitter.emitToMeeting({
-          tenantId,
-          meetingId: parsed.data.meetingId,
-          event: MeetingSocketEvents.ParticipantChanged,
-          envelope: envelope({ meetingId: parsed.data.meetingId, participant: me, sequence: 0 }),
-        });
-      }
     }
   });
 
@@ -259,6 +378,8 @@ function wireMeetingSocket(
       return;
     }
     await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
+    // Reconexión transparente (churn): cancelar la salida agendada por el disconnect que la disparó.
+    cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
     ack?.({ ok: true, value: result.value });
   });
 
@@ -270,6 +391,8 @@ function wireMeetingSocket(
       container,
     );
     if (!result.isSuccess) return;
+    // Salida explícita: no dejar una salida agendada colgando para este user/meeting.
+    cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
     await socket.leave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
       await socket.leave(`t:${tenantId}:c:${result.value.conversationId}`);
@@ -305,6 +428,16 @@ function wireMeetingSocket(
         sequence: 0,
       }),
     });
+    if (snap?.status === 'Ended') {
+      // Terminó en cascada: que la LISTA de participantes/invitados mueva la fila a "past".
+      await emitMeetingEndedToLists(
+        container,
+        emitter,
+        tenantId,
+        parsed.data.meetingId,
+        snap.participants.map((p) => p.userId),
+      );
+    }
   });
 
   socket.on(MeetingSocketEvents.Admit, async (...args: unknown[]) => {
@@ -1177,39 +1310,17 @@ function wireMeetingSocket(
     const activeMeetingIds = [...socket.rooms].filter((room) => room.startsWith(meetingRoomPrefix));
     for (const room of activeMeetingIds) {
       const meetingId = room.slice(meetingRoomPrefix.length);
-      void leaveMeeting({ tenantId, correlationId: socket.id, meetingId, userId }, container)
-        .then(async (result) => {
-          if (!result.isSuccess) return;
-          await closeSfuForParticipant(meetingId, userId);
-          const meetingAfterLeave = await container.meetings.findById(tenantId, meetingId);
-          const snap = meetingAfterLeave?.toSnapshot();
-          if (snap?.status === 'Ended') {
-            await container.sfu.closeMeeting(meetingId).catch((err: unknown) =>
-              logger.warn({ err, meetingId }, 'sfu closeMeeting failed'),
-            );
-            await clearMeetingBusyFor(
-              container,
-              tenantId,
-              meetingId,
-              snap.participants.map((p) => p.userId),
-            );
-          } else {
-            await clearMeetingBusyFor(container, tenantId, meetingId, [userId]);
-          }
-          emitter.emitToMeeting({
-            tenantId,
-            meetingId,
-            event: MeetingSocketEvents.StateChanged,
-            envelope: envelope({
-              meetingId,
-              status: snap?.status ?? 'Live',
-              isLocked: snap?.isLocked ?? false,
-              hostUserId: snap?.hostUserId ?? userId,
-              sequence: 0,
-            }),
-          });
-        })
-        .catch((err: unknown) => logger.warn({ err, meetingId }, 'leave meeting on disconnect failed'));
+      // NO se saca al participante de una vez: se AGENDA su salida tras la gracia. Si el mismo usuario
+      // reconecta (join/rejoin) dentro de la ventana, join/rejoin cancela este timer. Así un blip de red
+      // o un cambio de pestaña del host no termina el meeting (host sin cohost → Meeting.end).
+      const key = leaveKey(tenantId, meetingId, userId);
+      const existing = pendingLeaves.get(key);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        pendingLeaves.delete(key);
+        void performLeaveAfterGrace(container, emitter, tenantId, meetingId, userId);
+      }, DISCONNECT_GRACE_MS);
+      pendingLeaves.set(key, timer);
     }
   });
 }

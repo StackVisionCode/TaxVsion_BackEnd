@@ -42,4 +42,24 @@ export interface MeetingRepository {
     skip: number;
   }): Promise<MeetingSnapshot[]>;
   countPastForUser(tenantId: string, userId: string): Promise<number>;
+  /**
+   * Contadores para las tarjetas del dashboard de meetings, calculados sobre TODOS los meetings del
+   * usuario (no la página cargada en el cliente). Las fronteras de día/semana vienen ya resueltas a UTC
+   * desde la zona horaria del usuario (el caller las calcula con `zoneinfo`).
+   */
+  getStatsForUser(input: {
+    tenantId: string;
+    userId: string;
+    nowUtc: Date;
+    dayStartUtc: Date;
+    dayEndUtc: Date;
+    weekEndUtc: Date;
+  }): Promise<MeetingStatsForUser>;
+}
+
+export interface MeetingStatsForUser {
+  readonly today: number;
+  readonly thisWeek: number;
+  readonly liveNow: number;
+  readonly transcriptsAvailable: number;
 }

@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 6
+    int ContentVersion = 7
 );
 
 /// <summary>
@@ -68,6 +68,7 @@ public static class NotificationTemplateSeedSource
             ClientRequestCreated,
             ClientRequestDocumentRejected,
             SharedFileInvited,
+            MeetingInvitation,
         ];
 
     // Preheader (línea de vista previa que muestran el inbox y la notificación) por template, en inglés
@@ -108,6 +109,7 @@ public static class NotificationTemplateSeedSource
         ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
         ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
         ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
+        ["communication.meeting.invitation"] = "You've been invited to a meeting — join with the link inside.",
     };
 
     /// <summary>
@@ -174,6 +176,60 @@ public static class NotificationTemplateSeedSource
                 ("invite_link", VariableType.Url, true, null, "URL de aceptación de la invitación."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("is_resend", VariableType.Bool, true, "false", "true si es un reenvío del mismo invite."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed MeetingInvitation { get; } =
+        new(
+            EventKey: "communication.meeting.invitation_created.v1",
+            TemplateKey: "communication.meeting.invitation",
+            Name: "Communication — Invitación a meeting",
+            Subject: "You've been invited to a meeting on {{ product_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting invitation</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You've been invited to a meeting</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ invitee_name }}</strong>, you've been invited to a meeting on {{ product_name }}.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Use the button below to join when it's time.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 22px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ join_link }}" style="height:46px;v-text-anchor:middle;width:200px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Join the meeting</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ join_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Join the meeting</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ join_link }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                (
+                    "invitee_name",
+                    VariableType.String,
+                    false,
+                    "there",
+                    "Nombre del invitado (o 'there' si no se conoce)."
+                ),
+                (
+                    "join_link",
+                    VariableType.Url,
+                    true,
+                    null,
+                    "URL para unirse al meeting (ya con el subdominio del tenant)."
+                ),
+                (
+                    "expires_at",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Fecha de expiración de la invitación ya formateada (UTC)."
+                ),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
             ]
         );

@@ -27,7 +27,7 @@ namespace TaxVision.Billing.Api.Controllers;
 [ApiController]
 [Route("billing/invoices")]
 [Authorize]
-// Los mismos actores que declara el catálogo de Auth para billing.* (Permission.InferAllowedActorTypes).
+// Los mismos actores que declara el catálogo de Auth para invoicing.* (Permission.InferAllowedActorTypes).
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 {
@@ -41,7 +41,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [RateLimit("billing.g.invoice_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType<CreateInvoiceDraftResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateDraft(CreateInvoiceDraftRequest request, CancellationToken ct)
     {
@@ -66,7 +66,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invoiceId:guid}/issue")]
     [RateLimit("billing.g.invoice_issue")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType<IssueInvoiceResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Issue(Guid invoiceId, CancellationToken ct)
     {
@@ -83,7 +83,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [RateLimit("billing.f.invoice_read")]
-    [HasPermission(BillingPermissions.View)]
+    [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int take, CancellationToken ct)
     {
@@ -103,7 +103,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// <summary>Registra un pago manual/offline (efectivo, cheque, transferencia…) — marca la factura Paid.</summary>
     [HttpPost("{invoiceId:guid}/record-payment")]
     [RateLimit("billing.g.invoice_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType<RecordManualPaymentResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RecordManualPayment(
         Guid invoiceId,
@@ -131,7 +131,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{invoiceId:guid}")]
     [RateLimit("billing.f.invoice_read")]
-    [HasPermission(BillingPermissions.View)]
+    [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<InvoiceSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid invoiceId, CancellationToken ct)
     {
@@ -149,7 +149,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// <summary>Lectura rica (cliente + líneas) para prellenar la edición.</summary>
     [HttpGet("{invoiceId:guid}/detail")]
     [RateLimit("billing.f.invoice_read")]
-    [HasPermission(BillingPermissions.View)]
+    [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<InvoiceDetailResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetDetail(Guid invoiceId, CancellationToken ct)
     {
@@ -175,7 +175,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// si estaba emitida, reconcilia el stock (bloquea si falta), refresca el cobro y regenera el PDF.</summary>
     [HttpPut("{invoiceId:guid}")]
     [RateLimit("billing.g.invoice_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType<EditInvoiceResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Edit(Guid invoiceId, EditInvoiceRequest request, CancellationToken ct)
     {
@@ -201,7 +201,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// <summary>Borra (soft) un BORRADOR. Emitida/pagada no se borra: usar <c>/void</c>.</summary>
     [HttpDelete("{invoiceId:guid}")]
     [RateLimit("billing.g.invoice_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid invoiceId, CancellationToken ct)
     {
@@ -218,7 +218,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// <summary>Anula una factura emitida/pagada y repone el stock descontado al emitir.</summary>
     [HttpPost("{invoiceId:guid}/void")]
     [RateLimit("billing.g.invoice_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Void(Guid invoiceId, VoidInvoiceRequest request, CancellationToken ct)
     {
