@@ -1,6 +1,8 @@
 # Email (SMTP2GO) — Domain Design
 
-- Servicio: **TaxVision.Campaigns.Email** (ejecutor de canal EMAIL, greenfield)
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler de canal EMAIL dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 - Anchors: `../00_Overview_And_Index.md`, `../02_Context_Map.md`, `../05_Master_ADR.md`
@@ -11,7 +13,7 @@ Ejecutor de canal EMAIL para campañas y para envíos transaccionales de la suit
 
 **NO hace:**
 - No define ni agenda campañas (eso es Campaigns), no resuelve audiencia (Customer), no dispara el reloj (Scheduler).
-- No muta saldo. No calcula ni cobra: pide a nadie. El costo/`reserve`/`consume`/`refund` lo gobierna Wallet vía la saga de Campaigns (`../06_...`). Este servicio solo **emite el result** que dispara consume/refund.
+- No muta saldo, no calcula ni cobra — (removido: sin dinero en el canal; ver banner). Solo **emite el result** de entrega; cualquier autorización por balance es un interceptor/PEP externo y DIFERIDO.
 - No es Postmaster ni comparte su base, sus credenciales ni su `SentMessage`.
 - No persiste JWT de usuario (anti-patrón legado #5), no guarda secretos en texto plano.
 
@@ -79,11 +81,12 @@ Nunca se expone la key descifrada fuera del adapter de envío. Ver `Security.md`
 - `EmailAddress(string Value)` — valida formato + normaliza; rechaza vacío.
 - `IdempotencyKey` — **copia local** del VO (`PaymentApp.Domain/ValueObjects/IdempotencyKey.cs`), no se comparte el tipo entre contexts.
 - `ProviderScope`, `EmailDispatchStatus`, `SuppressionReason`, `BounceType(Hard|Soft)` — enums de dominio.
-- El dinero **no vive acá**: este servicio no maneja `Money`; el costo se resuelve en Wallet/Campaigns.
+- El dinero **no vive acá** — (removido: sin dinero en el canal; ver banner).
 
-## 5. Render
-- Por defecto el cuerpo **ya viaja renderizado** por Scribe desde Campaigns (mismo patrón que `NotificationsEmailSendRequestedIntegrationEvent.HtmlBody/TextBody`, `PostmasterEmailEvents.cs:41-42`): el ejecutor **no re-renderiza** (Context Map, fila Email→Scribe).
-- Si el dispatch trae `TemplateKey` + `TemplateVariables` en lugar de cuerpo, el ejecutor llama a **Scribe (REUSE, Fluid/Liquid)** para materializar HTML/text. **Prohibido** el `string.Replace`/regex de personalización del legado (`Smtp2GoService.cs:420-472`) — es frágil, no escapa consistente y no soporta lógica.
+## 5. Render y contenido inmutable
+- El contenido viaja como **`ContentRef` inmutable + `EmailPayload{ ScribeTemplateKey(revisión/hash CONGELADO), Subject, Variables }`** (no una `ScribeTemplateKey` mutable sola): la revisión/hash congelada garantiza que el intento se renderiza contra un contenido inmutable, reproducible y auditable (`BodyHash`).
+- Por defecto el cuerpo **ya viaja renderizado** por Scribe desde Campaigns (mismo patrón que `NotificationsEmailSendRequestedIntegrationEvent.HtmlBody/TextBody`, `PostmasterEmailEvents.cs:41-42`): el consumer **no re-renderiza** (Context Map, fila Email→Scribe).
+- Si el dispatch trae `EmailPayload` (ScribeTemplateKey congelada + Variables) en lugar de cuerpo, el consumer llama a **Scribe (REUSE, Fluid/Liquid)** para materializar HTML/text contra esa revisión congelada. **Prohibido** el `string.Replace`/regex de personalización del legado (`Smtp2GoService.cs:420-472`) — es frágil, no escapa consistente y no soporta lógica.
 - Assets inline (logos) viajan como **referencia** (`EmailInlineAssetReference`, `PostmasterEmailEvents.cs:83-88`), nunca como bytes por el bus; se resuelven de CloudStorage justo antes de armar el MIME.
 
 ## 6. Mapa contra el legado (evidencia)

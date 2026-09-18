@@ -1,5 +1,7 @@
 # WhatsApp — State Machines
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (NEW)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
@@ -9,13 +11,13 @@
 Estado del intento de entrega. Transiciones **solo** por métodos del aggregate que devuelven `Result`; cada avance está guardado por `RowVersion` (optimistic lock, ver `Concurrency_Spec.md`). Los estados post-envío llegan **asíncronos por webhook** de Meta.
 
 ```
-                 (dispatch recibido, validado, reserva Wallet OK)
+                 (dispatch recibido, validado OK)
    [Pending] ──────────────────────────────────────────────► [Accepted]
         │                                                          │
         │ (validación falla: sin plantilla, sesión cerrada,        │ POST Cloud API
-        │  número inválido, sin reserva)                           │
+        │  número inválido)                                        │
         ▼                                                          ▼
-   [Rejected] (terminal, sin costo)              (Meta 200 + wamid)│  (Meta 4xx/5xx)
+   [Rejected] (terminal)                         (Meta 200 + wamid)│  (Meta 4xx/5xx)
                                                                    ▼        │
                                                               [Sent] ◄──────┘ (error) ► [Failed]
                                                                    │                       (terminal)
@@ -30,22 +32,24 @@ Estado del intento de entrega. Transiciones **solo** por métodos del aggregate 
 
 ### Estados
 
-| Estado | Significado | Terminal | Efecto Wallet |
-|---|---|---|---|
-| `Pending` | Dispatch aceptado, aún no validado/enviado | No | reserva ya tomada por Campaigns (o por este servicio en envío individual) |
-| `Accepted` | Validado (plantilla aprobada + sesión/HSM OK + número E.164 + reserva); listo para POST | No | — |
-| `Sent` | Meta aceptó (`wamid` asignado) | No | — (aún no consume: el costo real llega por webhook) |
-| `Delivered` | Webhook `delivered` | No | candidato a **consume** (entrega confirmada) |
-| `Read` | Webhook `read` | Sí | — (ya consumido en delivered) |
-| `Failed` | Meta rechazó el POST **o** webhook `failed` | Sí | **refund** de la reserva |
-| `Rejected` | Validación local falló antes de tocar Meta | Sí | **refund** (nunca se gastó) |
+> Columna **Efecto Wallet** — (removida: sin dinero en el canal; ver banner).
+
+| Estado | Significado | Terminal |
+|---|---|---|
+| `Pending` | Dispatch aceptado, aún no validado/enviado | No |
+| `Accepted` | Validado (plantilla aprobada + sesión/HSM OK + número E.164); listo para POST | No |
+| `Sent` | Meta aceptó (`wamid` asignado) | No |
+| `Delivered` | Webhook `delivered` | No |
+| `Read` | Webhook `read` | Sí |
+| `Failed` | Meta rechazó el POST **o** webhook `failed` | Sí |
+| `Rejected` | Validación local falló antes de tocar Meta | Sí |
 
 ### Reglas de transición (invariantes)
-- `Pending → Accepted` exige: plantilla `Approved` (o sesión abierta para free-form), `Category` resuelta, número E.164 válido, reserva Wallet vigente.
+- `Pending → Accepted` exige: plantilla `Approved` (o sesión abierta para free-form), `Category` resuelta, número E.164 válido. (Autorización por saldo — removida: externa/diferida, ver banner.)
 - `Accepted → Sent` **solo** tras respuesta 200 de Meta con `wamid`. El `wamid` se persiste de forma idempotente (un POST reintentado no crea dos `Sent`).
 - `Sent → Delivered → Read` monotónico; un webhook fuera de orden **no** retrocede el estado (guard: solo avanza). Un `read` que llega antes que `delivered` (posible) promueve a `Read` y marca delivered implícito.
-- Cualquier `*_failed` webhook en estado no-terminal ⇒ `Failed`. Un `failed` que llega tras `Delivered`/`Read` se **ignora** (ya entregado; solo se loguea; no doble-refund).
-- **Punto de consumo del costo**: se dispara `WhatsAppMessageBilled` en `Delivered` (o en `Sent` si la política del tenant es "cobra al enviar" — decisión en ADR-WA-004). El `refund` se dispara en `Failed`/`Rejected`. Nunca ambos (idempotencia por `DispatchId`).
+- Cualquier `*_failed` webhook en estado no-terminal ⇒ `Failed`. Un `failed` que llega tras `Delivered`/`Read` se **ignora** (ya entregado; solo se loguea; sin doble-conteo).
+- **Punto de consumo del costo** — (removido: sin dinero en el canal; no hay billed/consume/refund; la autorización por saldo es externa/diferida, ver banner).
 
 ## 2. Ventana de sesión (`SessionWindow`)
 
@@ -83,7 +87,6 @@ Estado del intento de entrega. Transiciones **solo** por métodos del aggregate 
 | Estado de envío | `RecipientStatus` sobre `CampaignRecipient` con setters sueltos; `CampaignStatus` incluye `Sending` no-atómico (`CampaignStatus.cs:6`) | máquina por mensaje + guards + `RowVersion`; sin estado global no-atómico |
 | Confirmación de entrega | inexistente (simulado, `Task.Delay`, `WhatsAppCampaignSender.cs:78`) | webhooks reales `sent/delivered/read/failed` |
 | Sesión 24h / HSM | ausente | invariante de admisión |
-| Costo | plano al "enviar" simulado | por conversación/categoría en `Delivered`, desde webhook `pricing` |
 
 ## 5. Evidencia
 

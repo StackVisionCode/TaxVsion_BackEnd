@@ -1,12 +1,14 @@
 # Email (SMTP2GO) — Deployment
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
 ## 1. Forma del despliegue
-- Microservicio .NET independiente `TaxVision.Campaigns.Email` (mismo runtime/stack que el resto de la suite; el legado era .NET8/9).
-- **BD propia** PostgreSQL (schema `campaigns_email`); NO comparte BD con Postmaster/Notification/Campaigns.
+- **Consumer/handler dentro del servicio EXISTENTE `Notification`** (no un microservicio nuevo dedicado; ver banner); mismo runtime/stack que el resto de la suite.
+- Persistencia dentro de Notification (el estado de dispatch/suppression/credencial vive con ese servicio, no en una BD nueva dedicada).
 - Se integra al stack de contenedores local (23 contenedores, gateway :5047; ver memoria `project_local_dev_stack_and_login.md`).
 - Escala horizontal N réplicas detrás del bus Wolverine (ver `Concurrency_Spec.md`).
 
@@ -25,7 +27,7 @@
 ## 3. Configuración
 | Setting | Descripción |
 |---|---|
-| `ConnectionStrings:CampaignsEmailDb` | Postgres del servicio |
+| `ConnectionStrings:Notification` | Postgres del servicio `Notification` (el canal Email persiste dentro de Notification, NO en una BD dedicada) |
 | `Wolverine:*` | broker, outbox/inbox durable |
 | `Encryption:KekProvider` | KMS/DPAPI para DEK |
 | `Smtp2Go:System:*` | credencial de plataforma (scope System) — la key va por secreto del entorno, **no** en appsettings en claro |
@@ -45,8 +47,8 @@
 Configurar el webhook de SMTP2GO apuntando al endpoint público del gateway.
 
 ## 6. Orden de arranque / dependencias de la suite
-- **Wallet/Ledger** debe existir para cerrar la saga (consume/refund), pero el ejecutor Email **arranca y opera** sin Wallet (solo emite results); la saga los consume cuando Wallet esté. Dependencia blanda para el ejecutor, dura para el flujo de cobro (ver `../07_MVP_Scope.md`).
-- **Campaigns** debe emitir `dispatch_requested` para que el ejecutor tenga trabajo.
+- — (removido: dependencia de Wallet/Ledger para saga consume/refund; sin dinero en el canal; ver banner). Cualquier autorización por balance es un interceptor/PEP externo y DIFERIDO, fuera de este canal.
+- **Campaign** (orquestador) debe emitir `campaign.dispatch.requested.v1` para que el consumer tenga trabajo.
 - **Scribe** requerido solo si se usa el fallback de render server-side.
 
 ## 7. Health / readiness
@@ -63,5 +65,4 @@ Configurar el webhook de SMTP2GO apuntando al endpoint público del gateway.
 | Legado API key poblada por config | `Smtp2GoSettings.cs:6` | VERIFIED | 90% |
 | Flag de rollout análogo (Postmaster) | `PostmasterEmailEvents.cs:6-11` | VERIFIED | 92% |
 | Stack local 23 contenedores + gateway :5047 | memoria `project_local_dev_stack_and_login.md` | DOCUMENTED_ONLY | 80% |
-| Dependencia Wallet dura para cobro | `../05_Master_ADR.md`, `../07_MVP_Scope.md` | VERIFIED | 85% |
 | Despliegue/infra concretos | este diseño | NEW | n/a |

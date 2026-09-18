@@ -1,5 +1,7 @@
 # Push + In-app — Comandos y Eventos
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Push es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `FcmPushSender` + un contrato **bulk** nuevo). Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **Push (reusa `Notification`) + In-app (reusa `Communication`)**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -10,7 +12,8 @@ Todos los contratos **NEW**. Mensajería = **Wolverine outbox/inbox durable, at-
 ## 1. Convenciones
 
 - Namespace propuesto: `BuildingBlocks.Messaging.CampaignDispatchEvents` (compartido .NET; consumido por Node vía el `eventType` string del `[MessageIdentity]`).
-- Dinero: **no aparece** en estos contratos. Push/In-app **no** reciben ni reportan montos (`05_Master_ADR` regla dura: solo Wallet muta saldo; Campaigns hace reserve/consume según el `Outcome`).
+- **Contrato canónico único (reconciliación #13):** el **tipo** de evento es el común `campaign.dispatch.requested.v1` / `campaign.dispatch.result.v1` (con campo `Channel`), NO un tipo distinto por canal. Los strings `campaigns.push.*` / `campaigns.inapp.*` de abajo son **routing keys/alias por canal** (una cola por canal, `campaign.dispatch.push`/`.inapp`), no contratos separados: el `type` del envelope es el canónico y el `channel` decide el enrutado. Así se cumple "un contrato común + colas por canal" (review #13/#16) sin difundir PII a todos los canales. Ver `../campaigns/Commands_And_Events.md §2`.
+- Dinero: **no aparece** en estos contratos. El ejecutor solo reporta `Outcome` = `Accepted | Delivered | Failed | Skipped | Unknown` (un accept del proveedor = `Accepted`, no `Delivered`; timeout = `Unknown`, no `Failed`; ver `../campaigns/State_Machines.md`).
 - Correlación por-destinatario: `(CampaignId, RunId, RecipientId, Attempt)`. `RecipientId` y `CampaignId`/`RunId` son **opacos** para el ejecutor.
 - `TargetUserId` = destinatario direccionable (UserId interno del tenant). Push/In-app **no** aceptan email/teléfono.
 
@@ -46,7 +49,7 @@ Mismo shape que 2.1, salvo:
 
 ## 3. Result (ejecutor → Campaigns), por destinatario
 
-Un **único** evento result por canal con `Outcome` (más lean que los 5 eventos separados de Postmaster, pero misma correlación opaca). Campaigns lo agrega al `RunId` y decide consume/refund.
+Un **único** evento result por canal con `Outcome` (más lean que los 5 eventos separados de Postmaster, pero misma correlación opaca). Campaigns lo agrega al `RunId`. — (removido: sin dinero en el canal; ver banner)
 
 ### 3.1 Push — `campaigns.push.dispatch_result.v1`
 
@@ -73,15 +76,17 @@ Mismo shape, sin `DevicesTried/Delivered`; agrega `bool Persisted` y `bool Socke
 
 ### 3.3 Enum `Outcome` (contrato común dispatch/result)
 
-| Outcome | Billable | Push | In-app |
-|---|---|---|---|
-| `Delivered` | **Sí (consume)** | ≥1 device aceptado por FCM | notificación persistida (`created=true`) |
-| `AlreadyDelivered` | No (idempotente) | inbox ya vio `(campaign,run,recipient,attempt)` | `createIfMissing=false` |
-| `NoRecipientUser` | No (refund) | `TargetUserId` vacío/desconocido | idem |
-| `NoDevices` | No (refund) | user sin tokens activos (`ListActiveForUserAsync`→0) | n/a |
-| `SuppressedByPreference` | No (refund) | user opt-out (categoría no locked) | opt-out |
-| `FailedTransient` | No (retry) | error FCM recuperable | error de infra recuperable |
-| `FailedPermanent` | No (refund) | todos los devices fallaron def. | error no recuperable |
+Columna monetaria/billable — (removida: sin dinero en el canal; ver banner). El ejecutor solo distingue Delivered / Skipped / Failed(transient|permanent).
+
+| Outcome | Push | In-app |
+|---|---|---|
+| `Delivered` | ≥1 device aceptado por FCM | notificación persistida (`created=true`) |
+| `AlreadyDelivered` | inbox ya vio `(campaign,run,recipient,attempt)` | `createIfMissing=false` |
+| `NoRecipientUser` | `TargetUserId` vacío/desconocido | idem |
+| `NoDevices` | user sin tokens activos (`ListActiveForUserAsync`→0) | n/a |
+| `SuppressedByPreference` | user opt-out (categoría no locked) | opt-out |
+| `FailedTransient` | error FCM recuperable | error de infra recuperable |
+| `FailedPermanent` | todos los devices fallaron def. | error no recuperable |
 
 `AlreadyDelivered` **no** es un error: es la respuesta idempotente a un re-entrego at-least-once (el ejecutor re-emite el mismo result que la primera vez, o uno neutro que Campaigns ignora).
 
@@ -100,7 +105,7 @@ Tras `pushNotification`, Communication emite `NotificationSocketEvents.Received`
 Ninguno nuevo público. Se **reusan** los comandos existentes de registro de dispositivo (fuera del alcance de campañas, self-service del usuario final):
 - `RegisterPushDeviceTokenCommand` / `RevokePushDeviceTokenCommand` (`Notification.Application/Push/Commands/PushDeviceCommands.cs`, vía `PushDevicesController`). Poblan la proyección de devices que el consumer de campaña lee. **Sin cambios.**
 
-## 7. Preferencias del usuario (gate por canal, ortogonal al balance)
+## 7. Preferencias del usuario (gate por canal)
 
 El consumer push **debe** consultar `IUserNotificationPreferenceRepository.IsEnabledAsync` (patrón `NotificationDispatcher.cs:209-223`) con la `Category` del evento. Campañas = categoría **no-locked** (marketing/broadcast) → opt-out se respeta → `SuppressedByPreference`. Solo categorías locked (seguridad/cuenta) ignoran la preferencia, y una campaña **nunca** es locked.
 

@@ -1,5 +1,7 @@
 # Scheduler — Commands & Events
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -27,7 +29,7 @@ public sealed record StartCampaignRunCommand : IntegrationCommand
 }
 ```
 
-**Contrato con Campaigns:** al recibirlo, Campaigns crea el `CampaignRun` **inmutable** (idempotente por `OccurrenceId`), resuelve audiencia vía Customer, estima costo y pide `RESERVE` a Wallet — es decir, el Scheduler entrega el *"cuándo"* y Campaigns arranca el *"qué"*. El Scheduler **no** conoce audiencia, costo ni canales. La correlación `OccurrenceId`/`CampaignId` es opaca de punta a punta, mismo patrón que `CampaignId` en `PostmasterEmailEvents.cs:37,103` (el transporte la lleva y la devuelve sin interpretarla).
+**Contrato con Campaigns:** al recibirlo, Campaigns crea el `CampaignRun` **inmutable** (idempotente por `OccurrenceId`), resuelve audiencia vía Customer — (removido: el Scheduler no toca dinero; ver banner. El cobro/verificación de saldo por destinatarios lo hace el interceptor/PEP externo sobre la ruta del disparo, no Campaigns ni el Scheduler) — es decir, el Scheduler entrega el *"cuándo"* y Campaigns arranca el *"qué"*. El Scheduler **no** conoce audiencia ni canales. La correlación `OccurrenceId`/`CampaignId` es opaca de punta a punta, mismo patrón que `CampaignId` en `PostmasterEmailEvents.cs:37,103` (el transporte la lleva y la devuelve sin interpretarla).
 
 Corrige del legado: el disparo era un `Task.Run`/cola in-proc que llamaba `ICampaignExecutorService.ExecuteCampaignAsync` directo (`CampaignSchedulerService.cs:97`), síncrono y perdido al reiniciar. Ahora es un mensaje durable en outbox.
 
@@ -47,7 +49,17 @@ public sealed record CampaignRunStartedIntegrationEvent : IntegrationEvent
 }
 ```
 
-El Scheduler lo consume para: (a) confirmar `TriggerOccurrence → Fired` con la referencia real del run (cierre limpio del lease), y (b) disparar `MaterializeNext` para la próxima ocurrencia recurrente. **Nota de diseño (at-least-once):** el `Fired` NO depende de recibir este evento — el Scheduler marca `Fired` al comitear el `StartCampaignRun` en su outbox. `CampaignRunStarted` solo **enriquece** con `CampaignRunId` y **acelera** la materialización; si nunca llega, la reconciliación materializa igual desde la última ocurrencia `Fired`. Así no hay acoplamiento de disponibilidad.
+El Scheduler lo consume para: (a) confirmar `TriggerOccurrence → Fired` con la referencia real del run (cierre limpio del lease), (b) disparar `MaterializeNext` para la próxima ocurrencia recurrente, y (c) fijar `ScheduleEntry.ActiveRunRef` (guarda de **solapamiento**, §2.1). **Nota de diseño (at-least-once):** el `Fired` NO depende de recibir este evento — el Scheduler marca `Fired` al comitear el `StartCampaignRun` en su outbox. `CampaignRunStarted` solo **enriquece** con `CampaignRunId` y **acelera** la materialización; si nunca llega, la reconciliación materializa igual desde la última ocurrencia `Fired`. Así no hay acoplamiento de disponibilidad.
+
+## 2.1 Consumo de `campaign.run.completed.v1` (guarda de solapamiento, fix #29)
+
+El Scheduler consume el evento de cierre de run que **Campaigns ya publica** (`../campaigns/Commands_And_Events.md §2`) para saber cuándo el run anterior de una entry terminó:
+
+```csharp
+/// campaign.run.completed.v1  { tenantId, campaignId, runId, terminalStatus, ... }  (emitido por Campaigns)
+```
+
+Handler idempotente: si `runId == ScheduleEntry.ActiveRunRef` → **limpia** `ActiveRunRef`/`ActiveRunState` (la serie puede volver a disparar). Con la política **omitir+alertar** (`Concurrency_Spec.md §5.1`), mientras `ActiveRunRef` esté vivo una nueva ocurrencia debida se marca `Skipped(overlap)`. Un `overlap_watchdog` (timeout) libera el ref si el evento de cierre nunca llega, para no bloquear la serie. **El Scheduler no consulta el estado interno del run** (no rompe la frontera): solo reacciona al evento de cierre.
 
 ## 3. Comandos internos (dentro del bounded context del Scheduler)
 

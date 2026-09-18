@@ -210,6 +210,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<EmailCampaignStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailCampaignBatchIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailCampaignCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Canal Email del orquestador Campaigns (ADR-CAMP-001 D3) — el consumer publica el result del dispatch.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // Evento hacia Postmaster. Dos productores comparten el mismo mensaje y el mismo flag
     // Notification:UsePostmasterDispatch: EventBasedEmailDispatchGateway (path IEmailDispatchGateway) y

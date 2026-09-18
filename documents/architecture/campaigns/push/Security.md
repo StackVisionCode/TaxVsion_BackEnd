@@ -1,5 +1,7 @@
 # Push + In-app — Seguridad
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Push es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `FcmPushSender` + un contrato **bulk** nuevo). Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **Push (reusa `Notification`) + In-app (reusa `Communication`)**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -30,7 +32,7 @@ Esta integración **no** agrega endpoints públicos ni secretos de proveedor. La
 
 ## 4. RBAC / identidad / anti-patrón JWT
 
-- **Sin JWT de usuario persistido**. El legado guardaba `Campaign.BackgroundAuthToken` (JWT de usuario en texto plano) para refunds diferidos (`05_Master_ADR §Anti-patrones 5`). Esta integración **no** persiste ningún token de usuario: la comunicación cross-service es **M2M por el bus durable** (Wolverine outbox/inbox), con el tenant en el scope del mensaje, no un JWT robado de un request humano.
+- **Sin JWT de usuario persistido**. El legado guardaba `Campaign.BackgroundAuthToken` (JWT de usuario en texto plano) para operaciones diferidas en background (`05_Master_ADR §Anti-patrones 5`). Esta integración **no** persiste ningún token de usuario: la comunicación cross-service es **M2M por el bus durable** (Wolverine outbox/inbox), con el tenant en el scope del mensaje, no un JWT robado de un request humano.
 - **Registro de dispositivos (self-service, sin cambios)**: `PushDevicesController` exige `[Authorize]`, deriva `UserId`/`TenantId` **del JWT, nunca del body** (docblock del controller) → un usuario solo toca sus propios tokens. `[AllowActorTypes(TenantEmployee,TenantAdmin,CustomerPortal,PlatformAdmin)]`. Esta postura se **preserva**.
 - **M2M HTTP (si lo hubiera)**: no se prevé HTTP cross-service en este flujo (todo por bus). Cualquier llamada HTTP futura entre Campaigns y estos servicios usaría client-credentials con **audience/scope** propios (RBAC acumulativo, sin bypass, `05_Master_ADR`).
 
@@ -48,12 +50,12 @@ Esta integración **no** agrega endpoints públicos ni secretos de proveedor. La
 
 ## 7. Preferencias como control de seguridad/consentimiento
 
-Respetar `IUserNotificationPreferenceRepository` (opt-out) **no** es solo UX: para push de marketing es un requisito de consentimiento. El consumer push consulta la preferencia con la `Category` del evento (patrón `NotificationDispatcher.cs:209-223`); campañas = categoría **no-locked** → opt-out se honra → `SuppressedByPreference` (no-billable, sin entrega). Ninguna campaña puede marcar su categoría como locked para saltarse el opt-out.
+Respetar `IUserNotificationPreferenceRepository` (opt-out) **no** es solo UX: para push de marketing es un requisito de consentimiento. El consumer push consulta la preferencia con la `Category` del evento (patrón `NotificationDispatcher.cs:209-223`); campañas = categoría **no-locked** → opt-out se honra → `SuppressedByPreference` (sin entrega). Ninguna campaña puede marcar su categoría como locked para saltarse el opt-out.
 
 ## 8. Checklist de seguridad (diseño)
 
 - [ ] Consumer push corre con tenant explícito en scope Wolverine; sin `.Where` manual de tenant.
-- [ ] Business-inbox (Notification) e idempotencia (Communication) evitan re-entrega/doble-cobro.
+- [ ] Business-inbox (Notification) e idempotencia (Communication) evitan re-entrega/doble-entrega.
 - [ ] Cero secretos nuevos; FCM sigue como secreto de archivo montado.
 - [ ] Cero JWT de usuario persistido; cross-service = M2M por bus.
 - [ ] `NotificationLog` sin cuerpo; sin log de `Body` en INFO; token enmascarado.

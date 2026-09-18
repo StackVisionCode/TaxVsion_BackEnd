@@ -1,5 +1,7 @@
 # Scheduler — Observability
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -19,14 +21,16 @@ Objetivo de observabilidad: hacer **visible** lo que el legado dejaba invisible 
 | `scheduler.lease.contended` | counter | — | claim `rowcount=0` frecuente = demasiadas réplicas |
 | `scheduler.fire.dispatch_latency` | histogram | — | `due_at` → `fired_at`; **SLO clave** (ver §3) |
 | `scheduler.startcampaignrun.published` | counter | — | debe = `occurrences.fired` (cuadre) |
-| `scheduler.catchup.skipped` | counter | `tenant` | disparos vencidos descartados (§ catch-up) |
+| `scheduler.occurrences.skipped` | counter | `reason` (misfire/stale/overlap/paused) | picos de `misfire`/`stale` = downtime reciente; `overlap` sostenido = runs que no cierran (fix #29) |
+| `scheduler.overlap.blocked` | counter | `tenant` | ocurrencias omitidas por run anterior activo (§Concurrency 5.1) |
+| `scheduler.overlap.watchdog_released` | counter | — | `ActiveRunRef` liberado por timeout (el `run.completed` no llegó) → revisar el evento de cierre |
 | `scheduler.duplicate_fire.suppressed` | counter | — | **debería ser ~0**; > 0 confirma que la guarda de idempotencia trabaja (y que hubo redelivery) |
 
 **Cuadre de invariante:** `startcampaignrun.published` == `occurrences.fired`. Divergencia = bug de atomicidad (marca sin publicar o viceversa) → alerta crítica.
 
 ## 2. Trazas distribuidas
 
-Un trace por ocurrencia, propagando `trace_id` en `StartCampaignRun` para enganchar con el trace de Campaigns → Wallet → ejecutores. Spans: `scheduler.lease` → `scheduler.fire` → (baggage `OccurrenceId`, `CampaignId`, `ScheduleEntryId`, `SequenceNo`, `TenantId`). Correlación con el seam existente: mismo espíritu que `CampaignId` opaco en `PostmasterEmailEvents.cs:37` — el `OccurrenceId` es la clave de correlación end-to-end del disparo.
+Un trace por ocurrencia, propagando `trace_id` en `StartCampaignRun` para enganchar con el trace de Campaigns → ejecutores — (removido: el Scheduler no toca dinero; el PEP/Wallet externo, si intercepta la ruta del disparo, engancha su propio span aparte; ver banner). Spans: `scheduler.lease` → `scheduler.fire` → (baggage `OccurrenceId`, `CampaignId`, `ScheduleEntryId`, `SequenceNo`, `TenantId`). Correlación con el seam existente: mismo espíritu que `CampaignId` opaco en `PostmasterEmailEvents.cs:37` — el `OccurrenceId` es la clave de correlación end-to-end del disparo.
 
 ## 3. SLOs
 

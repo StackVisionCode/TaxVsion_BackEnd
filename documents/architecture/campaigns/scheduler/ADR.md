@@ -1,5 +1,7 @@
 # Scheduler — ADRs
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -99,6 +101,22 @@ Correctitud de DST/zonas + tests deterministas de recurrencia y de reconciliaci�
 `TimeZone` es obligatorio para Scheduled/Recurring (validado en la API, `API_Contracts.md §1`).
 
 ---
+
+## ADR-SCHED-005 — Políticas temporales: misfire, solapamiento, DST, edición (decisiones del usuario 2026-09-17)
+
+**Estado:** ACCEPTED (cierra los pendientes funcionales del review #29).
+
+### Decisión
+- **Misfire = COALESCE.** Tras downtime, se dispara **una** ocurrencia (la más reciente dentro de `MisfireGrace`); el resto `Skipped(misfire)`; todas fuera de gracia → `Skipped(stale)`. Evita ráfagas de campañas repetidas sin perder por completo el periodo.
+- **Solapamiento = OMITIR + ALERTAR.** Si el run anterior de la entry sigue activo (`ActiveRunRef` vivo, sabido por `campaign.run.completed.v1`), la nueva ocurrencia → `Skipped(overlap)` + alerta. `overlap_watchdog` libera el ref si el evento de cierre nunca llega.
+- **DST explícito.** Hora local inexistente (spring-forward) → siguiente instante válido; ambigua (fall-back) → primera ocurrencia, una sola vez.
+- **Edición de recurrencia versionada.** Editar el spec de una entry `Active`/`Paused` incrementa `SpecVersion`, cancela la próxima `Pending` no leaseada y re-materializa desde `now`; las `Fired` son inmutables.
+
+### Justificación
+Cada política prioriza **no reenviar de más a la misma audiencia** y **preservar historial/auditoría**, coherente con la inmutabilidad de `TriggerOccurrence` (SCHED-003) y con que el estado del run vive en Campaigns (frontera del `../02_Context_Map.md`): el solapamiento se evalúa por evento de cierre, no consultando el run.
+
+### Consecuencias
+El Scheduler consume `campaign.run.completed.v1` (nuevo consumo, `Commands_And_Events.md §2.1`); añade `MisfireGrace`, `ActiveRunRef`, `SpecVersion` a `ScheduleEntry`; y `SkipReason` a `TriggerOccurrence`. Ver `Concurrency_Spec.md §5/§5.1/§3`, `Domain_Design.md §8`.
 
 ## Evidencia consolidada
 
