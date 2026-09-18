@@ -1,7 +1,18 @@
 # ADR-CAMP-000 — Descomposición de la capacidad Campañas multicanal
 
-Estado: **APPROVED** (decisiones de usuario 2026-07-28)
+Estado: **APPROVED** (decisiones de usuario 2026-07-28) · **Revisado 2026-09-16 (ver ADR-CAMP-001)**
 Fecha: 2026-07-28
+
+> **ADR-CAMP-001 — Revisión de alcance (2026-09-16, decisiones del usuario). Estado: APPROVED.**
+> - **D1 · Wallet DIFERIDO ("va, pero no ahora") y Campaign SIN dinero.** La fase actual es **Wallet-free**: sin estimación/reserva/consumo/costo. Más fuerte aún (decisión 2026-09-16): **Campaign nunca maneja balance/monto/costo** — no tiene columnas, estados, VOs ni llamadas de dinero, ni "ganchos" internos. Cuando el dinero entre, vive en **otro servicio** (D7 + `wallet-ledger/`), no dentro de Campaign.
+> - **D2 · Orquestador agnóstico de canal, con todas las aristas.** Campaigns gestiona **remitente (SenderProfile por canal), contactos/listas propias, clientes (Customer), envíos inmediatos, schedule/recurrentes y detalles/reporting** — pero **no envía**.
+> - **D3 · Reuso de servicios de canal existentes** (no ejecutores dedicados nuevos): Email/Push → `Notification`; SMS → `TaxVision.Sms` (ya M2M-ready). Cada canal añade un **consumer** del contrato `campaign.dispatch.requested.v1`. WhatsApp nuevo, fase posterior. Deja sin efecto la decisión previa de un servicio "Email SMTP2GO" separado.
+> - **D4 · Acceso ya cableado.** `campaigns.manage` (`PermissionCatalog.cs:39`), módulo `campaigns` (`PermissionModuleMap.cs:45`) y entitlement `module.campaigns` (Pro/Enterprise) ya existen — no se re-agregan.
+> - **D5 · Supersede** la feature email-only dentro de Notification (`EmailCampaign*`); email pasa a ser un canal del orquestador.
+> - **D6 · Primeros canales reales: Email + SMS a la vez** (validan la agnosticidad), tras un ejecutor loopback.
+> - **D7 · La autorización por saldo es un interceptor externo (PEP), no Campaign.** La regla "sin saldo no se envía; para scheduled/recurrente se cobra **antes** de ejecutar, según cuántos destinatarios" se implementa como un **Policy Enforcement Point / interceptor** delante de la **ejecución** (trigger manual **y** cada `RunDue` del Scheduler): calcula `recipientCount` (+ recurrencia), consulta el Wallet, **cobra/reserva antes** y **veta** si no alcanza. Campaign recibe solo triggers **ya autorizados** (o un veredicto opaco `authorized`), sin conocer el motivo monetario. PEP + Wallet son **externos y DIFERIDOS**; hoy el seam está **abierto** (todo trigger autorizado) y añadirlos no cambia el modelo de Campaign. Modelo tipo Meta Ads: el objeto campaña no cobra; el sistema de delivery+billing sí. Ver `campaigns/Domain_Design.md §8.1`, `campaigns/Transactional_Protocol.md §7`.
+>
+> Las demás decisiones de ADR-CAMP-000 (separación creador-vs-ejecutor, contrato dispatch/result, idempotencia, fail-closed multi-tenant, reuse Push/Communication) **se mantienen**. Lo que cambia es: fuera dinero en esta fase, y los ejecutores son consumers en servicios existentes.
 
 ## ID y contexto
 

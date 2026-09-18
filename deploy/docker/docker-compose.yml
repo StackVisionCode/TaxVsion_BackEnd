@@ -1156,6 +1156,43 @@ services:
     networks:
       - taxvision-network
 
+  campaigns-api:
+    image: taxvision/campaigns-api:dev
+    container_name: taxvision-campaigns-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Campaigns/TaxVision.Campaigns.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # RBAC: proyección local (interina fail-closed hasta el slice de consumers). PlatformAdmin bypasa.
+      Authorization__PermissionsSource: Projection
+      # Ejecutor loopback de prueba (dev/E2E): responde Delivered sin proveedor real. Prod = false.
+      Campaigns__LoopbackExecutor__Enabled: ${CAMPAIGNS_LOOPBACK:-false}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      db-ready:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   catalog-api:
     image: taxvision/catalog-api:dev
     container_name: taxvision-catalog-api
@@ -2014,6 +2051,7 @@ services:
       CALENDAR_DB_CONNECTION: ${CALENDAR_DB_CONNECTION:?Set CALENDAR_DB_CONNECTION in .env}
       CATALOG_DB_CONNECTION: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
       INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
+      CAMPAIGNS_DB_CONNECTION: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -2092,6 +2130,7 @@ services:
       ReverseProxy__Clusters__calendar__Destinations__calendar1__Address: http://calendar-api:8080/
       ReverseProxy__Clusters__tasks__Destinations__tasks1__Address: http://tasks-api:8080/
       ReverseProxy__Clusters__catalog__Destinations__catalog1__Address: http://catalog-api:8080/
+      ReverseProxy__Clusters__campaigns__Destinations__campaigns1__Address: http://campaigns-api:8080/
       ReverseProxy__Clusters__inventory__Destinations__inventory1__Address: http://inventory-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
@@ -2120,6 +2159,7 @@ services:
       - tasks-api
       - calendar-api
       - catalog-api
+      - campaigns-api
       - inventory-api
       - otel-collector
     networks:

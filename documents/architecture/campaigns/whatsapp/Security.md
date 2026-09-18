@@ -1,5 +1,7 @@
 # WhatsApp — Security
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (NEW)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
@@ -14,7 +16,7 @@
 ## 2. Verificación del webhook (entrada no confiable)
 El webhook de Meta es un **endpoint público** y la entrada es **no confiable** (dato, no instrucción):
 - `GET` handshake valida `hub.verify_token` contra el secreto configurado.
-- `POST` valida **firma `X-Hub-Signature-256` = HMAC-SHA256(cuerpo, AppSecret)** antes de procesar. Firma ausente/incorrecta ⇒ **401, sin efecto** (no se crea/actualiza nada). Esto impide falsificación de estados (p.ej. marcar `delivered` para forzar consume, o `read` masivo).
+- `POST` valida **firma `X-Hub-Signature-256` = HMAC-SHA256(cuerpo, AppSecret)** antes de procesar. Firma ausente/incorrecta ⇒ **401, sin efecto** (no se crea/actualiza nada). Esto impide falsificación de estados (p.ej. marcar `delivered` o `read` masivo de forma fraudulenta).
 - El cuerpo se trata como datos; ningún campo del webhook se ejecuta o interpreta como comando. `wamid`/`PhoneNumberId` se resuelven contra registros propios (no se confía en el tenant declarado por el payload; el tenant se deriva de `PhoneNumberId→ProviderConfig`).
 
 ## 3. RBAC / autorización de endpoints
@@ -28,13 +30,13 @@ El webhook de Meta es un **endpoint público** y la entrada es **no confiable** 
 - El número del destinatario y el contenido son datos personales: enmascarados en logs, no expuestos en métricas, retención acotada. No se compila información entre fuentes.
 - El opt-in/opt-out es requisito de Meta para marketing; el estado de consentimiento es responsabilidad de Campaigns/Customer (la audiencia), no de este ejecutor — pero un `stop`/opt-out entrante (webhook inbound) se propaga como evento para que Campaigns lo respete.
 
-## 6. Dinero y confianza
-- El precio/costo **nunca** se acepta del frontend ni del payload del webhook como fuente de autoridad de negocio: el estimado vive en Wallet/Campaigns, el costo real proviene del `pricing` firmado del webhook Meta (autenticado por HMAC). Minor units siempre.
+## 6. Dinero y confianza — (removido)
+- — (removido: sin dinero en el canal; no se acepta ni gestiona precio/costo aquí; la autorización por balance es un interceptor/PEP externo y diferido, ver banner).
 
 ## 7. Superficie de ataque mitigada (resumen)
 | Amenaza | Mitigación |
 |---|---|
-| Falsificación de estados/costo | HMAC-SHA256 del webhook + tenant derivado del número |
+| Falsificación de estados | HMAC-SHA256 del webhook + tenant derivado del número |
 | Exfiltración de token | cifrado en reposo + redacción en logs + M2M (no JWT persistido) |
 | Cross-tenant | query filter fail-closed + ownership de PhoneNumberId |
 | Replay de webhook | dedupe `(wamid,status)` + fingerprint |

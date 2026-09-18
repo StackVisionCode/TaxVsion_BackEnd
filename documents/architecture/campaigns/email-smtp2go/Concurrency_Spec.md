@@ -1,6 +1,8 @@
 # Email (SMTP2GO) — Concurrency Spec
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
@@ -18,6 +20,7 @@ El servicio escala horizontalmente (N réplicas) consumiendo la **misma** cola W
 
 ## 4. Rate limiting del proveedor (SMTP2GO)
 - El plan SMTP2GO impone un techo de envíos/segundo. Con N réplicas concurrentes, hay que **coordinar** para no exceder el límite del proveedor por tenant/credencial.
+- **Aislar el tráfico BULK del transaccional + presupuestar la quota compartida (#15):** el email de campañas usa `Stream=Bulk` (cola/stream separada) para no ahogar el email transaccional de Notification. PERO una cola separada **no** cubre por sí sola el límite de la **cuenta/quota SMTP2GO compartida**: como este consumer vive dentro de Notification, bulk y transaccional consumen el **mismo** techo del proveedor. Hay que **presupuestar la quota compartida** (reservar cabecera para el transaccional); el rate limiter por `provider_credential` debe contabilizar **ambos** flujos, no solo el bulk.
 - Diseño: **rate limiter distribuido por `provider_credential`** (token bucket en Redis, o una cola dedicada por credencial con concurrencia limitada). `provider_rate_per_second` vive en `provider_credential`.
 - Alternativa MVP: una **cola/endpoint por credencial** con `MaxDegreeOfParallelism` acotado, aceptando menor throughput a cambio de simplicidad. Ver `Deployment.md`.
 - El legado seteaba headers en un `HttpClient` compartido (`Smtp2GoService.cs:75-79`) — **race condition** al servir múltiples credenciales concurrentes (una request podía usar la API key de otra). Diseño nuevo: **cliente por request/credencial** (typed client con handler que inyecta la key descifrada por-scope), nunca headers mutables compartidos.
@@ -37,7 +40,7 @@ El servicio escala horizontalmente (N réplicas) consumiendo la **misma** cola W
 ## 8. Tabla de riesgos de concurrencia
 | Riesgo | Mitigación |
 |---|---|
-| Doble envío por redelivery concurrente | UNIQUE dispatch + ProcessedBusinessMessage + reconciliador |
+| Doble envío por redelivery concurrente | UNIQUE dispatch + ProcessedBusinessMessage + reconciliador (residual "aceptado-pero-respuesta-perdida" acotado, NO eliminado; ver `Idempotency_Spec.md §3`) |
 | Exceder rate del proveedor con N réplicas | rate limiter distribuido por credencial |
 | HttpClient/headers compartidos entre credenciales (legado) | typed client por credencial, key inyectada por request |
 | Doble reconciliador/scheduler | lease atómico |

@@ -1,6 +1,8 @@
 # Email (SMTP2GO) — State Machines
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
@@ -30,17 +32,17 @@ Una fila **inmutable en identidad** por `(CampaignRunId, RecipientId, Attempt)`.
 `*` `Delivered` es "terminal happy path", pero un `Bounced`/`Complained` posterior sobre el mismo `ProviderMessageId` (raro pero posible con soft-bounce tardío) se aplica de forma **monótona** solo si mejora la severidad; ver reglas de webhook abajo.
 
 ### 1.1 Estados
-| Estado | Semántica | ¿Terminal? | Efecto en saga Wallet |
-|---|---|---|---|
-| `Pending` | Aceptado del bus, dedupe OK, aún no despachado | No | reservado (por Campaigns) |
-| `Suppressed` | Dirección en suppression list; **no se llamó a SMTP2GO** | Sí | dispara **refund** de esa unidad |
-| `Sent` | SMTP2GO aceptó (HTTP 200, `data.succeeded>0`, `email_id`) | No | consumible (pending-delivery) |
-| `Delivered` | Webhook `delivered` del proveedor | Sí | **consume** confirmado |
-| `Bounced` | Webhook bounce (hard/soft agotado) | Sí | hard ⇒ **refund** + suppression; ver §3 |
-| `Complained` | Webhook spam complaint | Sí | suppression; consume ya cobrado (entregado antes de queja) |
-| `Failed` | Error pre-provider o rechazo definitivo del provider (4xx no-reintentable) | Sí | dispara **refund** |
+| Estado | Semántica | ¿Terminal? |
+|---|---|---|
+| `Pending` | Aceptado del bus, dedupe OK, aún no despachado | No |
+| `Suppressed` | Dirección en suppression list; **no se llamó a SMTP2GO** | Sí |
+| `Sent` | SMTP2GO **aceptó/encoló** (HTTP 200, `data.succeeded>0`, `email_id`) — Outcome canónico = **Accepted**, NO es entrega confirmada | No |
+| `Delivered` | Webhook `delivered` del proveedor (única confirmación real de entrega) | Sí |
+| `Bounced` | Webhook bounce (hard/soft agotado) | Sí |
+| `Complained` | Webhook spam complaint | Sí |
+| `Failed` | Error pre-provider o rechazo definitivo del provider (4xx no-reintentable). Un **timeout NO es Failed**: es `Unknown` (reconcilable, ver §Reconciliador) | Sí |
 
-> Decisión de costeo (a fijar en `../06_...` + `wallet-ledger/`): **se cobra por aceptación del provider (`Sent`)**, y `Suppressed`/`Failed` (nunca se envió) generan refund. Bounces tras `Sent` NO refundan por defecto (el proveedor ya procesó el envío), salvo política contraria del tenant. Este servicio solo **reporta el hecho**; la decisión consume/refund la ejecuta la saga.
+> (removido: columna "Efecto en saga Wallet" y decisión de costeo — sin dinero en el canal; ver banner). Este consumer solo **reporta el hecho** vía `campaign.dispatch.result.v1` con `Outcome ∈ {Accepted, Delivered, Failed, Skipped, Unknown}` (mapeo estado→Outcome en `Commands_And_Events.md §3.0`); cualquier autorización por balance es un interceptor/PEP externo y DIFERIDO.
 
 ### 1.2 Transiciones válidas (guardas)
 | Método | Origen permitido | Destino | Guarda |
@@ -76,4 +78,4 @@ unsubscribe    ─► upsert SuppressionEntry(Unsubscribe) (no cambia el dispatc
 Solo `Active` + `FromDomainVerified` habilita envío en scope `Tenant`. `System` scope es `Active` por config de plataforma.
 
 ## 5. Diferencia clave vs legado
-El legado tenía **un** `Campaign.Status` global (`Draft→Scheduled→Sending→Sent/...`) que mezclaba definición, agenda y entrega en una fila, con `Sending` no-atómico. Acá el **estado de entrega por destinatario** vive en `EmailDispatch` (por intento), desacoplado del estado del `Campaign`/`CampaignRun` (que vive en Campaigns). Esto elimina el double-send al escalar y el double-count en reintento.
+El legado tenía **un** `Campaign.Status` global (`Draft→Scheduled→Sending→Sent/...`) que mezclaba definición, agenda y entrega en una fila, con `Sending` no-atómico. Acá el **estado de entrega por destinatario** vive en `EmailDispatch` (por intento), desacoplado del estado del `Campaign`/`CampaignRun` (que vive en Campaigns). Esto **reduce** el double-send al escalar y elimina el double-count en reintento. **No** garantiza "cero envío duplicado externo": el borde "proveedor aceptó pero la respuesta se perdió" NO es atómico con outbox+UNIQUE; ese residual se acota (no se elimina) con reconciliación — ver `Transactional_Protocol.md §3-5` e `Idempotency_Spec.md §3`.

@@ -82,6 +82,13 @@
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Domain/TaxVision.Correspondence.Domain.csproj" />
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Infrastructure/TaxVision.Correspondence.Infrastructure.csproj" />
   </Folder>
+  <!-- CampaignsService -->
+  <Folder Name="/src/Services/Campaigns/">
+    <Project Path="src/Services/Campaigns/TaxVision.Campaigns.Api/TaxVision.Campaigns.Api.csproj" />
+    <Project Path="src/Services/Campaigns/TaxVision.Campaigns.Application/TaxVision.Campaigns.Application.csproj" />
+    <Project Path="src/Services/Campaigns/TaxVision.Campaigns.Domain/TaxVision.Campaigns.Domain.csproj" />
+    <Project Path="src/Services/Campaigns/TaxVision.Campaigns.Infrastructure/TaxVision.Campaigns.Infrastructure.csproj" />
+  </Folder>
   <!-- NotesService -->
   <Folder Name="/src/Services/Notes/">
     <Project Path="src/Services/Notes/TaxVision.Notes.Api/TaxVision.Notes.Api.csproj" />

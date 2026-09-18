@@ -1,6 +1,8 @@
 # Campaigns Suite — Alcance del MVP
 
-Fecha: 2026-07-28. Define qué entra al primer entregable ejecutable end-to-end y qué se difiere. Regla rectora: **el MVP prueba el ciclo completo de dinero real (top-up → reserve → dispatch → consume/refund) sobre UN canal**, no la amplitud de canales.
+> **Revisión 2026-09-16 (ADR-CAMP-001) — Wallet DIFERIDO.** Este documento describe el MVP **original centrado en el ciclo de dinero** y queda **superseded** para la fase actual. **MVP vigente (Wallet-free):** orquestador `TaxVision.Campaigns` (Campaign/CampaignRun/Recipients) + **audiencia** (Clients=Customer, Contactos/Listas propias, Manual) + **remitente** (SenderProfile por canal) + **envío inmediato** + contrato dispatch/result + **Email y SMS** (consumers en `Notification` y `TaxVision.Sms`) + **detalles/reporting**. La "dependencia dura Wallet-primero (BLK-1)" **se levanta**: ya no hay Wallet en el MVP. Scheduler-con-lease, Push bulk y WhatsApp = fases posteriores. Ver `08_Implementation_Plan.md` (revisado) y `campaigns/`.
+
+Fecha: 2026-07-28 (original, con dinero). Define qué entra al primer entregable ejecutable end-to-end y qué se difiere. Regla rectora ORIGINAL: **el MVP prueba el ciclo completo de dinero real (top-up → reserve → dispatch → consume/refund) sobre UN canal** — reemplazada por la de arriba.
 
 ## 1. IN (MVP)
 

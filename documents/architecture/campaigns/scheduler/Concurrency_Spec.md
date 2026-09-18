@@ -1,5 +1,7 @@
 # Scheduler — Concurrency Spec
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -44,18 +46,35 @@ El `UPDATE … SET status=Fired WHERE id=@id AND status=Leased AND lease_owner=@
 
 - **TTL del lease** dimensionado > tiempo máx esperado de `Fire` (que es solo encolar en outbox + marcar, milisegundos), con margen amplio (ej. 60s). Corto para recuperación rápida, pero mayor que cualquier GC pause razonable.
 - **`IClock` inyectado** en todo el dominio (materialización, "debido", expiración). El legado usaba `DateTime.UtcNow` disperso e inline (`RecurrenceCalculator.cs:42`, `CampaignSchedulerService.cs:54`), imposible de testear y fuente de condiciones de carrera con el reloj. Aquí el reloj es una dependencia → tests deterministas de recurrencia/lease.
-- **Timezone-aware:** `RecurrenceSpec.Next` calcula en la `TimeZone` IANA de la entry y convierte a UTC (maneja DST). El legado calculaba en UTC naïve (`nextDate.Date.Add(timeOfDay)`, `RecurrenceCalculator.cs:25`) → una campaña "9:00 local" derivaba una hora tras el cambio de horario.
+- **Timezone-aware + bordes de DST (fix #29):** `RecurrenceSpec.Next` calcula en la `TimeZone` IANA de la entry y convierte a UTC. El legado calculaba en UTC naïve (`nextDate.Date.Add(timeOfDay)`, `RecurrenceCalculator.cs:25`) → una campaña "9:00 local" derivaba una hora tras el cambio de horario. Reglas explícitas en las transiciones DST:
+  - **Hora local inexistente** (spring-forward, p.ej. 02:30 que "no existe") → se **adelanta** al siguiente instante válido (02:30 → 03:00 local).
+  - **Hora local ambigua** (fall-back, ocurre dos veces) → se toma la **primera** ocurrencia (el offset previo al cambio), y se dispara **una sola vez** (no dos).
+  - El cálculo usa la base de datos de zonas IANA/`TimeZoneInfo`; el instante teórico (`DueAtUtc`) es siempre UTC absoluto, de modo que el lease/claim no depende de la TZ.
 
 ## 4. Reconciliación de runs colgados
 
 Barrido periódico (TX-E, `Transactional_Protocol.md`): ocurrencias `Leased` con `lease_until_utc < now()` → vuelven a `Pending` (`Attempt++`) o `Failed` si agotaron reintentos. Cubre: réplica muerta entre lease y fire, deploy/rolling restart, pod evicted. Como el re-fire usa el mismo `OccurrenceId`, la reconciliación es segura frente a duplicados (idempotencia aguas abajo, `Idempotency_Spec.md §5`). Esto es lo que el legado nunca tuvo: una ocurrencia `Sending` tras un crash quedaba **colgada para siempre** (nadie la devolvía a `Scheduled`).
 
-## 5. Catch-up / disparos vencidos
+## 5. Misfire / disparos vencidos — política **COALESCE** (decisión 2026-09-17)
 
-Al arrancar tras downtime pueden existir muchas ocurrencias `Pending` con `due_at_utc` muy pasado. Política:
-- **OneShot** vencido dentro de la ventana de gracia (ej. ≤ configurable) → dispara.
-- Vencido **más allá** de la gracia → `Skipped` con evento (no floodear a los destinatarios por una campaña que debió salir ayer). Decisión explícita, no accidental como el legado (que dispararía todas de golpe al reiniciar).
-- **Recurring:** no se "acumulan" ocurrencias perdidas; se materializa la **próxima** relevante desde `now` (coalescing), evitando ráfagas de disparos atrasados.
+Al arrancar tras downtime pueden existir varias ocurrencias `Pending` con `due_at_utc` pasado. Política elegida (fix #29): **coalesce — disparar UNA, omitir el resto.**
+
+Sea `G` la **ventana de gracia** (`misfire_grace`, configurable por entry; default p.ej. 2×intervalo o un valor absoluto). Para una `ScheduleEntry` con varias ocurrencias vencidas no disparadas:
+- **Se dispara solo la MÁS RECIENTE** cuyo `due_at_utc >= now - G` (un único `StartCampaignRun`).
+- **Las demás vencidas** (las más viejas, y las que quedaron por debajo de la más reciente) → `Skipped(misfire)` con evento.
+- Si **ninguna** vencida cae dentro de `G` (todas demasiado viejas) → todas `Skipped(stale)`; no se dispara nada del periodo caído.
+- **OneShot** sigue la misma regla: dentro de `G` → dispara; fuera → `Skipped(stale)`.
+- Tras resolver el misfire, la serie recurrente **materializa la próxima ocurrencia futura** desde `now`.
+
+Esto evita la ráfaga de campañas repetidas tras un outage (el legado dispararía todas de golpe) **sin** perder por completo el disparo del periodo (a diferencia de un skip total): sale **una** representativa. Todo `Skipped(misfire|stale)` queda auditado.
+
+## 5.1 Solapamiento de runs — **OMITIR + ALERTAR** (decisión 2026-09-17)
+
+Si la siguiente ocurrencia de una `ScheduleEntry` recurrente queda debida mientras el **run anterior de esa misma entry sigue ejecutándose**, la política es **no solapar**:
+- La `ScheduleEntry` rastrea `ActiveRunRef?` (+ `ActiveRunState`): se setea al `Fire` y se **limpia** al consumir `campaign.run.completed.v1` de Campaigns (ver `Commands_And_Events.md §Consumo`).
+- En el `Lease/Fire` de la nueva ocurrencia, si `ActiveRunRef` sigue vivo (el run anterior no cerró) → la ocurrencia pasa a `Skipped(overlap)` + **alerta** (`Observability.md`), y se materializa la próxima futura.
+- Es una guarda **por entry/tenant**, no global; dos entries distintas no se bloquean entre sí.
+- Como el estado del run vive en Campaigns, el Scheduler lo conoce solo por el evento `campaign.run.completed.v1` (at-least-once, idempotente); si ese evento se pierde, un `overlap_watchdog` (timeout configurable) libera `ActiveRunRef` para no bloquear la serie indefinidamente.
 
 ## 6. Backpressure
 

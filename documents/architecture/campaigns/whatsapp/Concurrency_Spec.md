@@ -1,12 +1,14 @@
 # WhatsApp — Concurrency Spec
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (NEW)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
 ## 1. Fuentes de concurrencia
 1. **Webhooks concurrentes** de Meta sobre el mismo `wamid` (delivered + read casi simultáneos, o reenvíos).
-2. **Reaper de timeout** vs **webhook tardío** compitiendo por el settlement de un `DispatchId`.
+2. **Reaper de timeout** vs **webhook tardío** compitiendo por resolver el **estado** de un `DispatchId` (settlement de saldo removido: sin dinero, ver banner).
 3. **Escalado horizontal** del servicio (N réplicas consumiendo el mismo stream de dispatch/webhook).
 4. **Sync de plantilla** concurrente con dispatch que la referencia.
 5. **Upsert de `SessionWindow`** por inbounds simultáneos del mismo usuario.
@@ -19,11 +21,11 @@ Todo aggregate (`WhatsAppMessage`, `WhatsAppTemplate`, `SessionWindow`, `Provide
 ### 2.2 Guards monotónicos de estado
 El avance `Sent→Delivered→Read` es idempotente y no-decreciente (ver `State_Machines.md §1`). Dos webhooks concurrentes que intentan `Delivered` → uno gana por RowVersion, el otro re-lee y ve que ya está ≥Delivered → no-op. Elimina la necesidad de serializar webhooks.
 
-### 2.3 Settlement excluyente
-`consume` XOR `refund` por `DispatchId` mediante `ProcessedBusinessMessage(op="wa.settle", scope=DispatchId)` con **UNIQUE constraint**: el primer `Begin` gana; el segundo colisiona en la unique y reconcilia en vez de duplicar dinero. Es la barrera dura contra doble-cobro/doble-refund bajo carrera reaper↔webhook.
+### 2.3 Settlement excluyente — (removido)
+— (removido: sin dinero en el canal; no hay consume/refund/settlement de saldo; la autorización por balance es externa/diferida, ver banner). La resolución de **estado** bajo carrera reaper↔webhook se mantiene por `ProcessedBusinessMessage(op="wa.status")` + guard monotónico.
 
 ### 2.4 Reaper de rezagados (fix del `Status=Sending` no-atómico del legado)
-Un job (owned por Scheduler o por este servicio, ver `Deployment.md`) toma mensajes `Sent` sin webhook tras `T_max` con **lease atómico** (`UPDATE ... SET LeaseUntil=now()+ttl WHERE Status=Sent AND (LeaseUntil IS NULL OR LeaseUntil<now()) RETURNING ...`). Solo el que gana el lease marca `Failed(timeout)`+refund. Corrige el doble-scheduler y el `Status=Sending` global no-atómico (anti-patrón §6 ADR-CAMP-000; `CampaignStatus.cs:6`).
+Un job (owned por Scheduler o por este servicio, ver `Deployment.md`) toma mensajes `Sent` sin webhook tras `T_max` con **lease atómico** (`UPDATE ... SET LeaseUntil=now()+ttl WHERE Status=Sent AND (LeaseUntil IS NULL OR LeaseUntil<now()) RETURNING ...`). Solo el que gana el lease marca `Failed(timeout)` (refund removido: sin dinero, ver banner). Corrige el doble-scheduler y el `Status=Sending` global no-atómico (anti-patrón §6 ADR-CAMP-000; `CampaignStatus.cs:6`).
 
 ### 2.5 Idempotencia de POST bajo reintento
 El upsert por `DispatchId` + `wamid` UNIQUE (`Idempotency_Spec.md §2`) impide que dos réplicas que procesan el mismo `WhatsAppDispatchRequested` (at-least-once) envíen dos WhatsApps.

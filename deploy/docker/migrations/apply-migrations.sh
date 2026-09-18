@@ -154,4 +154,10 @@ apply_migration \
   "src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" \
   "$INVENTORY_DB_CONNECTION"
 
+apply_migration \
+  "Campaigns" \
+  "src/Services/Campaigns/TaxVision.Campaigns.Infrastructure/TaxVision.Campaigns.Infrastructure.csproj" \
+  "src/Services/Campaigns/TaxVision.Campaigns.Api/TaxVision.Campaigns.Api.csproj" \
+  "$CAMPAIGNS_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

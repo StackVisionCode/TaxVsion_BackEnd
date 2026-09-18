@@ -1,10 +1,12 @@
 # TaxVision.Sms — Data Model
 
-- **Servicio:** SMS (`TaxVision.Sms`)
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — SMS NO es un servicio nuevo; `TaxVision.Sms` YA EXISTE y ya es M2M** (`SendSmsBatchCommand`, `POST /sms/messages`, `ActorType.Service`). El canal SMS es un **CONSUMER dentro de `TaxVision.Sms`** que procesa `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio SMS nuevo y/o un Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- **Servicio:** SMS (`TaxVision.Sms`) — consumer del canal SMS **dentro de `TaxVision.Sms` (ya existente)**
 - **Fecha:** 2026-07-28
 - **Estado:** DISEÑO — no implementado
 
-BD propia del bounded context (sin FK cruzando contexts; referencias a Campaign/Recipient/Wallet por **IDs opacos**, ver `02_Context_Map.md`). EF Core + Npgsql, esquema `sms`. Multi-tenant fail-closed: `TenantEntity` + query filter global por `TenantId`; accesos administrativos usan `.IgnoreQueryFilters()` + tenant explícito (ver `Guia_IgnoreQueryFilters`). Dinero en `bigint` (USD minor units), nunca `numeric`/`decimal` de coma flotante (corrige `SmsSendLog.EstimatedCost decimal`, `SmsSendLog.cs:54`).
+BD propia del bounded context (sin FK cruzando contexts; referencias a Campaign/Recipient por **IDs opacos**, ver `02_Context_Map.md`). EF Core + Npgsql, esquema `sms`. Multi-tenant fail-closed: `TenantEntity` + query filter global por `TenantId`; accesos administrativos usan `.IgnoreQueryFilters()` + tenant explícito (ver `Guia_IgnoreQueryFilters`). — (removido: sin dinero en el canal; ver banner — antes columnas de dinero en `bigint`/USD minor units).
 
 ## 1. `sms.sms_dispatch`
 
@@ -14,18 +16,17 @@ BD propia del bounded context (sin FK cruzando contexts; referencias a Campaign/
 | `tenant_id` | uuid | query filter |
 | `campaign_id` | uuid null | opaco; null en envío individual |
 | `campaign_run_id` | uuid null | opaco |
-| `recipient_key` | text | hash estable `(campaign_id, recipient_id, attempt)` o `(client_ref)` individual |
-| `attempt` | int | ≥1 |
+| `recipient_id` | text | **estable por unidad**, el mismo entre reintentos (NO incluye `attempt`); en envío individual = `client_ref`; contactos manuales ⇒ id **generado** estable, nunca el literal `"manual"` |
+| `attempt` | int | ≥1 (`attempt_no`); cada valor es un `SmsDispatch`/`CampaignDispatchAttempt` distinto |
 | `idempotency_key` | text | ≤200 |
 | `to_phone_e164` | text | normalizado |
 | `sender_id_ref` | text | referencia a un sender de la config |
+| `content_ref` | text | **inmutable**: ancla el texto congelado al crear (no se guarda el cuerpo suelto) |
+| `sms_payload` | jsonb | `{ templateRef, variables }` ⇒ reconstruye el texto EXACTO; reemplaza `rendered_body`/campos sueltos |
 | `message_class` | smallint | 0=Transactional,1=Marketing |
 | `encoding` | smallint | 0=Gsm7,1=Ucs2 |
 | `segments` | int | ≥1 |
-| `cost_quote_cents` | bigint | USD minor units |
-| `actual_cost_cents` | bigint null | del DLR/proveedor |
-| `currency` | char(3) | siempre `USD` |
-| `reservation_id` | uuid null | opaco (Wallet) |
+| ~~`cost_quote_cents` / `actual_cost_cents` / `currency` / `reservation_id`~~ | — | — (removido: sin dinero en el canal; ver banner). |
 | `status` | smallint | ver `State_Machines.md` |
 | `provider` | smallint | proveedor efectivo |
 | `provider_message_id` | text null | conciliación de webhooks |
@@ -34,7 +35,7 @@ BD propia del bounded context (sin FK cruzando contexts; referencias a Campaign/
 | `row_version` | bytea/xmin | optimistic concurrency |
 
 **Índices/constraints:**
-- `UNIQUE (tenant_id, campaign_id, recipient_key, attempt)` — idempotencia por destinatario (el corazón del fix del anti-patrón 3).
+- `UNIQUE (tenant_id, campaign_run_id, recipient_id, attempt)` — ≡ el `UNIQUE(run_id, recipient_id, attempt_no)` canónico; idempotencia por destinatario/intento (el corazón del fix del anti-patrón 3). `recipient_id` estable entre intentos; cada `attempt` es una fila nueva.
 - `UNIQUE (tenant_id, idempotency_key)` — envíos individuales.
 - `INDEX (tenant_id, provider, provider_message_id)` — resolución de webhook DLR.
 - `INDEX (tenant_id, campaign_run_id, status)` — agregación de stats por run.
@@ -93,13 +94,12 @@ Tablas de outbox/inbox de Wolverine en esquema propio (`sms_wolverine`) para at-
 ## 7. Qué NO se guarda (deltas vs legado)
 - **No** se persiste JWT ni token de usuario (el legado guardaba `Campaign.BackgroundAuthToken`; `SmsProviderCredential.UserApiToken` en claro). M2M client-credentials en su lugar.
 - **No** se copian contactos/segmentos (Customer es la fuente).
-- **No** `decimal` para dinero.
+- **No** columnas de dinero — (removido: sin dinero en el canal; ver banner).
 - **No** `Dictionary<string,string>` sin esquema para config de canal (el legado usaba `ChannelConfiguration.GetValueOrDefault`, `SmsCampaignSender.cs:86-87`); config tipada.
 
 ## 8. Tabla de evidencia
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| Legado money en `decimal` | `SmsSendLog.cs:54` | VERIFIED | 98% |
 | Legado secretos en claro | `SmsProviderCredential.cs:20,25` | VERIFIED | 98% |
 | Legado config de canal como dict sin esquema | `SmsCampaignSender.cs:86-87` | VERIFIED | 96% |
 | `ProcessedBusinessMessage` reusable como copia | `Growth/.../ProcessedBusinessMessage.cs:9-124` | VERIFIED | 97% |

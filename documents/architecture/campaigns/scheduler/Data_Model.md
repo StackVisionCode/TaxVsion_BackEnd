@@ -1,5 +1,7 @@
 # Scheduler — Data Model
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -23,6 +25,10 @@ Dinero: el Scheduler **no** maneja dinero (eso es Wallet). No hay columnas monet
 | `max_occurrences` | `int` NULL | límite por conteo |
 | `occurrence_count` | `int` NOT NULL default 0 | cuántas se han **materializado** |
 | `next_due_at_utc` | `timestamptz` NULL | cache derivada del spec |
+| `misfire_grace` | `interval` NULL | ventana de coalesce (fix #29, §Concurrency 5); NULL = default global |
+| `spec_version` | `int` NOT NULL default 1 | versión del spec (edición mid-serie, §Domain 8) |
+| `active_run_ref` | `uuid` NULL | run vigente disparado por esta entry (guarda de solapamiento) |
+| `active_run_since_utc` | `timestamptz` NULL | para el `overlap_watchdog` |
 | `rec_frequency` | `smallint` NULL | `RecurrenceSpec` desnormalizado (VO) |
 | `rec_interval` | `int` NULL | `> 0` (check) |
 | `rec_days_of_week` | `smallint[]` NULL | 0..6 |
@@ -52,6 +58,7 @@ Corazón del diseño. Una fila por instante debido; nunca se reescribe tras `Fir
 | `attempt` | `int` NOT NULL default 0 | reintentos por crash |
 | `fired_at_utc` | `timestamptz` NULL | disparo real (≠ `due_at_utc`) |
 | `campaign_run_id` | `uuid` NULL | rellenado por `CampaignRunStarted` |
+| `skip_reason` | `smallint` NULL | `paused_or_cancelled | misfire | stale | overlap` (fix #29) |
 | `fail_reason` | `text` NULL | |
 | `row_version` | `xid`/`bytea` | claim atómico del lease |
 | `created_at_utc` | `timestamptz` | |

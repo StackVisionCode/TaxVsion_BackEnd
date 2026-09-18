@@ -1,5 +1,7 @@
 # Push + In-app — Deployment
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Push es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `FcmPushSender` + un contrato **bulk** nuevo). Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **Push (reusa `Notification`) + In-app (reusa `Communication`)**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -68,6 +70,6 @@ Orden = **ejecutores antes que publisher** (consumidor listo antes de que exista
 
 ## 8. Dependencias de deployment
 
-- **Dura**: Wallet/Ledger + Campaigns desplegados (el ejecutor no sirve sin quien dispare y reserve). Ver `../07_MVP_Scope.md`.
+- **Dura**: Campaigns desplegado (el ejecutor no sirve sin quien dispare). — (removido: sin dinero en el canal; la autorización por balance/Wallet es un interceptor/PEP externo y DIFERIDO, fuera de este canal; ver banner). Ver `../07_MVP_Scope.md`.
 - **Dura**: business-inbox en Notification (migración) antes de habilitar el consumer.
 - **Blanda**: audiencia de Campaigns resolviendo `UserId` (BLOCKER-PUSH-1) — sin ella el ejecutor solo produce `NoRecipientUser`.

@@ -1,0 +1,152 @@
+using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
+using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Results;
+using Microsoft.AspNetCore.Mvc;
+using TaxVision.Campaigns.Api.Requests;
+using TaxVision.Campaigns.Application.Campaigns;
+using TaxVision.Campaigns.Application.Campaigns.Commands;
+using TaxVision.Campaigns.Application.Campaigns.Queries;
+using TaxVision.Campaigns.Application.Runs;
+using TaxVision.Campaigns.Application.Runs.Commands;
+using TaxVision.Campaigns.Application.Runs.Queries;
+using TaxVision.Campaigns.Domain.Campaigns;
+using Wolverine;
+
+namespace TaxVision.Campaigns.Api.Controllers;
+
+/// <summary>
+/// Orquestador de campañas — staff únicamente (TenantEmployee/TenantAdmin/PlatformAdmin). TenantId/
+/// UserId SIEMPRE del JWT (<c>this.TryGetTenantAndUser</c>), nunca del body. Permiso
+/// <c>campaigns.manage</c> (ya cableado en Auth). Slice 1: crear/listar/ver Draft.
+/// </summary>
+[ApiController]
+[Route("campaigns")]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+public sealed class CampaignsController(IMessageBus bus) : ControllerBase
+{
+    private const int DefaultSize = 20;
+
+    [HttpPost]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status201Created)]
+    public async Task<IActionResult> Create(CreateCampaignRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(
+            new CreateCampaignCommand(
+                tenantId,
+                userId,
+                request.Name,
+                request.ToChannelsFlag(),
+                request.Message,
+                request.Subject
+            ),
+            ct
+        );
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetById), new { id = result.Value.Id }, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpGet]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.f.list")]
+    [ProducesResponseType<PagedResult<CampaignResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(
+        [FromQuery] CampaignStatus? status,
+        [FromQuery] int page,
+        [FromQuery] int size,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<PagedResult<CampaignResponse>>(
+            new ListCampaignsQuery(tenantId, status, NormalizePage(page), NormalizeSize(size)),
+            ct
+        );
+        return Ok(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.f.get")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(new GetCampaignQuery(tenantId, id), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPost("{id:guid}/send-now")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.send")]
+    [ProducesResponseType<CampaignRunResponse>(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> SendNow(Guid id, SendNowRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var recipients = (request.Recipients ?? [])
+            .Select(r => new StartRunRecipient(r.ContactRef, r.Email, r.PhoneE164))
+            .ToList();
+
+        var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(
+            new StartCampaignRunCommand(tenantId, id, userId, recipients),
+            ct
+        );
+        return result.IsSuccess
+            ? AcceptedAtAction(nameof(GetRun), new { runId = result.Value.Id }, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpGet("{id:guid}/runs")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.f.list")]
+    [ProducesResponseType<PagedResult<CampaignRunResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListRuns(
+        Guid id,
+        [FromQuery] int page,
+        [FromQuery] int size,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<PagedResult<CampaignRunResponse>>(
+            new ListCampaignRunsQuery(tenantId, id, NormalizePage(page), NormalizeSize(size)),
+            ct
+        );
+        return Ok(result);
+    }
+
+    [HttpGet("runs/{runId:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.f.get")]
+    [ProducesResponseType<CampaignRunResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRun(Guid runId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(new GetCampaignRunQuery(tenantId, runId), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    private static int NormalizePage(int page) => page < 1 ? 1 : page;
+
+    private static int NormalizeSize(int size) => size is < 1 or > 100 ? DefaultSize : size;
+}

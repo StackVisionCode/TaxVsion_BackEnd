@@ -1,6 +1,8 @@
 # TaxVision.Sms — Observability
 
-- **Servicio:** SMS (`TaxVision.Sms`)
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — SMS NO es un servicio nuevo; `TaxVision.Sms` YA EXISTE y ya es M2M** (`SendSmsBatchCommand`, `POST /sms/messages`, `ActorType.Service`). El canal SMS es un **CONSUMER dentro de `TaxVision.Sms`** que procesa `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio SMS nuevo y/o un Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- **Servicio:** SMS (`TaxVision.Sms`) — consumer del canal SMS **dentro de `TaxVision.Sms` (ya existente)**
 - **Fecha:** 2026-07-28
 - **Estado:** DISEÑO — no implementado
 
@@ -11,33 +13,33 @@ Se propaga `CampaignId`/`CampaignRunId`/`RecipientId`/`Attempt`/`DispatchId` en 
 
 | Métrica | Tipo | Labels | Uso |
 |---|---|---|---|
-| `sms_dispatch_total` | counter | `tenant`, `channel_class`, `outcome`, `provider` | volumen y tasa de éxito |
-| `sms_segments_total` | counter | `tenant`, `encoding` | costo agregado y detección de Unicode inesperado |
-| `sms_cost_cents_total` | counter | `tenant`, `outcome` | gasto real vs. reservado |
+| `sms_dispatch_total` | counter | `tenant`, `channel_class`, `outcome`, `provider` | volumen y tasa de éxito; `outcome ∈ {Accepted, Delivered, Failed, Skipped, Unknown}` (canónico; `Unknown` = timeout, no `Failed`) |
+| `sms_segments_total` | counter | `tenant`, `encoding` | volumen de segmentos y detección de Unicode inesperado |
+| ~~`sms_cost_cents_total`~~ | — | — | — (removido: sin dinero en el canal; ver banner). |
 | `sms_dispatch_duration` | histogram | `provider`, `outcome` | latencia envío→accepted |
 | `sms_dlr_lag` | histogram | `provider` | tiempo accepted→delivered (DLR) |
 | `sms_provider_errors_total` | counter | `provider`, `http_status`, `error_code` | salud del proveedor |
-| `sms_wallet_reserve_denied_total` | counter | `tenant` | saldo insuficiente (señal de negocio) |
+| ~~`sms_wallet_reserve_denied_total`~~ | — | — | — (removido: sin dinero en el canal; ver banner). |
 | `sms_optin_suppressed_total` | counter | `tenant`, `reason` (stop/no-optin/blocked) | cumplimiento |
 | `sms_webhook_signature_rejected_total` | counter | `provider` | ataques/misconfig |
 | `sms_idempotency_replay_total` | counter | `operation` | duplicados absorbidos |
-| `sms_reconciliation_actions_total` | counter | `action` (resend/refund/consume) | red de seguridad activa |
+| `sms_reconciliation_actions_total` | counter | `action` (resend/mark-terminal) | red de seguridad activa — (removido: sin dinero en el canal; ver banner — antes refund/consume) |
 
 ## 3. Alertas
 - `outcome=failed` ratio > umbral por proveedor/tenant (proveedor caído o sender bloqueado).
-- `sms_wallet_reserve_denied_total` en alza (tenant sin saldo — CTA top-up).
-- `sms_dlr_lag` p95 alto o DLR ausentes (webhook roto).
+- — (removido: sin dinero en el canal; ver banner — antes alerta de saldo insuficiente / CTA top-up).
+- `sms_dlr_lag` p95 alto o DLR ausentes (webhook roto) ⇒ suben los `outcome=Unknown` (timeout), no `Failed`.
 - `sms_webhook_signature_rejected_total` > 0 sostenido (firma mal configurada o abuso).
 - Dispatch `Accepted` sin DLR tras TTL (backlog de reconciliación).
 
 ## 4. Logging estructurado
 - Nunca loggear el **cuerpo del SMS** completo ni PII del destinatario en claro más allá del `phone` enmascarado (`+1512•••0123`) — el body puede contener datos sensibles (ver `Security.md`).
 - **Nunca** loggear credenciales/`WebhookSecret` (el legado loggeaba respuestas raw del proveedor, `RawResponse`, `SmsSendLog.cs:40` — se acota a metadatos, no secretos).
-- Niveles: `Info` por transición terminal; `Warn` por retry/reserve-denied; `Error` por excepción de proveedor no recuperable.
+- Niveles: `Info` por transición terminal; `Warn` por retry/suppressed; `Error` por excepción de proveedor no recuperable. — (removido: sin dinero en el canal; ver banner — antes reserve-denied).
 
 ## 5. Auditoría
 - Cada transición de `SmsDispatch` y de `SmsOptInRegistry` queda como evento/registro inmutable (auditable) — clave para probar consentimiento (STOP/opt-in) ante disputas TCPA/carrier. `consent_source`/`consent_proof_ref` lo respaldan.
-- Los movimientos de dinero son auditables en Wallet (fuente de verdad del saldo), no aquí.
+- — (removido: sin dinero en el canal; ver banner — antes auditoría de movimientos de dinero en Wallet).
 
 ## 6. Health checks
 - `/health/live`, `/health/ready` (dependencias: BD, bus Wolverine, alcanzabilidad del proveedor por tenant activo — degradado, no fail-hard, si un proveedor está caído).

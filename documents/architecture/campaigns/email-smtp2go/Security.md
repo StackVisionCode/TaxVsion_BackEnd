@@ -1,26 +1,29 @@
 # Email (SMTP2GO) — Security
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
 ## 1. Amenaza #1 — secretos de proveedor (fix directo del legado)
-El legado guardaba la **API key de SMTP2GO en texto plano** en BD (`SmtpProviderConfig.ApiKey`, `SmtpProviderConfig.cs:7`) y en config (`Smtp2GoSettings.ApiKey`, `Smtp2GoSettings.cs:6`), y persistía **JWT de usuario** para refunds (anti-patrón #5). Diseño nuevo:
+El legado guardaba la **API key de SMTP2GO en texto plano** en BD (`SmtpProviderConfig.ApiKey`, `SmtpProviderConfig.cs:7`) y en config (`Smtp2GoSettings.ApiKey`, `Smtp2GoSettings.cs:6`), y persistía **JWT de usuario** (anti-patrón #5). Diseño nuevo:
 - `provider_credential.encrypted_api_key` = **envelope encryption** (DEK por registro, KEK en KMS/DPAPI del entorno), con `key_version` para rotación. Nunca texto plano en BD, logs, ni respuestas HTTP.
 - La key se **descifra solo en memoria** dentro del handler de envío, se inyecta en un typed `HttpClient` por-request y se descarta. Nunca en un singleton compartido (a diferencia de `Smtp2GoService.cs:75-79`).
-- **Prohibido persistir JWT de usuario.** Toda operación de servicio-a-servicio usa **M2M client-credentials** (audience/scope propios). El refund lo dispara un evento de dominio, no un JWT guardado.
+- **Prohibido persistir JWT de usuario.** Toda operación de servicio-a-servicio usa **M2M client-credentials** (audience/scope propios); las acciones cross-service se disparan por evento de dominio, no por un JWT guardado.
 - `webhook_secret_enc` (HMAC del webhook) también cifrado.
 
-## 2. Webhooks — verificación de firma OBLIGATORIA
-El legado exponía webhooks `[AllowAnonymous]` **sin verificar nada** (`TrackingController.cs:133-140, 238-241, 278-281`): cualquiera podía POSTear eventos falsos (falsos bounces ⇒ suppression envenenada; falsos delivered ⇒ consume indebido).
-- `POST /api/email/webhooks/smtp2go` verifica **HMAC-SHA256** (`X-Smtp2go-Signature`) contra `webhook_secret_enc` **antes** de deserializar o tocar dominio. Firma inválida ⇒ 401, sin efecto, WARN con origen.
-- Solo tras firma válida se persiste el evento crudo; la proyección corre async.
+## 2. Webhooks — verificación de credencial OBLIGATORIA (mecanismo real del proveedor)
+El legado exponía webhooks `[AllowAnonymous]` **sin verificar nada** (`TrackingController.cs:133-140, 238-241, 278-281`): cualquiera podía POSTear eventos falsos (falsos bounces ⇒ suppression envenenada; falsos delivered ⇒ estado/stats corrompidos).
+- **Verificar el mecanismo que SMTP2GO REALMENTE soporta.** Su setup de webhooks documenta `Authorization` (Bearer/Basic), **no** una cabecera `X-Smtp2go-Signature` HMAC-SHA256 (ASSUMPTION a verificar: (in)existencia de un HMAC de firma; confirmar contra la doc vigente del proveedor antes de implementar). `POST /api/email/webhooks/smtp2go` exige **HTTPS** y **valida la credencial** contra `webhook_secret_enc` **antes** de deserializar o aplicar efectos. Credencial inválida ⇒ 401, sin efecto, WARN con origen.
+- Solo tras credencial válida se persiste el evento crudo (con campos sensibles redactados/cifrados, ver `Data_Model.md §2.4`); la proyección corre async y deduplica por `provider_event_id`.
+- Si una infra interna (gateway/proxy) añade su propia firma, esta autentica el **salto interno**, NO a SMTP2GO; se documenta y gestiona aparte.
 - `CampaignId`/`RecipientId` se resuelven por `provider_message_id` (correlación server-side), **no** se confían de campos arbitrarios del body (el legado parseaba `CampaignId` del payload, `TrackingController.cs:250,288`).
 
 ## 3. AuthN/AuthZ
 - Endpoints tenant (credenciales, suppression): **JWT + `[HasPermission(...)]`** RBAC acumulativo (actor-type + permiso + tenant + ownership), sin bypass. Ver CLAUDE.md RBAC.
 - Endpoint interno de estado: **M2M** con `audience="campaigns-email"` + scope de lectura.
-- Webhook público y tracking pixel/click: `[AllowAnonymous]` (no hay usuario) pero con firma / token firmado + `[RateLimit]`.
+- Webhook público y tracking pixel/click: `[AllowAnonymous]` (no hay usuario) pero con credencial verificada (webhook: Authorization Bearer/Basic) / token firmado + `[RateLimit]`.
 
 ## 4. Rate limiting (anti-abuso)
 Todo endpoint público lleva `[RateLimit(categoría)]` (categorías nuevas: `webhook-provider`, `tracking-pixel`, `tracking-click`, `admin-read/write`) — ver `Guia_Nuevos_Servicios_Endpoints.md`. Protege contra flooding de webhooks falsos y scraping de tracking.
@@ -44,7 +47,7 @@ Todo endpoint público lleva `[RateLimit(categoría)]` (categorías nuevas: `web
 | Secreto | Dónde | Protección |
 |---|---|---|
 | SMTP2GO API key | `provider_credential.encrypted_api_key` | envelope encryption + rotación |
-| Webhook HMAC secret | `provider_credential.webhook_secret_enc` | cifrado |
+| Webhook credential secret (Authorization Bearer/Basic) | `provider_credential.webhook_secret_enc` | cifrado |
 | Tracking token key | config/KMS | firma HMAC de tokens |
 | M2M client secret | vault del entorno | no en BD de la app |
 
@@ -56,5 +59,5 @@ Todo endpoint público lleva `[RateLimit(categoría)]` (categorías nuevas: `web
 | CampaignId confiado del payload del webhook | `TrackingController.cs:250,288` | VERIFIED | 92% |
 | Open-redirect en click tracking | `TrackingController.cs:109` | VERIFIED | 90% |
 | cid/rid en claro en URLs de tracking | `Smtp2GoService.cs:449-453` | VERIFIED | 90% |
-| JWT de usuario persistido para refund (suite) | `../05_Master_ADR.md` #5 | VERIFIED | 88% |
+| JWT de usuario persistido (suite) | `../05_Master_ADR.md` #5 | VERIFIED | 88% |
 | Cifrado/HMAC/M2M nuevos | este diseño | NEW | n/a |
