@@ -1,9 +1,12 @@
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
+using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -35,33 +38,45 @@ public sealed class SubscriptionExpirationJob(
 
         var suspendedTimedOut = await subscriptions.GetSuspendedBeforeAsync(nowUtc - SuspensionTimeout, BatchSize, ct);
         foreach (var subscription in suspendedTimedOut)
+        {
+            var previousStatus = subscription.Status;
             expiredCount += await TryExpireAsync(
+                subscription,
+                previousStatus,
                 subscription.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc),
-                subscription.TenantId,
+                SubscriptionChangeReason.SuspensionTimeout,
                 unitOfWork,
                 bus,
                 logger,
                 ct
             );
+        }
 
         var cancelledPastPeriod = await subscriptions.GetCancelledPastPeriodEndAsync(nowUtc, BatchSize, ct);
         foreach (var subscription in cancelledPastPeriod)
+        {
+            var previousStatus = subscription.Status;
             expiredCount += await TryExpireAsync(
+                subscription,
+                previousStatus,
                 subscription.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc),
-                subscription.TenantId,
+                SubscriptionChangeReason.CancellationEnded,
                 unitOfWork,
                 bus,
                 logger,
                 ct
             );
+        }
 
         if (expiredCount > 0)
             logger.LogInformation("SubscriptionExpirationJob expired {Count} subscription(s).", expiredCount);
     }
 
     private static async Task<int> TryExpireAsync(
+        TenantSubscription subscription,
+        SubscriptionStatus previousStatus,
         Result result,
-        Guid tenantId,
+        SubscriptionChangeReason reason,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger logger,
@@ -76,8 +91,9 @@ public sealed class SubscriptionExpirationJob(
         // RBAC Fase 5 — RecalculateEntitlementsSafelyAsync despacha vía bus.InvokeAsync a un
         // scope Wolverine nuevo; sin este stamp LocalCommandTenantMiddleware no tiene tenant
         // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
-        bus.TenantId = tenantId.ToString();
-        await bus.RecalculateEntitlementsSafelyAsync(tenantId, logger, ct);
+        bus.TenantId = subscription.TenantId.ToString();
+        await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
+        await bus.PublishStatusChangedAsync(subscription, previousStatus, reason);
         return 1;
     }
 }

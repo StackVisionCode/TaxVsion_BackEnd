@@ -116,6 +116,10 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IInvitationTokenService, InvitationTokenService>();
         services.AddSingleton<IOnboardingMetrics, OnboardingMetrics>();
+        services.AddSingleton<
+            TaxVision.Auth.Application.Subscriptions.Abstractions.ISubscriptionAccessMetrics,
+            TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics
+        >();
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
         services.AddSingleton<ITotpService, TotpService>();
         // BB-10 — el protector es el compartido de BuildingBlocks, pero con la clave de Auth: los

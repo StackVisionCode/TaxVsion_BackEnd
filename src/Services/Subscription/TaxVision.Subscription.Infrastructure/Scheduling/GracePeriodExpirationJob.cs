@@ -1,9 +1,11 @@
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -58,6 +60,7 @@ public sealed class GracePeriodExpirationJob(
         var count = 0;
         foreach (var subscription in due)
         {
+            var previousStatus = subscription.Status;
             var result = subscription.SuspendBecauseGraceExpired(actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
                 continue;
@@ -69,6 +72,7 @@ public sealed class GracePeriodExpirationJob(
             // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
             bus.TenantId = subscription.TenantId.ToString();
             await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
+            await bus.PublishStatusChangedAsync(subscription, previousStatus, SubscriptionChangeReason.GraceExpired);
             count++;
         }
 

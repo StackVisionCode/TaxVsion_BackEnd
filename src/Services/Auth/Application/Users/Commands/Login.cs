@@ -243,6 +243,32 @@ public static class LoginHandler
             return Result.Failure<LoginResponse>(invalidCredentials);
         }
 
+        // Fase 2 — corte de acceso por facturación: la suscripción del tenant está Suspended/Expired.
+        // Se bloquea a empleados y clientes; el TenantAdmin/PlatformAdmin pasa para poder ir a renovar.
+        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"reason":"subscription_inactive"}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Failure<LoginResponse>(
+                new Error(
+                    "Auth.SubscriptionInactive",
+                    "This office's subscription is inactive. Please renew to restore access."
+                )
+            );
+        }
+
         user.RegisterSuccessfulLogin();
 
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).

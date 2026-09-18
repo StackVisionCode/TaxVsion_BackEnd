@@ -14,4 +14,7 @@ public interface ITenantRegistry
         CancellationToken ct = default
     );
     Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default);
+
+    /// <summary>Marca/limpia el bloqueo de acceso por facturación (suscripción Suspended/Expired).</summary>
+    Task SetBillingBlockedAsync(Guid tenantId, bool blocked, string? reason, CancellationToken ct = default);
 }

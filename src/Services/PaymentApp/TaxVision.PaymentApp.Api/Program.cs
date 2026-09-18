@@ -185,6 +185,11 @@ builder.Host.UseWolverine(options =>
     // PayFlow (Fase 8) — resultado del pago inicial de un onboarding pago-primero.
     options.PublishMessage<OnboardingPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatsCheckoutPaidIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatsCheckoutFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Expiración/Dunning (Fase 4) — resultado del checkout de renovación/reactivación self-service.
+    options.PublishMessage<SubscriptionRenewalCheckoutPaidIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalCheckoutFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Bug real encontrado en auditoría: SaaSPaymentChargeOutcome ya publicaba este evento para
     // liquidar beneficios de referidos en Growth, pero nunca tuvo ruta registrada -- Wolverine
     // lo descartaba silenciosamente y los descuentos de referidos nunca se liquidaban.

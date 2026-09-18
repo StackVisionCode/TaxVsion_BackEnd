@@ -46,6 +46,8 @@ public sealed class PermissionModuleMapTests
     [InlineData("users.manage")]
     [InlineData("subscription.plan.change")]
     [InlineData("billing.view")]
+    [InlineData("invoicing.view")] // facturación tenant→cliente: operativa, siempre efectiva
+    [InlineData("invoicing.manage")]
     [InlineData("seats.manage")]
     [InlineData("tenant.status.change")]
     [InlineData("onboarding.admin.manage")]

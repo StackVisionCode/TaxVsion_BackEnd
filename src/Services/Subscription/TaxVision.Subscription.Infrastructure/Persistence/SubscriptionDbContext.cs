@@ -33,6 +33,9 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<SubscriptionPlan> Plans => Set<SubscriptionPlan>();
     public DbSet<TenantSubscription> Subscriptions => Set<TenantSubscription>();
     public DbSet<SubscriptionSeat> Seats => Set<SubscriptionSeat>();
+    public DbSet<SeatPricing> SeatPricings => Set<SeatPricing>();
+    public DbSet<SeatPurchaseIntent> SeatPurchaseIntents => Set<SeatPurchaseIntent>();
+    public DbSet<SubscriptionRenewalIntent> SubscriptionRenewalIntents => Set<SubscriptionRenewalIntent>();
     public DbSet<SubscriptionTenantSettings> TenantSettings => Set<SubscriptionTenantSettings>();
     public DbSet<AddOnDefinition> AddOnDefinitions => Set<AddOnDefinition>();
     public DbSet<TenantAddOn> TenantAddOns => Set<TenantAddOn>();

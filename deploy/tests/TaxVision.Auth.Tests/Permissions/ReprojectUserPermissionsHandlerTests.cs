@@ -169,6 +169,9 @@ public sealed class ReprojectUserPermissionsHandlerTests
         public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
             Guid tenantId,
             int page,

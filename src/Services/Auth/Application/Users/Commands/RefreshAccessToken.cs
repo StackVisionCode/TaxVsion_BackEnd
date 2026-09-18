@@ -132,6 +132,18 @@ public static class RefreshAccessTokenHandler
             return Result.Failure<AuthTokensResponse>(new Error("Tenant.Inactive", "Tenant is inactive."));
         }
 
+        // Fase 2 — backstop de refresh: aunque RevokeAllForTenant corta las sesiones vivas al bloquear,
+        // se re-chequea acá para que un refresh en curso no reviva el acceso de empleados/clientes.
+        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+        {
+            return Result.Failure<AuthTokensResponse>(
+                new Error(
+                    "Auth.SubscriptionInactive",
+                    "This office's subscription is inactive. Please renew to restore access."
+                )
+            );
+        }
+
         var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 

@@ -960,6 +960,122 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPriceTier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("SeatPricingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SeatType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeatPricingId", "SeatType", "BillingCycle")
+                        .IsUnique();
+
+                    b.ToTable("SeatPriceTiers", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPricing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SeatPricings", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPurchaseIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AutoRenew")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ProratedTotalCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SaaSPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SeatType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaaSPaymentId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("SeatPurchaseIntents", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1418,6 +1534,65 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("PlanChangeRequests", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.SubscriptionRenewalIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("AmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SaaSPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaaSPaymentId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("SubscriptionRenewalIntents", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1751,6 +1926,72 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPriceTier", b =>
+                {
+                    b.HasOne("TaxVision.Subscription.Domain.Seats.SeatPricing", null)
+                        .WithMany("PriceTiers")
+                        .HasForeignKey("SeatPricingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Subscription.Domain.ValueObjects.Money", "UnitAmount", b1 =>
+                        {
+                            b1.Property<Guid>("SeatPriceTierId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)")
+                                .HasColumnName("UnitAmount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("nvarchar(3)")
+                                .HasColumnName("Currency");
+
+                            b1.HasKey("SeatPriceTierId");
+
+                            b1.ToTable("SeatPriceTiers");
+
+                            b1.WithOwner()
+                                .HasForeignKey("SeatPriceTierId");
+                        });
+
+                    b.Navigation("UnitAmount")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPurchaseIntent", b =>
+                {
+                    b.OwnsOne("TaxVision.Subscription.Domain.ValueObjects.Money", "UnitPrice", b1 =>
+                        {
+                            b1.Property<Guid>("SeatPurchaseIntentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 4)
+                                .HasColumnType("decimal(18,4)")
+                                .HasColumnName("UnitPriceAmount");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("nvarchar(3)")
+                                .HasColumnName("UnitPriceCurrency");
+
+                            b1.HasKey("SeatPurchaseIntentId");
+
+                            b1.ToTable("SeatPurchaseIntents");
+
+                            b1.WithOwner()
+                                .HasForeignKey("SeatPurchaseIntentId");
+                        });
+
+                    b.Navigation("UnitPrice")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", b =>
                 {
                     b.OwnsOne("TaxVision.Subscription.Domain.ValueObjects.Money", "UnitPrice", b1 =>
@@ -1866,6 +2107,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Features");
 
+                    b.Navigation("PriceTiers");
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPricing", b =>
+                {
                     b.Navigation("PriceTiers");
                 });
 

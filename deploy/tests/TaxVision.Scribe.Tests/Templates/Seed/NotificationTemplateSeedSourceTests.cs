@@ -5,7 +5,7 @@ using TaxVision.Scribe.Application.Templates.Validation;
 namespace TaxVision.Scribe.Tests.Templates.Seed;
 
 /// <summary>
-/// Recorre los 23 seeds: cada Html/Subject debe parsear como Fluid (caza typos en {% if %}/{{ }}),
+/// Recorre los 27 seeds: cada Html/Subject debe parsear como Fluid (caza typos en {% if %}/{{ }}),
 /// el Html debe pasar el preflight de seguridad, y ninguno debe seguir mencionando la marca vieja.
 /// </summary>
 public sealed class NotificationTemplateSeedSourceTests
@@ -40,5 +40,20 @@ public sealed class NotificationTemplateSeedSourceTests
             Assert.DoesNotContain("TaxVision", seed.Html);
             Assert.DoesNotContain("TaxVision", seed.Subject);
         }
+    }
+
+    [Fact]
+    public void Meeting_invitation_template_is_seeded_with_its_keys_and_a_preheader()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.invitation_created.v1"
+        );
+        Assert.Equal("communication.meeting.invitation", seed.TemplateKey);
+        // El join_link es la variable que lleva al subdominio correcto del tenant (bug prod #1).
+        Assert.Contains(seed.Variables, v => v.Name == "join_link");
+
+        var withPreheader = NotificationTemplateSeedSource.VariablesWithPreheader(seed);
+        Assert.Contains(withPreheader, v => v.Name == "preheader");
     }
 }

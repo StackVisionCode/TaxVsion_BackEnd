@@ -79,6 +79,41 @@ public sealed class PermissionCatalogTests
     }
 
     [Fact]
+    public void Employee_defaults_include_the_daily_operational_catalog_inventory_and_sms_permissions()
+    {
+        var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(PermissionCatalog.CatalogRead, defaults);
+        Assert.Contains(PermissionCatalog.CatalogWrite, defaults);
+        Assert.Contains(PermissionCatalog.CatalogDelete, defaults);
+        Assert.Contains(PermissionCatalog.InventoryRead, defaults);
+        Assert.Contains(PermissionCatalog.InventoryWrite, defaults);
+        Assert.Contains(PermissionCatalog.InventoryAdjust, defaults);
+        Assert.Contains(PermissionCatalog.SmsSend, defaults);
+    }
+
+    /// <summary>
+    /// Facturación tenant→cliente (invoicing.*): a DIFERENCIA de billing.* (suscripción SaaS, peligroso/
+    /// admin-only), es operativa — no peligrosa, asignable, y llega tanto al empleado (bundle explícito)
+    /// como al TenantAdmin (bundle automático de no-peligrosos).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCatalog.InvoicingView)]
+    [InlineData(PermissionCatalog.InvoicingManage)]
+    public void Invoicing_permissions_are_operational_not_dangerous_and_reach_employee_and_admin(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.False(definition.IsDangerous);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier);
+        Assert.Contains(code, employeeDefaults);
+        Assert.Contains(code, tenantAdminDefaults);
+    }
+
+    [Fact]
     public void Customer_portal_defaults_never_include_moderation_or_admin_communication_permissions()
     {
         var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);

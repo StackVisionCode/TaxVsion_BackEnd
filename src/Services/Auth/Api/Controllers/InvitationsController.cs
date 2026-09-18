@@ -87,6 +87,25 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Validación ANÓNIMA por token para la página de aceptar invitación: devuelve el estado
+    /// (Pending/Accepted/Expired/Cancelled/Invalid) y la oficina del token, para pintar el branding correcto
+    /// y bloquear el formulario si la invitación ya no es hábil. Solo lee — no consume ni muta el token.</summary>
+    [HttpGet("validate")]
+    [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo, solo lectura por token de alta entropía (no enumerable). Devuelve únicamente lo que quien tiene el token ya conoce (email destinatario + oficina); no muta ni consume la invitación."
+    )]
+    [ProducesResponseType<InvitationValidationResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Validate([FromQuery] string token, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<InvitationValidationResponse>>(
+            new ValidateInvitationQuery(token),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{invitationId:guid}/resend")]
     [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]

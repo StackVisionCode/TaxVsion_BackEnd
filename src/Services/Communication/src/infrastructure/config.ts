@@ -114,6 +114,10 @@ const rawEnv = z
     COMMUNICATION_FRONTEND_BASE_URL: z.string().url().default('http://localhost:5173'),
     COMMUNICATION_JOIN_TICKET_SECRET: z.string().min(32),
     COMMUNICATION_JOIN_TICKET_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+    // El link de invitación va al SUBDOMINIO del tenant ({subdomain}.taxproffice.com), resuelto por
+    // M2M contra Auth; el portal del cliente vive bajo este prefijo dentro del subdominio. Solo se usa
+    // COMMUNICATION_FRONTEND_BASE_URL como fallback si no se puede resolver el host del tenant.
+    COMMUNICATION_PORTAL_PATH_PREFIX: z.string().default('/portal'),
 
     // Fase Backend 8 — M2M sync HTTP a CloudStorage para validar metadata de
     // grabaciones al attach (bug #245: rechazar files size=0). Reusa el mismo
@@ -281,6 +285,7 @@ export const config = {
     frontendBaseUrl: rawEnv.COMMUNICATION_FRONTEND_BASE_URL,
     joinTicketSecret: rawEnv.COMMUNICATION_JOIN_TICKET_SECRET,
     joinTicketTtlSeconds: rawEnv.COMMUNICATION_JOIN_TICKET_TTL_SECONDS,
+    portalPathPrefix: rawEnv.COMMUNICATION_PORTAL_PATH_PREFIX,
   },
 
   serviceAuth: {

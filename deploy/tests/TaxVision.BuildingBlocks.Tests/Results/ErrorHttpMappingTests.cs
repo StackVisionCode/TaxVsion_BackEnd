@@ -21,6 +21,7 @@ public sealed class ErrorHttpMappingTests
     [InlineData("Auth.Invalid", StatusCodes.Status401Unauthorized)]
     [InlineData("Auth.HandoffInvalid", StatusCodes.Status401Unauthorized)]
     [InlineData("File.Forbidden", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.SubscriptionInactive", StatusCodes.Status403Forbidden)]
     [InlineData("Role.NameConflict", StatusCodes.Status409Conflict)]
     [InlineData("Codes.CodeQuote.Expired", StatusCodes.Status410Gone)]
     [InlineData("File.ZipTooLarge", StatusCodes.Status413PayloadTooLarge)]

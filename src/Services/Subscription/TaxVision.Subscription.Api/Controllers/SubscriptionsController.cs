@@ -13,6 +13,7 @@ using TaxVision.Subscription.Application.Subscriptions.Commands.CancelPendingPla
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Reactivate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
+using TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Suspend;
 using TaxVision.Subscription.Application.Subscriptions.Queries;
 using Wolverine;
@@ -103,6 +104,63 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Renovación/reactivación self-service por HOSTED-CHECKOUT (Expiración/Dunning, Fase 4): para el
+    /// owner cuya suscripción cayó en lapso (PastDue/GracePeriod/Suspended/Expired) y no tiene método en archivo.
+    /// Crea la sesión de checkout y devuelve la URL de redirect; al confirmarse el pago (webhook) la suscripción
+    /// vuelve a Active. Solo TenantAdmin/PlatformAdmin — que no quedan bloqueados por billing y pueden entrar a
+    /// pagar aunque la oficina esté cortada.</summary>
+    public sealed record RenewCheckoutRequest(
+        string PayerEmail,
+        string SuccessUrl,
+        string CancelUrl,
+        string? Provider = null,
+        string? Method = null
+    );
+
+    [HttpPost("me/renew-checkout")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<StartRenewalCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> StartRenewCheckout(RenewCheckoutRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<StartRenewalCheckoutResponse>>(
+            new StartRenewalCheckoutCommand(
+                tenantId,
+                request.PayerEmail,
+                request.SuccessUrl,
+                request.CancelUrl,
+                request.Provider ?? "Stripe",
+                request.Method ?? "Card",
+                userId
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Estado de una intención de renovación self-service — el front lo pollea tras volver del checkout
+    /// hasta <c>Provisioned</c>/<c>Failed</c>.</summary>
+    [HttpGet("me/renew-checkout/{intentId:guid}")]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<RenewalCheckoutStatusResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRenewCheckoutStatus(Guid intentId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<RenewalCheckoutStatusResponse>>(
+            new GetRenewalCheckoutStatusQuery(tenantId, intentId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Cambio de plan pendiente (diferido a fin de período), si existe alguno.</summary>

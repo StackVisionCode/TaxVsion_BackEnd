@@ -68,6 +68,9 @@ public sealed class GetUsersHandlerTests
 
         public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeRoleRepository : IRoleRepository

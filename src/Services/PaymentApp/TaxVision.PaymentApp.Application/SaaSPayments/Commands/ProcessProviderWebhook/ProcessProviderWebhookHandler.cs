@@ -6,6 +6,8 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
+using TaxVision.PaymentApp.Application.SeatsCheckouts;
+using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -254,6 +256,10 @@ public static class ProcessProviderWebhookHandler
 
         if (payment.Type == SaaSPaymentType.OnboardingInitial)
             await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlation.CorrelationId, ct);
+        else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
+            await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
+        else if (payment.Type == SaaSPaymentType.SubscriptionRenewalCheckout)
+            await SubscriptionRenewalCheckoutResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 

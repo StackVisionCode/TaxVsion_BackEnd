@@ -168,6 +168,11 @@ public static class DiscoverLoginHandler
             if (tenant is null || !tenant.IsActive)
                 continue;
 
+            // Fase 2 — oficina con acceso bloqueado por facturación: no matchea para empleados/clientes
+            // (el TenantAdmin sí, para poder entrar a renovar).
+            if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+                continue;
+
             var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct, mfaEnforced);
             matches.Add(
                 new Match(

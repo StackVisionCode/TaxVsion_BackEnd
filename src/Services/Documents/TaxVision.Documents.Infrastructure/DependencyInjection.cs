@@ -10,6 +10,7 @@ using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Application.RateLimiting.Abstractions;
 using TaxVision.Documents.Infrastructure.Branding;
 using TaxVision.Documents.Infrastructure.Observability;
+using TaxVision.Documents.Infrastructure.Permissions;
 using TaxVision.Documents.Infrastructure.Persistence;
 using TaxVision.Documents.Infrastructure.Persistence.Repositories;
 using TaxVision.Documents.Infrastructure.PlatformIssuer;
@@ -61,6 +62,24 @@ public static class DependencyInjection
             sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
         );
         services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
+
+        // RBAC Fase 7 — Opción B (recuperación pull bajo demanda). Sin estos dos, ProjectionPermissionsSource
+        // trata un miss local como definitivo y Documents queda fail-closed para todo usuario cuyo
+        // UserRolesChangedIntegrationEvent nunca llegó acá (p.ej. el servicio estaba caído durante el broadcast
+        // de Auth): la proyección solo la alimentan esos eventos, así que un miss se volvía 403 permanente
+        // (visto en vivo: Tenant Admin con el permiso en Auth pero 403 en GET /documents/branding). Reusa el
+        // IServiceTokenAcquirer (documents-worker, audiencia TaxVision.Services) que ya exige el endpoint
+        // interno ServiceOnly de Auth — no hace falta un proveedor de tokens nuevo.
+        services.AddScoped<BuildingBlocks.Permissions.IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<BuildingBlocks.Permissions.IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
         services.AddScoped<IDocumentTemplateRenderer, TemplateDocumentRenderer>();
         services.AddSingleton<IHtmlToPdfConverter, PlaywrightHtmlToPdfConverter>();
         services.AddSingleton<IQrCodeGenerator, QrCoderQrGenerator>();

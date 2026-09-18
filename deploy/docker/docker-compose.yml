@@ -274,6 +274,8 @@ services:
       ServiceAuthClient__ClientId: ${TENANT_SERVICE_CLIENT_ID:-tenant-worker}
       ServiceAuthClient__ClientSecret: ${TENANT_SERVICE_CLIENT_SECRET:-}
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # HttpPlanRateLimitReader — mismo caso que auth-api: sin esto cae a localhost:5360 en prod.
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
       # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -341,6 +343,11 @@ services:
       # appsettings son localhost host-mapped (no resuelven container-a-container), así que se fijan acá.
       Auth__Growth__BaseUrl: http://growth-api:8080
       Auth__Subscription__BaseUrl: http://subscription-api:8080
+      # HttpPlanRateLimitReader (RateLimit Fase 4) lee el catalogo de PlanRateLimits de Subscription
+      # por la seccion SubscriptionClient (distinta de Auth:Subscription de onboarding). Sin esta
+      # linea caia al default de dev http://localhost:5360 -> Connection refused en prod -> las cuotas
+      # por tier no cargan y todo cae a la cuota base.
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
       Auth__PaymentApp__BaseUrl: http://payment-app-api:8080
       Auth__Tenant__BaseUrl: http://tenant-api:8080
       # Recibo de onboarding: Documents genera el PDF y CloudStorage entrega la URL de descarga.
@@ -530,6 +537,13 @@ services:
       ServiceAuth__Clients__25__Secret: ${CATALOG_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__26__ClientId: ${INVENTORY_SERVICE_CLIENT_ID:-inventory-worker}
       ServiceAuth__Clients__26__Secret: ${INVENTORY_SERVICE_CLIENT_SECRET:-}
+      # Subscription — identidad M2M de audiencia amplia (TaxVision.Services por default, sin
+      # scopes) para los dos destinos ServiceOnly que consume: permissions-snapshot de Auth
+      # (recuperación pull H-04) y el checkout interno de asientos de PaymentApp. Distinta de
+      # subscription-growth (client 11, audiencia acotada taxvision-growth + scopes de referidos),
+      # que Auth rechaza para el snapshot por audiencia. Mismo caso que reminder/tasks-worker.
+      ServiceAuth__Clients__27__ClientId: ${SUBSCRIPTION_SERVICE_CLIENT_ID:-subscription-worker}
+      ServiceAuth__Clients__27__Secret: ${SUBSCRIPTION_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -681,13 +695,21 @@ services:
       Subscriptions__DefaultPlanCode: starter
       Subscriptions__TrialDays: "14"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
-      # Fase 4 Referidos (2026-07-21) — M2M contra Growth para reservar el descuento de
-      # bienvenida del referido en la primera activacion. Mismo patron que
-      # Correspondence/Signature/Postmaster (ServiceAuthClientOptions + token acquirer).
+      # M2M de Subscription (un solo acquirer, ServiceAuthClientOptions). Usa subscription-worker
+      # (audiencia amplia TaxVision.Services, client 27) porque sus dos destinos vivos son
+      # ServiceOnly: permissions-snapshot de Auth (recuperación pull H-04, sin esto todo
+      # [HasPermission] de Subscription queda fail-closed 403) y el checkout interno de asientos de
+      # PaymentApp. NOTA: los referidos (GrowthRefereeBenefitClient → internal/codes/benefit-gifts,
+      # Growth con [HasServiceScope]) exigen subscription-growth (client 11, audiencia acotada +
+      # scopes) — hoy dormido (SUBSCRIPTION_GROWTH_CLIENT_SECRET vacío); si se activa, ese cliente
+      # necesita su propio acquirer/sección, no este.
       Subscription__ServiceAuth__AuthBaseUrl: http://auth-api:8080
-      Subscription__ServiceAuth__ClientId: ${SUBSCRIPTION_GROWTH_CLIENT_ID:-subscription-growth}
-      Subscription__ServiceAuth__ClientSecret: ${SUBSCRIPTION_GROWTH_CLIENT_SECRET:-}
+      Subscription__ServiceAuth__ClientId: ${SUBSCRIPTION_SERVICE_CLIENT_ID:-subscription-worker}
+      Subscription__ServiceAuth__ClientSecret: ${SUBSCRIPTION_SERVICE_CLIENT_SECRET:-}
       Subscription__Growth__BaseUrl: http://growth-api:8080
+      # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
+      # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
+      Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -754,6 +776,9 @@ services:
       # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts
       # (contexto de request, JWT del usuario/M2M).
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # NotificationCustomerClient (directorio de clientes / reconciliacion). Sin esto caia al
+      # default de dev http://localhost:5263 -> Connection refused en prod.
+      Notification__Customer__BaseUrl: http://customer-api:8080
       # Microservicio Scribe — IScribeRenderClient le pega a esto para renderizar plantillas
       # (path de dispatch basado en render). Sin esta linea, ScribeRenderClient no tiene forma
       # de alcanzar scribe-api dentro de docker y el render en vivo falla.
@@ -1598,6 +1623,10 @@ services:
       # ({sub}.{TenantBaseDomain}/payments-client/invoices/{ref}) — el mismo host que la firma. Mismo
       # valor que Onboarding__TenantBaseDomain / TenantDomains__BaseDomain.
       PaymentClient__Public__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # Base (fallback) de la PAGINA de checkout del frontend ({base}/pay/{token}) para el caso SIN
+      # subdominio; con subdominio se usa TenantBaseDomain igual que la factura. Sin esto caia al
+      # default de dev localhost:4200. Overridable por PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL.
+      PaymentClient__Public__CheckoutPageBaseUrl: ${PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL:-https://taxproffice.com}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
       # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
       # humanos de config de pago (settings 2B). Mismo modo que documents-api.

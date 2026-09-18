@@ -176,7 +176,11 @@ builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
 
 // Scheduler de campañas: inicia el fan-out cuando llega la hora programada.
 builder.Services.AddHostedService<CampaignSchedulerService>();
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "notification-service");
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "notification-service",
+    TaxVision.Notification.Infrastructure.Observability.SubscriptionEmailMetrics.MeterName
+);
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")

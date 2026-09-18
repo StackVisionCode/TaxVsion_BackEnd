@@ -22,7 +22,7 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
     [RateLimit("billing.f.issuer_profile_read")]
-    [HasPermission(BillingPermissions.View)]
+    [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<IssuerProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
@@ -48,7 +48,7 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
 
     [HttpPut]
     [RateLimit("billing.g.issuer_profile_manage")]
-    [HasPermission(BillingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.Manage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Upsert(UpsertIssuerProfileRequest request, CancellationToken ct)
     {

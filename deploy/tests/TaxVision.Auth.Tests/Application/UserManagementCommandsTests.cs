@@ -37,6 +37,8 @@ public sealed class UserManagementCommandsTests
 
         public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) => throw NotExpected();
 
+        public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) => throw NotExpected();
+
         public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
             Guid tenantId,
             int page,

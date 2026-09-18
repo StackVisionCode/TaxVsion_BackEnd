@@ -171,7 +171,7 @@ public sealed class OnboardingCheckoutController(
 
     [HttpGet("payment-options")]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-status")]
     [RateLimitExempt("Anonymous onboarding payment-options keeps the native limiter; a post-OTP session is required.")]
     [ProducesResponseType<OnboardingPaymentOptionsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> PaymentOptions(
@@ -199,7 +199,7 @@ public sealed class OnboardingCheckoutController(
 
     [HttpPost("reconcile-payment")]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-payment-poll")]
     [RateLimitExempt(
         "Anonymous onboarding payment reconcile keeps the native limiter; a bound post-OTP session is required."
     )]

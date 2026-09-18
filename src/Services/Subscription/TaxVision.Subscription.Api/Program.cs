@@ -68,6 +68,8 @@ builder.Services.AddHostedService<SubscriptionExpirationJob>();
 builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
+builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
+builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
 
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
 // justo antes de facturar la renovación — no hay un job separado.
@@ -163,6 +165,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SeatRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 16) — publicado por InternalSubscriptionActivationController.
     options.PublishMessage<SubscriptionActivatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Expiración/Dunning (Fase 0) — cambios de estado del ciclo de vida (GracePeriod/Suspended/Expired/
+    // recuperación). Auth los consume para bloquear/desbloquear acceso (Fase 2) y notificar (Fase 3). Sin
+    // esta ruta Wolverine lo entregaría solo in-process y Auth nunca se enteraría — el bloqueo y los
+    // emails quedarían muertos en silencio en producción.
+    options.PublishMessage<TenantSubscriptionStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options
@@ -192,6 +199,7 @@ await using (var seedScope = app.Services.CreateAsyncScope())
     var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
     await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
     await SubscriptionAddOnCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
+    await SubscriptionSeatPricingSeeder.SeedAsync(seedDb, CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())

@@ -79,6 +79,37 @@ describe('Meeting.start / end', () => {
   });
 });
 
+describe('Meeting.leave', () => {
+  it('host leaving does NOT end the meeting nor transfer host (only End finalizes; host can return)', () => {
+    const { meeting, host } = scheduled({ waitingRoom: false });
+    meeting.start({ hostUserId: host.userId });
+    const guest = u();
+    meeting.requestJoin({ userId: guest, displayName: 'G', hasValidInvitation: false, passcodeMatch: null });
+
+    const r = meeting.leave({ userId: host.userId });
+    expect(r.isSuccess).toBe(true);
+    // Sigue viva; el host queda Left pero SIGUE siendo hostUserId (puede volver y terminarla).
+    expect(meeting.status).toBe('Live');
+    const snap = meeting.toSnapshot();
+    expect(snap.hostUserId).toBe(host.userId);
+    expect(snap.participants.find((p) => p.userId === host.userId)?.status).toBe('Left');
+  });
+
+  it('everyone leaving does not finalize the meeting (stays Live until End)', () => {
+    const { meeting, host } = scheduled({ waitingRoom: false });
+    meeting.start({ hostUserId: host.userId });
+    const guest = u();
+    meeting.requestJoin({ userId: guest, displayName: 'G', hasValidInvitation: false, passcodeMatch: null });
+
+    meeting.leave({ userId: guest });
+    meeting.leave({ userId: host.userId });
+    expect(meeting.status).toBe('Live');
+    // Y el End explícito del host sí la termina.
+    expect(meeting.end({ byUserId: host.userId }).isSuccess).toBe(true);
+    expect(meeting.status).toBe('Ended');
+  });
+});
+
 describe('Meeting.requestJoin — waiting room + admit', () => {
   it('non-host joins as Waiting when waiting-room enabled', () => {
     const { meeting, host } = scheduled({ waitingRoom: true });

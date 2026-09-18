@@ -181,7 +181,13 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: {
         TenantId: input.tenantId,
         Status: { in: ['Scheduled', 'Live'] },
-        OR: [{ HostUserId: input.userId }, { Participants: { some: { UserId: input.userId } } }],
+        OR: [
+          { HostUserId: input.userId },
+          { Participants: { some: { UserId: input.userId } } },
+          // Invitado (aun no unido): sin esto, un empleado/cliente invitado no veia el meeting en
+          // su lista hasta unirse (no era Participant). RevokedAtUtc:null excluye invitaciones anuladas.
+          { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
+        ],
       },
       include: { Participants: true },
       orderBy: [{ ScheduledForUtc: 'asc' }, { CreatedAtUtc: 'desc' }],
@@ -196,7 +202,11 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: {
         TenantId: tenantId,
         Status: { in: ['Scheduled', 'Live'] },
-        OR: [{ HostUserId: userId }, { Participants: { some: { UserId: userId } } }],
+        OR: [
+          { HostUserId: userId },
+          { Participants: { some: { UserId: userId } } },
+          { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
+        ],
       },
     });
   }
@@ -211,7 +221,11 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: {
         TenantId: input.tenantId,
         Status: { in: ['Ended', 'Cancelled'] },
-        OR: [{ HostUserId: input.userId }, { Participants: { some: { UserId: input.userId } } }],
+        OR: [
+          { HostUserId: input.userId },
+          { Participants: { some: { UserId: input.userId } } },
+          { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
+        ],
       },
       include: { Participants: true },
       // CreatedAtUtc siempre esta poblado (a diferencia de EndedAtUtc, que
@@ -229,8 +243,64 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: {
         TenantId: tenantId,
         Status: { in: ['Ended', 'Cancelled'] },
-        OR: [{ HostUserId: userId }, { Participants: { some: { UserId: userId } } }],
+        OR: [
+          { HostUserId: userId },
+          { Participants: { some: { UserId: userId } } },
+          { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
+        ],
       },
     });
+  }
+
+  async getStatsForUser(input: {
+    tenantId: string;
+    userId: string;
+    nowUtc: Date;
+    dayStartUtc: Date;
+    dayEndUtc: Date;
+    weekEndUtc: Date;
+  }): Promise<{ today: number; thisWeek: number; liveNow: number; transcriptsAvailable: number }> {
+    // Membresía: host, participante, o invitado no revocado — igual que los listados.
+    const membership = {
+      OR: [
+        { HostUserId: input.userId },
+        { Participants: { some: { UserId: input.userId } } },
+        { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
+      ],
+    };
+    const [liveNow, scheduledToday, scheduledThisWeek, transcriptsAvailable] = await Promise.all([
+      this.prisma.meeting.count({ where: { TenantId: input.tenantId, Status: 'Live', ...membership } }),
+      this.prisma.meeting.count({
+        where: {
+          TenantId: input.tenantId,
+          Status: 'Scheduled',
+          ScheduledForUtc: { gte: input.dayStartUtc, lt: input.dayEndUtc },
+          ...membership,
+        },
+      }),
+      this.prisma.meeting.count({
+        where: {
+          TenantId: input.tenantId,
+          Status: 'Scheduled',
+          ScheduledForUtc: { gte: input.nowUtc, lt: input.weekEndUtc },
+          ...membership,
+        },
+      }),
+      this.prisma.meeting.count({
+        where: {
+          TenantId: input.tenantId,
+          Status: 'Ended',
+          TranscriptFileId: { not: null },
+          ...membership,
+        },
+      }),
+    ]);
+    // Un meeting en vivo cuenta como "hoy" y "esta semana" (está pasando ahora).
+    return {
+      today: liveNow + scheduledToday,
+      thisWeek: liveNow + scheduledThisWeek,
+      liveNow,
+      transcriptsAvailable,
+    };
   }
 }

@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Queries;
 
@@ -32,6 +33,26 @@ public static class GetMySubscriptionHandler
         var cyclePrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
         var currentCyclePriceUsd = cyclePrice is null ? 0m : cyclePrice.Value.AmountCents / 100m;
 
+        // Último fallo de cobro (para el copy de dunning) — el renewal más reciente que registró FailureCode.
+        var lastFailedRenewal = subscription
+            .Renewals.Where(renewal => renewal.FailureCode is not null)
+            .OrderByDescending(renewal => renewal.FailedAtUtc)
+            .FirstOrDefault();
+
+        var lastPaymentFailure = lastFailedRenewal is null
+            ? null
+            : new LastPaymentFailureDto(
+                lastFailedRenewal.FailureCode!,
+                lastFailedRenewal.FailureReason ?? string.Empty,
+                lastFailedRenewal.RetryCount,
+                lastFailedRenewal.NextRetryAtUtc,
+                lastFailedRenewal.FailedAtUtc
+            );
+
+        // Mismo criterio que TenantSubscriptionAccessConsumer (Auth Fase 2): staff/clientes quedan cortados
+        // cuando la suscripción está Suspended o Expired.
+        var billingAccessBlocked = subscription.Status is SubscriptionStatus.Suspended or SubscriptionStatus.Expired;
+
         return Result.Success(
             new MySubscriptionResponse(
                 plan.Code.Value,
@@ -47,7 +68,14 @@ public static class GetMySubscriptionHandler
                 subscription.TrialEndsAtUtc,
                 subscription.CurrentPeriodStartUtc,
                 subscription.CurrentPeriodEndUtc,
-                subscription.CancelledAtUtc
+                subscription.CancelledAtUtc,
+                subscription.NextRenewalAtUtc,
+                subscription.GracePeriodEndsAtUtc,
+                subscription.SuspendedAtUtc,
+                subscription.ExpiredAtUtc,
+                subscription.SuspensionReason,
+                lastPaymentFailure,
+                billingAccessBlocked
             )
         );
     }

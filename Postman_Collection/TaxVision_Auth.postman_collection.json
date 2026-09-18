@@ -1033,6 +1033,46 @@
           ]
         },
         {
+          "name": "ValidateInvitation (anónimo — pre-check del token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations/validate?token={{invitationToken}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "invitations",
+                "validate"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{invitationToken}}"
+                }
+              ]
+            },
+            "description": "Validación ANÓNIMA por token para la página de aceptar invitación (empleado o cliente): devuelve el estado (Pending/Accepted/Cancelled/Expired/Invalid) y la oficina del token (id/name/subDomain) para pintar el branding correcto y bloquear el formulario si ya no es hábil. Solo lee — no consume ni muta el token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    console.log(\"Invitation status:\", res.status, \"| office:\", res.tenant && res.tenant.subDomain, \"| actor:\", res.actorType);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "ListInvitations",
           "request": {
             "method": "GET",
