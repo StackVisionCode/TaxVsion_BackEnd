@@ -17,9 +17,17 @@ public static class PermissionCatalog
     public const string RolesManage = "roles.manage";
     public const string AuditView = "audit.view";
     public const string SettingsManage = "settings.manage";
+
+    // billing.* = billing de SUSCRIPCIÓN SaaS (métodos de pago, plan): peligroso/admin-only por diseño
+    // (RBAC Fase 2). NO confundir con invoicing.* (facturación de clientes de la firma), que es trabajo
+    // operativo diario del staff — permiso aparte, no peligroso, en el bundle del empleado.
     public const string BillingView = "billing.view";
     public const string BillingManage = "billing.manage";
     public const string SubscriptionManage = "subscription.manage";
+
+    // Facturación tenant→cliente (servicio Billing: Invoices + IssuerProfile). Operativo, no peligroso.
+    public const string InvoicingView = "invoicing.view";
+    public const string InvoicingManage = "invoicing.manage";
     public const string TenantDomainsManage = "tenant.domains.manage";
     public const string BrandingManage = TenantBrandingPermissions.Manage;
     public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
@@ -412,6 +420,24 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
+        ),
+        // Facturación tenant→cliente (servicio Billing). A DIFERENCIA de billing.* (suscripción SaaS,
+        // peligroso), esto es trabajo operativo diario: emitir/leer facturas y configurar los datos del
+        // emisor. No peligroso, asignable, desde Starter — llega al TenantAdmin por el bundle automático
+        // y al empleado por su array explícito. AllowedActorTypes=null infiere staff (no portal).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000180"),
+            InvoicingView,
+            "billing",
+            "Ver facturas de clientes del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000181"),
+            InvoicingManage,
+            "billing",
+            "Crear, emitir y gestionar facturas de clientes y los datos del emisor",
+            false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
         new(
@@ -2031,6 +2057,22 @@ public static class PermissionCatalog
                 CalendarRead,
                 CalendarWrite,
                 CalendarAvailabilityManage,
+                // Catalog (productos/servicios), Inventory y SMS son trabajo operativo diario de la firma
+                // (facturar servicios, ajustar stock, avisar por SMS), no configuración administrativa —
+                // mismo criterio que Reminders/Tasks/Calendar. Estaban en el catálogo (el TenantAdmin los
+                // recibe por el filtro), pero nunca se agregaron a este bundle explícito, así que el
+                // empleado recibía 403 en esas secciones. Son transversales (sin módulo): siempre efectivos.
+                CatalogRead,
+                CatalogWrite,
+                CatalogDelete,
+                InventoryRead,
+                InventoryWrite,
+                InventoryAdjust,
+                SmsSend,
+                // Facturación tenant→cliente (Invoices + IssuerProfile). Operativo diario del preparador,
+                // no billing de suscripción (eso es billing.*, peligroso/admin-only, aparte a propósito).
+                InvoicingView,
+                InvoicingManage,
             ],
             Role.SystemCustomerPortal =>
             [

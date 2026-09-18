@@ -5,6 +5,7 @@ import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
+import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const CreateMeetingBody = z.object({
@@ -43,11 +44,15 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
       return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
     }
     const body = CreateMeetingBody.parse(request.body);
+    // Nombre real del host (directorio, con fallback al email del JWT) — sin esto el participante del
+    // host quedaba con displayName = su GUID y la tile del meeting mostraba el UUID crudo.
+    const hostEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
+    const hostDisplayName = await resolveDisplayName(container.userDirectory, principal.userId, hostEmail);
     const result = await scheduleMeeting(
       {
         tenantId: principal.tenantId,
         correlationId: request.id,
-        host: { userId: principal.userId, displayName: principal.userId },
+        host: { userId: principal.userId, displayName: hostDisplayName },
         title: body.title,
         description: body.description ?? null,
         ...(body.maxParticipants !== undefined ? { maxParticipants: body.maxParticipants } : {}),
@@ -104,6 +109,22 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
       size: query.size,
       totalCount,
     });
+  });
+
+  app.get('/communication/meetings/stats', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const tz = typeof principal.raw['zoneinfo'] === 'string' ? principal.raw['zoneinfo'] : 'UTC';
+    const now = new Date();
+    const { dayStartUtc, dayEndUtc, weekEndUtc } = userDayWindow(now, tz);
+    const stats = await container.meetings.getStatsForUser({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      nowUtc: now,
+      dayStartUtc,
+      dayEndUtc,
+      weekEndUtc,
+    });
+    return reply.send(stats);
   });
 
   app.post('/communication/meetings/:id/start', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -210,4 +231,55 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     }
     return reply.send(result.value);
   });
+}
+
+/**
+ * Fronteras de "hoy" y "esta semana" en la zona horaria del usuario, resueltas a instantes UTC (los
+ * meetings se guardan en UTC). Sin depender de una librería: se calcula el offset de la tz en `now` con
+ * Intl y se derivan la medianoche local y +7 días. Si la tz es inválida, cae a UTC.
+ */
+function userDayWindow(
+  now: Date,
+  timeZone: string,
+): { dayStartUtc: Date; dayEndUtc: Date; weekEndUtc: Date } {
+  const offsetMs = tzOffsetMs(now, timeZone);
+  // "now" visto en hora local, como si fueran componentes UTC.
+  const local = new Date(now.getTime() + offsetMs);
+  const localMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  const dayStartUtc = new Date(localMidnight - offsetMs);
+  const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000);
+  const weekEndUtc = new Date(dayStartUtc.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return { dayStartUtc, dayEndUtc, weekEndUtc };
+}
+
+/** Offset (local - UTC) en ms de una zona horaria IANA en un instante dado. UTC si la tz es inválida. */
+function tzOffsetMs(date: Date, timeZone: string): number {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const parts = dtf.formatToParts(date);
+    const map: Record<string, number> = {};
+    for (const p of parts) {
+      if (p.type !== 'literal') map[p.type] = Number(p.value);
+    }
+    const asUtc = Date.UTC(
+      map['year']!,
+      map['month']! - 1,
+      map['day']!,
+      map['hour']!,
+      map['minute']!,
+      map['second']!,
+    );
+    return asUtc - date.getTime();
+  } catch {
+    return 0;
+  }
 }

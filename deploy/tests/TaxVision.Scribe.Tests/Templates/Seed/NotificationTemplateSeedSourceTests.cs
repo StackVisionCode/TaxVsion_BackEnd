@@ -41,4 +41,19 @@ public sealed class NotificationTemplateSeedSourceTests
             Assert.DoesNotContain("TaxVision", seed.Subject);
         }
     }
+
+    [Fact]
+    public void Meeting_invitation_template_is_seeded_with_its_keys_and_a_preheader()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.invitation_created.v1"
+        );
+        Assert.Equal("communication.meeting.invitation", seed.TemplateKey);
+        // El join_link es la variable que lleva al subdominio correcto del tenant (bug prod #1).
+        Assert.Contains(seed.Variables, v => v.Name == "join_link");
+
+        var withPreheader = NotificationTemplateSeedSource.VariablesWithPreheader(seed);
+        Assert.Contains(withPreheader, v => v.Name == "preheader");
+    }
 }

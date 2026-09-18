@@ -534,6 +534,24 @@
 					}
 				},
 				{
+					"name": "Stats de meetings (tarjetas dashboard)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/stats",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"stats"
+							]
+						},
+						"description": "Contadores reales (today, thisWeek, liveNow, transcriptsAvailable) sobre TODOS los meetings del usuario (host/participante/invitado no revocado), no la pagina cargada. Las fronteras dia/semana se resuelven en la zona horaria del usuario (claim zoneinfo)."
+					}
+				},
+				{
 					"name": "Iniciar meeting (host)",
 					"request": {
 						"method": "POST",
@@ -710,7 +728,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"invitees\": [\n    { \"kind\": \"employee\", \"userId\": \"{{userId}}\" },\n    { \"kind\": \"external\", \"email\": \"invitado@example.com\", \"name\": \"Juan Pérez\" }\n  ]\n}"
+							"raw": "{\n  \"invitees\": [\n    { \"kind\": \"employee\", \"userId\": \"{{userId}}\" },\n    { \"kind\": \"customer\", \"customerId\": \"{{customerId}}\", \"email\": \"cliente@example.com\", \"name\": \"Cliente Ejemplo\" },\n    { \"kind\": \"external\", \"email\": \"invitado@example.com\", \"name\": \"Juan Pérez\" }\n  ]\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/invitations",
@@ -724,7 +742,7 @@
 								"invitations"
 							]
 						},
-						"description": "Requiere estar autenticado (host o cohost del meeting). invitees: array de 1 a 50 items. kind (obligatorio): 'employee' | 'customer' | 'external'. userId obligatorio para employee/customer; email/name opcionales, se usan para external o cuando no hay userId."
+						"description": "Requiere estar autenticado (host o cohost del meeting). invitees: array de 1 a 50 items. kind (obligatorio): 'employee' | 'customer' | 'external'. employee: userId (Auth). customer: customerId (se resuelve al userId de portal activo para que el meeting aparezca en su lista + reciba el aviso realtime meeting.invited); email/name opcionales. external: email/name (sin cuenta, entra por token). Al crear la invitación se emite el socket 'meeting.invited' al room del invitado con cuenta; al iniciar el meeting se emite 'meeting.started' a invitados/participantes."
 					}
 				},
 				{

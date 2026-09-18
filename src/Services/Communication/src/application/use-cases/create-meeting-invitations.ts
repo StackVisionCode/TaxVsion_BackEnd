@@ -3,7 +3,12 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import { MeetingInvitation, type MeetingInviteeKind } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { TenantHostResolver } from '../ports/tenant-host-resolver.js';
 import { MeetingEventTypes, type MeetingInvitationCreatedEvent } from '../../contracts/events/meeting-events.js';
+import { MeetingSocketEvents, type MeetingListChangedDto } from '../../contracts/socket/meeting-socket-events.js';
+import { buildMeetingJoinUrl } from './build-meeting-join-url.js';
 import { config } from '../../infrastructure/config.js';
 
 /** 7 dias — mas largo que el TTL del meeting en si (invitaciones a meetings recurrentes/futuros). */
@@ -12,6 +17,13 @@ const INVITATION_TTL_SECONDS = 60 * 60 * 24 * 7;
 export interface CreateMeetingInvitationInput {
   readonly kind: MeetingInviteeKind;
   readonly userId?: string;
+  /**
+   * Solo Customer: su cuenta de portal tiene un UserId de Auth distinto al customerId. Se
+   * resuelve aca (customerId -> userId de portal activo) para poblar InviteeUserId, de modo que
+   * la lista de meetings del cliente (query por userId) muestre el meeting y el aviso realtime
+   * (room `t:{tenant}:u:{userId}`) le llegue. Sin cuenta de portal activa queda solo email.
+   */
+  readonly customerId?: string;
   readonly email?: string;
   readonly name?: string;
 }
@@ -40,6 +52,10 @@ export interface CreateMeetingInvitationsResult {
 export interface CreateMeetingInvitationsDeps {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
+  readonly customerPortalAccounts: CustomerPortalAccountRepository;
+  readonly tenantHostResolver: TenantHostResolver;
+  /** Opcional (best-effort): si esta cableado, empuja `meeting.invited` al room del invitado. */
+  readonly emitter?: RealtimeEmitter;
 }
 
 /**
@@ -67,12 +83,19 @@ export async function createMeetingInvitations(
   const now = new Date();
   const issued: Array<{ invitation: MeetingInvitation; plainToken: string }> = [];
   for (const invitee of command.invitees) {
+    // Empleado: el userId de Auth ya viene del picker. Cliente: se resuelve su userId de portal
+    // activo a partir del customerId (el picker de customers no expone userId). External: sin userId.
+    let inviteeUserId = invitee.userId ?? null;
+    if (!inviteeUserId && invitee.kind === 'Customer' && invitee.customerId) {
+      const account = await deps.customerPortalAccounts.findActiveByCustomerId(invitee.customerId);
+      inviteeUserId = account?.userId ?? null;
+    }
     const issueResult = MeetingInvitation.issue({
       meetingId: command.meetingId,
       tenantId: command.tenantId,
       inviteeKind: invitee.kind,
       inviteeEmail: invitee.email ?? null,
-      inviteeUserId: invitee.userId ?? null,
+      inviteeUserId,
       inviteeName: invitee.name ?? null,
       ttlSeconds: INVITATION_TTL_SECONDS,
       now,
@@ -81,11 +104,22 @@ export async function createMeetingInvitations(
     issued.push(issueResult.value);
   }
 
+  // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxproffice.com). Se resuelve el
+  // host UNA vez por batch (cacheado). Si falla, buildMeetingJoinUrl cae al base fijo.
+  const tenantHost = await deps.tenantHostResolver.resolveHost(command.tenantId);
+
   const summaries: CreateMeetingInvitationSummary[] = [];
   for (const { invitation, plainToken } of issued) {
     await deps.meetings.saveInvitation(invitation);
     const snap = invitation.toSnapshot();
-    const joinUrl = `${config.meetingInvitations.frontendBaseUrl}/join?token=${plainToken}`;
+    const joinUrl = buildMeetingJoinUrl({
+      host: tenantHost,
+      inviteeKind: snap.inviteeKind,
+      meetingId: snap.meetingId,
+      token: plainToken,
+      fallbackBaseUrl: config.meetingInvitations.frontendBaseUrl,
+      portalPathPrefix: config.meetingInvitations.portalPathPrefix,
+    });
 
     const event: MeetingInvitationCreatedEvent = {
       eventId: randomUUID(),
@@ -104,6 +138,23 @@ export async function createMeetingInvitations(
       joinUrl,
     };
     await deps.publisher.enqueue(event);
+
+    // Realtime: el invitado con cuenta (Employee/Customer con portal) ve el meeting aparecer en su
+    // lista sin recargar. External (sin userId) solo recibe el email — no tiene UX de meetings.
+    if (deps.emitter && snap.inviteeUserId) {
+      const dto: MeetingListChangedDto = { meetingId: snap.meetingId };
+      deps.emitter.emitToUser({
+        tenantId: command.tenantId,
+        userId: snap.inviteeUserId,
+        event: MeetingSocketEvents.Invited,
+        envelope: {
+          eventId: randomUUID(),
+          correlationId: command.correlationId,
+          emittedAtUtc: now.toISOString(),
+          payload: dto,
+        },
+      });
+    }
 
     summaries.push({
       id: snap.id,

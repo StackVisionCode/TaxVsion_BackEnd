@@ -380,6 +380,17 @@ export interface MeetingParticipantDeniedDto {
   deniedAtUtc: string;
 }
 
+/**
+ * Aviso dirigido al room del usuario (`t:{tenant}:u:{userId}`) para que su lista de meetings
+ * (CRM/Portal) se refresque en tiempo real. `Invited` se emite al invitado al crear su
+ * invitacion; `Started` a los invitados/participantes cuando el host arranca el meeting. El
+ * payload es minimo (solo `meetingId`) — la lista es autoritativa via refetch, no se parchea
+ * desde el evento.
+ */
+export interface MeetingListChangedDto {
+  meetingId: string;
+}
+
 export const MeetingSocketEvents = {
   // c -> s
   Join: 'meeting.join',
@@ -431,6 +442,11 @@ export const MeetingSocketEvents = {
   ParticipantDenied: 'meeting.participant.denied',
   Cancelled: 'meeting.cancelled',
   Rescheduled: 'meeting.rescheduled',
+  // Avisos para la LISTA de meetings (no la sala): refrescan el UX de meetings del invitado.
+  Invited: 'meeting.invited',
+  Started: 'meeting.started',
+  // Terminó (por End explícito o cascada host-sin-cohost): la lista mueve el meeting de upcoming a past.
+  Ended: 'meeting.ended',
   ChatMessageNew: 'meeting.chat.message.new',
   ChatMessageEdited: 'meeting.chat.message.edited',
   ChatMessageDeleted: 'meeting.chat.message.deleted',

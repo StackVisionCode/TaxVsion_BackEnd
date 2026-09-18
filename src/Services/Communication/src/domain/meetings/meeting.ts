@@ -194,17 +194,10 @@ export class Meeting {
     if (!participant) return Result.fail(makeError('Meeting.NotParticipant', 'Not a participant.'));
     const now = input.now ?? new Date();
     participant.markLeft(now);
-    // Host se va -> ceder host a cohost mas antiguo, o terminar el meeting.
-    if (input.userId === this.state.hostUserId) {
-      const newHost = this.selectNextHost();
-      if (newHost) {
-        newHost.transferHost();
-        this.state = { ...this.state, hostUserId: newHost.userId };
-      } else {
-        this.commit(now);
-        return this.end({ byUserId: input.userId, now });
-      }
-    }
+    // "Leave" SOLO saca al participante: no cede el host ni termina el meeting. El host queda como
+    // hostUserId (aunque Left) para poder volver y retomar/terminar; SOLO "End meeting" (end()) finaliza
+    // para todos. Así salir y volver no mata la sala, y que todos hagan Leave tampoco la finaliza sola.
+    // (Un cohost conserva sus poderes de host vía ensureCanHostAct, así que puede admitir/terminar igual.)
     this.commit(now);
     return Result.okVoid();
   }
@@ -635,16 +628,6 @@ export class Meeting {
       return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can perform this action.'));
     }
     return Result.okVoid();
-  }
-
-  private selectNextHost(): MeetingParticipant | null {
-    const cohosts = this.participants.filter((p) => p.isJoined && p.role === 'Cohost');
-    if (cohosts.length > 0) {
-      return cohosts.sort((a, b) => a.joinOrder - b.joinOrder)[0]!;
-    }
-    const attendees = this.participants.filter((p) => p.isJoined && p.role === 'Attendee');
-    if (attendees.length > 0) return attendees.sort((a, b) => a.joinOrder - b.joinOrder)[0]!;
-    return null;
   }
 
   private nextJoinOrder(): number {

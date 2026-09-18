@@ -58,6 +58,9 @@ class FakeMeetingRepository implements MeetingRepository {
   async countPastForUser(): Promise<number> {
     return 0;
   }
+  async getStatsForUser(): Promise<{ today: number; thisWeek: number; liveNow: number; transcriptsAvailable: number }> {
+    return { today: 0, thisWeek: 0, liveNow: 0, transcriptsAvailable: 0 };
+  }
 }
 
 class FakeRecordingSessionRepository implements RecordingSessionRepository {
