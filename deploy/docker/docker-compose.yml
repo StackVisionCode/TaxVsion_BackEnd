@@ -551,6 +551,11 @@ services:
       # reminder/tasks-worker.
       ServiceAuth__Clients__28__ClientId: ${CAMPAIGNS_SERVICE_CLIENT_ID:-campaigns-worker}
       ServiceAuth__Clients__28__Secret: ${CAMPAIGNS_SERVICE_CLIENT_SECRET:-}
+      # SMS — identidad M2M propia (audiencia default TaxVision.Services, sin permisos ni scopes) para
+      # la recuperación pull de permisos (permissions-snapshot de Auth) y el catálogo de plan-rate-limits
+      # de Subscription. Ambos ServiceOnly (solo actor_type=Service). Mismo caso que campaigns/subscription.
+      ServiceAuth__Clients__29__ClientId: ${SMS_SERVICE_CLIENT_ID:-sms-worker}
+      ServiceAuth__Clients__29__Secret: ${SMS_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1129,6 +1134,12 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # M2M propio (sms-worker, registrado en auth-api ServiceAuth__Clients__29). Recuperación pull de
+      # permisos (permissions-snapshot de Auth) + catálogo de plan-rate-limits de Subscription.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${SMS_SERVICE_CLIENT_ID:-sms-worker}
+      ServiceAuthClient__ClientSecret: ${SMS_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Proveedor SMS global (MVP). El adapter concreto y sus secretos se configuran por env
       # Sms__Providers__<code>__... ; por defecto arranca con el proveedor "fake" para dev/E2E.
       Sms__DefaultProvider: ${SMS_DEFAULT_PROVIDER:-fake}

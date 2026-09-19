@@ -305,6 +305,12 @@ jobs:
           CAMPAIGNS_SERVICE_CLIENT_ID=${{ secrets.CAMPAIGNS_SERVICE_CLIENT_ID }}
           CAMPAIGNS_SERVICE_CLIENT_SECRET=${{ secrets.CAMPAIGNS_SERVICE_CLIENT_SECRET }}
 
+          # SMS: identidad M2M propia (sms-worker, audiencia TaxVision.Services, ServiceAuth__Clients__29
+          # en docker-compose.yml). Sin esto, la recuperación pull de permisos queda fail-closed (un
+          # usuario sin fila local de proyección da 403) y el catálogo de plan-rate-limits no se autentica.
+          SMS_SERVICE_CLIENT_ID=${{ secrets.SMS_SERVICE_CLIENT_ID }}
+          SMS_SERVICE_CLIENT_SECRET=${{ secrets.SMS_SERVICE_CLIENT_SECRET }}
+
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
 

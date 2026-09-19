@@ -11,6 +11,7 @@ using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Permissions.Abstractions;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.RateLimiting.Abstractions;
+using TaxVision.Sms.Infrastructure.Permissions;
 using TaxVision.Sms.Infrastructure.Persistence;
 using TaxVision.Sms.Infrastructure.Persistence.Repositories;
 using TaxVision.Sms.Infrastructure.Providers;
@@ -36,6 +37,9 @@ public static class DependencyInjection
         services.AddScoped<ISmsOptOutRepository, SmsOptOutRepository>();
         services.AddScoped<IProcessedWebhookRepository, ProcessedWebhookRepository>();
 
+        // Read model del CRM (solo lectura sobre las tablas ya persistidas).
+        services.AddScoped<ISmsReadService, SmsReadService>();
+
         // RBAC Fase 7 — proyección local de permisos consultada por ProjectionPermissionsSource
         // cuando Authorization:PermissionsSource="Projection". La misma instancia scoped satisface
         // el puerto local rico (para los consumers) y el puerto compartido y angosto de
@@ -48,6 +52,20 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        // Pull-recovery (Opción B): ante un miss local de proyección (usuario nunca sincronizado por
+        // Sms — p. ej. un permiso nuevo añadido a su rol después del backfill), ProjectionPermissionsSource
+        // recupera el snapshot desde Auth por M2M y lo persiste, en vez de 403 fail-closed permanente.
+        // Reutiliza el IServiceTokenAcquirer (registrado en AddRateLimitTierQuotas, apunta a Auth).
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
 
         // Config del servicio + de proveedores (sección `Sms`).
         services.AddOptions<SmsOptions>().Bind(configuration.GetSection(SmsOptions.SectionName));

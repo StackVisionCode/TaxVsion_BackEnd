@@ -137,6 +137,10 @@ public static class PermissionCatalog
     // (un microservicio que envía SMS lo lleva como claim "perm" vía ServiceAuth:Clients de Auth).
     public const string SmsSend = SmsPermissions.Send;
 
+    // Lectura del historial/opt-outs (endpoints GET del CRM) y gestión manual de bajas.
+    public const string SmsRead = SmsPermissions.Read;
+    public const string SmsManage = SmsPermissions.Manage;
+
     // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
     // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
     public const string CatalogRead = CatalogPermissions.Read;
@@ -846,6 +850,23 @@ public static class PermissionCatalog
             SmsSend,
             "sms",
             "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+            false
+        ),
+        // Lectura del historial de SMS y opt-outs desde el CRM (endpoints GET). Humano-asignable
+        // (TenantAdmin/TenantEmployee vía defaults). Mismo módulo "sms" (para el gate de addon, F2).
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001F0"),
+            SmsRead,
+            "sms",
+            "Ver el historial de SMS, su estado y las bajas (opt-outs)",
+            false
+        ),
+        // Gestión manual del consentimiento (baja/alta de un teléfono). Administración del tenant.
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001F1"),
+            SmsManage,
+            "sms",
+            "Gestionar manualmente las bajas de SMS (opt-out/opt-in)",
             false
         ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
@@ -2081,6 +2102,7 @@ public static class PermissionCatalog
                 InventoryWrite,
                 InventoryAdjust,
                 SmsSend,
+                SmsRead,
                 // Facturación tenant→cliente (Invoices + IssuerProfile). Operativo diario del preparador,
                 // no billing de suscripción (eso es billing.*, peligroso/admin-only, aparte a propósito).
                 InvoicingView,
