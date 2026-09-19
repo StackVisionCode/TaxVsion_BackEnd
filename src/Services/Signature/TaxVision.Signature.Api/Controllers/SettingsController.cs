@@ -100,6 +100,7 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             defaultChannel,
             body.DefaultTokenExpirationHours,
             body.RemindersEnabledByDefault,
+            body.DefaultReminderIntervalHours,
             body.GenerateCertificateByDefault,
             body.DocumentLimits.MaxPdfBytes,
             body.DocumentLimits.MaxImageBytes,

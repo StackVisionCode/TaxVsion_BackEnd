@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Settings;
 using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.Create;
@@ -20,19 +21,30 @@ public static class CreateSignatureRequestHandler
         CreateSignatureRequestCommand cmd,
         ISignatureRequestRepository repository,
         IFileMetadataRefRepository fileRepository,
+        ITenantSignatureSettingsRepository settingsRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
     )
     {
-        var draftResult = CreateDraft(cmd);
+        // La política de recordatorio: override del preparador o, si no lo mandó, el default del tenant.
+        var settings = await settingsRepository.GetByTenantIdAsync(cmd.TenantId, ct);
+        var remindersEnabled = cmd.AutoRemindersEnabled ?? settings?.RemindersEnabledByDefault ?? true;
+        var reminderInterval =
+            cmd.ReminderIntervalHours
+            ?? settings?.DefaultReminderIntervalHoursValue
+            ?? TenantSignatureSettings.DefaultReminderIntervalHours;
+
+        var draftResult = CreateDraft(cmd, remindersEnabled, reminderInterval);
         if (draftResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(draftResult.Error);
 
         var request = draftResult.Value;
         await TryPromoteToReadyIfFileAvailable(request, cmd, fileRepository, ct);
         await PersistRequestAsync(request, repository, unitOfWork, ct);
+        await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, cmd, correlation, bus);
 
         return Result.Success(SignatureRequestResponse.From(request));
@@ -40,7 +52,11 @@ public static class CreateSignatureRequestHandler
 
     // ============== Fase 1: factory del aggregate ==============
 
-    private static Result<SignatureRequest> CreateDraft(CreateSignatureRequestCommand cmd) =>
+    private static Result<SignatureRequest> CreateDraft(
+        CreateSignatureRequestCommand cmd,
+        bool autoRemindersEnabled,
+        int reminderIntervalHours
+    ) =>
         SignatureRequest.CreateDraft(
             tenantId: cmd.TenantId,
             createdByUserId: cmd.CreatedByUserId,
@@ -51,7 +67,11 @@ public static class CreateSignatureRequestHandler
             tokenExpirationHours: cmd.TokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,
             requiresConsent: cmd.RequiresConsent,
-            generateCertificate: cmd.GenerateCertificate
+            generateCertificate: cmd.GenerateCertificate,
+            sendSignedDocumentToSigners: cmd.SendSignedDocumentToSigners,
+            sendCertificateToSigners: cmd.SendCertificateToSigners,
+            autoRemindersEnabled: autoRemindersEnabled,
+            reminderIntervalHours: reminderIntervalHours
         );
 
     // ============== Fase 2: promoción opcional Draft → Ready ==============

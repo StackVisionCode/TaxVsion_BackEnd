@@ -28,12 +28,10 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
         builder.Property(r => r.CounterUnknown).IsRequired();
         builder.Property(r => r.RowVersion).IsRowVersion();
 
+        builder.HasMany(r => r.Recipients).WithOne().HasForeignKey(x => x.RunId).OnDelete(DeleteBehavior.Cascade);
         builder
-            .HasMany(r => r.Recipients)
-            .WithOne()
-            .HasForeignKey(x => x.RunId)
-            .OnDelete(DeleteBehavior.Cascade);
-        builder.Metadata.FindNavigation(nameof(CampaignRun.Recipients))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+            .Metadata.FindNavigation(nameof(CampaignRun.Recipients))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(r => new { r.TenantId, r.CampaignId }).HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
         builder.HasIndex(r => new { r.TenantId, r.Status }).HasDatabaseName("IX_CampaignRuns_TenantId_Status");

@@ -48,6 +48,7 @@ public sealed class SignatureRequestsController(
     IMessageBus bus,
     ISignatureRequestRepository signatureRequests,
     IAuthorizationService authorizationService,
+    IUserPermissionsSource permissionsSource,
     IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions
 ) : ControllerBase
 {
@@ -94,6 +95,17 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        // P2/P8: los toggles de entrega solo los controla quien tiene signature.document.send. Un
+        // empleado sin el permiso (o con deny per-usuario) no puede activarlos: se fuerzan a false,
+        // materializando "el preparador controla lo que envía el empleado". Los admins del tenant
+        // (Tenant/Platform) siempre pueden — igual que el bypass de [HasPermission] — para no depender
+        // de que la proyección de permisos ya tenga sembrado el permiso nuevo.
+        var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
+        var canDeliver =
+            isAdmin || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.DocumentSend, ct);
+        var sendSignedDocument = canDeliver && body.SendSignedDocumentToSigners;
+        var sendCertificate = canDeliver && body.SendCertificateToSigners;
+
         var cmd = new CreateSignatureRequestCommand(
             tenantId,
             userId,
@@ -104,7 +116,11 @@ public sealed class SignatureRequestsController(
             body.TokenExpirationHours,
             body.RequiresSequentialSigning,
             body.RequiresConsent,
-            body.GenerateCertificate
+            body.GenerateCertificate,
+            sendSignedDocument,
+            sendCertificate,
+            body.AutoRemindersEnabled,
+            body.ReminderIntervalHours
         );
 
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);

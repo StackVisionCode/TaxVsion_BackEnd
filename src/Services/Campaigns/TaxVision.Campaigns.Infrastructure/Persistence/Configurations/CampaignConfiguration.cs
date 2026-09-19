@@ -22,8 +22,6 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.Property(c => c.UpdatedAtUtc).IsRequired();
 
         builder.HasIndex(c => new { c.TenantId, c.Status }).HasDatabaseName("IX_Campaigns_TenantId_Status");
-        builder
-            .HasIndex(c => new { c.TenantId, c.CreatedAtUtc })
-            .HasDatabaseName("IX_Campaigns_TenantId_CreatedAtUtc");
+        builder.HasIndex(c => new { c.TenantId, c.CreatedAtUtc }).HasDatabaseName("IX_Campaigns_TenantId_CreatedAtUtc");
     }
 }

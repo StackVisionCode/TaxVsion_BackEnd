@@ -6,5 +6,9 @@ public sealed record UpdateTemplateDefaultsCommand(
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
-    bool GenerateCertificate
+    bool GenerateCertificate,
+    bool SendSignedDocumentToSigners,
+    bool SendCertificateToSigners,
+    bool AutoRemindersEnabled,
+    int ReminderIntervalHours
 );

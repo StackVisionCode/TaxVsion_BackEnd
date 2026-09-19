@@ -31,6 +31,7 @@ public sealed class SignatureTemplate : TenantEntity
     public const int MaxDescriptionLength = 2000;
     public const int MinSlots = 1;
     public const int MaxSlots = 20;
+    public const int DefaultReminderIntervalHours = 48;
 
     private readonly List<TemplateSignerSlot> _slots = [];
     private readonly List<TemplateField> _fields = [];
@@ -47,6 +48,30 @@ public sealed class SignatureTemplate : TenantEntity
     public bool RequiresSequentialSigning { get; private set; }
     public bool RequiresConsent { get; private set; }
     public bool GenerateCertificate { get; private set; }
+
+    /// <summary>Defaults de entrega/recordatorio que "from template" copia a la solicitud (mismos que la
+    /// solicitud directa). Entregar el documento firmado a los firmantes; el certificado exige
+    /// <see cref="GenerateCertificate"/>; recordatorios automáticos con su intervalo en horas.</summary>
+    public bool SendSignedDocumentToSigners { get; private set; }
+    public bool SendCertificateToSigners { get; private set; }
+    public bool AutoRemindersEnabled { get; private set; }
+    public int ReminderIntervalHours { get; private set; }
+
+    /// <summary>
+    /// Hash (PBKDF2) del Practitioner PIN por defecto de la plantilla (Form 8879). Opcional: si está,
+    /// "from template" lo copia tal cual a la solicitud creada. NUNCA se expone en claro ni se devuelve
+    /// por API — el DTO solo publica <see cref="RequiresPractitionerPin"/>.
+    /// </summary>
+    public string? PractitionerPinHash { get; private set; }
+
+    /// <summary>true si la plantilla trae un Practitioner PIN por defecto configurado.</summary>
+    public bool RequiresPractitionerPin => PractitionerPinHash is not null;
+
+    /// <summary>
+    /// Documento base opcional del que se creó la plantilla (P7). Si está presente, "from template"
+    /// lo pre-selecciona como <c>OriginalFileId</c> de la solicitud sin re-subir; se puede override.
+    /// </summary>
+    public Guid? BaseDocumentFileId { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -69,7 +94,12 @@ public sealed class SignatureTemplate : TenantEntity
         int defaultTokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
-        bool generateCertificate
+        bool generateCertificate,
+        Guid? baseDocumentFileId = null,
+        bool sendSignedDocumentToSigners = true,
+        bool sendCertificateToSigners = false,
+        bool autoRemindersEnabled = true,
+        int reminderIntervalHours = DefaultReminderIntervalHours
     )
     {
         var validation = ValidateFactoryInputs(
@@ -81,6 +111,15 @@ public sealed class SignatureTemplate : TenantEntity
         );
         if (validation.IsFailure)
             return Result.Failure<SignatureTemplate>(validation.Error);
+
+        var deliveryValidation = ValidateDelivery(
+            generateCertificate,
+            sendCertificateToSigners,
+            autoRemindersEnabled,
+            reminderIntervalHours
+        );
+        if (deliveryValidation.IsFailure)
+            return Result.Failure<SignatureTemplate>(deliveryValidation.Error);
 
         var now = DateTime.UtcNow;
         var template = new SignatureTemplate
@@ -95,6 +134,11 @@ public sealed class SignatureTemplate : TenantEntity
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
+            SendSignedDocumentToSigners = sendSignedDocumentToSigners,
+            SendCertificateToSigners = sendCertificateToSigners,
+            AutoRemindersEnabled = autoRemindersEnabled,
+            ReminderIntervalHours = reminderIntervalHours,
+            BaseDocumentFileId = baseDocumentFileId == Guid.Empty ? null : baseDocumentFileId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -139,7 +183,11 @@ public sealed class SignatureTemplate : TenantEntity
         int defaultTokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
-        bool generateCertificate
+        bool generateCertificate,
+        bool sendSignedDocumentToSigners,
+        bool sendCertificateToSigners,
+        bool autoRemindersEnabled,
+        int reminderIntervalHours
     )
     {
         EnsureDraft();
@@ -152,10 +200,83 @@ public sealed class SignatureTemplate : TenantEntity
                 )
             );
 
+        var deliveryValidation = ValidateDelivery(
+            generateCertificate,
+            sendCertificateToSigners,
+            autoRemindersEnabled,
+            reminderIntervalHours
+        );
+        if (deliveryValidation.IsFailure)
+            return deliveryValidation;
+
         DefaultTokenExpirationHours = defaultTokenExpirationHours;
         RequiresSequentialSigning = requiresSequentialSigning;
         RequiresConsent = requiresConsent;
         GenerateCertificate = generateCertificate;
+        SendSignedDocumentToSigners = sendSignedDocumentToSigners;
+        SendCertificateToSigners = sendCertificateToSigners;
+        AutoRemindersEnabled = autoRemindersEnabled;
+        ReminderIntervalHours = reminderIntervalHours;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Reglas de los defaults de entrega/recordatorio, compartidas por el factory y UpdateDefaults.</summary>
+    private static Result ValidateDelivery(
+        bool generateCertificate,
+        bool sendCertificateToSigners,
+        bool autoRemindersEnabled,
+        int reminderIntervalHours
+    )
+    {
+        if (sendCertificateToSigners && !generateCertificate)
+            return Result.Failure(
+                new Error(
+                    "Signature.Template.CertificateNotGenerated",
+                    "Enable certificate generation before delivering it to signers."
+                )
+            );
+
+        if (autoRemindersEnabled && reminderIntervalHours is < 1 or > 720)
+            return Result.Failure(
+                new Error("Signature.Template.ReminderInterval", "Reminder interval must be between 1 and 720 hours.")
+            );
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Fija el Practitioner PIN por defecto de la plantilla (recibe el hash ya calculado por la capa
+    /// Application). Solo en <c>Draft</c>. Las solicitudes creadas desde la plantilla lo heredan.
+    /// </summary>
+    public Result SetPractitionerPin(string pinHash)
+    {
+        EnsureDraft();
+        if (string.IsNullOrWhiteSpace(pinHash))
+            return Result.Failure(new Error("Signature.Template.PinHash", "PIN hash is required."));
+
+        PractitionerPinHash = pinHash;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Quita el Practitioner PIN por defecto de la plantilla. Solo en <c>Draft</c>.</summary>
+    public Result ClearPractitionerPin()
+    {
+        EnsureDraft();
+        PractitionerPinHash = null;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Fija (o quita con <c>null</c>) el documento base de la plantilla (P7). Solo en <c>Draft</c>.
+    /// El archivo lo sube/registra la capa Application; aquí solo se guarda la referencia.
+    /// </summary>
+    public Result SetBaseDocument(Guid? baseDocumentFileId)
+    {
+        EnsureDraft();
+        BaseDocumentFileId = baseDocumentFileId == Guid.Empty ? null : baseDocumentFileId;
         Touch();
         return Result.Success();
     }

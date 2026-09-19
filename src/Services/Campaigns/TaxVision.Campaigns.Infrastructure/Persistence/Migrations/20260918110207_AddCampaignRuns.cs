@@ -30,12 +30,13 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     CounterFailed = table.Column<int>(type: "int", nullable: false),
                     CounterSkipped = table.Column<int>(type: "int", nullable: false),
                     CounterUnknown = table.Column<int>(type: "int", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CampaignRuns", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "CampaignRecipients",
@@ -55,7 +56,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     ProviderRef = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     AcceptedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     DeliveredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    SettledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    SettledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -65,45 +66,50 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         column: x => x.RunId,
                         principalTable: "CampaignRuns",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRecipients_RunId_ContactRef_Channel",
                 table: "CampaignRecipients",
                 columns: new[] { "RunId", "ContactRef", "Channel" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRecipients_RunId_DispatchId",
                 table: "CampaignRecipients",
                 columns: new[] { "RunId", "DispatchId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRecipients_RunId_State",
                 table: "CampaignRecipients",
-                columns: new[] { "RunId", "State" });
+                columns: new[] { "RunId", "State" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRuns_TenantId_CampaignId",
                 table: "CampaignRuns",
-                columns: new[] { "TenantId", "CampaignId" });
+                columns: new[] { "TenantId", "CampaignId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignRuns_TenantId_Status",
                 table: "CampaignRuns",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CampaignRecipients");
+            migrationBuilder.DropTable(name: "CampaignRecipients");
 
-            migrationBuilder.DropTable(
-                name: "CampaignRuns");
+            migrationBuilder.DropTable(name: "CampaignRuns");
         }
     }
 }

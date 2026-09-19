@@ -17,6 +17,7 @@ public sealed class Signer : BaseEntity
 {
     private readonly List<SignatureField> _fields = [];
     private readonly List<SignerVerificationChallenge> _challenges = [];
+    private readonly List<SignedFieldValue> _fieldValues = [];
 
     private Signer() { }
 
@@ -89,6 +90,9 @@ public sealed class Signer : BaseEntity
 
     /// <summary>Vista de sólo lectura de los challenges de verificación del firmante.</summary>
     public IReadOnlyList<SignerVerificationChallenge> Challenges => _challenges.AsReadOnly();
+
+    /// <summary>Vista de sólo lectura de los valores que el firmante escribió en sus campos de texto.</summary>
+    public IReadOnlyList<SignedFieldValue> FieldValues => _fieldValues.AsReadOnly();
 
     /// <summary><c>true</c> si el firmante ya completó exitosamente el método indicado.</summary>
     public bool HasCompletedVerification(SignerVerificationMethod method) =>
@@ -252,6 +256,61 @@ public sealed class Signer : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Ancla los valores que el firmante escribió en sus campos <c>Text</c> (P4). Valida, campo
+    /// por campo, que cada <c>FieldId</c> pertenezca a este firmante y sea de tipo <c>Text</c>
+    /// (rechaza valores para campos no-texto), normaliza el texto vía
+    /// <see cref="SignatureFieldValue"/>, y exige que todo campo <c>Text</c> requerido tenga
+    /// valor. Reemplaza cualquier captura previa (idempotente antes de firmar). Los opcionales
+    /// vacíos simplemente no se guardan.
+    /// </summary>
+    internal Result CaptureFieldValues(IReadOnlyList<SignerFieldValueInput> inputs, DateTime capturedAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        EnsurePending();
+
+        var textFields = _fields.Where(f => f.Kind == SignatureFieldKind.Text).ToList();
+        var captured = new List<SignedFieldValue>();
+        var seenFieldIds = new HashSet<Guid>();
+
+        foreach (var input in inputs)
+        {
+            var field = _fields.Find(f => f.Id == input.FieldId);
+            if (field is null)
+                return Result.Failure(
+                    new Error("Signature.FieldValue.FieldMissing", "A submitted field does not belong to this signer.")
+                );
+            if (field.Kind != SignatureFieldKind.Text)
+                return Result.Failure(
+                    new Error("Signature.FieldValue.NotText", "Values can only be captured for text fields.")
+                );
+            if (!seenFieldIds.Add(field.Id))
+                return Result.Failure(
+                    new Error("Signature.FieldValue.Duplicate", "A field received more than one value.")
+                );
+
+            // Opcional en blanco: se omite (no es error). Requerido en blanco: lo detecta el chequeo de abajo.
+            if (string.IsNullOrWhiteSpace(input.Value))
+                continue;
+
+            var valueResult = SignatureFieldValue.Create(input.Value);
+            if (valueResult.IsFailure)
+                return Result.Failure(valueResult.Error);
+
+            captured.Add(SignedFieldValue.Create(Id, field.Id, valueResult.Value, capturedAtUtc));
+        }
+
+        var missingRequired = textFields.Any(f => f.IsRequired && !captured.Any(v => v.FieldId == f.Id));
+        if (missingRequired)
+            return Result.Failure(
+                new Error("Signature.FieldValue.RequiredMissing", "A required text field was left blank.")
+            );
+
+        _fieldValues.Clear();
+        _fieldValues.AddRange(captured);
+        return Result.Success();
+    }
+
     /// <summary>Marca al firmante como Signed. Idempotente.</summary>
     internal Result RecordSigned(DateTime signedAtUtc, string? clientIp, string? userAgent) =>
         RecordSigned(
@@ -295,7 +354,10 @@ public sealed class Signer : BaseEntity
         SignedAtUtc = signedAtUtc;
         CaptureMethod = method;
         TypedName = method == SignatureCaptureMethod.Typed ? effectiveTypedName?.Trim() : null;
-        SignatureImageFileId = method == SignatureCaptureMethod.Typed ? null : signatureImageFileId;
+        // La imagen se guarda en CUALQUIER método: Drawn/Uploaded la exigen, y Typed también la lleva
+        // cuando el frontend rasteriza el nombre tecleado a PNG — así el sellado embebe SIEMPRE una imagen
+        // real de la firma (no tipografía). Null para el flujo legacy de staff que firma Typed sin imagen.
+        SignatureImageFileId = signatureImageFileId;
         ClientIp = TruncateIp(clientIp);
         UserAgent = TruncateUserAgent(userAgent);
         return Result.Success();

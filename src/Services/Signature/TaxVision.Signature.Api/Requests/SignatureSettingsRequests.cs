@@ -12,7 +12,9 @@ public sealed record UpdateSignatureSettingsBody(
     bool RemindersEnabledByDefault,
     bool GenerateCertificateByDefault,
     DocumentLimitsBody DocumentLimits,
-    RetentionPolicyBody RetentionPolicy
+    RetentionPolicyBody RetentionPolicy,
+    // Default 48h (cada 2 días); opcional para retro-compat con clientes que no lo envían.
+    int DefaultReminderIntervalHours = 48
 );
 
 public sealed record DocumentLimitsBody(long MaxPdfBytes, long MaxImageBytes, int MaxPagesPerDocument);

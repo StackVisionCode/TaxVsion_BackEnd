@@ -97,7 +97,6 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         switch (field.Kind)
         {
             case SignatureFieldKind.Signature:
-            case SignatureFieldKind.Initials:
                 DrawSignatureFieldStamp(
                     gfx,
                     field,
@@ -107,6 +106,19 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
                     rect.Height,
                     textPrimary,
                     textMuted
+                );
+                break;
+            case SignatureFieldKind.Initials:
+                // Las iniciales se derivan del nombre del firmante (no se estampa el nombre completo ni
+                // la imagen de la firma). Ej. "Amanda B Martinez" → "ABM".
+                DrawInitialsStamp(
+                    gfx,
+                    ToInitials(field.SignerDisplayName),
+                    contentX,
+                    rect.Y,
+                    contentWidth,
+                    rect.Height,
+                    textPrimary
                 );
                 break;
             case SignatureFieldKind.Date:
@@ -136,6 +148,8 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
                 );
                 break;
             case SignatureFieldKind.Text:
+                DrawTextValueStamp(gfx, field.Value, contentX, rect.Y, contentWidth, rect.Height, textPrimary);
+                break;
             default:
                 DrawSingleValueStamp(
                     gfx,
@@ -163,30 +177,121 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         XColor textMuted
     )
     {
-        var captionFont = new XFont("Helvetica", 5.5, XFontStyleEx.Bold);
-        var scriptFont = new XFont("Times New Roman", Math.Max(9, height * 0.42), XFontStyleEx.BoldItalic);
-        var metaFont = new XFont("Helvetica", 5.5, XFontStyleEx.Regular);
+        // Layout en bandas apiladas PROPORCIONALES al alto (estilo DocuSign / Adobe Sign), no con offsets
+        // fijos: así, aunque el preparador achique mucho la caja del campo, la firma, el caption y la fecha
+        // nunca se solapan. La firma es la banda dominante; el caption se omite si no cabe sin comérsela, y
+        // la fecha vive en una franja inferior propia separada por una línea.
         var mutedBrush = new XSolidBrush(textMuted);
         var primaryBrush = new XSolidBrush(textPrimary);
 
-        // Top caption.
-        gfx.DrawString("DIGITALLY SIGNED BY", captionFont, mutedBrush, new XPoint(x, y + 8));
+        // Caja chica → se prioriza la firma. Bajo ~34pt de alto no cabe el caption sin aplastar la firma.
+        var showCaption = height >= 34;
+        var captionBand = showCaption ? Math.Min(10.0, height * 0.20) : 0.0;
+        var metaBand = Math.Min(11.0, height * 0.24); // franja inferior para la fecha
+        var gap = Math.Min(2.0, height * 0.04);
+        var signatureBand = Math.Max(1.0, height - captionBand - metaBand - gap);
 
-        // Signer name in italic script style, vertically centered in the middle band.
-        var nameArea = new XRect(x, y + 10, width, height * 0.55);
-        gfx.DrawString(field.SignerDisplayName, scriptFont, primaryBrush, nameArea, XStringFormats.CenterLeft);
+        if (showCaption)
+        {
+            var captionFont = new XFont("Helvetica", Math.Clamp(captionBand * 0.62, 4.5, 6.5), XFontStyleEx.Bold);
+            gfx.DrawString(
+                "DIGITALLY SIGNED BY",
+                captionFont,
+                mutedBrush,
+                new XRect(x, y, width, captionBand),
+                XStringFormats.CenterLeft
+            );
+        }
 
-        // Thin underline under the "signature".
-        var underlineY = y + height * 0.72;
-        gfx.DrawLine(new XPen(XColor.FromArgb(180, 190, 205), 0.4), x, underlineY, x + width, underlineY);
+        // Banda de la firma: la imagen capturada (dibujada/subida/tipografiada) o, si no hay, el nombre en
+        // cursiva como fallback tipográfico. Ocupa el grueso de la caja.
+        var signatureArea = new XRect(x, y + captionBand, width, signatureBand);
+        if (field.SignatureImageBytes is { Length: > 0 } imageBytes)
+        {
+            DrawSignatureImageFitted(gfx, imageBytes, signatureArea);
+        }
+        else
+        {
+            var scriptFont = new XFont(
+                "Times New Roman",
+                Math.Clamp(signatureBand * 0.72, 9, 24),
+                XFontStyleEx.BoldItalic
+            );
+            gfx.DrawString(field.SignerDisplayName, scriptFont, primaryBrush, signatureArea, XStringFormats.CenterLeft);
+        }
 
-        // Bottom meta line.
+        // Franja inferior: línea fina + fecha UTC, en su propia banda (nunca encima de la firma).
+        var metaTop = y + height - metaBand;
+        gfx.DrawLine(new XPen(XColor.FromArgb(180, 190, 205), 0.4), x, metaTop, x + width, metaTop);
+        var metaFont = new XFont("Helvetica", Math.Clamp(metaBand * 0.52, 4.5, 6.5), XFontStyleEx.Regular);
         gfx.DrawString(
             $"{field.SignedAtUtc:yyyy-MM-dd HH:mm 'UTC'}",
             metaFont,
             mutedBrush,
-            new XPoint(x, y + height - 3)
+            new XRect(x, metaTop, width, metaBand),
+            XStringFormats.CenterLeft
         );
+    }
+
+    /// <summary>
+    /// Estampa el PNG de la firma dentro de <paramref name="area"/> preservando el aspecto (letterbox),
+    /// alineado a la izquierda y centrado verticalmente. Si la imagen no se puede decodificar, se ignora
+    /// en silencio: el sellado no debe abortar por una firma malformada (la validación real vive en la subida).
+    /// </summary>
+    private static void DrawSignatureImageFitted(XGraphics gfx, byte[] imageBytes, XRect area)
+    {
+        try
+        {
+            using var stream = new MemoryStream(imageBytes, writable: false);
+            using var image = XImage.FromStream(stream);
+
+            if (image.PixelWidth <= 0 || image.PixelHeight <= 0)
+                return;
+
+            var aspect = (double)image.PixelWidth / image.PixelHeight;
+            var targetWidth = area.Width;
+            var targetHeight = targetWidth / aspect;
+            if (targetHeight > area.Height)
+            {
+                targetHeight = area.Height;
+                targetWidth = targetHeight * aspect;
+            }
+
+            var drawX = area.X;
+            var drawY = area.Y + (area.Height - targetHeight) / 2;
+            gfx.DrawImage(image, drawX, drawY, targetWidth, targetHeight);
+        }
+        catch (Exception)
+        {
+            // Imagen ilegible/corrupta: dejamos el campo sin estampa gráfica en lugar de romper el sellado.
+        }
+    }
+
+    /// <summary>Iniciales del firmante a partir de su nombre: primera letra de cada palabra, máx 4, mayúsculas.</summary>
+    private static string ToInitials(string fullName)
+    {
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return "—";
+        var chars = parts.Where(p => char.IsLetter(p[0])).Select(p => char.ToUpperInvariant(p[0])).Take(4);
+        var initials = new string(chars.ToArray());
+        return initials.Length == 0 ? "—" : initials;
+    }
+
+    /// <summary>Estampa las iniciales centradas en cursiva (sin caption ni imagen), estilo firma manuscrita.</summary>
+    private static void DrawInitialsStamp(
+        XGraphics gfx,
+        string initials,
+        double x,
+        double y,
+        double width,
+        double height,
+        XColor textPrimary
+    )
+    {
+        var font = new XFont("Times New Roman", Math.Max(11, height * 0.5), XFontStyleEx.BoldItalic);
+        var area = new XRect(x, y, width, height);
+        gfx.DrawString(initials, font, new XSolidBrush(textPrimary), area, XStringFormats.Center);
     }
 
     private static void DrawSingleValueStamp(
@@ -206,6 +311,77 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         gfx.DrawString(caption.ToUpperInvariant(), captionFont, new XSolidBrush(textMuted), new XPoint(x, y + 8));
         var valueArea = new XRect(x, y + 10, width, height - 12);
         gfx.DrawString(value, valueFont, new XSolidBrush(textPrimary), valueArea, XStringFormats.CenterLeft);
+    }
+
+    /// <summary>
+    /// Estampa un campo de texto libre (P4): SÓLO el TEXTO que escribió el firmante, con salto de
+    /// línea automático por ancho y centrado verticalmente. La etiqueta/instrucción del preparador
+    /// (p. ej. "Put your age") es una guía para el firmante en la pantalla de firma, NO se sella en
+    /// el documento: en el PDF final debe aparecer únicamente el valor. El texto se recorta si excede
+    /// el alto; un valor vacío no dibuja nada.
+    /// </summary>
+    private static void DrawTextValueStamp(
+        XGraphics gfx,
+        string? value,
+        double x,
+        double y,
+        double width,
+        double height,
+        XColor textPrimary
+    )
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        var valueFont = new XFont("Helvetica", 9, XFontStyleEx.Regular);
+        var lineHeight = valueFont.GetHeight();
+        var brush = new XSolidBrush(textPrimary);
+
+        var lines = WrapText(gfx, value, valueFont, width);
+        var maxY = y + height - 2;
+
+        // Centrado vertical del bloque de texto dentro del alto disponible.
+        var blockHeight = lines.Count * lineHeight;
+        var textY = y + Math.Max(0, (height - blockHeight) / 2) + lineHeight;
+        foreach (var line in lines)
+        {
+            if (textY > maxY)
+                break;
+            gfx.DrawString(line, valueFont, brush, new XPoint(x, textY));
+            textY += lineHeight;
+        }
+    }
+
+    /// <summary>Parte un texto en líneas que caben en <paramref name="maxWidth"/>, respetando saltos de línea.</summary>
+    private static IReadOnlyList<string> WrapText(XGraphics gfx, string text, XFont font, double maxWidth)
+    {
+        var lines = new List<string>();
+        foreach (var paragraph in text.Split('\n'))
+        {
+            var words = paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+            {
+                lines.Add(string.Empty);
+                continue;
+            }
+
+            var current = words[0];
+            for (var i = 1; i < words.Length; i++)
+            {
+                var candidate = $"{current} {words[i]}";
+                if (gfx.MeasureString(candidate, font).Width <= maxWidth)
+                {
+                    current = candidate;
+                }
+                else
+                {
+                    lines.Add(current);
+                    current = words[i];
+                }
+            }
+            lines.Add(current);
+        }
+        return lines;
     }
 
     private static void AppendAuditFooter(PdfDocument pdf, SealingRequest request)

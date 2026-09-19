@@ -23,7 +23,11 @@ public static class UpdateTemplateDefaultsHandler
             cmd.DefaultTokenExpirationHours,
             cmd.RequiresSequentialSigning,
             cmd.RequiresConsent,
-            cmd.GenerateCertificate
+            cmd.GenerateCertificate,
+            cmd.SendSignedDocumentToSigners,
+            cmd.SendCertificateToSigners,
+            cmd.AutoRemindersEnabled,
+            cmd.ReminderIntervalHours
         );
         if (result.IsFailure)
             return result;

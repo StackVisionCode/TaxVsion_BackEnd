@@ -28,9 +28,17 @@ public sealed class CampaignRecipientConfiguration : IEntityTypeConfiguration<Ca
         builder.Property(r => r.DeliveredAtUtc);
         builder.Property(r => r.SettledAtUtc);
 
-        builder.HasIndex(r => new { r.RunId, r.DispatchId }).IsUnique().HasDatabaseName("IX_CampaignRecipients_RunId_DispatchId");
         builder
-            .HasIndex(r => new { r.RunId, r.ContactRef, r.Channel })
+            .HasIndex(r => new { r.RunId, r.DispatchId })
+            .IsUnique()
+            .HasDatabaseName("IX_CampaignRecipients_RunId_DispatchId");
+        builder
+            .HasIndex(r => new
+            {
+                r.RunId,
+                r.ContactRef,
+                r.Channel,
+            })
             .IsUnique()
             .HasDatabaseName("IX_CampaignRecipients_RunId_ContactRef_Channel");
         builder.HasIndex(r => new { r.RunId, r.State }).HasDatabaseName("IX_CampaignRecipients_RunId_State");

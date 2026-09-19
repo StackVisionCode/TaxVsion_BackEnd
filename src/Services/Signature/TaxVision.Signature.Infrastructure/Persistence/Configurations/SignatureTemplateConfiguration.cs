@@ -21,6 +21,13 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder.Property(t => t.RequiresSequentialSigning).IsRequired();
         builder.Property(t => t.RequiresConsent).IsRequired();
         builder.Property(t => t.GenerateCertificate).IsRequired();
+        builder.Property(t => t.SendSignedDocumentToSigners).IsRequired();
+        builder.Property(t => t.SendCertificateToSigners).IsRequired();
+        builder.Property(t => t.AutoRemindersEnabled).IsRequired();
+        builder.Property(t => t.ReminderIntervalHours).IsRequired();
+        builder.Property(t => t.PractitionerPinHash).HasMaxLength(512);
+        builder.Ignore(t => t.RequiresPractitionerPin);
+        builder.Property(t => t.BaseDocumentFileId);
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
         builder.Property(t => t.PublishedAtUtc);

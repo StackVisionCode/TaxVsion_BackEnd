@@ -30,6 +30,10 @@ public sealed class TenantSignatureSettings : BaseEntity
     public const int MinTokenExpirationHours = 1;
     public const int MaxTokenExpirationHours = 720; // 30 días
 
+    public const int DefaultReminderIntervalHours = 48; // cada 2 días
+    public const int MinReminderIntervalHours = 1;
+    public const int MaxReminderIntervalHours = 720; // 30 días
+
     private TenantSignatureSettings() { }
 
     /// <summary>Tenant dueño de la configuración. Único por tenant.</summary>
@@ -46,6 +50,9 @@ public sealed class TenantSignatureSettings : BaseEntity
 
     /// <summary>Si se generan recordatorios automáticos por default en cada solicitud nueva.</summary>
     public bool RemindersEnabledByDefault { get; private set; }
+
+    /// <summary>Cada cuántas horas se recuerda a los firmantes pendientes, por default en solicitudes nuevas.</summary>
+    public int DefaultReminderIntervalHoursValue { get; private set; }
 
     /// <summary>Si se genera el Certificate of Completion por default en cada solicitud nueva.</summary>
     public bool GenerateCertificateByDefault { get; private set; }
@@ -106,6 +113,7 @@ public sealed class TenantSignatureSettings : BaseEntity
                 DefaultVerificationChannel = DefaultPreselectedChannel,
                 DefaultTokenExpirationHoursValue = DefaultTokenExpirationHours,
                 RemindersEnabledByDefault = true,
+                DefaultReminderIntervalHoursValue = DefaultReminderIntervalHours,
                 GenerateCertificateByDefault = true,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
@@ -205,6 +213,22 @@ public sealed class TenantSignatureSettings : BaseEntity
 
         RemindersEnabledByDefault = false;
         Touch();
+    }
+
+    /// <summary>Fija el intervalo por default (horas) entre recordatorios a firmantes pendientes.</summary>
+    public Result SetDefaultReminderInterval(int hours)
+    {
+        if (hours is < MinReminderIntervalHours or > MaxReminderIntervalHours)
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.ReminderInterval",
+                    $"Reminder interval must be between {MinReminderIntervalHours} and {MaxReminderIntervalHours} hours."
+                )
+            );
+
+        DefaultReminderIntervalHoursValue = hours;
+        Touch();
+        return Result.Success();
     }
 
     public void EnableCertificateOfCompletion()

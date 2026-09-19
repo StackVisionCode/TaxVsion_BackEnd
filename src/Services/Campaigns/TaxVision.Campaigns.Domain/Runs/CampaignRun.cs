@@ -75,7 +75,14 @@ public sealed class CampaignRun : TenantEntity
         foreach (var unit in units)
         {
             run._recipients.Add(
-                CampaignRecipient.Materialize(run.Id, tenantId, unit.ContactRef, unit.Channel, unit.Email, unit.PhoneE164)
+                CampaignRecipient.Materialize(
+                    run.Id,
+                    tenantId,
+                    unit.ContactRef,
+                    unit.Channel,
+                    unit.Email,
+                    unit.PhoneE164
+                )
             );
         }
 
@@ -132,11 +139,10 @@ public sealed class CampaignRun : TenantEntity
             return false;
 
         var succeeded = CounterDelivered + CounterAccepted;
-        Status = succeeded == 0
-            ? CampaignRunStatus.Failed
-            : CounterFailed + CounterUnknown == 0
-                ? CampaignRunStatus.Completed
-                : CampaignRunStatus.PartiallyFailed;
+        Status =
+            succeeded == 0 ? CampaignRunStatus.Failed
+            : CounterFailed + CounterUnknown == 0 ? CampaignRunStatus.Completed
+            : CampaignRunStatus.PartiallyFailed;
         FinishedAtUtc = DateTime.UtcNow;
         return true;
     }

@@ -22,6 +22,12 @@ public interface ISignatureRequestRepository
     /// </summary>
     Task<SignatureRequest?> GetBySealedFileIdAsync(Guid tenantId, Guid sealedFileId, CancellationToken ct = default);
 
+    Task<SignatureRequest?> GetByCertificateFileIdAsync(
+        Guid tenantId,
+        Guid certificateFileId,
+        CancellationToken ct = default
+    );
+
     /// <summary>
     /// Devuelve los borradores del tenant cuyo <c>OriginalFileId</c> coincide con
     /// <paramref name="fileId"/>. Se usa al recibir <c>FileAvailable</c> para promover
@@ -53,17 +59,12 @@ public interface ISignatureRequestRepository
     Task<IReadOnlyList<SignatureRequest>> ListExpiredCandidatesAsync(DateTime nowUtc, CancellationToken ct = default);
 
     /// <summary>
-    /// Solicitudes InProgress cuya expiración se acerca (dentro de <paramref name="withinWindow"/>)
-    /// y que aún no han recibido un reminder reciente (<paramref name="cooldown"/>).
-    /// Consumida por el <c>ReminderScheduler</c>.
+    /// Solicitudes InProgress con recordatorios activos a las que ya les toca un reminder según su
+    /// intervalo dinámico (<c>ReminderIntervalHours</c>) medido desde el último envío (o desde el envío
+    /// inicial si aún no hubo ninguno), que no expiraron y no superaron el cap. Refleja en SQL la regla
+    /// de <see cref="SignatureRequest.IsReminderDue"/>. Consumida por el <c>ReminderScheduler</c>.
     /// </summary>
-    Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
-        DateTime nowUtc,
-        TimeSpan withinWindow,
-        TimeSpan cooldown,
-        int maxReminders,
-        CancellationToken ct = default
-    );
+    Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(DateTime nowUtc, CancellationToken ct = default);
 
     /// <summary>
     /// Solicitudes en estado terminal (<c>Completed</c>/<c>Rejected</c>/<c>Canceled</c>/<c>Expired</c>)

@@ -32,7 +32,12 @@ public static class CreateSignatureTemplateHandler
             defaultTokenExpirationHours: cmd.DefaultTokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,
             requiresConsent: cmd.RequiresConsent,
-            generateCertificate: cmd.GenerateCertificate
+            generateCertificate: cmd.GenerateCertificate,
+            baseDocumentFileId: cmd.BaseDocumentFileId,
+            sendSignedDocumentToSigners: cmd.SendSignedDocumentToSigners,
+            sendCertificateToSigners: cmd.SendCertificateToSigners,
+            autoRemindersEnabled: cmd.AutoRemindersEnabled,
+            reminderIntervalHours: cmd.ReminderIntervalHours
         );
 
     private static async Task PersistAsync(

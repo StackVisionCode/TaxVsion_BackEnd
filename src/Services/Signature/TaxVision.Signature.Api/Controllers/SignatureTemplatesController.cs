@@ -20,6 +20,8 @@ using TaxVision.Signature.Application.Templates.Commands.PublishTemplate;
 using TaxVision.Signature.Application.Templates.Commands.RemoveField;
 using TaxVision.Signature.Application.Templates.Commands.RemoveSlot;
 using TaxVision.Signature.Application.Templates.Commands.RevertToDraft;
+using TaxVision.Signature.Application.Templates.Commands.SetBaseDocument;
+using TaxVision.Signature.Application.Templates.Commands.TemplatePin;
 using TaxVision.Signature.Application.Templates.Commands.UpdateDefaults;
 using TaxVision.Signature.Application.Templates.Commands.UpdateMetadata;
 using TaxVision.Signature.Application.Templates.Commands.UpdateSlot;
@@ -62,7 +64,12 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
             body.DefaultTokenExpirationHours,
             body.RequiresSequentialSigning,
             body.RequiresConsent,
-            body.GenerateCertificate
+            body.GenerateCertificate,
+            body.BaseDocumentFileId,
+            body.SendSignedDocumentToSigners,
+            body.SendCertificateToSigners,
+            body.AutoRemindersEnabled,
+            body.ReminderIntervalHours
         );
         var result = await bus.InvokeAsync<Result<SignatureTemplateResponse>>(cmd, ct);
         return result.IsSuccess
@@ -152,8 +159,68 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
                 body.DefaultTokenExpirationHours,
                 body.RequiresSequentialSigning,
                 body.RequiresConsent,
-                body.GenerateCertificate
+                body.GenerateCertificate,
+                body.SendSignedDocumentToSigners,
+                body.SendCertificateToSigners,
+                body.AutoRemindersEnabled,
+                body.ReminderIntervalHours
             ),
+            ct
+        );
+        return MapResult(result);
+    }
+
+    // ---------- PUT /signature/templates/{id}/practitioner-pin ----------
+    [HttpPut("{id:guid}/practitioner-pin")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetPractitionerPin(
+        [FromRoute] Guid id,
+        [FromBody] SetTemplatePractitionerPinBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new SetTemplatePractitionerPinCommand(tenantId, id, body.Pin), ct);
+        return MapResult(result);
+    }
+
+    // ---------- DELETE /signature/templates/{id}/practitioner-pin ----------
+    [HttpDelete("{id:guid}/practitioner-pin")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ClearPractitionerPin([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new ClearTemplatePractitionerPinCommand(tenantId, id), ct);
+        return MapResult(result);
+    }
+
+    // ---------- PUT /signature/templates/{id}/base-document ----------
+    [HttpPut("{id:guid}/base-document")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetBaseDocument(
+        [FromRoute] Guid id,
+        [FromBody] SetTemplateBaseDocumentBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new SetTemplateBaseDocumentCommand(tenantId, id, body.BaseDocumentFileId),
             ct
         );
         return MapResult(result);

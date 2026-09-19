@@ -16,5 +16,10 @@ public sealed record CreateSignatureRequestCommand(
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
-    bool GenerateCertificate
+    bool GenerateCertificate,
+    bool SendSignedDocumentToSigners = true,
+    bool SendCertificateToSigners = false,
+    // null = usar el default del tenant (TenantSignatureSettings). Con valor = override del preparador.
+    bool? AutoRemindersEnabled = null,
+    int? ReminderIntervalHours = null
 );

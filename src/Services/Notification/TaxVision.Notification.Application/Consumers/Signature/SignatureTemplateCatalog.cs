@@ -11,6 +11,7 @@ public static class SignatureTemplateCatalog
     public const string InvitationKey = "sig.invitation.v1";
     public const string ReminderKey = "sig.reminder.v1";
     public const string CompletedKey = "sig.completed.v1";
+    public const string CertificateKey = "sig.certificate.v1";
     public const string ExpiredKey = "sig.expired.v1";
     public const string DeclinedKey = "sig.declined.v1";
     public const string VerificationChallengeKey = "sig.verification-challenge.v1";

@@ -22,29 +22,31 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Status = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Campaigns", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Campaigns_TenantId_CreatedAtUtc",
                 table: "Campaigns",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Campaigns_TenantId_Status",
                 table: "Campaigns",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "Campaigns");
+            migrationBuilder.DropTable(name: "Campaigns");
         }
     }
 }

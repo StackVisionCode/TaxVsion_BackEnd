@@ -34,6 +34,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
     )
     {
@@ -43,6 +44,14 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (template.Status != SignatureTemplateStatus.Published)
             return Failure("Signature.Template.NotPublished", "Only published templates can be instantiated.");
 
+        // P7: el documento viene del caller o, si no, del documento base de la plantilla.
+        var originalFileId = ResolveOriginalFileId(cmd, template);
+        if (originalFileId is null)
+            return Failure(
+                "Signature.Template.NoDocument",
+                "No document was provided and the template has no base document to reuse."
+            );
+
         var bindingValidation = ValidateBindings(cmd.SlotBindings, template);
         if (bindingValidation.IsFailure)
             return Result.Failure<SignatureRequestResponse>(bindingValidation.Error);
@@ -51,7 +60,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (signerVOs.IsFailure)
             return Result.Failure<SignatureRequestResponse>(signerVOs.Error);
 
-        var requestResult = CreateDraft(cmd, template);
+        var requestResult = CreateDraft(cmd, template, originalFileId.Value);
         if (requestResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(requestResult.Error);
 
@@ -60,9 +69,19 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (populated.IsFailure)
             return Result.Failure<SignatureRequestResponse>(populated.Error);
 
-        await TryPromoteToReadyIfFileAvailable(request, cmd, fileRepository, ct);
+        // La plantilla puede traer un Practitioner PIN por defecto (hash ya calculado): se copia tal cual
+        // a la solicitud (sin re-hashear). La request queda Draft aquí, así que SetPractitionerPin lo permite.
+        if (template.PractitionerPinHash is { } templatePinHash)
+        {
+            var pinResult = request.SetPractitionerPin(templatePinHash, cmd.CreatedByUserId, DateTime.UtcNow);
+            if (pinResult.IsFailure)
+                return Result.Failure<SignatureRequestResponse>(pinResult.Error);
+        }
+
+        await TryPromoteToReadyIfFileAvailable(request, cmd.TenantId, originalFileId.Value, fileRepository, ct);
         await requestRepository.AddAsync(request, ct);
         await unitOfWork.SaveChangesAsync(ct);
+        await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, template, correlation, bus);
 
         return Result.Success(SignatureRequestResponse.From(request));
@@ -176,9 +195,27 @@ public static class CreateSignatureRequestFromTemplateHandler
 
     // ============== Fase 4: factory del aggregate ==============
 
-    private static Result<SignatureRequest> CreateDraft(
+    /// <summary>Documento efectivo: override del caller si vino, si no el base de la plantilla.</summary>
+    private static Guid? ResolveOriginalFileId(
         CreateSignatureRequestFromTemplateCommand cmd,
         SignatureTemplate template
+    )
+    {
+        if (cmd.OriginalFileId is { } provided && provided != Guid.Empty)
+            return provided;
+        return template.BaseDocumentFileId is { } baseId && baseId != Guid.Empty ? baseId : null;
+    }
+
+    /// <summary>
+    /// Crea la solicitud con TODOS los defaults de la plantilla (P7 + defaults de entrega/recordatorio).
+    /// La plantilla es la fuente explícita: sus toggles de entregar documento firmado/certificado y de
+    /// auto-recordatorios se copian tal cual a la solicitud (antes los recordatorios salían de tenant
+    /// settings y los toggles de entrega ni se aplicaban).
+    /// </summary>
+    private static Result<SignatureRequest> CreateDraft(
+        CreateSignatureRequestFromTemplateCommand cmd,
+        SignatureTemplate template,
+        Guid originalFileId
     ) =>
         SignatureRequest.CreateDraft(
             tenantId: cmd.TenantId,
@@ -186,11 +223,15 @@ public static class CreateSignatureRequestFromTemplateHandler
             title: template.Title,
             description: cmd.DescriptionOverride ?? template.Description,
             category: template.Category,
-            originalFileId: cmd.OriginalFileId,
+            originalFileId: originalFileId,
             tokenExpirationHours: template.DefaultTokenExpirationHours,
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
-            generateCertificate: template.GenerateCertificate
+            generateCertificate: template.GenerateCertificate,
+            sendSignedDocumentToSigners: template.SendSignedDocumentToSigners,
+            sendCertificateToSigners: template.SendCertificateToSigners,
+            autoRemindersEnabled: template.AutoRemindersEnabled,
+            reminderIntervalHours: template.ReminderIntervalHours
         );
 
     // ============== Fase 5: agregar signers y campos ==============
@@ -232,12 +273,13 @@ public static class CreateSignatureRequestFromTemplateHandler
 
     private static async Task TryPromoteToReadyIfFileAvailable(
         SignatureRequest request,
-        CreateSignatureRequestFromTemplateCommand cmd,
+        Guid tenantId,
+        Guid originalFileId,
         IFileMetadataRefRepository fileRepository,
         CancellationToken ct
     )
     {
-        var file = await fileRepository.GetByFileIdAsync(cmd.TenantId, cmd.OriginalFileId, ct);
+        var file = await fileRepository.GetByFileIdAsync(tenantId, originalFileId, ct);
         if (file is null || file.Status != FileScanStatus.Available)
             return;
         if (string.IsNullOrEmpty(file.ChecksumSha256))

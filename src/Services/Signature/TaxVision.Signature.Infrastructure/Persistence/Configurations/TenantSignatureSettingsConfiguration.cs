@@ -19,6 +19,7 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
 
         builder.Property(settings => settings.DefaultTokenExpirationHoursValue).IsRequired();
         builder.Property(settings => settings.RemindersEnabledByDefault).IsRequired();
+        builder.Property(settings => settings.DefaultReminderIntervalHoursValue).IsRequired();
         builder.Property(settings => settings.GenerateCertificateByDefault).IsRequired();
 
         builder.Property(settings => settings.AuditSecretEncrypted).HasMaxLength(512).IsRequired();
