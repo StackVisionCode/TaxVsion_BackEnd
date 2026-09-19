@@ -187,6 +187,7 @@
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Catalog.Tests/TaxVision.Catalog.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Campaigns.Tests/TaxVision.Campaigns.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Inventory.Tests/TaxVision.Inventory.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />

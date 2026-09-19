@@ -18,4 +18,9 @@ public static class CampaignErrors
     public static readonly Error Archived = new("Campaign.Archived", "The campaign is archived.");
     public static readonly Error InvalidTransition = new("Campaign.InvalidTransition", "Invalid state transition.");
     public static readonly Error NotFound = new("Campaign.NotFound", "Campaign not found.");
+    public static readonly Error SenderRequired = new("Campaign.SenderRequired", "A sender profile id is required.");
+    public static readonly Error SenderChannelNotSelected = new(
+        "Campaign.SenderChannelNotSelected",
+        "The sender's channel is not one of the campaign's channels."
+    );
 }

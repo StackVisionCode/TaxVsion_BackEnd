@@ -15,6 +15,8 @@ public sealed class Campaign : TenantEntity
 {
     public const int MaxNameLength = 200;
 
+    private readonly List<CampaignSenderSelection> _senders = [];
+
     private Campaign() { }
 
     public const int MaxSubjectLength = 300;
@@ -30,6 +32,9 @@ public sealed class Campaign : TenantEntity
     public CampaignStatus Status { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
+
+    /// <summary>Remitente seleccionado por canal (0..1 por canal). La campaña solo referencia el <c>SenderProfile</c> por id.</summary>
+    public IReadOnlyCollection<CampaignSenderSelection> Senders => _senders.AsReadOnly();
 
     // ------------------------------------------------------------------
     // Factory
@@ -123,6 +128,49 @@ public sealed class Campaign : TenantEntity
         Message = contentResult.Value.Message;
         Subject = contentResult.Value.Subject;
         Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Selecciona (upsert) el remitente para un canal — solo en <c>Draft</c>. El canal debe ser único y
+    /// estar entre los canales de la campaña. La validación de que el <c>SenderProfile</c> existe, es del
+    /// tenant, está Active y es de ese canal la hace el handler (necesita el repo).
+    /// </summary>
+    public Result SetSender(CampaignChannel channel, Guid senderProfileId)
+    {
+        var guard = EnsureDraft();
+        if (guard.IsFailure)
+            return guard;
+
+        if (channel == CampaignChannel.None || (channel & (channel - 1)) != 0)
+            return Result.Failure(CampaignErrors.ChannelsRequired);
+        if (!Channels.HasFlag(channel))
+            return Result.Failure(CampaignErrors.SenderChannelNotSelected);
+        if (senderProfileId == Guid.Empty)
+            return Result.Failure(CampaignErrors.SenderRequired);
+
+        var existing = _senders.Find(s => s.Channel == channel);
+        if (existing is null)
+            _senders.Add(new CampaignSenderSelection(Id, TenantId, channel, senderProfileId));
+        else
+            existing.Point(senderProfileId);
+
+        Touch();
+        return Result.Success();
+    }
+
+    public Result ClearSender(CampaignChannel channel)
+    {
+        var guard = EnsureDraft();
+        if (guard.IsFailure)
+            return guard;
+
+        var existing = _senders.Find(s => s.Channel == channel);
+        if (existing is not null)
+        {
+            _senders.Remove(existing);
+            Touch();
+        }
         return Result.Success();
     }
 

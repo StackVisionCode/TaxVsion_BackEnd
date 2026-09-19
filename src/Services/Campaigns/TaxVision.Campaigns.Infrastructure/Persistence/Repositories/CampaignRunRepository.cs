@@ -15,6 +15,18 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
             .Include(r => r.Recipients)
             .FirstOrDefaultAsync(r => r.Id == id && r.TenantId == tenantId, ct);
 
+    public Task<CampaignRun?> GetByDispatchIdAsync(Guid tenantId, string dispatchId, CancellationToken ct = default) =>
+        db
+            .CampaignRuns.IgnoreQueryFilters()
+            .Include(r => r.Recipients)
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Recipients.Any(x => x.DispatchId == dispatchId), ct);
+
+    public Task<CampaignRun?> GetByRecipientIdAsync(Guid tenantId, Guid recipientId, CancellationToken ct = default) =>
+        db
+            .CampaignRuns.IgnoreQueryFilters()
+            .Include(r => r.Recipients)
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Recipients.Any(x => x.Id == recipientId), ct);
+
     public async Task<PagedResult<CampaignRun>> ListByCampaignAsync(
         Guid tenantId,
         Guid campaignId,

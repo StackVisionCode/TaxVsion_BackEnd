@@ -25,5 +25,33 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder
             .HasIndex(c => new { c.TenantId, c.CreatedAtUtc })
             .HasDatabaseName("IX_Campaigns_TenantId_CreatedAtUtc");
+
+        builder
+            .HasMany(c => c.Senders)
+            .WithOne()
+            .HasForeignKey(s => s.CampaignId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Metadata.FindNavigation(nameof(Campaign.Senders))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+public sealed class CampaignSenderSelectionConfiguration : IEntityTypeConfiguration<CampaignSenderSelection>
+{
+    public void Configure(EntityTypeBuilder<CampaignSenderSelection> builder)
+    {
+        builder.ToTable("CampaignSenderSelections");
+        builder.HasKey(s => s.Id);
+        // Id generado en dominio (guardrail 10): sin esto EF haría UPDATE en vez de INSERT al agregar hijos.
+        builder.Property(s => s.Id).ValueGeneratedNever();
+
+        builder.Property(s => s.CampaignId).IsRequired();
+        builder.Property(s => s.TenantId).IsRequired();
+        builder.Property(s => s.Channel).HasConversion<int>().IsRequired();
+        builder.Property(s => s.SenderProfileId).IsRequired();
+
+        builder
+            .HasIndex(s => new { s.CampaignId, s.Channel })
+            .IsUnique()
+            .HasDatabaseName("UX_CampaignSenderSelections_CampaignId_Channel");
     }
 }

@@ -7,7 +7,11 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Contacts;
+using TaxVision.Campaigns.Domain.Permissions;
 using TaxVision.Campaigns.Domain.Runs;
+using TaxVision.Campaigns.Domain.Scheduling;
+using TaxVision.Campaigns.Domain.Senders;
 
 namespace TaxVision.Campaigns.Infrastructure.Persistence;
 
@@ -23,6 +27,12 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignRun> CampaignRuns => Set<CampaignRun>();
     public DbSet<CampaignRecipient> CampaignRecipients => Set<CampaignRecipient>();
+    public DbSet<Contact> Contacts => Set<Contact>();
+    public DbSet<ContactList> ContactLists => Set<ContactList>();
+    public DbSet<SenderProfile> SenderProfiles => Set<SenderProfile>();
+    public DbSet<CampaignSchedule> CampaignSchedules => Set<CampaignSchedule>();
+    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
+    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

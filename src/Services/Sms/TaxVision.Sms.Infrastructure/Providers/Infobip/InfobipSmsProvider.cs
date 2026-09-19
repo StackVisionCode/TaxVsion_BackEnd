@@ -137,14 +137,29 @@ public sealed class InfobipSmsProvider(
         if (string.IsNullOrEmpty(secret))
             return Result.Success(new SmsSignatureCheck(false, "No webhook secret configured for Infobip."));
 
+        // Infobip firma el CUERPO CRUDO con HMAC-SHA256 (doc Subscriptions → authentication-settings:
+        // "Calculate HMAC-SHA256 of the raw request body ... Do not parse, reformat, strip whitespace").
+        // El NOMBRE del header y el FORMATO de la firma dependen de la config de la suscripción/cuenta
+        // (el default de Infobip es X-Hub-Signature, estilo GitHub → normalmente "sha256=<hex>"); por eso
+        // aceptamos las variantes usuales: prefijo de algoritmo opcional ("sha256=") y hex o base64. El
+        // controller ya recolecta X-Hub-Signature entre los posibles headers.
+        var provided = (signatureHeader ?? string.Empty).Trim();
+        var eq = provided.IndexOf('=');
+        if (eq > 0 && provided.AsSpan(0, eq).StartsWith("sha", StringComparison.OrdinalIgnoreCase))
+            provided = provided[(eq + 1)..].Trim();
+        if (provided.Length == 0)
+            return Result.Success(new SmsSignatureCheck(false, "Missing webhook signature."));
+
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var computed = Convert.ToHexStringLower(hmac.ComputeHash(Encoding.UTF8.GetBytes(rawPayload)));
-        var isValid = CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(computed),
-            Encoding.UTF8.GetBytes((signatureHeader ?? string.Empty).Trim().ToLowerInvariant())
-        );
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(rawPayload));
+        var isValid =
+            FixedTimeEquals(provided.ToLowerInvariant(), Convert.ToHexStringLower(hash))
+            || FixedTimeEquals(provided, Convert.ToBase64String(hash));
         return Result.Success(new SmsSignatureCheck(isValid, isValid ? null : "Signature mismatch."));
     }
+
+    private static bool FixedTimeEquals(string a, string b) =>
+        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
     public Result<SmsDeliveryUpdate> ParseDeliveryReceipt(string rawPayload)
     {

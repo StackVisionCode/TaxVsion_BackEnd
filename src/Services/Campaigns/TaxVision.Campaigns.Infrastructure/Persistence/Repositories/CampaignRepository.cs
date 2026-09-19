@@ -11,7 +11,10 @@ public sealed class CampaignRepository(CampaignsDbContext db) : ICampaignReposit
     // ambiental global no está garantizado poblado en el scope de DI de un handler de Wolverine
     // (mismo patrón que NoteRepository.GetByIdAsync).
     public Task<Campaign?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.Campaigns.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
+        db
+            .Campaigns.IgnoreQueryFilters()
+            .Include(c => c.Senders)
+            .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
 
     public async Task<PagedResult<Campaign>> ListAsync(
         Guid tenantId,

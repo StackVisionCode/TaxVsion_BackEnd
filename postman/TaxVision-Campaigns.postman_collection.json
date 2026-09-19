@@ -1,0 +1,1490 @@
+{
+  "info": {
+    "name": "TaxVision — Campaigns",
+    "description": "Orquestador de campañas multicanal (SIN dinero). Flujo sugerido: Auth > Login (o pega un token con campaigns.manage en {{userToken}}) > Sender Profiles > Contacts > Contact Lists (import) > Campaigns (create, set sender, send) > Schedules. Todas las rutas pasan por el gateway :5047. Requiere permiso campaigns.manage y actor staff (TenantEmployee/TenantAdmin/PlatformAdmin).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{userToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth (token)",
+      "description": "Corre 'Login' para poblar {{userToken}}. Campaigns exige campaigns.manage + actor staff; usa un usuario con ese permiso (o PlatformAdmin).",
+      "item": [
+        {
+          "name": "Service token (M2M)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/auth/service-token",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "auth",
+                "service-token"
+              ]
+            },
+            "description": "Token M2M (ActorType.Service). Guarda {{serviceToken}}.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{serviceClientId}}\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.accessToken || j.token || (j.tokens && j.tokens.accessToken)) != null) pm.collectionVariables.set('serviceToken', j.accessToken || j.token || (j.tokens && j.tokens.accessToken));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (usuario)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/auth/login",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login humano. Si hay MFA, seguir con /auth/mfa/verify. Guarda {{userToken}}.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.accessToken || (j.tokens && j.tokens.accessToken)) != null) pm.collectionVariables.set('userToken', j.accessToken || (j.tokens && j.tokens.accessToken));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sender Profiles",
+      "item": [
+        {
+          "name": "Create sender (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles"
+              ]
+            },
+            "description": "Referencia opaca del remitente (sin secretos). Guarda {{senderProfileId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"Email\",\n  \"name\": \"TaxVision Oficial\",\n  \"senderRef\": \"no-reply@taxvision.do\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('senderProfileId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create sender (SMS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"Sms\",\n  \"name\": \"TaxVision SMS\",\n  \"senderRef\": \"InfoSMS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('senderProfileSmsId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List senders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get sender",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles/{{senderProfileId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles",
+                "{{senderProfileId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update sender",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles/{{senderProfileId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles",
+                "{{senderProfileId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"TaxVision Oficial\",\n  \"senderRef\": \"no-reply@taxvision.do\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disable sender",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles/{{senderProfileId}}/status",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles",
+                "{{senderProfileId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enable sender",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sender-profiles/{{senderProfileId}}/status",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sender-profiles",
+                "{{senderProfileId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Contacts",
+      "item": [
+        {
+          "name": "Create contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contacts",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contacts"
+              ]
+            },
+            "description": "Alta manual. Guarda {{contactId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Cliente\",\n  \"email\": \"ana@example.com\",\n  \"phoneE164\": \"+18290000001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('contactId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List contacts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/contacts?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contacts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update contact",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contacts/{{contactId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contacts",
+                "{{contactId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Actualizada\",\n  \"email\": \"ana@example.com\",\n  \"phoneE164\": \"+18290000001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Opt-out (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contacts/{{contactId}}/opt-out",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contacts",
+                "{{contactId}}",
+                "opt-out"
+              ]
+            },
+            "description": "Da de baja el canal Email para este contacto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channels\": [\n    \"Email\"\n  ],\n  \"optedOut\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Opt-in (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contacts/{{contactId}}/opt-out",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contacts",
+                "{{contactId}}",
+                "opt-out"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channels\": [\n    \"Email\"\n  ],\n  \"optedOut\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Contact Lists",
+      "item": [
+        {
+          "name": "Create list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contact-lists",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists"
+              ]
+            },
+            "description": "Guarda {{contactListId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Clientes IVA\",\n  \"description\": \"prueba\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('contactListId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List lists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/contact-lists?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/contact-lists/{{contactListId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists",
+                "{{contactListId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Import CSV",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contact-lists/{{contactListId}}/import",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists",
+                "{{contactListId}}",
+                "import"
+              ]
+            },
+            "description": "Dedupe por email/telefono; cabecera opcional; filas sin destino se descartan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv\": \"name,email,phone\\nAna,ana@example.com,\\nBeto,beto@example.com,\\nAna,ANA@example.com,\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/contact-lists/{{contactListId}}/members",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists",
+                "{{contactListId}}",
+                "members"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactId\": \"{{contactId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/contact-lists/{{contactListId}}/members/{{contactId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "contact-lists",
+                "{{contactListId}}",
+                "members",
+                "{{contactId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Campaigns",
+      "item": [
+        {
+          "name": "Create campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns"
+              ]
+            },
+            "description": "Guarda {{campaignId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campa\\u00f1a de prueba\",\n  \"channels\": [\n    \"Email\"\n  ],\n  \"message\": \"Hola {{tenantId}}\",\n  \"subject\": \"Prueba\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('campaignId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get campaign",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set sender (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/senders",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "senders"
+              ]
+            },
+            "description": "Asocia un SenderProfile del mismo canal (solo en Draft).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"Email\",\n  \"senderProfileId\": \"{{senderProfileId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send now (manual)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/send-now",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "send-now"
+              ]
+            },
+            "description": "Audiencia manual explicita. Guarda {{runId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipients\": [\n    {\n      \"contactRef\": \"manual-1\",\n      \"email\": \"dest@example.com\",\n      \"phoneE164\": null\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('runId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send to audience",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/send-to-audience",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "send-to-audience"
+              ]
+            },
+            "description": "Resuelve audiencia: listas + clientes (Customer, M2M) + manual. Opt-out y dedupe aplicados.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactListIds\": [\n    \"{{contactListId}}\"\n  ],\n  \"includeCustomers\": true,\n  \"manual\": [\n    {\n      \"email\": \"extra@example.com\",\n      \"phoneE164\": null\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('runId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/runs?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/runs/{{runId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "runs",
+                "{{runId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "Schedule (one-time)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/schedule",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "schedule"
+              ]
+            },
+            "description": "Agenda una vez. Guarda {{scheduleId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recurring\": false,\n  \"runAtUtc\": \"2026-12-31T09:00:00Z\",\n  \"intervalMinutes\": null,\n  \"contactListIds\": [\n    \"{{contactListId}}\"\n  ],\n  \"includeCustomers\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('scheduleId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Schedule (recurring)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/schedule",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "schedule"
+              ]
+            },
+            "description": "Agenda recurrente (cada intervalMinutes). Audiencia = listas + clientes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recurring\": true,\n  \"runAtUtc\": \"2026-12-31T09:00:00Z\",\n  \"intervalMinutes\": 1440,\n  \"contactListIds\": [\n    \"{{contactListId}}\"\n  ],\n  \"includeCustomers\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.id) != null) pm.collectionVariables.set('scheduleId', j.id);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List schedules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/{{campaignId}}/schedules?page=1&size=20",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "{{campaignId}}",
+                "schedules"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pause schedule",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/schedules/{{scheduleId}}/pause",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "schedules",
+                "{{scheduleId}}",
+                "pause"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resume schedule",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/schedules/{{scheduleId}}/resume",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "schedules",
+                "{{scheduleId}}",
+                "resume"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel schedule",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/schedules/{{scheduleId}}/cancel",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "schedules",
+                "{{scheduleId}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gateway",
+      "value": "http://localhost:5047"
+    },
+    {
+      "key": "tenantId",
+      "value": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "serviceClientId",
+      "value": "campaigns-worker"
+    },
+    {
+      "key": "serviceClientSecret",
+      "value": ""
+    },
+    {
+      "key": "serviceToken",
+      "value": ""
+    },
+    {
+      "key": "userEmail",
+      "value": "bootstrap-admin@taxvision.local"
+    },
+    {
+      "key": "userPassword",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "campaignId",
+      "value": ""
+    },
+    {
+      "key": "contactId",
+      "value": ""
+    },
+    {
+      "key": "contactListId",
+      "value": ""
+    },
+    {
+      "key": "senderProfileId",
+      "value": ""
+    },
+    {
+      "key": "senderProfileSmsId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "scheduleId",
+      "value": ""
+    }
+  ]
+}

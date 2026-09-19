@@ -3,6 +3,8 @@ using TaxVision.Campaigns.Domain.Campaigns;
 namespace TaxVision.Campaigns.Application.Campaigns;
 
 /// <summary>DTO de salida de una campaña — nunca se devuelve el aggregate al Api.</summary>
+public sealed record CampaignSenderSelectionResponse(string Channel, Guid SenderProfileId);
+
 public sealed record CampaignResponse(
     Guid Id,
     Guid TenantId,
@@ -12,6 +14,7 @@ public sealed record CampaignResponse(
     string? Subject,
     string Message,
     string Status,
+    IReadOnlyList<CampaignSenderSelectionResponse> Senders,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc
 )
@@ -26,6 +29,7 @@ public sealed record CampaignResponse(
             campaign.Subject,
             campaign.Message,
             campaign.Status.ToString(),
+            campaign.Senders.Select(s => new CampaignSenderSelectionResponse(s.Channel.ToString(), s.SenderProfileId)).ToList(),
             campaign.CreatedAtUtc,
             campaign.UpdatedAtUtc
         );

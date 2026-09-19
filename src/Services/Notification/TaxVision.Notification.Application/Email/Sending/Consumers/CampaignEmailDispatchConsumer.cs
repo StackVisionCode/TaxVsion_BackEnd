@@ -11,8 +11,10 @@ namespace TaxVision.Notification.Application.Email.Sending.Consumers;
 /// servicio existente <c>Notification</c>, reusa <c>SendEmailCommand</c>). Consume
 /// <c>campaign.dispatch.requested.v1</c> filtrando <c>Channel==Email</c> (el fanout entrega todo) y
 /// responde <c>campaign.dispatch.result.v1</c> en cascada. <c>Accepted</c> = encolado por
-/// Notification; el <c>Delivered</c> real (webhook Postmaster) se correlacionará en una fase
-/// posterior. SIN dinero.
+/// Notification; el <c>Delivered</c> real llega por DLR — pasamos <c>RecipientId</c> como el seam
+/// opaco <c>CampaignId</c> de Postmaster (<c>SendEmailCommand.CampaignId</c> → OutboundEmailMessage →
+/// <c>PostmasterEmailDelivery*IntegrationEvent.CampaignId</c>) para correlacionar el DLR de vuelta a
+/// la unidad en <c>PostmasterEmailDeliveryReportConsumer</c>. SIN dinero.
 /// </summary>
 public static class CampaignEmailDispatchConsumer
 {
@@ -37,7 +39,8 @@ public static class CampaignEmailDispatchConsumer
                 body,
                 EmailPriority.Normal,
                 [new EmailRecipientInput(evt.Email!)],
-                AttachmentFileIds: null
+                AttachmentFileIds: null,
+                CampaignId: evt.RecipientId
             ),
             ct
         );

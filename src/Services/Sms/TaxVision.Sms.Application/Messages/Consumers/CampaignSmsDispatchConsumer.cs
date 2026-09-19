@@ -41,7 +41,10 @@ public static class CampaignSmsDispatchConsumer
                         evt.Body ?? string.Empty,
                         Media: null,
                         IdempotencyKey: evt.DispatchId,
-                        SourceContext: $"campaign:{evt.RunId:N}"
+                        // El SourceContext viaja de vuelta en los eventos SmsMessage* del servicio de SMS
+                        // (Accepted/Delivered/Failed). Llevamos el dispatchId para correlacionar el DLR
+                        // (webhook infobip → SmsMessageDelivered) de vuelta a la unidad de campaña.
+                        SourceContext: $"campaign:{evt.DispatchId}"
                     ),
                 ]
             ),

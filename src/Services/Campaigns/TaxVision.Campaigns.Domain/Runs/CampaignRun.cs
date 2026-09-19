@@ -101,9 +101,19 @@ public sealed class CampaignRun : TenantEntity
     /// Aplica un resultado de dispatch (idempotente por <c>dispatchId</c>). Devuelve <c>true</c>
     /// si ESTA llamada cerró el run (para publicar <c>run.completed</c> una sola vez).
     /// </summary>
-    public Result<bool> ApplyResult(string dispatchId, DispatchOutcome outcome, string? providerRef, string? reason)
+    public Result<bool> ApplyResult(string dispatchId, DispatchOutcome outcome, string? providerRef, string? reason) =>
+        Apply(_recipients.Find(r => r.DispatchId == dispatchId), outcome, providerRef, reason);
+
+    /// <summary>
+    /// Variante por <c>recipientId</c> (Guid) para DLR cuyo seam de correlación es un Guid opaco y no
+    /// el <c>DispatchId</c> string — hoy el DLR de Email (Postmaster reenvía <c>CampaignId</c> = el
+    /// RecipientId). Misma semántica idempotente/tardía que <see cref="ApplyResult(string,DispatchOutcome,string?,string?)"/>.
+    /// </summary>
+    public Result<bool> ApplyResultForRecipient(Guid recipientId, DispatchOutcome outcome, string? providerRef, string? reason) =>
+        Apply(_recipients.Find(r => r.Id == recipientId), outcome, providerRef, reason);
+
+    private Result<bool> Apply(CampaignRecipient? recipient, DispatchOutcome outcome, string? providerRef, string? reason)
     {
-        var recipient = _recipients.Find(r => r.DispatchId == dispatchId);
         if (recipient is null)
             return Result.Failure<bool>(CampaignRunErrors.RecipientNotFound);
 
@@ -131,11 +141,13 @@ public sealed class CampaignRun : TenantEntity
         if (_recipients.Any(r => !r.IsSettled))
             return false;
 
-        var succeeded = CounterDelivered + CounterAccepted;
-        Status = succeeded == 0
-            ? CampaignRunStatus.Failed
-            : CounterFailed + CounterUnknown == 0
-                ? CampaignRunStatus.Completed
+        // Sin fallos ni desconocidos → Completed (cubre todo entregado/aceptado y también el caso
+        // "todo Skipped" legítimo: opt-out/sin destino no es un fallo del run). Solo si NO hubo
+        // ningún entregado/aceptado y sí hubo fallos/desconocidos → Failed; el resto → PartiallyFailed.
+        Status = CounterFailed + CounterUnknown == 0
+            ? CampaignRunStatus.Completed
+            : CounterDelivered + CounterAccepted == 0
+                ? CampaignRunStatus.Failed
                 : CampaignRunStatus.PartiallyFailed;
         FinishedAtUtc = DateTime.UtcNow;
         return true;

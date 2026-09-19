@@ -71,6 +71,221 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.ToTable("Campaigns", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignSenderSelection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SenderProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CampaignSenderSelections_CampaignId_Channel");
+
+                    b.ToTable("CampaignSenderSelections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Contacts.Contact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CustomerRef")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("OptedOutChannels")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PhoneE164")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_Contacts_TenantId_CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Contacts_TenantId_Email")
+                        .HasFilter("[Email] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "PhoneE164")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Contacts_TenantId_PhoneE164")
+                        .HasFilter("[PhoneE164] IS NOT NULL");
+
+                    b.ToTable("Contacts", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Contacts.ContactList", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_ContactLists_TenantId_CreatedAtUtc");
+
+                    b.ToTable("ContactLists", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Contacts.ContactListMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AddedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ContactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContactListId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContactListId", "ContactId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ContactListMembers_ContactListId_ContactId");
+
+                    b.HasIndex("TenantId", "ContactId")
+                        .HasDatabaseName("IX_ContactListMembers_TenantId_ContactId");
+
+                    b.ToTable("ContactListMembers", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Permissions.RolePermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("RolePermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Permissions.UserPermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleIdsJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserPermissionsProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Runs.CampaignRecipient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -213,6 +428,130 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.ToTable("CampaignRuns", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Scheduling.CampaignSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ActiveRunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContactListIdsCsv")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IncludeCustomers")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("IntervalMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastFiredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LeasedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextFireAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveRunId")
+                        .HasDatabaseName("IX_CampaignSchedules_ActiveRunId");
+
+                    b.HasIndex("Status", "NextFireAtUtc")
+                        .HasDatabaseName("IX_CampaignSchedules_Status_NextFireAtUtc");
+
+                    b.HasIndex("TenantId", "CampaignId")
+                        .HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");
+
+                    b.ToTable("CampaignSchedules", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Senders.SenderProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SenderRef")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Channel")
+                        .HasDatabaseName("IX_SenderProfiles_TenantId_Channel");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("IX_SenderProfiles_TenantId_Status");
+
+                    b.ToTable("SenderProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignSenderSelection", b =>
+                {
+                    b.HasOne("TaxVision.Campaigns.Domain.Campaigns.Campaign", null)
+                        .WithMany("Senders")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Contacts.ContactListMember", b =>
+                {
+                    b.HasOne("TaxVision.Campaigns.Domain.Contacts.ContactList", null)
+                        .WithMany("Members")
+                        .HasForeignKey("ContactListId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Runs.CampaignRecipient", b =>
                 {
                     b.HasOne("TaxVision.Campaigns.Domain.Runs.CampaignRun", null)
@@ -220,6 +559,16 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasForeignKey("RunId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.Campaign", b =>
+                {
+                    b.Navigation("Senders");
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Contacts.ContactList", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Runs.CampaignRun", b =>

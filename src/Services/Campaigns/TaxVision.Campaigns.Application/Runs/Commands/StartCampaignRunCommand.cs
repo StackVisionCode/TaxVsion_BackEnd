@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
+using TaxVision.Campaigns.Application.Senders.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
 using Wolverine;
@@ -32,6 +33,7 @@ public static class StartCampaignRunHandler
         StartCampaignRunCommand command,
         ICampaignRepository campaigns,
         ICampaignRunRepository runs,
+        ISenderProfileRepository senderProfiles,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -45,13 +47,38 @@ public static class StartCampaignRunHandler
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
         var units = ExpandUnits(campaign.Channels, command.Recipients);
+        return await StartAndDispatchAsync(campaign, "Manual", command.TriggeredByUserId, units, runs, senderProfiles, unitOfWork, bus, correlation, ct);
+    }
 
-        var runResult = CampaignRun.Start(command.TenantId, campaign.Id, command.TriggeredByUserId, "Manual", units);
+    /// <summary>
+    /// Núcleo compartido: arranca un <see cref="CampaignRun"/> sobre unidades ya materializadas, hace
+    /// fan-out del contrato <c>campaign.dispatch.requested.v1</c> por unidad Pending y publica
+    /// <c>run.started</c>/<c>run.completed</c>. Lo usan tanto el send-now manual como el basado en
+    /// audiencia (contactos/listas). SIN dinero.
+    /// </summary>
+    internal static async Task<Result<CampaignRunResponse>> StartAndDispatchAsync(
+        Campaign campaign,
+        string triggerKind,
+        Guid triggeredByUserId,
+        IReadOnlyCollection<RunRecipientDraft> units,
+        ICampaignRunRepository runs,
+        ISenderProfileRepository senderProfiles,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var runResult = CampaignRun.Start(campaign.TenantId, campaign.Id, triggeredByUserId, triggerKind, units);
         if (runResult.IsFailure)
             return Result.Failure<CampaignRunResponse>(runResult.Error);
 
         var run = runResult.Value;
         await runs.AddAsync(run, ct);
+
+        // Resuelve el remitente (SenderRef opaco) por canal desde la selección de la campaña. Solo perfiles
+        // Active cuentan; un canal sin selección va con SenderRef null (el ejecutor usa su default).
+        var senderRefByChannel = await ResolveSenderRefsAsync(campaign, senderProfiles, ct);
 
         await bus.PublishAsync(
             new CampaignRunStartedIntegrationEvent
@@ -81,6 +108,7 @@ public static class StartCampaignRunHandler
                     ContactRef = recipient.ContactRef,
                     Email = recipient.Email,
                     PhoneE164 = recipient.PhoneE164,
+                    SenderRef = senderRefByChannel.GetValueOrDefault(recipient.Channel),
                     // Slice 3: contenido inline desde la definición (snapshot inmutable + Scribe = fase posterior).
                     Subject = campaign.Subject,
                     Body = campaign.Message,
@@ -95,6 +123,27 @@ public static class StartCampaignRunHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignRunResponse.From(run));
+    }
+
+    /// <summary>Mapa canal → <c>SenderRef</c> a partir de la selección de la campaña (solo perfiles Active).</summary>
+    private static async Task<IReadOnlyDictionary<CampaignChannel, string?>> ResolveSenderRefsAsync(
+        Campaign campaign,
+        ISenderProfileRepository senderProfiles,
+        CancellationToken ct
+    )
+    {
+        if (campaign.Senders.Count == 0)
+            return new Dictionary<CampaignChannel, string?>();
+
+        var ids = campaign.Senders.Select(s => s.SenderProfileId).Distinct().ToList();
+        var profiles = await senderProfiles.GetManyByIdsAsync(campaign.TenantId, ids, ct);
+        var refById = profiles.Where(p => p.IsActive).ToDictionary(p => p.Id, p => p.SenderRef);
+
+        var map = new Dictionary<CampaignChannel, string?>();
+        foreach (var selection in campaign.Senders)
+            if (refById.TryGetValue(selection.SenderProfileId, out var senderRef))
+                map[selection.Channel] = senderRef;
+        return map;
     }
 
     private static IReadOnlyCollection<RunRecipientDraft> ExpandUnits(
