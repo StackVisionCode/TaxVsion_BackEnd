@@ -22,7 +22,8 @@ public sealed record SmsSendItemDto(
     string Message,
     IReadOnlyList<SmsMediaDto>? Media,
     string? IdempotencyKey,
-    string? SourceContext
+    string? SourceContext,
+    string? RecipientName = null
 );
 
 /// <summary>Envío de 1..N mensajes. TenantId y CorrelationId los pone el controller (JWT + header).</summary>
@@ -249,7 +250,8 @@ public static class SendSmsBatchHandler
             finalProviderCode,
             item.SourceContext,
             mediaInputs,
-            nowUtc
+            nowUtc,
+            item.RecipientName
         );
         if (createResult.IsFailure)
             return Failed(item, createResult.Error.Code);
@@ -304,7 +306,8 @@ public static class SendSmsBatchHandler
             providerCode,
             item.SourceContext,
             media.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes)).ToList(),
-            nowUtc
+            nowUtc,
+            item.RecipientName
         );
 
     private static async Task PublishFailed(

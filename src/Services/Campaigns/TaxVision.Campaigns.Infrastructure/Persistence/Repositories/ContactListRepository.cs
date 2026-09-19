@@ -44,14 +44,14 @@ public sealed class ContactListRepository(CampaignsDbContext db) : IContactListR
         return new PagedResult<ContactList>(items, page, size, totalCount);
     }
 
-    public async Task AddAsync(ContactList list, CancellationToken ct = default) => await db.ContactLists.AddAsync(list, ct);
+    public async Task AddAsync(ContactList list, CancellationToken ct = default) =>
+        await db.ContactLists.AddAsync(list, ct);
 
     public void Remove(ContactList list) => db.ContactLists.Remove(list);
 
     public async Task RemoveMembershipsForContactAsync(Guid tenantId, Guid contactId, CancellationToken ct = default)
     {
-        var members = await db
-            .Set<ContactListMember>()
+        var members = await db.Set<ContactListMember>()
             .Where(m => m.TenantId == tenantId && m.ContactId == contactId)
             .ToListAsync(ct);
         if (members.Count > 0)

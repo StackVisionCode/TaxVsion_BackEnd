@@ -105,7 +105,14 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CampaignResponse>>(
-            new UpdateCampaignCommand(tenantId, id, request.Name, request.ToChannelsFlag(), request.Message, request.Subject),
+            new UpdateCampaignCommand(
+                tenantId,
+                id,
+                request.Name,
+                request.ToChannelsFlag(),
+                request.Message,
+                request.Subject
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -149,7 +156,10 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<CampaignResponse>>(new RevertCampaignToDraftCommand(tenantId, id), ct);
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(
+            new RevertCampaignToDraftCommand(tenantId, id),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

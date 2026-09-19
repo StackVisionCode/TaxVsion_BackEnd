@@ -15,12 +15,47 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "MinPlanTier", "Module", "PlatformOnly" },
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-0000000001f0"), "TenantEmployee,TenantAdmin,PlatformAdmin", "sms.read", "Ver el historial de SMS, su estado y las bajas (opt-outs)", true, false, false, 0, "sms", false },
-                    { new Guid("a1000000-0000-0000-0000-0000000001f1"), "TenantEmployee,TenantAdmin,PlatformAdmin", "sms.manage", "Gestionar manualmente las bajas de SMS (opt-out/opt-in)", true, false, false, 0, "sms", false }
-                });
+                    {
+                        new Guid("a1000000-0000-0000-0000-0000000001f0"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "sms.read",
+                        "Ver el historial de SMS, su estado y las bajas (opt-outs)",
+                        true,
+                        false,
+                        false,
+                        0,
+                        "sms",
+                        false,
+                    },
+                    {
+                        new Guid("a1000000-0000-0000-0000-0000000001f1"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "sms.manage",
+                        "Gestionar manualmente las bajas de SMS (opt-out/opt-in)",
+                        true,
+                        false,
+                        false,
+                        0,
+                        "sms",
+                        false,
+                    },
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -29,12 +64,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-0000000001f0"));
+                keyValue: new Guid("a1000000-0000-0000-0000-0000000001f0")
+            );
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-0000000001f1"));
+                keyValue: new Guid("a1000000-0000-0000-0000-0000000001f1")
+            );
         }
     }
 }

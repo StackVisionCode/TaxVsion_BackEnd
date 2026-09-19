@@ -19,6 +19,11 @@ public sealed class SmsMessage : TenantEntity
 
     public Guid CustomerId { get; private set; }
     public string To { get; private set; } = default!;
+
+    /// <summary>Nombre del destinatario AL MOMENTO del envío (snapshot, como el resto del mensaje).
+    /// Lo aporta el caller (el CRM lo tiene del picker); null para envíos de sistema/M2M. No se usa
+    /// para lógica — solo para mostrar en el log sin depender de Customer al leer.</summary>
+    public string? RecipientName { get; private set; }
     public string Body { get; private set; } = default!;
 
     public string IdempotencyKey { get; private set; } = default!;
@@ -53,7 +58,8 @@ public sealed class SmsMessage : TenantEntity
         string providerCode,
         string? sourceContext,
         IReadOnlyList<SmsMediaInput> media,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? recipientName = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -67,6 +73,7 @@ public sealed class SmsMessage : TenantEntity
         {
             CustomerId = customerId,
             To = to.Value,
+            RecipientName = string.IsNullOrWhiteSpace(recipientName) ? null : recipientName.Trim(),
             Body = body.Value,
             IdempotencyKey = idempotencyKey.Trim(),
             CorrelationId = string.IsNullOrWhiteSpace(correlationId)

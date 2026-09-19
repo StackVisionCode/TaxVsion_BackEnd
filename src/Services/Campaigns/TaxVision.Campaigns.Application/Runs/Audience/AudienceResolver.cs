@@ -77,7 +77,9 @@ public static class AudienceResolver
             {
                 // El directorio de Customer puede traer el teléfono en formato de presentación
                 // ("+1 (829) 592-4420") o el email con mayúsculas → normalizar para dedupe/entrega.
-                var custEmail = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim().ToLowerInvariant();
+                var custEmail = string.IsNullOrWhiteSpace(customer.Email)
+                    ? null
+                    : customer.Email.Trim().ToLowerInvariant();
                 var custPhone = PhoneNumbers.ToE164(customer.PhoneE164);
                 foreach (var channel in activeChannels)
                 {
