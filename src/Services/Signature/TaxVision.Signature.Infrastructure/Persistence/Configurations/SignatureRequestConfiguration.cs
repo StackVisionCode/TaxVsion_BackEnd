@@ -28,6 +28,8 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.RequiresSequentialSigning).IsRequired();
         builder.Property(request => request.RequiresConsent).IsRequired();
         builder.Property(request => request.GenerateCertificate).IsRequired();
+        builder.Property(request => request.SendSignedDocumentToSigners).IsRequired();
+        builder.Property(request => request.SendCertificateToSigners).IsRequired();
 
         builder.Property(request => request.TokenExpirationHours).IsRequired();
         builder.Property(request => request.ExpiresAtUtc).IsRequired();
@@ -66,6 +68,8 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         // Fase 5: reminders schedule state.
         builder.Property(request => request.LastReminderSentAtUtc);
         builder.Property(request => request.RemindersSent).IsRequired();
+        builder.Property(request => request.AutoRemindersEnabled).IsRequired();
+        builder.Property(request => request.ReminderIntervalHours).IsRequired();
 
         // Fase 9: legal hold.
         builder.Property(request => request.LegalHold).IsRequired();

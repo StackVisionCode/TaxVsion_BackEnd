@@ -111,6 +111,7 @@ public sealed class BaselineSmokeTests
             evt,
             gateway,
             scribeClient,
+            new NoOpSmsSender(),
             Options.Create(new PortalOptions { BaseUrl = "https://app.test", ProductName = "TaxVision" }),
             new FakeTenantHostResolver(),
             correlation,

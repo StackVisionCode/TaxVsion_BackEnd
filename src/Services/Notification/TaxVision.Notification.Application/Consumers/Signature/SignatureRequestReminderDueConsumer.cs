@@ -24,6 +24,7 @@ public static class SignatureRequestReminderDueConsumer
         SignatureRequestReminderDueIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ISmsSender smsSender,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
@@ -37,6 +38,20 @@ public static class SignatureRequestReminderDueConsumer
             // Mismo enlace público, ahora bajo el subdominio de la oficina.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var inviteLink = TenantEmailLinks.SigningLink(tenantHost, portal.Value, evt.PublicToken);
+
+            // Canal preferido del firmante: SMS con el enlace si lo eligió y tiene teléfono, si no email.
+            if (
+                string.Equals(evt.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(evt.PhoneE164)
+            )
+            {
+                var body =
+                    evt.Language == "Es"
+                        ? $"{portal.Value.ProductName}: {evt.FullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {inviteLink}"
+                        : $"{portal.Value.ProductName}: {evt.FullName}, you still have a document to sign. Sign it here: {inviteLink}";
+                await smsSender.SendAsync(evt.PhoneE164!, body, ct);
+                return;
+            }
 
             // Hardening Fase 7: un render fallido ya no se loguea-y-descarta — EnsureRendered lanza
             // ScribeRenderFailedException para que Wolverine reintente/DLQ en vez de que el
@@ -75,7 +90,7 @@ public static class SignatureRequestReminderDueConsumer
             if (result.IsSuccess)
             {
                 logger.LogInformation(
-                    "Reminder {RemindersSent}/3 dispatched to signer {SignerId} for request {RequestId}.",
+                    "Reminder #{RemindersSent} dispatched to signer {SignerId} for request {RequestId}.",
                     evt.RemindersSent,
                     evt.SignerId,
                     evt.SignatureRequestId

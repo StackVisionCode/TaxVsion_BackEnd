@@ -57,6 +57,10 @@ public static class DependencyInjection
             sp.GetRequiredService<SignatureRequestReadService>(),
             sp.GetRequiredService<Microsoft.Extensions.Caching.Distributed.IDistributedCache>()
         ));
+        // La invalidación de la caché de lista la sirve el MISMO decorator (scoped): misma instancia.
+        services.AddScoped<ISignatureRequestListCacheInvalidator>(sp =>
+            (CachedSignatureRequestReadService)sp.GetRequiredService<ISignatureRequestReadService>()
+        );
         services.AddScoped<ISignatureTemplateRepository, SignatureTemplateRepository>();
         services.AddScoped<ISignatureTemplateReadService, SignatureTemplateReadService>();
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();

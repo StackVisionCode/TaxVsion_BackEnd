@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -104,7 +105,10 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                             s.Email.Value,
                             s.FullName.Value,
                             s.Language,
-                            s.Order
+                            s.Order,
+                            s.MappedCustomerId,
+                            s.PhoneNumber?.Value,
+                            SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
                 }

@@ -29,10 +29,41 @@ type SignatureConsumerDeps = {
   actionMappings: NotificationActionMappingRepository;
 };
 
+/**
+ * Eventos de firma que cambian el ESTADO visible en la lista de solicitudes del CRM (pending →
+ * signed/rejected/completed/…). Por cada uno, además de la notificación in-app por-usuario, se emite
+ * un `signature.request.changed` por-TENANT para que la lista de CUALQUIER empleado se refresque en
+ * vivo (mismo patrón que Correspondence → Mail). Los eventos informativos (reminder, pin_failed,
+ * verification_challenge) no cambian la fila, así que no emiten.
+ */
+const LIST_CHANGING_EVENTS = new Set<string>([
+  'signature.document.signed.v1',
+  'signature.signer.rejected.v1',
+  'signature.request.completed.v1',
+  'signature.request.canceled.v1',
+  'signature.request.expired.v1',
+  'signature.request.ready_for_sending.v1',
+  'signature.request.sealed.v1',
+  'signature.request.expiration_extended.v1',
+  'signature.preparer.signed.v1',
+]);
+
+const SIGNATURE_REQUEST_CHANGED_EVENT = 'signature.request.changed';
+
 export function bindSignatureConsumers(
-  register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
+  registerRaw: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
   deps: SignatureConsumerDeps,
 ): void {
+  // Envuelve el register: tras el handler original, si el evento cambia la lista, emite el ping por-tenant.
+  const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>): void => {
+    registerRaw(eventType, async (env) => {
+      await handler(env);
+      if (LIST_CHANGING_EVENTS.has(eventType)) {
+        emitSignatureListChanged(env, deps.emitter);
+      }
+    });
+  };
+
   register('signature.signer.invited.v1', (env) =>
     signerInvitedHandler(env, deps),
   );
@@ -469,6 +500,25 @@ async function push(
       },
     });
   }
+}
+
+/**
+ * Ping por-tenant de "una solicitud de firma cambió" para que el CRM refresque su lista sin recargar.
+ * Payload mínimo (solo el id): el front pide los datos por HTTP como siempre. Puro relay realtime.
+ */
+function emitSignatureListChanged(env: IncomingEnvelope, emitter: RealtimeEmitter): void {
+  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  if (!requestId) return;
+  emitter.emitToTenant({
+    tenantId: env.tenantId,
+    event: SIGNATURE_REQUEST_CHANGED_EVENT,
+    envelope: {
+      eventId: randomUUID(),
+      correlationId: env.correlationId ?? '',
+      emittedAtUtc: new Date().toISOString(),
+      payload: { signatureRequestId: requestId },
+    },
+  });
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

@@ -72,10 +72,51 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     {
         var (ip, ua) = ExtractClientContext();
         var result = await bus.InvokeAsync<Result>(
-            new SubmitSignatureCommand(token, body.Method, body.TypedName, body.SignatureImageFileId, ip, ua),
+            new SubmitSignatureCommand(
+                token,
+                body.Method,
+                body.TypedName,
+                body.SignatureImageFileId,
+                ip,
+                ua,
+                body.FieldValues
+            ),
             ct
         );
         return MapResult(result);
+    }
+
+    // ---------- POST /signature/public/{token}/signature-image ----------
+    // Sube el PNG de la firma (dibujada/tecleada-rasterizada/subida). Devuelve el FileId que el
+    // firmante pasa luego en /sign. Multipart, endpoint anónimo por token, con su propio limiter
+    // más estricto (subida de bytes) y un tope de tamaño de cuerpo antes de bufferizar.
+    [HttpPost("{token}/signature-image")]
+    [RateLimitExempt(PublicExemptReason)]
+    [EnableRateLimiting("public-signature-upload")]
+    [RequestSizeLimit(2_000_000)]
+    [ProducesResponseType<AttachSignatureImageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AttachSignatureImage(
+        [FromRoute] string token,
+        IFormFile file,
+        CancellationToken ct
+    )
+    {
+        if (file is null || file.Length == 0)
+            return StatusCode(400, new Error("Signature.Image.Empty", "The signature image is empty."));
+
+        byte[] content;
+        await using (var stream = new MemoryStream())
+        {
+            await file.CopyToAsync(stream, ct);
+            content = stream.ToArray();
+        }
+
+        var (ip, ua) = ExtractClientContext();
+        var result = await bus.InvokeAsync<Result<Guid>>(new AttachSignatureImageCommand(token, content, ip, ua), ct);
+        return result.IsSuccess
+            ? Ok(new AttachSignatureImageResponse(result.Value))
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- POST /signature/public/{token}/verify-pin ----------
@@ -199,7 +240,14 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
         result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 }
 
-public sealed record SubmitSignatureBody(SignatureCaptureMethod Method, string? TypedName, Guid? SignatureImageFileId);
+public sealed record SubmitSignatureBody(
+    SignatureCaptureMethod Method,
+    string? TypedName,
+    Guid? SignatureImageFileId,
+    IReadOnlyList<SubmitFieldValueDto>? FieldValues = null
+);
+
+public sealed record AttachSignatureImageResponse(Guid FileId);
 
 public sealed record RejectSignatureBody(string? Reason);
 

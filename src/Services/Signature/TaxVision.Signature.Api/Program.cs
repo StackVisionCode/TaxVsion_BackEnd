@@ -12,6 +12,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -27,7 +28,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
-using TaxVision.Signature.Api.Common;
+using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Infrastructure;
@@ -125,6 +126,33 @@ builder.Services.AddRateLimiter(options =>
             );
         }
     );
+
+    // Subida de imagen de firma (multipart, endpoint anónimo por token): más cara que un POST JSON
+    // porque recibe bytes y los sube a MinIO, así que lleva su propio limiter, más estricto que el
+    // genérico "public-signature". Misma partición IP+patrón-de-ruta (el token va en el path pero el
+    // patrón "/{token}/signature-image" es estable, no enumerable). Un firmante legítimo sube su firma
+    // una o dos veces; 8/min deja margen para reintentos sin permitir flooding de objetos.
+    options.AddPolicy(
+        "public-signature-upload",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:{routeKey}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 8,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
 });
 
 // Rate limiting por tenant/usuario (Fase 4.7 del plan) — arrancaba en cero salvo el limiter
@@ -208,6 +236,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureCertificateReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinVerifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -223,31 +252,33 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // El sellado puede adelantarse al scan de ClamAV de las imágenes de firma (el firmante las sube
+    // segundos antes de completar). SignatureImageNotReadyException es transitoria: se reintenta con
+    // cooldowns más largos que los estándar (hasta ~2 min) para dar tiempo a que llegue FileAvailable
+    // y sellar con la firma real, en vez de degradar al sello tipográfico. Debe registrarse ANTES de
+    // ApplyStandardFailurePolicies: gana la primera regla que matchea y la estándar captura Exception.
+    options
+        .Policies.OnException<SignatureImageNotReadyException>()
+        .RetryWithCooldown(
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(20),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(60)
+        );
+
     options.ApplyStandardFailurePolicies();
 });
 
-// IP real del firmante detrás del proxy/Cloudflare (para el certificado y el particionado del rate
-// limiter). Vacío por defecto: el deploy fija la red Docker interna / rango de Cloudflare de confianza.
-var reverseProxyTrust =
-    builder.Configuration.GetSection(ReverseProxyTrustOptions.SectionName).Get<ReverseProxyTrustOptions>()
-    ?? new ReverseProxyTrustOptions();
-var forwardedHeadersOptions = new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor,
-    ForwardedForHeaderName = reverseProxyTrust.RealIpHeaderName,
-};
-foreach (var proxy in reverseProxyTrust.KnownProxies)
-{
-    if (IPAddress.TryParse(proxy, out var proxyIp))
-        forwardedHeadersOptions.KnownProxies.Add(proxyIp);
-}
-foreach (var network in reverseProxyTrust.KnownNetworks)
-{
-    if (System.Net.IPNetwork.TryParse(network, out var parsedNetwork))
-        forwardedHeadersOptions.KnownIPNetworks.Add(parsedNetwork);
-}
+// IP real del firmante detrás de Cloudflare/Caddy/Gateway — resolución uniforme compartida.
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 
 var app = builder.Build();
+
+// Reescribe RemoteIpAddress con la IP real del cliente (CF-Connecting-IP) ANTES de todo lo que la lea
+// (logging, rate limiter, host-guard, controllers, certificado de firma).
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {
@@ -262,9 +293,6 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 
-// Reescribe RemoteIpAddress con la IP real del cliente (CF-Connecting-IP) antes de rate limiter,
-// host-guard y controllers. Sin red de confianza configurada, ASP.NET ignora el header (no-op).
-app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseAuthentication();
 
 // Middleware compartido de tenant: sella IMessageBus.TenantId para que un handler invocado vía

@@ -72,6 +72,10 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
       where: {
         TenantId: tenantId,
         IsActive: true,
+        // Solo STAFF: excluir clientes de portal (`CustomerPortal`) e invitados (`Guest`). Sin esto un
+        // cliente aparecía en el picker de "employees" al armar una invitación → se invitaba como Employee
+        // → el link salía al CRM (`/meetings`) en vez del portal (`/portal/client/meetings/accept/...`).
+        ActorType: { notIn: ['CustomerPortal', 'Guest'] },
         OR: [{ DisplayName: { contains: query } }, { Email: { contains: query } }],
       },
       orderBy: { DisplayName: 'asc' },

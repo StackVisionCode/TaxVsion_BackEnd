@@ -16,6 +16,8 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.Fields)
             .Include(request => request.Signers)
                 .ThenInclude(signer => signer.Challenges)
+            .Include(request => request.Signers)
+                .ThenInclude(signer => signer.FieldValues)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetBySealedFileIdAsync(
@@ -27,6 +29,19 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Signers)
             .FirstOrDefaultAsync(request => request.TenantId == tenantId && request.SealedFileId == sealedFileId, ct);
+
+    public Task<SignatureRequest?> GetByCertificateFileIdAsync(
+        Guid tenantId,
+        Guid certificateFileId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Signers)
+            .FirstOrDefaultAsync(
+                request => request.TenantId == tenantId && request.CertificateFileId == certificateFileId,
+                ct
+            );
 
     public async Task<IReadOnlyList<SignatureRequest>> ListDraftsWaitingForFileAsync(
         Guid tenantId,
@@ -68,26 +83,25 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
 
     public async Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
         DateTime nowUtc,
-        TimeSpan withinWindow,
-        TimeSpan cooldown,
-        int maxReminders,
         CancellationToken ct = default
-    )
-    {
-        var cutoffExpires = nowUtc.Add(withinWindow);
-        var cutoffLastReminder = nowUtc.Subtract(cooldown);
-        return await db
+    ) =>
+        await db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(r => r.Signers)
             .Where(r =>
                 r.Status == SignatureRequestStatus.InProgress
+                && r.AutoRemindersEnabled
                 && r.ExpiresAtUtc > nowUtc
-                && r.ExpiresAtUtc <= cutoffExpires
-                && r.RemindersSent < maxReminders
-                && (r.LastReminderSentAtUtc == null || r.LastReminderSentAtUtc <= cutoffLastReminder)
+                && r.RemindersSent < SignatureRequest.MaxRemindersPerRequest
+                && r.SentAtUtc != null
+                // Intervalo dinámico por-solicitud: base = último reminder o, si no hubo, el envío inicial.
+                && (
+                    r.LastReminderSentAtUtc == null
+                        ? EF.Functions.DateDiffHour(r.SentAtUtc!.Value, nowUtc) >= r.ReminderIntervalHours
+                        : EF.Functions.DateDiffHour(r.LastReminderSentAtUtc.Value, nowUtc) >= r.ReminderIntervalHours
+                )
             )
             .ToListAsync(ct);
-    }
 
     public async Task<IReadOnlyList<SignatureRequest>> ListPurgeCandidatesAsync(
         DateTime olderThanUtc,

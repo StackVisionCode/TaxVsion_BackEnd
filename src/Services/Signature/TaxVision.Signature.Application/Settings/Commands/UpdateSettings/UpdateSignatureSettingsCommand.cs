@@ -9,6 +9,7 @@ public sealed record UpdateSignatureSettingsCommand(
     VerificationChannel DefaultChannel,
     int DefaultTokenExpirationHours,
     bool RemindersEnabledByDefault,
+    int DefaultReminderIntervalHours,
     bool GenerateCertificateByDefault,
     long MaxPdfBytes,
     long MaxImageBytes,

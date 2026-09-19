@@ -89,7 +89,21 @@ public static class DependencyInjection
         services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
         services.AddScoped<UserEmailResolver>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
-        services.AddScoped<ISmsSender, LoggingSmsSender>();
+
+        // SMS: por defecto se usa el puente real al microservicio Sms (Infobip resuelve proveedor,
+        // opt-out, idempotencia). `Notification:UseSmsBridge=false` cae al stub que solo loguea —
+        // útil en dev cuando el servicio Sms no está arriba. Default true (a diferencia del push, que
+        // arranca en false por requerir credenciales Firebase): el envío por bus es durable, así que
+        // aunque Sms esté caído el mensaje espera en la cola sin perderse.
+        var useSmsBridge = configuration.GetValue("Notification:UseSmsBridge", true);
+        if (useSmsBridge)
+        {
+            services.AddScoped<ISmsSender, IntegrationEventSmsSender>();
+        }
+        else
+        {
+            services.AddScoped<ISmsSender, LoggingSmsSender>();
+        }
 
         // Fase 7 del plan de notificaciones dinámicas — Notification:UseFcmPush sigue el mismo
         // idiom que Notification:UsePostmasterDispatch (flag explícito, default false hasta

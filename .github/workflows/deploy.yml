@@ -128,6 +128,9 @@ jobs:
           # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
           CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
           INVENTORY_DB_CONNECTION=${{ secrets.INVENTORY_DB_CONNECTION }}
+          # Campaigns (servicio nuevo, sep-2026). docker-compose.yml lo exige con :? en campaigns-api
+          # y en migrations. No usa M2M (sin ServiceAuthClient), así que no lleva *_SERVICE_CLIENT_*.
+          CAMPAIGNS_DB_CONNECTION=${{ secrets.CAMPAIGNS_DB_CONNECTION }}
           # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
           # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
           # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.

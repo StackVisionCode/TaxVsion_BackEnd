@@ -17,5 +17,12 @@ public sealed record SealedFieldRender(
     SignatureFieldKind Kind,
     string? Label,
     string SignerDisplayName,
-    DateTime SignedAtUtc
+    DateTime SignedAtUtc,
+    // PNG de la firma del firmante (dibujada/subida, o el nombre tecleado rasterizado por el front) para
+    // campos Signature. Null → fallback tipográfico. Los bytes los baja el consumer de CloudStorage, así el
+    // engine queda puro (sin I/O).
+    byte[]? SignatureImageBytes = null,
+    // Texto que el firmante escribió en un campo Text (P4). Null/empty en los demás tipos y en los
+    // campos de texto opcionales que dejó en blanco.
+    string? Value = null
 );

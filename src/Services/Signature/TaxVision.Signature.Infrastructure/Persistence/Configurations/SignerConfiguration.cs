@@ -88,5 +88,13 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Metadata.FindNavigation(nameof(Signer.Challenges))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(signer => signer.FieldValues)
+            .WithOne()
+            .HasForeignKey(v => v.SignerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata.FindNavigation(nameof(Signer.FieldValues))!.SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

@@ -78,7 +78,10 @@ public sealed class ShareLinksController(
         IReadOnlyList<Guid>? RecipientCustomerIds,
         IReadOnlyList<string>? RecipientEmails,
         // "Es"/"En" — idioma del email al destinatario externo (solo visibility ExternalRecipients).
-        string? RecipientLanguage = null
+        string? RecipientLanguage = null,
+        // Cuando true, se acuña el enlace sin enviar el email genérico de CloudStorage al destinatario
+        // externo (lo usa Signature, que entrega el enlace en su propio correo). Default false.
+        bool SuppressRecipientEmails = false
     );
 
     [HttpPost("files/{fileId:guid}/shares")]
@@ -109,7 +112,8 @@ public sealed class ShareLinksController(
                 request.RecipientCustomerIds ?? [],
                 request.RecipientEmails ?? [],
                 AuditContext(),
-                request.RecipientLanguage
+                request.RecipientLanguage,
+                request.SuppressRecipientEmails
             ),
             ct
         );

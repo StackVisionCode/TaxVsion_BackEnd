@@ -10,16 +10,33 @@ public sealed record CreateTemplateBody(
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
-    bool GenerateCertificate
+    bool GenerateCertificate,
+    // P7: documento base opcional del que se crea la plantilla; "from template" lo pre-selecciona.
+    Guid? BaseDocumentFileId = null,
+    // Defaults de entrega/recordatorio que "from template" copia a la solicitud.
+    bool SendSignedDocumentToSigners = true,
+    bool SendCertificateToSigners = false,
+    bool AutoRemindersEnabled = true,
+    int ReminderIntervalHours = 48
 );
 
 public sealed record UpdateTemplateMetadataBody(string Title, string? Description, SignatureCategory Category);
+
+/// <summary>Practitioner PIN por defecto de la plantilla (Form 8879): 4–10 dígitos.</summary>
+public sealed record SetTemplatePractitionerPinBody(string Pin);
+
+/// <summary>P7: fija (o quita con null) el documento base de la plantilla; el archivo ya está en CloudStorage.</summary>
+public sealed record SetTemplateBaseDocumentBody(Guid? BaseDocumentFileId);
 
 public sealed record UpdateTemplateDefaultsBody(
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
-    bool GenerateCertificate
+    bool GenerateCertificate,
+    bool SendSignedDocumentToSigners,
+    bool SendCertificateToSigners,
+    bool AutoRemindersEnabled,
+    int ReminderIntervalHours
 );
 
 public sealed record AddTemplateSlotBody(
@@ -47,7 +64,8 @@ public sealed record PlaceTemplateFieldBody(
 );
 
 public sealed record InstantiateTemplateBody(
-    Guid OriginalFileId,
     IReadOnlyList<SlotBinding> SlotBindings,
-    string? DescriptionOverride
+    string? DescriptionOverride,
+    // P7: opcional. Si no viene y la plantilla tiene documento base, se usa ese; si viene, override.
+    Guid? OriginalFileId = null
 );

@@ -130,11 +130,12 @@ public sealed class CampaignRecipient
 
     /// <summary>Una unidad es "settled" (cuenta para el cierre) si no está Pending ni en vuelo.</summary>
     internal bool IsSettled =>
-        State is DispatchState.Accepted
-            or DispatchState.Delivered
-            or DispatchState.Failed
-            or DispatchState.Skipped
-            or DispatchState.Unknown;
+        State
+            is DispatchState.Accepted
+                or DispatchState.Delivered
+                or DispatchState.Failed
+                or DispatchState.Skipped
+                or DispatchState.Unknown;
 
     private bool HasDestination() =>
         Channel switch

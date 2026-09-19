@@ -165,19 +165,20 @@ public static class StartCampaignRunHandler
 
     internal static Task PublishCompletedAsync(IMessageBus bus, CampaignRun run, string correlationId) =>
         bus.PublishAsync(
-            new CampaignRunCompletedIntegrationEvent
-            {
-                TenantId = run.TenantId,
-                CorrelationId = correlationId,
-                CampaignId = run.CampaignId,
-                RunId = run.Id,
-                TerminalStatus = run.Status.ToString(),
-                RecipientCount = run.RecipientCount,
-                Delivered = run.CounterDelivered,
-                Accepted = run.CounterAccepted,
-                Failed = run.CounterFailed,
-                Skipped = run.CounterSkipped,
-                Unknown = run.CounterUnknown,
-            }
-        ).AsTask();
+                new CampaignRunCompletedIntegrationEvent
+                {
+                    TenantId = run.TenantId,
+                    CorrelationId = correlationId,
+                    CampaignId = run.CampaignId,
+                    RunId = run.Id,
+                    TerminalStatus = run.Status.ToString(),
+                    RecipientCount = run.RecipientCount,
+                    Delivered = run.CounterDelivered,
+                    Accepted = run.CounterAccepted,
+                    Failed = run.CounterFailed,
+                    Skipped = run.CounterSkipped,
+                    Unknown = run.CounterUnknown,
+                }
+            )
+            .AsTask();
 }

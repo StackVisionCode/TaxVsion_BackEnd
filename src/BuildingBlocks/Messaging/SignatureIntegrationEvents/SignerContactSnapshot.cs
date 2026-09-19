@@ -14,11 +14,15 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// del tenant (no externo), el CustomerId al que está vinculado — permite a un consumer
 /// resolver si ese cliente tiene cuenta de portal activa, sin llamar a Signature.
 /// </param>
+/// <param name="PhoneE164">Teléfono E.164 del firmante (null si no se capturó) — para la rama SMS de entrega.</param>
+/// <param name="PreferredChannel">Canal preferido de entrega: "Email" | "Sms". Default "Email" (retro-compat).</param>
 public sealed record SignerContactSnapshot(
     Guid SignerId,
     string Email,
     string FullName,
     string Language,
     int Order,
-    Guid? MappedCustomerId = null
+    Guid? MappedCustomerId = null,
+    string? PhoneE164 = null,
+    string PreferredChannel = "Email"
 );

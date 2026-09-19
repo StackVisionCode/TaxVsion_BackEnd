@@ -16,4 +16,10 @@ public sealed record SignatureRequestReminderDueIntegrationEvent : IntegrationEv
     public required DateTime ExpiresAtUtc { get; init; }
     public required int RemindersSent { get; init; }
     public required string PublicToken { get; init; }
+
+    /// <summary>Teléfono E.164 del firmante (si tiene) para la rama SMS del recordatorio.</summary>
+    public string? PhoneE164 { get; init; }
+
+    /// <summary>Canal preferido del firmante: "Email" | "Sms". Default "Email".</summary>
+    public string PreferredChannel { get; init; } = "Email";
 }

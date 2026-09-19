@@ -12,6 +12,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -500,30 +501,13 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 });
 
-// Red de confianza para X-Forwarded-Proto/Host y la IP real del cliente (Fase A3).
-// Vacío por defecto — el deploy debe fijar la red Docker interna / rango de
-// Cloudflare real antes de exponer el servicio detrás de un proxy en producción.
-var reverseProxyTrust =
-    builder.Configuration.GetSection(ReverseProxyTrustOptions.SectionName).Get<ReverseProxyTrustOptions>()
-    ?? new ReverseProxyTrustOptions();
-var forwardedHeadersOptions = new ForwardedHeadersOptions
-{
-    ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
-    ForwardedForHeaderName = reverseProxyTrust.RealIpHeaderName,
-};
-foreach (var proxy in reverseProxyTrust.KnownProxies)
-{
-    if (IPAddress.TryParse(proxy, out var proxyIp))
-        forwardedHeadersOptions.KnownProxies.Add(proxyIp);
-}
-foreach (var network in reverseProxyTrust.KnownNetworks)
-{
-    if (System.Net.IPNetwork.TryParse(network, out var parsedNetwork))
-        forwardedHeadersOptions.KnownIPNetworks.Add(parsedNetwork);
-}
+// IP real del cliente + X-Forwarded-Proto/Host detrás de Cloudflare/Caddy/Gateway — compartido.
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 
 var app = builder.Build();
+
+// Debe ir ANTES de la resolución de tenant por Host, el logging, auth y controllers.
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {
@@ -537,7 +521,6 @@ app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
-app.UseForwardedHeaders(forwardedHeadersOptions);
 
 // Resuelve el tenant candidato desde el Host (Fase A3). Antes de auth: cubre también
 // flujos anónimos (login). Nunca decide autorización — eso lo sigue haciendo el JWT.

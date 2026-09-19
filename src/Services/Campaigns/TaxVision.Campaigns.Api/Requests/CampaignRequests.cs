@@ -12,9 +12,7 @@ public sealed record CreateCampaignRequest(
 {
     /// <summary>Combina la lista de canales del body en el flag agregado del dominio.</summary>
     public CampaignChannel ToChannelsFlag() =>
-        Channels is null
-            ? CampaignChannel.None
-            : Channels.Aggregate(CampaignChannel.None, (acc, c) => acc | c);
+        Channels is null ? CampaignChannel.None : Channels.Aggregate(CampaignChannel.None, (acc, c) => acc | c);
 }
 
 /// <summary>Envío inmediato — audiencia manual (slice 2). Cada persona se expande a una unidad por canal.</summary>

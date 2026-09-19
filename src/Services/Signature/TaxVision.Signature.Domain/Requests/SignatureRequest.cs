@@ -33,6 +33,12 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MinSigners = 1;
     public const int MaxSigners = 50;
 
+    public const int MinReminderIntervalHours = 1;
+    public const int MaxReminderIntervalHours = 720; // 30 días
+
+    /// <summary>Tope de seguridad de reminders por solicitud (anti-runaway). La expiración los corta antes.</summary>
+    public const int MaxRemindersPerRequest = 20;
+
     private readonly List<Signer> _signers = [];
 
     private SignatureRequest() { }
@@ -53,6 +59,19 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public bool RequiresSequentialSigning { get; private set; }
     public bool RequiresConsent { get; private set; }
     public bool GenerateCertificate { get; private set; }
+
+    /// <summary>
+    /// Si al completarse la firma se entrega el documento sellado a los firmantes por su canal
+    /// (email/SMS). Default <c>true</c> (comportamiento histórico). Solo editable en Draft/Ready.
+    /// </summary>
+    public bool SendSignedDocumentToSigners { get; private set; } = true;
+
+    /// <summary>
+    /// Si al completarse la firma se entrega el Certificate of Completion a los firmantes por su canal.
+    /// Default <c>false</c>. Requiere <see cref="GenerateCertificate"/> para tener algo que entregar.
+    /// Solo editable en Draft/Ready.
+    /// </summary>
+    public bool SendCertificateToSigners { get; private set; }
 
     /// <summary>
     /// Hash del Practitioner PIN. Cuando != <c>null</c> el firmante debe superar el
@@ -98,6 +117,15 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// <summary>Contador de reminders emitidos — cap útil para no spammear al firmante.</summary>
     public int RemindersSent { get; private set; }
 
+    /// <summary>
+    /// Si el scheduler debe recordar automáticamente a los firmantes pendientes de esta solicitud.
+    /// Se resuelve al crear (override del preparador o default de tenant). Editable en Draft/Ready.
+    /// </summary>
+    public bool AutoRemindersEnabled { get; private set; } = true;
+
+    /// <summary>Cada cuántas horas se recuerda mientras haya firmantes pendientes (dinámico).</summary>
+    public int ReminderIntervalHours { get; private set; } = MinReminderIntervalHours;
+
     /// <summary>Legal hold activo — el PurgeScheduler NO purga la solicitud mientras esté en <c>true</c>.</summary>
     public bool LegalHold { get; private set; }
 
@@ -125,7 +153,11 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         int tokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
-        bool generateCertificate
+        bool generateCertificate,
+        bool sendSignedDocumentToSigners = true,
+        bool sendCertificateToSigners = false,
+        bool autoRemindersEnabled = true,
+        int reminderIntervalHours = 48
     )
     {
         var baseValidation = ValidateFactoryInputs(
@@ -154,12 +186,106 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
+            SendSignedDocumentToSigners = sendSignedDocumentToSigners,
+            SendCertificateToSigners = sendCertificateToSigners && generateCertificate,
+            AutoRemindersEnabled = autoRemindersEnabled,
+            ReminderIntervalHours = Math.Clamp(
+                reminderIntervalHours,
+                MinReminderIntervalHours,
+                MaxReminderIntervalHours
+            ),
             RevocationEpoch = 0,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
         request.SetTenant(tenantId);
         return Result.Success(request);
+    }
+
+    // ------------------------------------------------------------------
+    // Entrega (P2) — qué se envía a los firmantes al completar
+    // ------------------------------------------------------------------
+
+    /// <summary>Activa/desactiva la entrega del documento sellado a los firmantes. Solo en Draft/Ready.</summary>
+    public Result SetSignedDocumentDelivery(bool enabled)
+    {
+        if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
+            return Result.Failure(
+                new Error("Signature.Request.NotEditable", "Delivery settings can only change while Draft or Ready.")
+            );
+
+        SendSignedDocumentToSigners = enabled;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Activa/desactiva la entrega del certificado a los firmantes. Requiere que la request genere
+    /// certificado (<see cref="GenerateCertificate"/>), pues sin él no hay nada que entregar. Solo Draft/Ready.
+    /// </summary>
+    public Result SetCertificateDelivery(bool enabled)
+    {
+        if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
+            return Result.Failure(
+                new Error("Signature.Request.NotEditable", "Delivery settings can only change while Draft or Ready.")
+            );
+
+        if (enabled && !GenerateCertificate)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.CertificateNotGenerated",
+                    "Enable certificate generation before delivering it to signers."
+                )
+            );
+
+        SendCertificateToSigners = enabled;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Configura los recordatorios automáticos a firmantes: on/off e intervalo (horas). Solo Draft/Ready.
+    /// El intervalo se acota al rango válido.
+    /// </summary>
+    public Result SetReminderPolicy(bool enabled, int intervalHours)
+    {
+        if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
+            return Result.Failure(
+                new Error("Signature.Request.NotEditable", "Reminder settings can only change while Draft or Ready.")
+            );
+
+        if (intervalHours is < MinReminderIntervalHours or > MaxReminderIntervalHours)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.ReminderInterval",
+                    $"Reminder interval must be between {MinReminderIntervalHours} and {MaxReminderIntervalHours} hours."
+                )
+            );
+
+        AutoRemindersEnabled = enabled;
+        ReminderIntervalHours = intervalHours;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// <c>true</c> si a esta solicitud le toca un recordatorio en <paramref name="now"/>: está InProgress,
+    /// tiene reminders activos, no expiró, no superó el cap, y pasó el intervalo desde el último envío
+    /// (o desde el envío inicial si aún no hubo ninguno). La regla vive en el dominio para poder testearla;
+    /// la query del repositorio la refleja en SQL para no cargar toda la tabla.
+    /// </summary>
+    public bool IsReminderDue(DateTime now)
+    {
+        if (Status != SignatureRequestStatus.InProgress || !AutoRemindersEnabled)
+            return false;
+        if (now >= ExpiresAtUtc || RemindersSent >= MaxRemindersPerRequest)
+            return false;
+
+        var baseline = LastReminderSentAtUtc ?? SentAtUtc;
+        if (baseline is null)
+            return false;
+
+        return baseline.Value.AddHours(ReminderIntervalHours) <= now;
     }
 
     // ------------------------------------------------------------------
@@ -175,7 +301,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return Result.Failure<Signer>(editable.Error);
 
         if (_signers.Count >= MaxSigners)
             return Result.Failure<Signer>(
@@ -209,7 +337,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// <summary>Actualiza el teléfono del firmante en <c>Draft</c>/<c>Ready</c>. Solo permitido antes de Send.</summary>
     public Result SetSignerPhoneNumber(Guid signerId, SignerPhoneNumber? phoneNumber)
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
@@ -227,7 +357,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// </summary>
     public Result SetSignerRequiredVerificationMethod(Guid signerId, SignerVerificationMethod? method)
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
@@ -241,7 +373,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
     public Result RemoveSigner(Guid signerId)
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
@@ -257,7 +391,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     {
         ArgumentNullException.ThrowIfNull(orderedSignerIds);
 
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         if (orderedSignerIds.Count != _signers.Count)
             return Result.Failure(
@@ -301,7 +437,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         bool isRequired
     )
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return Result.Failure<SignatureField>(editable.Error);
 
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
@@ -323,7 +461,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
     public Result RemoveField(Guid signerId, Guid fieldId)
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
@@ -396,7 +536,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public Result SetPreparer(PreparerInfo preparer)
     {
         ArgumentNullException.ThrowIfNull(preparer);
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         Preparer = preparer;
         PreparerSignedByUserId = null;
@@ -408,7 +550,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// <summary>Quita el preparer asignado. Sólo permitido en <c>Draft</c> o <c>Ready</c>.</summary>
     public Result ClearPreparer()
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         Preparer = null;
         PreparerSignedByUserId = null;
@@ -471,7 +615,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (setByUserId == Guid.Empty)
             return Result.Failure(new Error("Signature.Request.PinSetter", "SetByUserId is required."));
 
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         PractitionerPinHash = pinHash;
         PractitionerPinSetByUserId = setByUserId;
@@ -483,7 +629,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// <summary>Quita el requerimiento de PIN. Sólo permitido en <c>Draft</c> o <c>Ready</c>.</summary>
     public Result ClearPractitionerPin()
     {
-        EnsureCanBeEdited();
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
 
         PractitionerPinHash = null;
         PractitionerPinSetByUserId = null;
@@ -737,6 +885,34 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
         signer.RecordFirstView(viewedAtUtc, clientIp, userAgent);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Ancla los valores que el firmante escribió en sus campos de texto (P4), justo antes de
+    /// firmar. Delega en el firmante la validación (propiedad del campo, tipo <c>Text</c>,
+    /// requeridos completos). Idempotente: reemplaza cualquier captura previa del mismo firmante.
+    /// </summary>
+    public Result CaptureSignerFieldValues(
+        Guid signerId,
+        IReadOnlyList<SignerFieldValueInput> values,
+        DateTime capturedAtUtc
+    )
+    {
+        if (Status != SignatureRequestStatus.InProgress)
+            return Result.Failure(
+                new Error("Signature.Request.NotInProgress", "Only an InProgress request can capture field values.")
+            );
+
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        var result = signer.CaptureFieldValues(values, capturedAtUtc);
+        if (result.IsFailure)
+            return result;
+
         Touch();
         return Result.Success();
     }
@@ -1096,11 +1272,20 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         return Result.Success();
     }
 
-    private void EnsureCanBeEdited()
-    {
-        if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
-            throw new InvalidOperationException($"SignatureRequest {Id} cannot be edited in status {Status}.");
-    }
+    /// <summary>
+    /// Regla de edición: solo se puede modificar la solicitud en <c>Draft</c> o <c>Ready</c> (aún no
+    /// enviada). Devuelve <see cref="Result.Failure"/> — NO lanza — para que la API responda 4xx en vez
+    /// de 500 cuando el actor intenta editar una solicitud ya enviada/completada (p. ej. fijar el PIN).
+    /// </summary>
+    private Result EnsureCanBeEdited() =>
+        Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready
+            ? Result.Success()
+            : Result.Failure(
+                new Error(
+                    "Signature.Request.NotEditable",
+                    $"This request can no longer be edited (status {Status}); only draft or ready requests can be changed."
+                )
+            );
 
     /// <summary>
     /// Registra el jti del token recién emitido para un firmante y devuelve el jti anterior (o

@@ -75,7 +75,14 @@ public sealed class CampaignRun : TenantEntity
         foreach (var unit in units)
         {
             run._recipients.Add(
-                CampaignRecipient.Materialize(run.Id, tenantId, unit.ContactRef, unit.Channel, unit.Email, unit.PhoneE164)
+                CampaignRecipient.Materialize(
+                    run.Id,
+                    tenantId,
+                    unit.ContactRef,
+                    unit.Channel,
+                    unit.Email,
+                    unit.PhoneE164
+                )
             );
         }
 

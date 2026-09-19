@@ -230,12 +230,7 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<CampaignRunResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListRuns(
-        Guid id,
-        [FromQuery] int page,
-        [FromQuery] int size,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> ListRuns(Guid id, [FromQuery] int page, [FromQuery] int size, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();

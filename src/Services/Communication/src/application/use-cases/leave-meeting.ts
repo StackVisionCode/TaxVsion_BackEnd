@@ -7,6 +7,8 @@ import {
   MeetingEventTypes,
   type MeetingParticipantLeftEvent,
 } from '../../contracts/events/meeting-events.js';
+import type { MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
+import { participantSnapshotToDto } from './meeting-mappers.js';
 import { removeFromMeetingConversation } from './ensure-meeting-conversation.js';
 
 export interface LeaveMeetingCommand {
@@ -19,7 +21,7 @@ export interface LeaveMeetingCommand {
 export async function leaveMeeting(
   cmd: LeaveMeetingCommand,
   deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
-): Promise<Result<{ leftAtUtc: string; conversationId: string | null }>> {
+): Promise<Result<{ leftAtUtc: string; conversationId: string | null; participant: MeetingParticipantDto }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
@@ -41,6 +43,23 @@ export async function leaveMeeting(
   const snapshot = meeting.toSnapshot();
   const participant = snapshot.participants.find((p) => p.userId === cmd.userId);
 
+  // DTO del que sale (status:'Left') para que el handler emita `ParticipantChanged(Left)` a la room y
+  // los demás poden su tile + cierren el peer. Sin esto el roster quedaba con un participante fantasma
+  // (leave solo publicaba el evento de integración/analytics, nunca un realtime a los otros clientes).
+  const participantDto: MeetingParticipantDto = participant
+    ? participantSnapshotToDto(participant)
+    : {
+        userId: cmd.userId,
+        displayName: '',
+        role: 'Attendee',
+        status: 'Left',
+        joinOrder: 0,
+        audioEnabled: false,
+        videoEnabled: false,
+        screenSharing: false,
+        handRaised: false,
+      };
+
   if (participant?.joinedAtUtc && participant?.leftAtUtc) {
     const durationSeconds = Math.max(
       0,
@@ -61,5 +80,5 @@ export async function leaveMeeting(
     await deps.publisher.enqueue(event);
   }
 
-  return Result.ok({ leftAtUtc: now.toISOString(), conversationId });
+  return Result.ok({ leftAtUtc: now.toISOString(), conversationId, participant: participantDto });
 }

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -24,6 +25,7 @@ public static class SubmitSignatureHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
     )
     {
@@ -37,6 +39,13 @@ public static class SubmitSignatureHandler
             return evidenceValidation;
 
         var signedAt = DateTime.UtcNow;
+
+        // P4: anclar los valores de los campos de texto ANTES de firmar (el aggregate valida
+        // propiedad del campo, tipo Text y requeridos). Un fallo aquí aborta la firma.
+        var captureValues = request.CaptureSignerFieldValues(signer.Id, MapFieldValues(cmd.FieldValues), signedAt);
+        if (captureValues.IsFailure)
+            return captureValues;
+
         var sign = request.MarkSignerSigned(
             signer.Id,
             signedAt,
@@ -50,6 +59,7 @@ public static class SubmitSignatureHandler
             return sign;
 
         await unitOfWork.SaveChangesAsync(ct);
+        await listCache.InvalidateAsync(request.TenantId, ct);
         await PublishSignedAsync(request, signer, signedAt, cmd.ClientIp, correlation, bus);
         if (request.Status == SignatureRequestStatus.Completed)
             await PublishCompletedAsync(request, correlation, bus);
@@ -59,6 +69,9 @@ public static class SubmitSignatureHandler
     // ------------------------------------------------------------------
     // Métodos privados: una única responsabilidad por método
     // ------------------------------------------------------------------
+
+    private static IReadOnlyList<SignerFieldValueInput> MapFieldValues(IReadOnlyList<SubmitFieldValueDto>? values) =>
+        values is null ? [] : values.Select(v => new SignerFieldValueInput(v.FieldId, v.Value)).ToList();
 
     private static Result ValidateEvidence(SubmitSignatureCommand cmd, Signer signer) =>
         cmd.Method switch
@@ -151,7 +164,9 @@ public static class SubmitSignatureHandler
                             s.FullName.Value,
                             s.Language,
                             s.Order,
-                            s.MappedCustomerId
+                            s.MappedCustomerId,
+                            s.PhoneNumber?.Value,
+                            SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
                 }

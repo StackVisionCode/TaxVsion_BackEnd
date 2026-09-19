@@ -94,17 +94,20 @@ public sealed class CaptureMethodAndCooldownTests
     }
 
     [Fact]
-    public void MarkSignerSigned_typed_persists_typed_name_and_drops_image()
+    public void MarkSignerSigned_typed_persists_typed_name_and_image()
     {
+        // El front rasteriza el nombre tecleado a PNG y lo sube, así el sellado estampa la firma
+        // como imagen también en Typed. El aggregate guarda el FileId para todos los métodos.
         var request = NewInProgress();
         var signer = request.Signers.Single();
+        var fileId = Guid.NewGuid();
 
         var result = request.MarkSignerSigned(
             signer.Id,
             DateTime.UtcNow,
             SignatureCaptureMethod.Typed,
             typedName: "The Signer",
-            signatureImageFileId: Guid.NewGuid(),
+            signatureImageFileId: fileId,
             clientIp: null,
             userAgent: null
         );
@@ -112,7 +115,7 @@ public sealed class CaptureMethodAndCooldownTests
         Assert.True(result.IsSuccess);
         Assert.Equal(SignatureCaptureMethod.Typed, signer.CaptureMethod);
         Assert.Equal("The Signer", signer.TypedName);
-        Assert.Null(signer.SignatureImageFileId);
+        Assert.Equal(fileId, signer.SignatureImageFileId);
     }
 
     // -------------------- Challenge cooldown / switch-channel --------------------

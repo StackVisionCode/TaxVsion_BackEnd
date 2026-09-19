@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -87,6 +88,8 @@ public static class ResendSignerInvitationHandler
             FullName = signer.FullName.Value,
             Order = signer.Order,
             Language = signer.Language,
+            PhoneE164 = signer.PhoneNumber?.Value,
+            PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
             PublicToken = token,
             ExpiresAtUtc = request.ExpiresAtUtc,
             RevocationEpoch = request.RevocationEpoch,

@@ -9,6 +9,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -221,7 +222,12 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 });
 
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
+
 var app = builder.Build();
+
+// IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {

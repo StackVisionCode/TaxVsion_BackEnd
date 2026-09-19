@@ -4,10 +4,12 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -226,6 +228,10 @@ builder.Host.UseWolverine(options =>
     // aun cuando el flag esté OFF; el runtime simplemente no genera envíos hasta que alguno lo invoque.
     options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // Puente SMS real: el IntegrationEventSmsSender publica esto y el microservicio Sms lo entrega
+    // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
+    options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options
         .ListenToRabbitQueue(
@@ -250,7 +256,12 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 });
 
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
+
 var app = builder.Build();
+
+// IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {

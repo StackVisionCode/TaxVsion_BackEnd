@@ -5,25 +5,24 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
 /// <summary>
-/// Job background que cada 30 minutos revisa solicitudes InProgress cuya expiración
-/// se acerca y aún tienen firmantes pendientes. Emite un
-/// <c>SignatureRequestReminderDueIntegrationEvent</c> por firmante pendiente (Notification
-/// se encarga del dispatch). Aplica cooldown por solicitud y un cap total de reminders
-/// para no spammear.
+/// Job background que cada 30 minutos revisa solicitudes InProgress con recordatorios activos a las
+/// que ya les toca un reminder según su <b>intervalo dinámico por-solicitud</b> (configurado por el
+/// preparador, con default de tenant). Emite un <c>SignatureRequestReminderDueIntegrationEvent</c> por
+/// firmante pendiente (Notification hace el dispatch email/SMS). La expiración corta la serie y hay un
+/// cap de seguridad; la decisión de "a quién le toca" vive en el dominio (<c>IsReminderDue</c>) y se
+/// refleja en la query del repositorio.
 /// </summary>
 public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<ReminderScheduler> logger)
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan ExpiryWindow = TimeSpan.FromHours(24);
-    private static readonly TimeSpan Cooldown = TimeSpan.FromHours(12);
-    private const int MaxRemindersPerRequest = 3;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -68,13 +67,7 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
         var now = DateTime.UtcNow;
-        var candidates = await repository.ListReminderCandidatesAsync(
-            now,
-            ExpiryWindow,
-            Cooldown,
-            MaxRemindersPerRequest,
-            ct
-        );
+        var candidates = await repository.ListReminderCandidatesAsync(now, ct);
         if (candidates.Count == 0)
             return;
 
@@ -135,6 +128,8 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
             ExpiresAtUtc = request.ExpiresAtUtc,
             RemindersSent = request.RemindersSent,
             PublicToken = token,
+            PhoneE164 = signer.PhoneNumber?.Value,
+            PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
         };
     }
 }

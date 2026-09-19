@@ -20,12 +20,17 @@ public static class SignatureReadyForDownloadConsumer
         SignatureReadyForDownloadIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ISmsSender smsSender,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        // P2: la request puede desactivar la entrega del documento firmado a los firmantes.
+        if (!evt.SendSignedDocumentToSigners)
+            return;
+
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
@@ -36,6 +41,15 @@ public static class SignatureReadyForDownloadConsumer
                 var downloadLink = string.IsNullOrEmpty(evt.ShareToken)
                     ? null
                     : TenantEmailLinks.PublicShareDownloadLink(tenantHost, portal.Value, evt.ShareToken, signer.Email);
+
+                // Canal preferido del firmante: SMS con el enlace de descarga si lo eligió y hay teléfono;
+                // si no, el correo de siempre. Sin link (share-token vacío) no tiene sentido el SMS → email.
+                if (PrefersSms(signer) && !string.IsNullOrEmpty(downloadLink))
+                {
+                    var smsBody = BuildReadySms(signer, downloadLink, portal.Value);
+                    await smsSender.SendAsync(signer.PhoneE164!, smsBody, ct);
+                    continue;
+                }
 
                 var render = (
                     await scribeClient.RenderAsync(
@@ -68,6 +82,18 @@ public static class SignatureReadyForDownloadConsumer
                 );
             }
         }
+    }
+
+    private static bool PrefersSms(SignerContactSnapshot signer) =>
+        string.Equals(signer.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(signer.PhoneE164);
+
+    private static string BuildReadySms(SignerContactSnapshot signer, string downloadLink, PortalOptions portal)
+    {
+        var product = portal.ProductName;
+        return signer.Language == "Es"
+            ? $"{product}: {signer.FullName}, tu documento firmado está listo. Descárgalo aquí: {downloadLink}"
+            : $"{product}: {signer.FullName}, your signed document is ready. Download it here: {downloadLink}";
     }
 
     private static string ResolveCorrelationId(SignatureReadyForDownloadIntegrationEvent evt) =>

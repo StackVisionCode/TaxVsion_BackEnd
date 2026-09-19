@@ -25,8 +25,10 @@ public sealed class Campaign : TenantEntity
     public string Name { get; private set; } = default!;
     public Guid CreatedByUserId { get; private set; }
     public CampaignChannel Channels { get; private set; }
+
     /// <summary>Asunto (Email). Opcional; para SMS/Push no aplica.</summary>
     public string? Subject { get; private set; }
+
     /// <summary>Cuerpo/mensaje del contenido (HTML/texto para Email, texto para SMS). Contenido mínimo del slice.</summary>
     public string Message { get; private set; } = default!;
     public CampaignStatus Status { get; private set; }

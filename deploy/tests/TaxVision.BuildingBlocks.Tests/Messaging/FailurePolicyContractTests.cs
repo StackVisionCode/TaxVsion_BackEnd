@@ -41,22 +41,41 @@ public sealed class FailurePolicyContractTests(ITestOutputHelper output)
             .ToArray();
 
     /// <summary>
-    /// Ningún servicio configura reintentos por su cuenta: o usa el helper, o no toca el bus.
+    /// Ningún servicio COPIA ni sobreescribe la política genérica del bus. Sí se permite un
+    /// refinamiento TARGETED — <c>OnException&lt;TipoEspecifico&gt;().RetryWithCooldown(...)</c> para una
+    /// transitoria concreta (ej. la espera del scan ClamAV en Signature) — siempre que el servicio
+    /// SIGA aplicando la política compartida y NO toque el catch-all <c>OnException&lt;Exception&gt;</c>.
+    /// Lo que se prohíbe es re-declarar la política genérica: ahí es donde nace la divergencia.
     /// </summary>
     [Fact]
-    public void NingunServicioDeclaraSuPropiaPoliticaDeReintentos()
+    public void NingunServicioReDeclaraLaPoliticaGenericaDeReintentos()
     {
-        var offenders = ServiceProgramFiles()
-            .Where(f => File.ReadAllText(f.FullName).Contains("RetryWithCooldown", StringComparison.Ordinal))
-            .Select(f => f.FullName)
-            .ToArray();
+        var offenders = new List<string>();
+
+        foreach (var file in ServiceProgramFiles())
+        {
+            var text = File.ReadAllText(file.FullName);
+            if (!text.Contains("RetryWithCooldown", StringComparison.Ordinal))
+                continue;
+
+            // Override del catch-all genérico (= copiar/pisar la política estándar): prohibido.
+            var overridesGeneric = Regex.IsMatch(text, @"OnException\s*<\s*Exception\s*>", RegexOptions.Singleline);
+            // Un retry propio SOLO se permite junto a la política compartida (no en su lugar).
+            var appliesStandard = text.Contains(
+                nameof(WolverineFailurePolicies.ApplyStandardFailurePolicies),
+                StringComparison.Ordinal
+            );
+
+            if (overridesGeneric || !appliesStandard)
+                offenders.Add(file.FullName);
+        }
 
         Assert.True(
-            offenders.Length == 0,
-            "Estos Program.cs declaran su propia política de reintentos en vez de llamar a "
-                + $"{nameof(WolverineFailurePolicies)}.{nameof(WolverineFailurePolicies.ApplyStandardFailurePolicies)}():\n  "
-                + string.Join("\n  ", offenders)
-                + "\nUna copia más es una divergencia más: mover los cooldowns dejaría de aplicar aquí."
+            offenders.Count == 0,
+            "Estos Program.cs re-declaran/pisan la política genérica de reintentos en vez de usar "
+                + $"{nameof(WolverineFailurePolicies)}.{nameof(WolverineFailurePolicies.ApplyStandardFailurePolicies)}() "
+                + "(un refinamiento targeted por tipo de excepción sí se permite):\n  "
+                + string.Join("\n  ", offenders.Order())
         );
     }
 

@@ -74,6 +74,7 @@ public static class PermissionCatalog
     public const string SignatureDocumentSign = SignaturePermissions.DocumentSign;
     public const string SignatureDocumentView = SignaturePermissions.DocumentView;
     public const string SignatureDocumentDownload = SignaturePermissions.DocumentDownload;
+    public const string SignatureDocumentSend = SignaturePermissions.DocumentSend;
     public const string SignatureDocumentAuditRead = SignaturePermissions.DocumentAuditRead;
     public const string SignatureTemplateCreate = SignaturePermissions.TemplateCreate;
     public const string SignatureTemplateUpdate = SignaturePermissions.TemplateUpdate;
@@ -965,6 +966,16 @@ public static class PermissionCatalog
             SignatureDocumentDownload,
             "signature",
             "Descargar sellado, original o certificado",
+            false
+        ),
+        new(
+            // Controla la ENTREGA hacia afuera (email/SMS del documento firmado y del certificado al
+            // firmante). Separado de crear/firmar para que el preparador lo niegue por-empleado con el
+            // deny-layer. Asignable por el tenant; no peligroso, no platform-only.
+            new Guid("a1000000-0000-0000-0000-0000000000a0"),
+            SignatureDocumentSend,
+            "signature",
+            "Entregar por email/SMS el documento firmado y el certificado a los firmantes",
             false
         ),
         new(
@@ -1968,6 +1979,7 @@ public static class PermissionCatalog
                 SignatureDocumentSign,
                 SignatureDocumentView,
                 SignatureDocumentDownload,
+                SignatureDocumentSend,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Employee" — nunca host de settings/analytics/moderate/record.
                 CommunicationChatStart,
