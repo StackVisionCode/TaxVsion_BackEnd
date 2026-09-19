@@ -164,120 +164,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("UserEmailDirectoryEntries", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaign", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AllowedVariablesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("ClickedCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("FailedCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("FinishedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("HtmlTemplate")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("LayoutHtml")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("OpenedCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("ScheduledAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("SentCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("StartedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<string>("SubjectTemplate")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid>("TemplateId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("TemplateVersionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("TotalRecipients")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Status", "ScheduledAtUtc");
-
-                    b.HasIndex("TenantId", "Status");
-
-                    b.ToTable("EmailCampaigns", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaignRecipient", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Address")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<Guid>("CampaignId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Name")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("VariablesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CampaignId");
-
-                    b.ToTable("EmailCampaignRecipients", (string)null);
-                });
-
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Configurations.EmailProviderConfiguration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1039,15 +925,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaignRecipient", b =>
-                {
-                    b.HasOne("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaign", null)
-                        .WithMany("Recipients")
-                        .HasForeignKey("CampaignId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Sending.EmailDeliveryLog", b =>
                 {
                     b.HasOne("TaxVision.Notification.Domain.Emailing.Sending.OutboundEmailMessage", null)
@@ -1073,11 +950,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .HasForeignKey("NotificationLogId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaign", b =>
-                {
-                    b.Navigation("Recipients");
                 });
 
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Sending.OutboundEmailMessage", b =>

@@ -1,6 +1,8 @@
 # Email (SMTP2GO) — Idempotency Spec
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
@@ -22,15 +24,15 @@ At-least-once en todo el bus (Wolverine). Toda entrega puede repetirse; **todo h
 - `ProcessedBusinessMessage` (business-inbox, `Growth/.../Idempotency/ProcessedBusinessMessage.cs`) marca que el **efecto de negocio** ya ocurrió, cortando el handler **antes** de re-ejecutar side-effects. Es la diferencia entre "no insertar fila dos veces" y "no **enviar el email** dos veces".
 
 ## 3. Idempotencia del envío al proveedor (el caso difícil)
-SMTP2GO `email/send` no garantiza dedupe por client-key. Estrategia:
+**Límite real (#5):** outbox + UNIQUE **NO** hacen atómico el borde "proveedor aceptó pero la respuesta se perdió"; no se promete "cero envío duplicado externo". ASSUMPTION a verificar (no un hecho, B-EMAIL-TX-2): SMTP2GO `email/send` podría **no** garantizar dedupe por client-key. Estrategia (defensa que no depende de esa idempotencia):
 1. Persistir `Pending` + marcar `ProcessedBusinessMessage` **antes** del POST (dentro de una TX).
-2. En reentrega: `ProcessedBusinessMessage` hit ⇒ el handler **no re-POSTea**; delega al reconciliador que verifica estado real antes de cualquier reintento.
-3. Header `X-Campaign-Dispatch-Id` estable en cada POST para correlación/auditoría.
+2. En reentrega: `ProcessedBusinessMessage` hit ⇒ el handler **no re-POSTea**; delega al reconciliador, que distingue `Pending`/`Sending`/`Accepted`/`Unknown` y verifica estado real **antes** de cualquier reintento o nuevo intento.
+3. Header `X-Campaign-Dispatch-Id` estable por intento en cada POST para correlación/auditoría; si SMTP2GO documenta idempotencia por client-key, usarla además.
 4. Ventana residual (crash entre POST y COMMIT) ⇒ posible 1 duplicado; acotada por reconciliación, nunca negada (at-least-once honesto). Ver `Transactional_Protocol.md §4-5`.
 
 ## 4. Idempotencia de webhooks (corrige double-count del legado)
 El legado registraba cada evento de tracking sin dedupe y con contadores que **doble-contaban en reintento** (`TrackingController.cs:53,98`; anti-patrón #3). Diseño nuevo:
-- Verificar firma HMAC ⇒ persistir `inbound_webhook_event` con UNIQUE `provider_event_id` (segundo POST del mismo evento = conflicto ⇒ no-op).
+- Validar la credencial del webhook (Authorization Bearer/Basic — mecanismo que SMTP2GO documenta; **no** un HMAC `X-Smtp2go-Signature`; ver `Security.md §2`) ⇒ persistir `inbound_webhook_event` con UNIQUE `provider_event_id` (segundo POST del mismo evento = conflicto ⇒ no-op).
 - Proyectar la transición vía state guard: `MarkDelivered` desde un dispatch ya `Delivered` = `Result.Failure` sin efecto (no incrementa nada dos veces).
 - Contadores/stats viven en Campaigns y se derivan de result events **deduplicados**, no de un `++` por webhook.
 

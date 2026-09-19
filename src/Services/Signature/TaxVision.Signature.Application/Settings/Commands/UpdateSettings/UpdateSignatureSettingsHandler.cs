@@ -133,6 +133,12 @@ public static class UpdateSignatureSettingsHandler
         else
             settings.DisableAutomaticReminders();
 
+        {
+            var r = settings.SetDefaultReminderInterval(cmd.DefaultReminderIntervalHours);
+            if (r.IsFailure)
+                return r;
+        }
+
         if (cmd.GenerateCertificateByDefault)
             settings.EnableCertificateOfCompletion();
         else

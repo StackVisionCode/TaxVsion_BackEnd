@@ -61,7 +61,7 @@ internal sealed class SignatureCloudStorageClient(
 
     public async Task<Result<Guid>> UploadAsync(
         Guid tenantId,
-        SignaturePdfUpload upload,
+        SignatureFileUpload upload,
         CancellationToken ct = default
     )
     {
@@ -136,7 +136,10 @@ internal sealed class SignatureCloudStorageClient(
                     MaxAccessCount: null,
                     RecipientUserIds: null,
                     RecipientCustomerIds: null,
-                    RecipientEmails: recipientEmails
+                    RecipientEmails: recipientEmails,
+                    // Signature entrega el enlace en su propio correo (sig.completed / sig.certificate),
+                    // así que CloudStorage NO debe mandar además su "A document was shared with you".
+                    SuppressRecipientEmails: true
                 ),
                 options: Json
             ),
@@ -209,7 +212,8 @@ internal sealed class SignatureCloudStorageClient(
         int? MaxAccessCount,
         IReadOnlyList<Guid>? RecipientUserIds,
         IReadOnlyList<Guid>? RecipientCustomerIds,
-        IReadOnlyList<string>? RecipientEmails
+        IReadOnlyList<string>? RecipientEmails,
+        bool SuppressRecipientEmails
     );
 
     // Solo se lee el token plano (el resto de CreatedShareLinkResponse se ignora).

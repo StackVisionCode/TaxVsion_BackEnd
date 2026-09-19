@@ -2,7 +2,7 @@ using BuildingBlocks.Results;
 
 namespace TaxVision.Signature.Application.Abstractions.Sealing;
 
-public sealed record SignaturePdfUpload(
+public sealed record SignatureFileUpload(
     byte[] Content,
     string FileName,
     string ContentType,
@@ -34,7 +34,7 @@ public interface ISignatureCloudStorageClient
     Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 
     /// <summary>Sube un PDF a CloudStorage y devuelve el nuevo <c>FileId</c>.</summary>
-    Task<Result<Guid>> UploadAsync(Guid tenantId, SignaturePdfUpload upload, CancellationToken ct = default);
+    Task<Result<Guid>> UploadAsync(Guid tenantId, SignatureFileUpload upload, CancellationToken ct = default);
 
     /// <summary>
     /// Crea un share-link público de DESCARGA (visibility ExternalRecipients + permission Download)

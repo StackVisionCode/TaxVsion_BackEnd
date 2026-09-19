@@ -1,25 +1,28 @@
 # Email (SMTP2GO) — API Contracts
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification); persistencia dentro de Notification.
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
 
-Este servicio es **primariamente event-driven** (consume dispatch, emite result por el bus). La superficie HTTP es mínima: (a) webhook público de SMTP2GO, (b) endpoints tenant de admin de credenciales/suppression, (c) endpoint interno M2M de estado. **Todo endpoint público lleva `[RateLimit(categoría)]` o `[RateLimitExempt]`** (ver `documents/.../RateLimit/Guia_Nuevos_Servicios_Endpoints.md`).
+Este componente es **primariamente event-driven** (consume dispatch, emite result por el bus). La superficie HTTP es mínima: (a) webhook público de SMTP2GO, (b) endpoints tenant de admin de credenciales/suppression, (c) endpoint interno M2M de estado. **Todo endpoint público lleva `[RateLimit(categoría)]` o `[RateLimitExempt]`** (ver `documents/.../RateLimit/Guia_Nuevos_Servicios_Endpoints.md`).
 
-## 1. Webhook de proveedor (público, sin auth de usuario, CON firma)
+## 1. Webhook de proveedor (público, sin auth de usuario, con credencial verificada)
 
 ```
-POST /api/email/webhooks/smtp2go
+POST /api/email/webhooks/smtp2go        // SOLO sobre HTTPS
 [AllowAnonymous]            // no hay JWT de usuario
 [RateLimit("webhook-provider")]
-Headers: X-Smtp2go-Signature: <hmac-sha256>   // verificación OBLIGATORIA (fix legado)
+Headers: Authorization: <Bearer|Basic>   // mecanismo que SMTP2GO documenta para sus webhooks (NO un X-Smtp2go-Signature HMAC)
 Body: <payload SMTP2GO delivery/bounce/spam/unsubscribe>
 → 200 OK  (siempre 200 tras aceptar, para no gatillar reintentos del proveedor)
-→ 401     si la firma no valida (antes de tocar dominio)
+→ 401     si la credencial no valida (antes de tocar dominio)
 ```
 Reglas (corrigen `TrackingController.cs:133-140,238-241`, que aceptaban cualquier POST):
-- **Verificar HMAC** con el secret del webhook (cifrado) **antes** de deserializar/proyectar. Sin firma válida ⇒ 401, sin efecto.
-- El handler solo **persiste el evento crudo** (`InboundWebhookEvent`) + encola su proyección; no hace trabajo pesado inline (responde rápido, 200).
+- **Verificar el mecanismo que el proveedor REALMENTE soporta** — SMTP2GO documenta `Authorization` (Bearer/Basic) en el setup de su webhook, **no** una cabecera `X-Smtp2go-Signature` HMAC-SHA256; confirmar el mecanismo exacto contra la doc vigente del proveedor antes de implementar. Exigir **HTTPS**. Validar la credencial **antes** de deserializar/proyectar (aplicar efectos). Credencial inválida ⇒ 401, sin efecto.
+- (ASSUMPTION a verificar: si existe HMAC de firma en SMTP2GO. Si una infra interna —gateway/proxy— agrega su propia firma, eso autentica el **salto interno**, NO a SMTP2GO; documentarlo aparte.)
+- El handler solo **persiste el evento crudo** (`InboundWebhookEvent`, con campos sensibles redactados/cifrados — ver `Data_Model.md §2.4/§3`) + encola su proyección; no hace trabajo pesado inline (responde rápido, 200).
 - Dedupe por `provider_event_id` (unique) + `ProcessedBusinessMessage` antes de aplicar efecto (idempotente; corrige double-count #3).
 - `CampaignId`/`RecipientId` se recuperan por `ProviderMessageId` (correlación), no se confían del body arbitrario.
 
@@ -62,7 +65,7 @@ GET /internal/email/dispatches/{dispatchId}   [Authorize(M2M audience="campaigns
 Consumido por Campaigns para reconciliación puntual; el camino normal es por eventos (§ Commands_And_Events).
 
 ## 6. Contrato consumido (entrada por bus)
-El servicio **no** ofrece un endpoint HTTP de "enviar email de campaña": el dispatch entra como **evento** `campaigns.email.dispatch_requested.v1` (ver `Commands_And_Events.md`). Esto evita el fan-out HTTP síncrono del legado.
+El componente **no** ofrece un endpoint HTTP de "enviar email de campaña": el dispatch entra como **evento** canónico `campaign.dispatch.requested.v1` (ver `Commands_And_Events.md`). Esto evita el fan-out HTTP síncrono del legado.
 
 ## 7. Convenciones de error
 - `Result`-based en dominio; HTTP mapea a Problem Details.

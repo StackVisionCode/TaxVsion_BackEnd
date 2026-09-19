@@ -1,8 +1,10 @@
 # Wallet/Ledger — Domain Design
 
-- **Servicio:** `TaxVision.Wallet` (microservicio INDEPENDIENTE)
+> **DIFERIDO (ADR-CAMP-001, 2026-09-16) — "va, pero no ahora".** El Wallet **NO entra en la fase actual** de Campaigns (que es Wallet-free) y, cuando entre, **vive fuera de Campaign** (decisión del usuario: "campaign solo campaña"). **No** se inserta ninguna saga dentro de Campaign ni hay "ganchos" en `CampaignRun`. En su lugar: un **interceptor de autorización de ejecución (PEP)** externo frena/deja pasar los triggers según saldo (ver `../campaigns/Domain_Design.md §8.1`, `../05_Master_ADR.md` D7), y este Wallet le responde (reserve/consume/refund) y/o **se suscribe** a los eventos que Campaign ya publica (`campaign.run.started/dispatch.result/run.completed.v1`) para medir el consumo real. Campaign no cambia. No implementar todavía.
+
+- **Servicio:** `TaxVision.Wallet` (microservicio INDEPENDIENTE) — **fase futura**
 - **Fecha:** 2026-07-28
-- **Estado:** DISEÑO — no implementado (greenfield)
+- **Estado:** DISEÑO — no implementado (greenfield) · **DIFERIDO**
 - **Rol en la suite:** El corazón financiero. Saldo prepago **real en USD** por tenant, con **movimientos INMUTABLES** estilo libro mayor. Reutilizable por Campaigns, envíos SMS individuales y futuros consumidores. Ver `00_Overview_And_Index.md §Servicios`, `02_Context_Map.md`, `05_Master_ADR.md §Decisión 3`.
 
 ---

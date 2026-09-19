@@ -14,4 +14,17 @@ public static class SmsPermissions
     /// (TenantAdmin/TenantEmployee) que lo reciben vía SystemRoleDefaults.
     /// </summary>
     public const string Send = "sms.send";
+
+    /// <summary>
+    /// Leer el historial de SMS del tenant y las bajas (opt-outs): lista paginada de mensajes con su
+    /// estado, detalle, stats agregadas y la lista de opt-outs. Lo exigen los endpoints GET de lectura
+    /// del CRM. Lo reciben TenantAdmin y TenantEmployee (trabajo operativo diario).
+    /// </summary>
+    public const string Read = "sms.read";
+
+    /// <summary>
+    /// Gestionar manualmente el consentimiento de un cliente (dar de baja/alta un teléfono sin esperar
+    /// al STOP/START entrante). Operación de administración del tenant → solo TenantAdmin.
+    /// </summary>
+    public const string Manage = "sms.manage";
 }

@@ -12,6 +12,16 @@ const HistoryQuerySchema = z.object({
   size: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const CustomerCallsParamsSchema = z.object({
+  customerId: z.string().uuid(),
+});
+
+const CustomerCallsQuerySchema = z.object({
+  // Historial por cliente: por defecto traemos hasta 100 (los volúmenes por cliente son bajos) para
+  // poder calcular stats exactas (total/completed/missed/avg) sobre el conjunto devuelto.
+  size: z.coerce.number().int().min(1).max(200).default(100),
+});
+
 export async function registerCallRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   // GET /communication/webrtc/ice
   app.get('/communication/webrtc/ice', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -61,6 +71,67 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
       page: query.page,
       size: query.size,
       totalCount,
+    });
+  });
+
+  // GET /communication/customers/:customerId/calls
+  // Historial de llamadas IN-APP de un cliente concreto (perfil de cliente → Activity → Call history).
+  // Puente: la Call no tiene CustomerId; sus participantes son UserIds de Auth. Resolvemos el UserId del
+  // PORTAL del cliente (proyección CustomerPortalAccount) y listamos las llamadas donde ese usuario
+  // participó = las llamadas del cliente con la oficina. Tenant-scoped por el principal.
+  app.get('/communication/customers/:customerId/calls', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = CustomerCallsParamsSchema.parse(request.params);
+    const query = CustomerCallsQuerySchema.parse(request.query);
+
+    const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(params.customerId);
+    // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber llamadas.
+    if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
+      return reply.send({ items: [], stats: { total: 0, completed: 0, missed: 0, avgDurationSeconds: null }, hasPortalAccount: false });
+    }
+
+    const clientUserId = portalAccount.userId;
+    const snapshots = await container.calls.listRecentForUser({
+      tenantId: principal.tenantId,
+      userId: clientUserId,
+      take: query.size,
+      skip: 0,
+    });
+
+    const items = snapshots.map((s) => ({
+      id: s.id,
+      kind: s.kind,
+      status: s.status,
+      // Dirección relativa a la OFICINA: si el cliente inició, es entrante; si no, saliente.
+      direction: s.callerUserId === clientUserId ? 'incoming' : 'outgoing',
+      conversationId: s.conversationId,
+      ringingAtUtc: s.ringingAtUtc.toISOString(),
+      endedAtUtc: s.endedAtUtc ? s.endedAtUtc.toISOString() : null,
+      durationSeconds: s.durationSeconds,
+      recordingFileId: s.recordingFileId,
+      endReason: s.endReason,
+    }));
+
+    const completedCalls = snapshots.filter((s) => s.status === 'Ended');
+    const completedWithDuration = completedCalls.filter((s) => (s.durationSeconds ?? 0) > 0);
+    const avgDurationSeconds =
+      completedWithDuration.length > 0
+        ? Math.round(
+            completedWithDuration.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0) / completedWithDuration.length,
+          )
+        : null;
+
+    return reply.send({
+      items,
+      stats: {
+        total: snapshots.length,
+        completed: completedCalls.length,
+        missed: snapshots.filter((s) => s.status === 'MissedCall').length,
+        avgDurationSeconds,
+      },
+      hasPortalAccount: true,
+      // UserId del portal del cliente — permite iniciar una llamada (audio/video) al cliente desde su perfil.
+      clientUserId,
     });
   });
 }

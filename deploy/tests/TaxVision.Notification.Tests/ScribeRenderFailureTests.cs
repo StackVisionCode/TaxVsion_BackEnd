@@ -116,6 +116,7 @@ public sealed class ScribeRenderFailureTests
                 evt,
                 gateway,
                 scribeClient,
+                new NoOpSmsSender(),
                 Options.Create(new PortalOptions()),
                 new FakeTenantHostResolver(),
                 new NoOpCorrelationContext(),

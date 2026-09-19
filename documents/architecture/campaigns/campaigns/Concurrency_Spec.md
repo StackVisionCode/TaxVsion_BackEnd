@@ -1,10 +1,12 @@
 # Campaigns — Concurrency Spec
 
 - **Servicio:** Campaigns (`TaxVision.Campaigns`)
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-09-16 (revisión: **sin reserva/liquidación de dinero**)
 - **Estado:** DISEÑO — no implementado
 
 Concurrencia optimista (RowVersion/`xmin`) por aggregate + guards de estado idempotentes + unique constraints. Sin locks pesimistas de larga duración. El servicio escala horizontalmente: N instancias procesan la misma cola sin doble-efecto.
+
+> **Regla dura:** no hay estado ni contención monetaria en Campaign (ni `wallet_reservation_id`, ni consume/refund). La concurrencia se resuelve solo alrededor de **run/recipients/contadores de entrega**.
 
 ---
 
@@ -13,9 +15,8 @@ Concurrencia optimista (RowVersion/`xmin`) por aggregate + guards de estado idem
 | Escenario | Contendientes | Riesgo si se ignora |
 |---|---|---|
 | Fan-out de dispatch | handler `DispatchRun` reentregado en 2 instancias | doble dispatch al mismo recipient |
-| Results en paralelo | N `dispatch_result` para recipients distintos del mismo run | lost update en `campaign_run.counter_*` |
-| Cierre del run | 2 results terminales evalúan cierre a la vez | doble `ReconcileRun` → doble consume/refund |
-| Reserva Wallet | `ReservationConfirmed` reentregado | doble set de `wallet_reservation_id` |
+| Results en paralelo | N `dispatch.result` para recipients distintos del mismo run | lost update en `campaign_run.counter_*` |
+| Cierre del run | 2 results terminales evalúan cierre a la vez | doble `CloseRun` |
 | Edición vs disparo | usuario edita Campaign mientras el Scheduler dispara | run con snapshot inconsistente |
 | Doble-scheduler / doble-trigger | 2 orígenes crean run de la misma ocurrencia | doble ejecución (anti-patrón legado #6) |
 
@@ -25,33 +26,32 @@ Concurrencia optimista (RowVersion/`xmin`) por aggregate + guards de estado idem
 
 Cada `SaveChanges` afecta **un** aggregate con su `RowVersion`. Reglas:
 
-- **Recipient-level:** un `dispatch_result` muta **solo** su fila `campaign_recipient` (RowVersion propio), no el `campaign_run`. Así N results de recipients distintos **no** contienden entre sí (filas distintas). Esto es clave para el throughput del fan-out.
-- **Run-level:** las transiciones de `run_status` mutan `campaign_run` (RowVersion propio). Son de baja frecuencia (Created→Reserving→Dispatching→Reconciling→Completed).
+- **Recipient-level:** un `dispatch.result` muta **solo** su fila `campaign_recipient` (RowVersion propio), no el `campaign_run`. Así N results de recipients distintos **no** contienden entre sí (filas distintas). Esto es clave para el throughput del fan-out.
+- **Run-level:** las transiciones de `run_status` mutan `campaign_run` (RowVersion propio). Son de baja frecuencia (Created→Dispatching→Completed/PartiallyFailed/Cancelled).
 
 **Separar el contador del run de la fila del recipient:** ver §3 (no denormalizar el incremento dentro de la misma tx del run si eso serializa todos los results).
 
 ---
 
-## 3. Contadores: incremento sin contención
+## 3. Contadores: estrategia CANÓNICA única (fix #07)
 
-Dos opciones, se elige **B** por defecto:
+**Decisión canónica (no hay dos opciones):** las **unidades `campaign_recipient` son la fuente de verdad**; `campaign_run.counter_*` es **solo caché**, recalculada por **rollup** (batch/al evaluar cierre), no dentro de la tx de cada result. El result muta **solo** su fila de unidad (`dispatch_state`); así N results de unidades distintas no contienden sobre la fila caliente del run. `Data_Model.md §3`, `Transactional_Protocol.md §5` y `Idempotency_Spec.md` reflejan esta misma elección (antes se contradecían).
 
-**A. Incremento en `campaign_run.counter_*` dentro de la tx del result.** Simple, pero serializa todos los results del run sobre una fila → contención bajo fan-out grande.
-
-**B. (elegida) Contador como agregación de recipients + rollup diferido.** El result muta solo el recipient (`dispatch_state` terminal). Un proceso de rollup (o un `UPDATE ... SET counter = (SELECT count...)` disparado en batch / al evaluar cierre) recomputa `counter_*`. La **fuente de verdad** son los recipients; `counter_*` es cache. Sin contención de fila caliente.
-
-En ambos casos el incremento es idempotente porque la transición de recipient a terminal ocurre una sola vez (guard).
+- El incremento lógico es idempotente porque cada unidad settlea una sola vez (guard de estado).
+- **El cierre NO consulta la caché:** evalúa una **condición autoritativa** — un `COUNT` sobre `campaign_recipient` por estado, o un contador ya reconciliado — para no cerrar con una caché atrasada.
 
 ---
 
-## 4. Cierre por conteo (evita doble reconcile)
+## 4. Cierre por conteo (evita doble cierre) — predicado corregido (#01)
 
-El predicado de cierre `dispatched == delivered+failed+suppressed+bounced` puede ser verdadero para dos results terminales concurrentes. Para que **solo uno** dispare `ReconcileRun`:
+El predicado autoritativo es sobre el **total congelado de unidades**:
+`materialization_complete ∧ emission_complete ∧ (delivered + accepted + failed + skipped + unknown == recipient_count)`.
+Puede ser verdadero para dos results terminales concurrentes. Para que **solo uno** dispare `CloseRun`:
 
-- La transición `Dispatching → Reconciling` se hace con **compare-and-set sobre `run_status` + RowVersion**: `UPDATE campaign_run SET run_status=Reconciling WHERE id=@id AND run_status=Dispatching AND @closurePredicate`. El primero gana (1 fila afectada → procede a emitir consume/refund); el segundo afecta 0 filas → no-op.
-- El consume/refund emitido es además idempotente por `(consume,runId)`/`(refund,runId)` (doble defensa). Ver `Idempotency_Spec.md`.
+- La transición `Dispatching → {Completed|PartiallyFailed|Failed}` se hace con **compare-and-set sobre `run_status` + RowVersion** condicionado al predicado: `UPDATE campaign_run SET run_status=@terminal WHERE id=@id AND run_status=Dispatching AND @closurePredicate`. El primero gana (1 fila → emite `campaign.run.completed.v1`); el segundo afecta 0 filas → no-op.
+- **Carrera de "dos últimos results":** si dos commits concurrentes no se ven mutuamente y ninguno dispara el CAS, un **reconciliador de cierre** (job periódico durable) reevalúa el predicado y cierra. Así el cierre no depende del orden de llegada ni de que un result "vea" al otro.
 
-Corrige el `Status=Sending` **no-atómico** del legado (ADR-CAMP-000 §Anti-patrones #6): allí el cambio de estado y el trabajo no eran una operación atómica, permitiendo que dos schedulers lo tomaran.
+Corrige el `Status=Sending` **no-atómico** del legado (ADR-CAMP-000 §Anti-patrones #6) y el predicado erróneo `==Dispatched` (que ignoraba `Skipped`).
 
 ---
 
@@ -63,30 +63,24 @@ Doble-trigger / doble-scheduler resuelto por `UNIQUE(tenant, campaign_id, occurr
 
 ## 6. Edición vs disparo
 
-`StartCampaignRun` **congela** un snapshot de la Campaign en el `campaign_run` (channel/audience/template/price). Una edición concurrente de la Campaign (permitida solo en `Draft`; un `Scheduled` no es editable, `State_Machines.md §1`) no afecta runs ya creados. Si la Campaign estuviera en `Draft` no habría disparo (no está `Ready/Scheduled`), así que la ventana de carrera se cierra por la propia máquina de estados. La lectura de la Campaign para el snapshot usa su `RowVersion`; si cambia entre lectura y creación del run, se reintenta con el valor fresco.
+`StartCampaignRun` **congela** un snapshot de la Campaign en el `campaign_run` (channels/audience/template/sender). Una edición concurrente de la Campaign (permitida solo en `Draft`; un `Scheduled` no es editable, `State_Machines.md §1`) no afecta runs ya creados. Si la Campaign estuviera en `Draft` no habría disparo (no está `Ready/Scheduled`), así que la ventana de carrera se cierra por la propia máquina de estados. La lectura de la Campaign para el snapshot usa su `RowVersion`; si cambia entre lectura y creación del run, se reintenta con el valor fresco.
 
 ---
 
-## 7. Reserva Wallet: set-once
+## 7. Sweeper de unidades "stuck" → `Unknown` (fix #04)
 
-`wallet_reservation_id` se fija en la transición `Reserving→Dispatching` con guard `WHERE run_status=Reserving AND wallet_reservation_id IS NULL`. Un `ReservationConfirmed` reentregado afecta 0 filas la segunda vez → no-op. El fan-out solo se emite en la transición efectiva.
-
----
-
-## 8. Sweeper de recipients "stuck"
-
-Recipients que quedan en `Dispatched` sin result (el ejecutor murió, el result se perdió) bloquearían el cierre. Un job periódico (o el propio Scheduler) marca `Failed(timeout)` los que pasaron `dispatch_deadline`, con guard `WHERE dispatch_state=Dispatched AND deadline<now`. Es idempotente y permite refund de esa unidad. Sin este sweeper el run nunca cerraría (a diferencia del legado, que "cerraba" marcando Sent optimistamente sin confirmación real, ocultando el problema).
+Unidades que quedan en `Dispatched` sin result (el consumer murió, el result se perdió) bloquearían el cierre. Un job periódico marca **`Unknown`** (no `Failed`) las que pasaron `dispatch_deadline`, con guard `WHERE dispatch_state=Dispatched AND dispatch_deadline<now`. Es idempotente y permite cerrar con incertidumbre explícita. Un `Delivered`/`Failed` posterior **reconcilia** `Unknown` sin doble conteo. Nunca se declara `Failed` por falta de respuesta (a diferencia del legado, que "cerraba" marcando Sent sin confirmación real).
 
 ---
 
-## 9. Multi-instancia / escalado
+## 8. Multi-instancia / escalado
 
 - Cualquier número de instancias consumen la cola Wolverine; la corrección **no** depende de "una sola instancia" (el legado dependía de un único `BackgroundService`, `CampaignSchedulerBackgroundService.cs:9`, y aun así podía doblar si se desplegaban dos réplicas).
 - No hay estado en memoria load-bearing: todo el progreso está en BD (run/recipients/outbox). Un restart no pierde trabajo (corrige el `Task.Run`/`Task.Delay` volátil, `CampaignSchedulerBackgroundService.cs:38,78-95`).
 
 ---
 
-## 10. Tabla de evidencia
+## 9. Tabla de evidencia
 
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
@@ -95,4 +89,4 @@ Recipients que quedan en `Dispatched` sin result (el ejecutor murió, el result 
 | Legado: `Status=Sending` no-atómico (doble scheduler) | ADR-CAMP-000 §Anti-patrones #6 | DOCUMENTED_ONLY | 90% |
 | CAS sobre run_status + RowVersion para cierre único | diseño (este doc §4) | NEW | 87% |
 | Contador como rollup para evitar fila caliente | diseño (este doc §3) | NEW | 84% |
-| Sweeper de timeout | diseño (este doc §8) | NEW | 84% |
+| Sin estado/contención monetaria en Campaign | ADR-CAMP-001 D1 (decisión del usuario) | DECISION | 99% |

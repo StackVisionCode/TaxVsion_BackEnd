@@ -16,6 +16,7 @@ public sealed class SmsMessageConfiguration : IEntityTypeConfiguration<SmsMessag
         builder.Property(m => m.TenantId).IsRequired();
         builder.Property(m => m.CustomerId).IsRequired();
         builder.Property(m => m.To).HasMaxLength(32).IsRequired();
+        builder.Property(m => m.RecipientName).HasMaxLength(200);
         builder.Property(m => m.Body).HasColumnType("nvarchar(max)").IsRequired();
 
         builder.Property(m => m.IdempotencyKey).HasMaxLength(200).IsRequired();

@@ -1,5 +1,7 @@
 # Scheduler — Transactional Protocol
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -89,7 +91,7 @@ Devuelve al ciclo las ocurrencias cuyo worker murió entre lease y fire. Como `S
 
 ## 3. Frontera con la saga de Campaigns
 
-El Scheduler entrega `StartCampaignRun` y **termina su responsabilidad**. Reserva de Wallet, resolución de audiencia, fan-out y consume/refund son de Campaigns/Wallet (ver `../06_Cross_Service_Transactional_Protocol.md`). El Scheduler no compensa nada aguas abajo: si Campaigns rechaza el run (ej. gate `module.campaigns` revocado, saldo insuficiente), eso lo maneja Campaigns; el Scheduler ya cumplió el contrato temporal. La recurrencia sigue viva salvo que Campaigns pida `Pause/Cancel` de la `ScheduleEntry`.
+El Scheduler entrega `StartCampaignRun` y **termina su responsabilidad**. La resolución de audiencia y el fan-out son de Campaigns (ver `../06_Cross_Service_Transactional_Protocol.md`); el cobro/verificación de saldo — (removido: el Scheduler no toca dinero; ver banner) — lo hace el interceptor/PEP externo (externo y DIFERIDO) sobre la ruta del disparo, no el Scheduler ni Campaign. El Scheduler no compensa nada aguas abajo: si Campaigns (o el PEP en la ruta) rechaza el run (ej. gate `module.campaigns` revocado), eso lo maneja aguas abajo; el Scheduler ya cumplió el contrato temporal. La recurrencia sigue viva salvo que Campaigns pida `Pause/Cancel` de la `ScheduleEntry`.
 
 ## 4. Evidencia
 

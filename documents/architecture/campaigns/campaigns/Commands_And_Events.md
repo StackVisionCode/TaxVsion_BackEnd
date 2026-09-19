@@ -1,162 +1,160 @@
 # Campaigns — Commands & Events
 
 - **Servicio:** Campaigns (`TaxVision.Campaigns`)
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-09-17 (revisión v2 — contrato de contenido #02, Accepted/Unknown #03/#04, sender-status #19, routing #16; sin Wallet)
 - **Estado:** DISEÑO — no implementado
 
-Mensajería = **Wolverine outbox/inbox durable** (at-least-once; nunca exactly-once). Todo handler es idempotente (state-guard + `ProcessedBusinessMessage`). Los eventos de integración cross-context viven en `BuildingBlocks.Messaging` con `[MessageIdentity("...vN")]` versionado (mismo patrón que `PostmasterEmailEvents.cs:24`). Correlación opaca por `CampaignId`/`RunId`/`dispatchIdempotencyKey`, transportada sin interpretar por los ejecutores.
+Mensajería = **Wolverine outbox/inbox durable** (at-least-once; nunca exactly-once). Todo handler es idempotente (state-guard + `ProcessedBusinessMessage`). Los eventos de integración cross-context viven en `BuildingBlocks.Messaging.CampaignIntegrationEvents` con alias dotted-lowercase `.v1` (el tipo viaja en el header AMQP `type`; el lado Node lo mapea, ver `Guia_Creacion_Microservicio.md §3.5`). Correlación opaca por `CampaignId`/`RunId`/`DispatchId`, transportada sin interpretar por los ejecutores.
 
-Coherente con `../06_Cross_Service_Transactional_Protocol.md`.
+Coherente con `../06_Cross_Service_Transactional_Protocol.md`. **Campaign solo campaña — sin dinero:** no hay comandos ni eventos de reserve/consume/refund/costo/saldo, ni "ganchos" en `CampaignRun`. Los eventos que Campaign **sí** publica (`campaign.run.started/dispatch.requested/dispatch.result/run.completed.v1`) son los que un **interceptor de autorización (PEP)** y un **Wallet** externos y DIFERIDOS pueden interceptar/consumir por fuera para cobrar por saldo, sin que Campaign cambie. Ver `Domain_Design.md §8.1`, `../05_Master_ADR.md` D7.
 
 ---
 
 ## 1. Commands internos (dentro de Campaigns)
 
+**Campaña:**
 | Command | Origen | Aggregate | Efecto | Guard |
 |---|---|---|---|---|
-| `CreateCampaign` | API | Campaign | crea `Draft` | permiso `campaigns:write` |
-| `UpdateCampaign` | API | Campaign | edita | solo `Draft` |
-| `MarkCampaignReady` | API | Campaign | `Draft→Ready` | validación completa |
-| `ScheduleCampaign` | API | Campaign | fija ScheduleSpec + registra en Scheduler | `Ready`/`Scheduled` |
-| `StartCampaignRun` | Scheduler (`RunDue`) / API trigger | CampaignRun | crea run, materializa audiencia, congela precio | lease válido + gate |
-| `ReserveRunFunds` | saga | CampaignRun | pide Wallet RESERVE | `Created` |
-| `DispatchRun` | saga | CampaignRun | fan-out por destinatario | `Reserving`→confirmado |
-| `RecordDispatchResult` | ejecutor (evento) | CampaignRecipient | avanza DispatchState | idempotente por key |
-| `RecordTrackingEvent` | ejecutor (evento) | CampaignRecipient | tracking set-once | dedupe providerEventId |
-| `ReconcileRun` | saga (cierre) | CampaignRun | Wallet CONSUME/REFUND, fija CostActual | todos recipients terminales |
-| `CancelRun` | API | CampaignRun | `Dispatching→Cancelling` | run activo |
+| `CreateCampaign` | API | Campaign | crea `Draft` | `[HasPermission("campaigns.manage")]` |
+| `UpdateCampaignDraft` | API | Campaign | edita canales/contenido/audiencia | solo `Draft` |
+| `SelectSender` | API | Campaign | fija `SenderRef` por canal | solo `Draft` |
+| `SetAudience` | API | Campaign | fija AudienceSpec (Clients+Lists+Manual) | solo `Draft` |
+| `TriggerCampaignNow` | API | Campaign→CampaignRun | `Immediate`: valida + `MarkReady` interno + crea run (NO estado `Sending`, fix #10) | validación completa + gate |
+| `ScheduleCampaign` | API | Campaign | fija `SendMode` Scheduled/Recurring + registra en Scheduler | validación completa |
+| `StartCampaignRun` | Scheduler (`run_due`) / TriggerNow | CampaignRun | crea run (encola `DispatchRun` durable), **materializa audiencia paginada** (aplica opt-out) | lease/gate válidos |
+| `DispatchRun` / `EmitDispatchBatch` | interno (outbox) | CampaignRun | materializa por páginas y hace fan-out por lotes con checkpoint (fix #08/#12) | idempotente por cursor |
+| `ApplyDispatchResult` | ejecutor (evento) | CampaignRecipient | avanza DispatchState (Accepted/Delivered/Failed/Unknown) | idempotente por `DispatchId` |
+| `UnscheduleCampaign` | API | Campaign | cancela la **agenda** (Scheduled→Ready) | estado agendado |
+| `CancelCampaignRun` | API | CampaignRun | cancela una **ejecución** por `runId` (drena in-flight) | run cancelable |
 
-Todas las mutaciones son **métodos del aggregate que devuelven `Result`** (no setters). Nada de lógica de negocio en el handler más allá de cargar → invocar método → persistir → publicar.
+**Contactos / Listas (sub-dominio):**
+| Command | Efecto | Guard |
+|---|---|---|
+| `CreateContact` / `UpdateContact` | alta/edición de contacto | `campaigns.manage` |
+| `ImportContacts` | CSV → contactos (dedupe email/teléfono) | `campaigns.manage` |
+| `SetContactOptOut` | opt-out por canal (consentimiento) | `campaigns.manage` |
+| `CreateContactList` / `AddContactsToList` / `RemoveFromList` | gestión de listas | `campaigns.manage` |
+
+**Remitentes:**
+| Command | Efecto | Guard |
+|---|---|---|
+| `CreateSenderProfile` / `UpdateSenderProfile` | alta/edición de remitente por canal (referencia, sin secretos) | `campaigns.manage` |
+| `DisableSenderProfile` | baja | `campaigns.manage` |
+
+Todas las mutaciones son **métodos del aggregate que devuelven `Result`** (no setters). El handler solo: cargar → invocar método → persistir → publicar.
 
 ---
 
 ## 2. Eventos de integración EMITIDOS (Campaigns → bus)
 
-Namespace propuesto `BuildingBlocks.Messaging.CampaignIntegrationEvents`. Versionados.
-
-### Hacia Wallet (saga de balance)
+### Hacia los ejecutores — contrato de DISPATCH común (por destinatario/canal)
 
 ```csharp
-[MessageIdentity("campaigns.run.funds_reserve_requested.v1")]
-public sealed record CampaignRunFundsReserveRequested : IntegrationEvent {
-    public required Guid TenantId { get; init; }
-    public required Guid WalletAccountId { get; init; }   // id opaco
-    public required Guid RunId { get; init; }
-    public required long AmountMinor { get; init; }       // USD cents
-    public required string Currency { get; init; }        // "USD"
-    public required string IdempotencyKey { get; init; }  // f(reserve, runId)
-}
-
-[MessageIdentity("campaigns.run.funds_consume_requested.v1")]  // entregados
-[MessageIdentity("campaigns.run.funds_refund_requested.v1")]   // no-entregados / cancel
-```
-
-`AmountMinor`+`Currency` = copia local de `Money` (una por bounded context, no tipo compartido — ADR-CAMP-000 §Primitivas). Corrige el legado que pasaba `decimal` de dólares y hacía debit antes de `SaveChanges` (`CreateCampaignCommandHandler.cs:278,320`).
-
-### Hacia ejecutores (dispatch, contrato COMÚN por destinatario)
-
-```csharp
-[MessageIdentity("campaigns.recipient.dispatch_requested.v1")]
-public sealed record CampaignRecipientDispatchRequested : IntegrationEvent {
-    public required Guid TenantId { get; init; }
+/// campaign.dispatch.requested.v1   (TenantId proviene de IntegrationEvent base)
+public sealed record CampaignDispatchRequestedIntegrationEvent : IntegrationEvent {
     public required Guid RunId { get; init; }
     public required Guid RecipientId { get; init; }
     public required int AttemptNo { get; init; }
-    public required string DispatchIdempotencyKey { get; init; } // f(RunId,RecipientId,AttemptNo)
-    public required string Channel { get; init; }                // Email|Sms|WhatsApp|Push|InApp
+    public required string DispatchId { get; init; }   // f(RunId,RecipientId,Channel,AttemptNo) — dedupe del intento
+    public required string Channel { get; init; }       // Email | Sms | WhatsApp | Push
+    public required string SenderRef { get; init; }     // el ejecutor lo resuelve a su proveedor
     // destino resuelto (uno según canal) — PII mínima
     public string? Email { get; init; }
     public string? PhoneE164 { get; init; }
+    public string? WhatsAppE164 { get; init; }
     public string? PushTokenRef { get; init; }
-    // render por referencia — el ejecutor invoca Scribe; el cuerpo NO viaja como bytes crudos aquí
-    public required string ScribeTemplateKey { get; init; }
-    public IReadOnlyDictionary<string,string>? TemplateVariables { get; init; }
-    public string? Subject { get; init; }                        // email
-    // correlación opaca de vuelta (el ejecutor la devuelve intacta)
-    public Guid? CampaignId { get; init; }
+    // CONTENIDO por referencia inmutable + payload tipado por canal (fix #02/#18)
+    public required string ContentRef { get; init; }    // apunta a la REVISIÓN congelada del contenido del run/canal
+    public required CampaignChannelPayload Payload { get; init; } // union tipada y versionada por canal
+    public Guid CampaignId { get; init; }               // correlación opaca (devuelta intacta)
 }
+
+/// Payload tipado por canal (versionado). El consumer SMS reconstruye EXACTO el texto de la API (fix #02).
+public abstract record CampaignChannelPayload { public int SchemaVersion { get; init; } }
+public sealed record EmailPayload : CampaignChannelPayload {         // Email
+    public required string ScribeTemplateKey { get; init; }         // revisión inmutable (o hash) — fix #18
+    public string? Subject { get; init; }
+    public IReadOnlyDictionary<string,string>? Variables { get; init; }
+}
+public sealed record SmsPayload : CampaignChannelPayload {           // SMS
+    public required string TemplateRef { get; init; }               // resuelve al texto congelado
+    public IReadOnlyDictionary<string,string>? Variables { get; init; }
+}   // (WhatsAppPayload: plantilla WABA; PushPayload: título+cuerpo) — análogos
 ```
 
-Este es el seam `CampaignId` generalizado a los 5 canales — mismo modelo que `NotificationsEmailSendRequestedIntegrationEvent.CampaignId` (`PostmasterEmailEvents.cs:37`), pero ahora emitido **por destinatario** (no por notificación transaccional suelta) y con `DispatchIdempotencyKey` explícito.
+Es el seam `CampaignId` generalizado a todos los canales — mismo modelo que `NotificationsEmailSendRequestedIntegrationEvent.CampaignId` (`PostmasterEmailEvents.cs:37`), pero emitido **por unidad destinatario/canal** y con `DispatchId` explícito. **El contenido viaja como `ContentRef` inmutable + `Payload` tipado por canal** — así el consumer SMS reconstruye exactamente el texto que muestra la API sin adivinar campos (fix #02), y el email usa una **revisión congelada** de plantilla (fix #18). **Campaigns nunca envía**: solo publica; cada ejecutor consume su `Channel`.
 
-### Read-model / analytics (no transaccionales)
+**Routing por canal (fix #16):** el contrato es común, pero **no** todos los canales comparten cola. Cada canal enruta a su propia cola de dispatch (`campaign.dispatch.<channel>`) y su cola de result; así un consumer no recibe unidades de otro canal ni se difunde PII a todos. El envelope lleva `type` + `channel` para el routing key.
+
+### Ciclo de vida (read-model / analytics, no transaccionales)
 
 ```csharp
-[MessageIdentity("campaigns.run.completed.v1")]   // CostActual fijo, contadores finales
-[MessageIdentity("campaigns.run.rejected.v1")]    // gate/reserve/saldo
+/// campaign.run.started.v1   { runId, campaignId, triggeredBy, recipientCount }
+/// campaign.run.completed.v1 { runId, campaignId, counters finales }
 ```
+
+`PublishMessage<T>()` por cada tipo publicado en `Program.cs` (guardrail: falta uno y el evento nunca sale del outbox, `Guia_Creacion_Microservicio.md §3.6`).
 
 ---
 
 ## 3. Eventos de integración CONSUMIDOS (bus → Campaigns)
 
-### Desde ejecutores (result común)
+### Desde los ejecutores — contrato de RESULT común
 
 ```csharp
-[MessageIdentity("channel.dispatch_result.v1")]
-public sealed record ChannelDispatchResult : IntegrationEvent {
-    public required string DispatchIdempotencyKey { get; init; }
-    public required string Outcome { get; init; }   // Delivered|Failed|Suppressed
-    public string? ProviderMessageId { get; init; }
-    public string? FailureCode { get; init; }
-    public Guid? CampaignId { get; init; }           // devuelta intacta
-    public required DateTime EventAtUtc { get; init; }
+/// campaign.dispatch.result.v1
+public sealed record CampaignDispatchResultIntegrationEvent : IntegrationEvent {
+    public required Guid RunId { get; init; }
+    public required string DispatchId { get; init; }   // dedupe key (del INTENTO)
+    public required string Outcome { get; init; }       // Accepted | Delivered | Failed | Skipped | Unknown (fix #03/#04)
+    public string? ProviderRef { get; init; }
+    public string? Reason { get; init; }
+    public Guid CampaignId { get; init; }               // devuelta intacta
 }
 
-[MessageIdentity("channel.tracking_event.v1")]
-public sealed record ChannelTrackingEvent : IntegrationEvent {
-    public required string DispatchIdempotencyKey { get; init; }
-    public required string Kind { get; init; }       // Open|Click|Bounce
-    public required string ProviderEventId { get; init; }  // dedupe key
-    public string? BounceType { get; init; }
-    public required DateTime EventAtUtc { get; init; }
+/// campaign.sender.status_changed.v1  (ejecutor → Campaigns; verificación/revocación de remitente, fix #19)
+public sealed record CampaignSenderStatusChangedIntegrationEvent : IntegrationEvent {
+    public required string Channel { get; init; }
+    public required string SenderRef { get; init; }
+    public required string Status { get; init; }         // Pending | Verified | Disabled
+    public string? Reason { get; init; }
 }
 ```
 
-Se mapean 1:1 a las variantes existentes de Postmaster (`PostmasterEmailDeliverySucceeded/Failed/Bounced/Suppressed`, `PostmasterEmailEvents.cs:91-155`) — el contrato genérico es su generalización multicanal. El handler avanza `DispatchState` **con guard idempotente**: un result duplicado o fuera de orden no cambia estado ni doble-liquida (corrige `CampaignSendService.cs:63-68` que marcaba `Sent` a todos sin confirmación real).
-
-### Desde Wallet
-
-```csharp
-[MessageIdentity("wallet.reservation.confirmed.v1")]  // Reserving -> Dispatching
-[MessageIdentity("wallet.reservation.rejected.v1")]   // insufficient -> Rejected
-[MessageIdentity("wallet.settlement.applied.v1")]     // consume/refund aplicado
-```
+Cada ejecutor (Notification para Email/Push, `TaxVision.Sms` para SMS, WhatsApp nuevo) publica el result tras **aceptar/entregar**; un `200 OK`/"encolado" es `Accepted`, no `Delivered` (fix #03). El handler `ApplyDispatchResult` avanza `DispatchState` **con guard idempotente** por `DispatchId` del intento: duplicado/fuera de orden = no-op; timeout = `Unknown` por el sweeper (no un result). `campaign.sender.status_changed.v1` actualiza el `SenderProfile` de forma idempotente (fix #19). Se mapea a las variantes de Postmaster para email (`PostmasterEmailEvents.cs:104`).
 
 ### Desde Scheduler
 
 ```csharp
-[MessageIdentity("scheduler.run_due.v1")]  // { campaignId, triggerKind, leaseToken, occurrenceKey }
+/// campaign.scheduler.run_due.v1  { campaignId, triggerKind, leaseToken, occurrenceKey }
 ```
 
-`occurrenceKey` (p.ej. `campaignId:2026-08-04T09:00Z`) hace idempotente la creación del run: dos entregas del mismo `RunDue` crean **un** run (unique constraint sobre `(CampaignId, OccurrenceKey)`). Corrige el doble-scheduler legado (ADR-CAMP-000 §Anti-patrones #6).
+`occurrenceKey` (p. ej. `campaignId:2026-08-04T09:00Z`) hace idempotente la creación del run: dos entregas del mismo `run_due` crean **un** run (unique constraint `(CampaignId, OccurrenceKey)`). Corrige el doble-scheduler legado (ADR-CAMP-000 §Anti-patrones #6).
 
 ---
 
-## 4. Mapa de saga (resumen)
+## 4. Mapa de saga (resumen, sin dinero)
 
 ```
-RunDue ─► StartCampaignRun ─► CampaignRunFundsReserveRequested
-                                        │
-                 wallet.reservation.confirmed ─► DispatchRun
-                                        │
-              (por destinatario) CampaignRecipientDispatchRequested ══► ejecutor
-                                        │
-                 channel.dispatch_result ─► RecordDispatchResult (idempotente)
-                                        │  (todos terminales)
-                                   ReconcileRun ─► funds_consume/refund_requested
-                                        │
-                              wallet.settlement.applied ─► CampaignRunCompleted
+SendNow / run_due ─► StartCampaignRun (materializa audiencia, aplica opt-out)
+                              │
+     (por destinatario/canal) CampaignDispatchRequested ══► ejecutor de canal
+                              │                                  (Notification / Sms / WhatsApp)
+                              │◄══ CampaignDispatchResult ◄── entrega + reporte
+                              │
+              ApplyDispatchResult (idempotente por DispatchId) ─► RunCounters
+                              │  (todos terminales)
+                       CampaignRunCompleted
 ```
 
-Detalle transaccional y compensaciones en `Transactional_Protocol.md`.
+Detalle transaccional y resiliencia a reinicio en `Transactional_Protocol.md`.
 
 ---
 
 ## 5. Reglas de emisión
 
-- **Outbox durable:** todo evento se escribe en la misma transacción que muta el aggregate (Wolverine outbox); nunca `Task.Run` fire-and-forget (anti-patrón legado `CampaignSchedulerBackgroundService.cs:78-95`, `BackgroundTaskQueue`).
-- **Tenant explícito** en el scope Wolverine al procesar (`.IgnoreQueryFilters()` + tenant del envelope), ver `documents/Guia_IgnoreQueryFilters_Y_TenantContext_En_Wolverine.md` y `Security.md`.
+- **Outbox durable:** todo evento se escribe en la misma transacción que muta el aggregate (Wolverine outbox); nunca `Task.Run` fire-and-forget (anti-patrón legado `CampaignSchedulerBackgroundService.cs:78-95`).
+- **Tenant explícito** en el scope Wolverine al procesar (`.IgnoreQueryFilters()` + tenant del envelope), ver `Security.md`.
 - **At-least-once:** cada handler asume redelivery; idempotencia obligatoria (`Idempotency_Spec.md`).
 
 ---
@@ -165,9 +163,11 @@ Detalle transaccional y compensaciones en `Transactional_Protocol.md`.
 
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| Patrón `[MessageIdentity(vN)]` + correlación opaca | `PostmasterEmailEvents.cs:24,37,104` | VERIFIED | 97% |
+| Seam `CampaignId` opaco + patrón de alias/versionado | `PostmasterEmailEvents.cs:24,37,104` | VERIFIED | 97% |
 | Variantes result a mapear (succeeded/failed/bounced/suppressed) | `PostmasterEmailEvents.cs:91-155` | VERIFIED | 96% |
-| Legado usaba `BackgroundTaskQueue`/`Task.Run` fire-and-forget | `CampaignSchedulerBackgroundService.cs:78-95` | VERIFIED | 95% |
-| Legado debit antes de SaveChanges | `CreateCampaignCommandHandler.cs:278,320` | VERIFIED | 96% |
-| Contrato dispatch común multicanal | diseño (este doc §2) | NEW | 86% |
+| SMS consumer M2M-ready (ActorType.Service) | `Sms/.../MessagesController.cs:21` | VERIFIED | 96% |
+| `TenantId` en el base `IntegrationEvent` (no redeclarar) | `BuildingBlocks/Messaging/IIntegrationEvent.cs:15` | VERIFIED | 97% |
+| Legado usaba `Task.Run` fire-and-forget | `CampaignSchedulerBackgroundService.cs:78-95` | VERIFIED | 95% |
+| Contrato dispatch/result común multicanal | diseño (este doc §2-3) | NEW | 87% |
 | `occurrenceKey` idempotencia de run | diseño (este doc §3) | NEW | 85% |
+| Wallet diferido (va, pero no ahora); contrato listo para añadirlo | decisión del usuario 2026-09-16 | DECISION | 99% |

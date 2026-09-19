@@ -38,12 +38,9 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
         IReadOnlyList<Guid>? AttachmentFileIds = null
     );
 
-    // SendTemplateRequest / POST "send-template" retirados en la Fase 18 del plan de hardening
-    // (Notification): self-service HTTP para enviar un email ad-hoc por plantilla, confirmado por
-    // el usuario sin caller real (frontend nunca lo conectó). SendTemplateEmailCommand/Handler
-    // (Application/Email/Sending/Commands/SendTemplateEmail.cs) NO se eliminó — sigue siendo
-    // invocado en proceso por EmailCampaigns (SendCampaignTestHandler), fuera de alcance de este
-    // plan; solo se retiró esta ruta HTTP redundante que exponía el mismo command directo al público.
+    // SendTemplateRequest / POST "send-template" retirados: self-service HTTP para enviar un email
+    // ad-hoc por plantilla, sin caller real (el frontend nunca lo conectó). El command interno que
+    // lo respaldaba solo lo usaba el motor de EmailCampaigns, ya retirado.
 
     [HttpPost("send")]
     [HasPermission(NotificationPermissions.EmailSend)]

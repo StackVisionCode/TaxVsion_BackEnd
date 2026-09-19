@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -23,6 +24,7 @@ public static class SendSignatureRequestHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
     )
     {
@@ -39,6 +41,7 @@ public static class SendSignatureRequestHandler
         // aggregate (para poder revocar ese enlace en un futuro reenvío), y el save lo persiste.
         var invitations = IssueInvitations(request, tokenService);
         await unitOfWork.SaveChangesAsync(ct);
+        await listCache.InvalidateAsync(cmd.TenantId, ct);
 
         await PublishSentEventAsync(request, sentAt, correlation, bus);
         await PublishInvitationsAsync(request, invitations, correlation, bus);
@@ -115,6 +118,8 @@ public static class SendSignatureRequestHandler
                 FullName = signer.FullName.Value,
                 Order = signer.Order,
                 Language = signer.Language,
+                PhoneE164 = signer.PhoneNumber?.Value,
+                PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
                 PublicToken = invitation.Token,
                 ExpiresAtUtc = request.ExpiresAtUtc,
                 RevocationEpoch = request.RevocationEpoch,

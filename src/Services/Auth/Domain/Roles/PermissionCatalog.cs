@@ -74,6 +74,7 @@ public static class PermissionCatalog
     public const string SignatureDocumentSign = SignaturePermissions.DocumentSign;
     public const string SignatureDocumentView = SignaturePermissions.DocumentView;
     public const string SignatureDocumentDownload = SignaturePermissions.DocumentDownload;
+    public const string SignatureDocumentSend = SignaturePermissions.DocumentSend;
     public const string SignatureDocumentAuditRead = SignaturePermissions.DocumentAuditRead;
     public const string SignatureTemplateCreate = SignaturePermissions.TemplateCreate;
     public const string SignatureTemplateUpdate = SignaturePermissions.TemplateUpdate;
@@ -135,6 +136,10 @@ public static class PermissionCatalog
     // ScribeRender, sí lo reciben roles humanos (TenantAdmin/TenantEmployee) además del caller M2M
     // (un microservicio que envía SMS lo lleva como claim "perm" vía ServiceAuth:Clients de Auth).
     public const string SmsSend = SmsPermissions.Send;
+
+    // Lectura del historial/opt-outs (endpoints GET del CRM) y gestión manual de bajas.
+    public const string SmsRead = SmsPermissions.Read;
+    public const string SmsManage = SmsPermissions.Manage;
 
     // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
     // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
@@ -847,6 +852,23 @@ public static class PermissionCatalog
             "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
             false
         ),
+        // Lectura del historial de SMS y opt-outs desde el CRM (endpoints GET). Humano-asignable
+        // (TenantAdmin/TenantEmployee vía defaults). Mismo módulo "sms" (para el gate de addon, F2).
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001F0"),
+            SmsRead,
+            "sms",
+            "Ver el historial de SMS, su estado y las bajas (opt-outs)",
+            false
+        ),
+        // Gestión manual del consentimiento (baja/alta de un teléfono). Administración del tenant.
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001F1"),
+            SmsManage,
+            "sms",
+            "Gestionar manualmente las bajas de SMS (opt-out/opt-in)",
+            false
+        ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
         new(
             new Guid("a1000000-0000-0000-0000-000000000159"),
@@ -965,6 +987,16 @@ public static class PermissionCatalog
             SignatureDocumentDownload,
             "signature",
             "Descargar sellado, original o certificado",
+            false
+        ),
+        new(
+            // Controla la ENTREGA hacia afuera (email/SMS del documento firmado y del certificado al
+            // firmante). Separado de crear/firmar para que el preparador lo niegue por-empleado con el
+            // deny-layer. Asignable por el tenant; no peligroso, no platform-only.
+            new Guid("a1000000-0000-0000-0000-0000000000a0"),
+            SignatureDocumentSend,
+            "signature",
+            "Entregar por email/SMS el documento firmado y el certificado a los firmantes",
             false
         ),
         new(
@@ -1968,6 +2000,7 @@ public static class PermissionCatalog
                 SignatureDocumentSign,
                 SignatureDocumentView,
                 SignatureDocumentDownload,
+                SignatureDocumentSend,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Employee" — nunca host de settings/analytics/moderate/record.
                 CommunicationChatStart,
@@ -2069,6 +2102,7 @@ public static class PermissionCatalog
                 InventoryWrite,
                 InventoryAdjust,
                 SmsSend,
+                SmsRead,
                 // Facturación tenant→cliente (Invoices + IssuerProfile). Operativo diario del preparador,
                 // no billing de suscripción (eso es billing.*, peligroso/admin-only, aparte a propósito).
                 InvoicingView,

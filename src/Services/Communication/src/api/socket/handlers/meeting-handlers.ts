@@ -172,6 +172,15 @@ async function performLeaveAfterGrace(
   });
   if (!result || !result.isSuccess) return;
 
+  // Igual que en la salida explícita: avisar a la room que este participante salió (status:'Left') para
+  // que los demás poden su tile y cierren el peer. La gracia venció sin reconexión → ya no es fantasma.
+  emitter.emitToMeeting({
+    tenantId,
+    meetingId,
+    event: MeetingSocketEvents.ParticipantChanged,
+    envelope: envelope({ meetingId, participant: result.value.participant, sequence: 0 }),
+  });
+
   // Cerrar el SFU del que se fue: avisar a los demás que sus producers desaparecen y liberar transports.
   for (const p of container.sfu.listProducersForUser(meetingId, userId)) {
     emitter.emitToMeeting({
@@ -393,6 +402,15 @@ function wireMeetingSocket(
     if (!result.isSuccess) return;
     // Salida explícita: no dejar una salida agendada colgando para este user/meeting.
     cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
+    // Avisar a la room que este participante salió (status:'Left') para que los demás poden su tile y
+    // cierren el peer. Sin esto el roster quedaba con un participante fantasma (leave solo emitía
+    // StateChanged, que no poda participantes; el Remove/expulsar sí lo emitía y por eso ese sí limpiaba).
+    emitter.emitToMeeting({
+      tenantId,
+      meetingId: parsed.data.meetingId,
+      event: MeetingSocketEvents.ParticipantChanged,
+      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
+    });
     await socket.leave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
       await socket.leave(`t:${tenantId}:c:${result.value.conversationId}`);
@@ -1201,6 +1219,7 @@ function wireMeetingSocket(
         transportId: parsed.data.transportId,
         kind: parsed.data.kind,
         rtpParameters: parsed.data.rtpParameters as never,
+        source: parsed.data.source,
       },
       container,
     );
@@ -1214,6 +1233,7 @@ function wireMeetingSocket(
       userId,
       producerId: result.value.producerId,
       kind: parsed.data.kind,
+      source: parsed.data.source,
     };
     socket.to(`t:${tenantId}:m:${parsed.data.meetingId}`).emit(MeetingSocketEvents.SfuNewProducer, envelope(newProducer));
   });

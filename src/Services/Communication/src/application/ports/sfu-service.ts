@@ -25,10 +25,14 @@ export interface ConsumerInfo {
   readonly rtpParameters: MediasoupTypes.RtpParameters;
 }
 
+export type SfuMediaSource = 'camera' | 'screen';
+
 export interface RemoteProducerInfo {
   readonly userId: string;
   readonly producerId: string;
   readonly kind: MediasoupTypes.MediaKind;
+  /** 'camera' (default) o 'screen' — un participante puede producir DOS videos simultáneos. */
+  readonly source: SfuMediaSource;
 }
 
 export interface SfuService {
@@ -56,6 +60,7 @@ export interface SfuService {
     transportId: string;
     kind: MediasoupTypes.MediaKind;
     rtpParameters: MediasoupTypes.RtpParameters;
+    source?: SfuMediaSource;
   }): Promise<{ producerId: string } | null>;
 
   consume(input: {

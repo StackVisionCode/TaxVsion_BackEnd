@@ -236,6 +236,19 @@ function wireCallSocket(
       event: CallSocketEvents.StateChanged,
       envelope: envelope(result.value.state),
     });
+    if (action === 'reject' || action === 'cancel') {
+      // La call termina desde Ringing: el callee que AÚN no aceptó NO está en el room `call:{id}` (se une
+      // recién al aceptar), así que el emitToCall de arriba no lo alcanza y su modal de "incoming" se queda
+      // pegado. Emitir también a los user rooms de ambos cierra el modal del callee y sincroniza al caller.
+      for (const participantId of [result.value.callerUserId, result.value.calleeUserId]) {
+        emitter.emitToUser({
+          tenantId,
+          userId: participantId,
+          event: CallSocketEvents.StateChanged,
+          envelope: envelope(result.value.state),
+        });
+      }
+    }
     if (result.value.peer) {
       emitter.emitToCall({
         tenantId,
@@ -268,7 +281,7 @@ function wireCallSocket(
         callId: parsed.data.callId,
         actorUserId: userId,
       },
-      container,
+      { ...container, emitter },
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
@@ -582,7 +595,7 @@ function wireCallSocket(
           callId,
           actorUserId: userId,
         },
-        container,
+        { ...container, emitter },
       ).then(async (result) => {
         if (!result.isSuccess) return;
         await clearCallBusyForBothParties(container, tenantId, callId);

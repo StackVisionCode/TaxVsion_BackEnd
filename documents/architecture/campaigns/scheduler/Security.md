@@ -1,5 +1,7 @@
 # Scheduler — Security
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -32,7 +34,7 @@ Si servicio propio, todo endpoint con `[RateLimit(categoría)]` (M2M) o `[RateLi
 
 - **Cota de horizonte:** materialización **una-a-una** (no pre-generar series infinitas) impide que una regla `Daily interval=1 sin EndDate` genere millones de filas.
 - **Validación de spec:** `Interval>0`, `MaxOccurrences` con techo configurable, `EndAtUtc` obligatorio-o-tope para recurrentes sin `MaxOccurrences` (evita series eternas por descuido).
-- **Catch-up acotado:** disparos vencidos más allá de la gracia se `Skipped`, no se disparan en masa (evita que un downtime se convierta en una tormenta de envíos costosos — que además consumen Wallet real).
+- **Catch-up acotado:** disparos vencidos más allá de la gracia se `Skipped`, no se disparan en masa (evita que un downtime se convierta en una tormenta de envíos) — (removido: el Scheduler no toca dinero; ver banner).
 
 ## 7. Datos en reposo / PII
 

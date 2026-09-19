@@ -4,10 +4,12 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -20,7 +22,6 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Notification.Api.Common;
-using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Infrastructure;
@@ -174,8 +175,6 @@ builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
 // única fuente de verdad de tracking de entrega/bounce/suppression para los correos que routea
 // (MarkBounced se alimenta de PostmasterEmailDeliveryBouncedIntegrationEvent en vez de este webhook muerto).
 
-// Scheduler de campañas: inicia el fan-out cuando llega la hora programada.
-builder.Services.AddHostedService<CampaignSchedulerService>();
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "notification-service",
@@ -210,10 +209,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<EmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailDeliverySucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailDeliveryFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignScheduledIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignBatchIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Canal Email del orquestador Campaigns (ADR-CAMP-001 D3) — el consumer publica el result del dispatch.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // Evento hacia Postmaster. Dos productores comparten el mismo mensaje y el mismo flag
     // Notification:UsePostmasterDispatch: EventBasedEmailDispatchGateway (path IEmailDispatchGateway) y
@@ -221,6 +220,10 @@ builder.Host.UseWolverine(options =>
     // email/send y de EmailCampaigns). El PublishMessage se declara siempre para no romper el binding
     // aun cuando el flag esté OFF; el runtime simplemente no genera envíos hasta que alguno lo invoque.
     options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Puente SMS real: el IntegrationEventSmsSender publica esto y el microservicio Sms lo entrega
+    // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
+    options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options
@@ -246,7 +249,12 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 });
 
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
+
 var app = builder.Build();
+
+// IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {

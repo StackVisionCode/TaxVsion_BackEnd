@@ -20,7 +20,11 @@ public sealed record SendEmailCommand(
     string? TextBody,
     EmailPriority Priority,
     IReadOnlyList<EmailRecipientInput> Recipients,
-    IReadOnlyList<Guid>? AttachmentFileIds
+    IReadOnlyList<Guid>? AttachmentFileIds,
+    // Correlación opaca de vuelta hacia Campaigns (seam CampaignId, PostmasterEmailEvents). El
+    // orquestador de campañas la usa para correlacionar los delivery events de Postmaster con la
+    // unidad destinatario/canal. Null para correos ad-hoc que no son de campaña.
+    Guid? CampaignId = null
 );
 
 public static class SendEmailHandler
@@ -55,7 +59,7 @@ public static class SendEmailHandler
             attachmentsJson,
             templateId: null,
             templateVersionId: null,
-            campaignId: null,
+            campaignId: command.CampaignId,
             correlationId: correlation.CorrelationId
         );
         if (result.IsFailure)

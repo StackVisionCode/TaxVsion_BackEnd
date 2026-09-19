@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -18,6 +19,7 @@ public static class RejectSignatureHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureRequestListCacheInvalidator listCache,
         CancellationToken ct
     )
     {
@@ -34,6 +36,7 @@ public static class RejectSignatureHandler
             return rejection;
 
         await unitOfWork.SaveChangesAsync(ct);
+        await listCache.InvalidateAsync(request.TenantId, ct);
         await PublishRejectedAsync(request, signer, rejectedAt, cmd.Reason, pendingSigners, correlation, bus);
         return Result.Success();
     }
@@ -68,7 +71,10 @@ public static class RejectSignatureHandler
                             s.Email.Value,
                             s.FullName.Value,
                             s.Language,
-                            s.Order
+                            s.Order,
+                            s.MappedCustomerId,
+                            s.PhoneNumber?.Value,
+                            SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
                 }

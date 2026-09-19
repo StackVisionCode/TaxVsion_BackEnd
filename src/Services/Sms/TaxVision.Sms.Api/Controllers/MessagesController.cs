@@ -30,7 +30,8 @@ public sealed class MessagesController(IMessageBus bus, ITenantContext tenant, I
         string Message,
         IReadOnlyList<MediaItemRequest>? Media,
         string? IdempotencyKey,
-        string? SourceContext
+        string? SourceContext,
+        string? RecipientName
     );
 
     public sealed record SendMessagesRequest(IReadOnlyList<MessageItemRequest> Messages);
@@ -48,7 +49,8 @@ public sealed class MessagesController(IMessageBus bus, ITenantContext tenant, I
                 m.Message,
                 m.Media?.Select(x => new SmsMediaDto(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList(),
                 m.IdempotencyKey,
-                m.SourceContext
+                m.SourceContext,
+                m.RecipientName
             ))
             .ToList();
 

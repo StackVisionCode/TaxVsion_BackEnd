@@ -1,5 +1,7 @@
 # Scheduler — Domain Design
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Scheduler = disparo temporal con lease atómico (Immediate/Scheduled/Recurring), un `CampaignRun` inmutable por disparo. SIN dinero:** el Scheduler NO reserva/consume/verifica saldo. La regla "para scheduled/recurrente cobrar ANTES según cuántos destinatarios" la hace un **interceptor/PEP externo** colocado sobre la ruta del `RunDue` (antes de que Campaign ejecute); PEP + Wallet son **externos y DIFERIDOS**, no viven en el Scheduler ni en Campaign (ver `../05_Master_ADR.md` D1/D7). Lo que abajo asuma que el Scheduler toca saldo/Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **TaxVision.Campaigns.Scheduler**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -29,6 +31,8 @@ Referencia opaca a la campaña (`CampaignId`, sin FK cross-context — regla del
 - `OccurrenceCount` (cuántas se han **materializado**, no mutable ad-hoc: se incrementa solo al crear la próxima `TriggerOccurrence`).
 - `Status`: `Active | Paused | Completed | Cancelled` (ver `State_Machines.md`).
 - `NextDueAtUtc` (cache derivada del spec; recalculada de forma pura, nunca fuente de verdad para "ya disparé").
+- `MisfireGrace` (ventana de gracia para coalesce, §8), `SpecVersion` (para edición mid-serie, §8).
+- `ActiveRunRef?` / `ActiveRunState` (guarda de **solapamiento**: se setea al `Fire`, se limpia con `campaign.run.completed.v1`; §8).
 
 **Invariante clave:** una `ScheduleEntry` recurrente **NO** guarda estado de ejecución dentro de sí misma. El legado violaba esto: `RecurrenceRule.ExecutionCount++`, `NextExecutionAt=…`, `Campaign.SentAt=null` reseteados en la misma fila (`CampaignSchedulerBackgroundService.cs:115-126`, `CampaignSchedulerService.cs:130-149`) → sin historia, sin auditoría, y con dos schedulers pisándose la fila.
 
@@ -69,6 +73,21 @@ Coherente con CLAUDE.md (*"mutaciones por métodos del aggregate devolviendo Res
 | Scheduler nuevo no existe | Glob `src/Services/**/Scheduler*` → 0 en TaxVsion_BackEnd | VERIFIED | 97% |
 | `TriggerOccurrence`/`ScheduleEntry` como diseño | este documento | NEW | — |
 | Recomendación módulo-vs-servicio | `ADR.md` (SCHED-001) | NEW | — |
+
+## 8. Políticas temporales (fix #29 — decisiones 2026-09-17)
+
+| Tema | Política | Detalle |
+|---|---|---|
+| **Misfire** (ocurrencias perdidas por downtime) | **Coalesce** | Disparar solo la **más reciente** dentro de `MisfireGrace`; el resto `Skipped(misfire)`; si todas exceden la gracia → `Skipped(stale)`. Evita ráfagas sin perder el periodo. Ver `Concurrency_Spec.md §5`. |
+| **Solapamiento** (siguiente ocurrencia debida con run anterior aún activo) | **Omitir + alertar** | Si `ActiveRunRef` vive → nueva ocurrencia `Skipped(overlap)` + alerta; se libera con `campaign.run.completed.v1` (o `overlap_watchdog`). Guarda por entry. Ver `Concurrency_Spec.md §5.1`. |
+| **DST** (bordes de cambio de horario) | Explícita | Hora inexistente (spring-forward) → adelanta al siguiente instante válido; ambigua (fall-back) → primera ocurrencia, una sola vez. Ver `Concurrency_Spec.md §3`. |
+| **Edición de recurrencia mid-serie** | Versionada, sin tocar el pasado | Editar el `RecurrenceSpec`/`TimeZone` de una entry `Active` incrementa `SpecVersion`, **cancela la próxima ocurrencia `Pending` no leaseada** y **re-materializa** desde `now` con el nuevo spec. Las ocurrencias `Fired` son **inmutables** (historial intacto). Editar una entry `Paused` es válido; una `Completed`/`Cancelled` no. |
+| **Cancelar recurrencia** | `Cancel()` | Detiene materialización; ocurrencias ya `Leased`/`Fired` terminan su ciclo (no se revocan runs en vuelo — eso es cancelación de run en Campaigns). |
+| **Lease expirado** | Reconciliación | Worker muerto entre `Lease` y `Fire` → `LeaseUntilUtc` vence → vuelve a `Pending` (`Attempt++`). Ver `State_Machines.md §2` invariante 3. |
+
+## 7bis. Nota de frontera
+
+El Scheduler decide **cuándo** y protege contra doble-disparo/misfire/solapamiento; **no** conoce audiencia, canales ni dinero. El solapamiento se evalúa por el **evento de cierre de run** de Campaigns, no consultando su estado interno (mantiene la frontera del `../02_Context_Map.md`).
 
 ## 7. Blockers
 

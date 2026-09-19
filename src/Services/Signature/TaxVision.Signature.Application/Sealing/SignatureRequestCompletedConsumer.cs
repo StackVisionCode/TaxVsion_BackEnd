@@ -6,6 +6,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
@@ -32,10 +33,18 @@ public static class SignatureRequestCompletedConsumer
 {
     private static readonly TimeSpan SealingLockTtl = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Tope de espera del scan de la imagen de firma antes de sellar con fallback tipográfico. Supera la
+    /// suma de cooldowns del RetryWithCooldown dedicado (~2 min) para dar una última oportunidad al scan;
+    /// pasado esto, la entrega NUNCA se bloquea (se degrada el sello, no se pierde el envelope).
+    /// </summary>
+    private static readonly TimeSpan MaxSignatureImageScanWait = TimeSpan.FromMinutes(2);
+
     public static async Task Handle(
         SignatureRequestCompletedIntegrationEvent evt,
         ISignatureRequestRepository repository,
         ISignatureCloudStorageClient storage,
+        IFileMetadataRefRepository fileRefRepository,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
         ICertificateOfCompletionRenderer certificateRenderer,
@@ -69,9 +78,16 @@ public static class SignatureRequestCompletedConsumer
             if (request is null)
                 return;
 
+            // Gate anti-carrera con ClamAV: si algún PNG de firma aún no pasó el scan (proyección
+            // ausente/Pending), lanza SignatureImageNotReadyException → Wolverine redelivera con
+            // cooldown hasta que llegue FileAvailable. Devuelve los firmantes cuya imagen ya está
+            // Available (los Infected/Deleted se excluyen: sellan con fallback tipográfico).
+            var readyImageSignerIds = await ResolveScannedSignatureImagesAsync(request, fileRefRepository, logger, ct);
+
             var pipeline = await SealAndPersistAsync(
                 request,
                 evt,
+                readyImageSignerIds,
                 storage,
                 brandingRepository,
                 sealer,
@@ -142,9 +158,81 @@ public static class SignatureRequestCompletedConsumer
 
     // ============== Fase 2..6: pipeline de sellado ==============
 
+    // ============== Gate anti-carrera ClamAV ==============
+
+    /// <summary>
+    /// Recorre los firmantes con imagen de firma y consulta la proyección local de readiness
+    /// (<see cref="FileMetadataRef"/>, alimentada por FileAvailable/FileInfected de CloudStorage):
+    /// <list type="bullet">
+    ///   <item><description>Ausente o <c>Pending</c> → aún escaneando: lanza
+    ///     <see cref="SignatureImageNotReadyException"/> para que Wolverine reintente el sellado.</description></item>
+    ///   <item><description><c>Available</c> → el id del firmante entra al set descargable.</description></item>
+    ///   <item><description><c>Infected</c>/<c>Deleted</c> → se excluye (nunca se embebe): ese campo
+    ///     cae al sello tipográfico. No se reintenta porque no va a mejorar.</description></item>
+    /// </list>
+    /// </summary>
+    private static async Task<IReadOnlySet<Guid>> ResolveScannedSignatureImagesAsync(
+        SignatureRequest request,
+        IFileMetadataRefRepository fileRefRepository,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var ready = new HashSet<Guid>();
+        foreach (var signer in request.Signers)
+        {
+            if (signer.SignatureImageFileId is not { } imageFileId)
+                continue;
+
+            var projection = await fileRefRepository.GetByFileIdAsync(request.TenantId, imageFileId, ct);
+            switch (projection?.Status)
+            {
+                case FileScanStatus.Available:
+                    ready.Add(signer.Id);
+                    break;
+
+                case FileScanStatus.Infected:
+                case FileScanStatus.Deleted:
+                    logger.LogWarning(
+                        "Signature image {FileId} for signer {SignerId} is {Status}; sealing with typographic fallback.",
+                        imageFileId,
+                        signer.Id,
+                        projection.Status
+                    );
+                    break;
+
+                default:
+                    // Aún escaneando (proyección ausente/Pending). Reintentar da tiempo al scan, PERO con
+                    // un tope: si tras MaxScanWait el archivo sigue sin estar Available (scan roto/atascado,
+                    // o la subida nunca se registró), NO se bloquea la entrega para siempre — se sella con
+                    // fallback tipográfico y se emite el documento. Mejor un sello degradado entregado que
+                    // un envelope que nunca llega al firmante.
+                    var elapsed = DateTime.UtcNow - (request.CompletedAtUtc ?? DateTime.UtcNow);
+                    if (elapsed > MaxSignatureImageScanWait)
+                    {
+                        logger.LogWarning(
+                            "Signature image {FileId} for signer {SignerId} is still not Available after {Elapsed}; "
+                                + "sealing with typographic fallback to avoid blocking delivery.",
+                            imageFileId,
+                            signer.Id,
+                            elapsed
+                        );
+                        break;
+                    }
+
+                    throw new SignatureImageNotReadyException(
+                        $"Signature image {imageFileId} for signer {signer.Id} has not finished virus scanning yet."
+                    );
+            }
+        }
+
+        return ready;
+    }
+
     private static async Task<Result<PipelineOutcome>> SealAndPersistAsync(
         SignatureRequest request,
         SignatureRequestCompletedIntegrationEvent evt,
+        IReadOnlySet<Guid> readyImageSignerIds,
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
@@ -158,13 +246,21 @@ public static class SignatureRequestCompletedConsumer
         if (originalBytesResult.IsFailure)
             return Result.Failure<PipelineOutcome>(originalBytesResult.Error);
 
-        var sealResult = ApplySeal(request, evt, originalBytesResult.Value, sealer);
-        var sealedUpload = BuildSealedUpload(request, sealResult);
-        var sealedFileIdResult = await storage.UploadAsync(request.TenantId, sealedUpload, ct);
-        if (sealedFileIdResult.IsFailure)
-            return Result.Failure<PipelineOutcome>(sealedFileIdResult.Error);
+        // Bajamos aquí (donde vive el I/O de CloudStorage) el PNG de firma de cada firmante cuyo archivo
+        // ya pasó el scan (readyImageSignerIds), para que el engine estampe la imagen y quede puro (sin I/O).
+        var signatureImages = await DownloadSignatureImagesAsync(request, readyImageSignerIds, storage, ct);
 
-        var certificateFileId = await MaybeGenerateCertificateAsync(
+        var sealResult = ApplySeal(request, evt, originalBytesResult.Value, signatureImages, sealer);
+
+        // ORDEN CRÍTICO (carrera con el commit): el handler de sellado corre bajo una transacción de
+        // Wolverine que commitea al FINAL, pero las subidas publican SaveFileRequested de inmediato, así
+        // que CloudStorage escanea y emite FileAvailable ANTES del commit. SealedReady/CertReady resuelven
+        // el request por Sealed/CertificateFileId, que aún no están persistidos si el FileAvailable gana la
+        // carrera → se perdía el correo de "documento firmado". Solución: hacer TODO el trabajo lento
+        // (render del certificado + descarga del logo de oficina, ~1-2s) ANTES de subir nada, y luego subir
+        // sellado y certificado espalda con espalda justo antes del commit. Así ambos FileAvailable llegan
+        // con una ventana mínima (~ms) respecto al commit y los consumers encuentran el request.
+        var certificateBytesResult = await GenerateCertificateBytesAsync(
             request,
             sealResult,
             certificateRenderer,
@@ -173,15 +269,40 @@ public static class SignatureRequestCompletedConsumer
             logger,
             ct
         );
-        if (certificateFileId.IsFailure)
-            return Result.Failure<PipelineOutcome>(certificateFileId.Error);
+        if (certificateBytesResult.IsFailure)
+            return Result.Failure<PipelineOutcome>(certificateBytesResult.Error);
+
+        // Certificado PRIMERO y sellado de ÚLTIMO: así el FileAvailable del sellado (el correo que fallaba)
+        // llega con la ventana más chica posible respecto al commit — sube y a renglón seguido se persiste.
+        Guid? certificateFileId = null;
+        if (certificateBytesResult.Value is { Length: > 0 } certificateBytes)
+        {
+            var certificateUpload = BuildCertificateUpload(request, certificateBytes);
+            var certificateUploadResult = await storage.UploadAsync(request.TenantId, certificateUpload, ct);
+            if (certificateUploadResult.IsFailure)
+            {
+                logger.LogWarning(
+                    "Certificate upload failed for {RequestId}: {Error}",
+                    request.Id,
+                    certificateUploadResult.Error.Message
+                );
+                return Result.Failure<PipelineOutcome>(certificateUploadResult.Error);
+            }
+
+            certificateFileId = certificateUploadResult.Value;
+        }
+
+        var sealedUpload = BuildSealedUpload(request, sealResult);
+        var sealedFileIdResult = await storage.UploadAsync(request.TenantId, sealedUpload, ct);
+        if (sealedFileIdResult.IsFailure)
+            return Result.Failure<PipelineOutcome>(sealedFileIdResult.Error);
 
         var sealedAt = DateTime.UtcNow;
         var persistence = await PersistOnAggregateAsync(
             request,
             sealedFileIdResult.Value,
             sealResult.ChecksumSha256,
-            certificateFileId.Value,
+            certificateFileId,
             unitOfWork,
             ct
         );
@@ -189,18 +310,49 @@ public static class SignatureRequestCompletedConsumer
             return Result.Failure<PipelineOutcome>(persistence.Error);
 
         return Result.Success(
-            new PipelineOutcome(sealedFileIdResult.Value, sealResult.ChecksumSha256, certificateFileId.Value, sealedAt)
+            new PipelineOutcome(sealedFileIdResult.Value, sealResult.ChecksumSha256, certificateFileId, sealedAt)
         );
+    }
+
+    private static async Task<IReadOnlyDictionary<Guid, byte[]>> DownloadSignatureImagesAsync(
+        SignatureRequest request,
+        IReadOnlySet<Guid> readyImageSignerIds,
+        ISignatureCloudStorageClient storage,
+        CancellationToken ct
+    )
+    {
+        var images = new Dictionary<Guid, byte[]>();
+        foreach (var signer in request.Signers)
+        {
+            if (signer.SignatureImageFileId is not { } imageFileId || !readyImageSignerIds.Contains(signer.Id))
+                continue;
+
+            var downloadResult = await storage.DownloadAsync(request.TenantId, imageFileId, ct);
+            if (downloadResult.IsSuccess)
+            {
+                images[signer.Id] = downloadResult.Value;
+                continue;
+            }
+
+            // El gate ya confirmó Available, así que un fallo aquí es transitorio (blip de MinIO/red),
+            // no "archivo inexistente". Reintentar el sellado es preferible a sellar sin la firma real.
+            throw new SignatureImageNotReadyException(
+                $"Signature image {imageFileId} for signer {signer.Id} is Available but could not be downloaded ({downloadResult.Error.Code})."
+            );
+        }
+
+        return images;
     }
 
     private static SealingResult ApplySeal(
         SignatureRequest request,
         SignatureRequestCompletedIntegrationEvent evt,
         byte[] originalBytes,
+        IReadOnlyDictionary<Guid, byte[]> signatureImages,
         IDocumentSealingEngine sealer
     )
     {
-        var fields = BuildFieldRenders(request);
+        var fields = BuildFieldRenders(request, signatureImages);
         // Sin el id de la SignatureRequest: es un identificador interno sensible y no debe estamparse en
         // cada página del documento firmado. La integridad ya la ancla el "Doc SHA-256" del pie, y la
         // referencia del envelope vive en el Certificate of Completion (documento aparte).
@@ -209,14 +361,24 @@ public static class SignatureRequestCompletedConsumer
         return sealer.Seal(sealingRequest);
     }
 
-    private static IReadOnlyList<SealedFieldRender> BuildFieldRenders(SignatureRequest request)
+    private static IReadOnlyList<SealedFieldRender> BuildFieldRenders(
+        SignatureRequest request,
+        IReadOnlyDictionary<Guid, byte[]> signatureImages
+    )
     {
         var renders = new List<SealedFieldRender>();
         foreach (var signer in request.Signers)
         {
             var signedAt = signer.SignedAtUtc ?? DateTime.UtcNow;
+            // Solo los campos de firma llevan la imagen; un campo de texto/fecha del mismo firmante
+            // conserva su render tipográfico aunque exista PNG de firma.
+            signatureImages.TryGetValue(signer.Id, out var signerImage);
             foreach (var field in signer.Fields)
             {
+                var textValue =
+                    field.Kind == SignatureFieldKind.Text
+                        ? signer.FieldValues.FirstOrDefault(v => v.FieldId == field.Id)?.Value
+                        : null;
                 renders.Add(
                     new SealedFieldRender(
                         Page: field.Position.Page,
@@ -227,7 +389,9 @@ public static class SignatureRequestCompletedConsumer
                         Kind: field.Kind,
                         Label: field.Label,
                         SignerDisplayName: signer.FullName.Value,
-                        SignedAtUtc: signedAt
+                        SignedAtUtc: signedAt,
+                        SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
+                        Value: textValue
                     )
                 );
             }
@@ -235,7 +399,7 @@ public static class SignatureRequestCompletedConsumer
         return renders;
     }
 
-    private static SignaturePdfUpload BuildSealedUpload(SignatureRequest request, SealingResult sealResult)
+    private static SignatureFileUpload BuildSealedUpload(SignatureRequest request, SealingResult sealResult)
     {
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
@@ -257,7 +421,13 @@ public static class SignatureRequestCompletedConsumer
 
     // ============== Fase 3b: certificate opcional ==============
 
-    private static async Task<Result<Guid?>> MaybeGenerateCertificateAsync(
+    /// <summary>
+    /// Genera SOLO los bytes del Certificate of Completion (incluye la descarga del logo de oficina/sistema,
+    /// que es la parte lenta), SIN subirlo. La subida se hace luego, junto a la del sellado, justo antes del
+    /// commit — ver el comentario de ORDEN CRÍTICO en <see cref="SealAndPersistAsync"/>. Devuelve null si la
+    /// request no pidió certificado.
+    /// </summary>
+    private static async Task<Result<byte[]?>> GenerateCertificateBytesAsync(
         SignatureRequest request,
         SealingResult sealResult,
         ICertificateOfCompletionRenderer renderer,
@@ -268,7 +438,7 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         if (!request.GenerateCertificate)
-            return Result.Success<Guid?>(null);
+            return Result.Success<byte[]?>(null);
 
         // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
         // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
@@ -296,9 +466,14 @@ public static class SignatureRequestCompletedConsumer
 
         var model = BuildCertificateModel(request, sealResult, issuerName, platformLogo, officeLogo);
         var rendered = renderer.Render(model);
+        return Result.Success<byte[]?>(rendered.CertificatePdfBytes);
+    }
+
+    private static SignatureFileUpload BuildCertificateUpload(SignatureRequest request, byte[] certificateBytes)
+    {
         var (ownerType, ownerId) = ResolveSealedOwner(request);
-        var upload = new SignaturePdfUpload(
-            Content: rendered.CertificatePdfBytes,
+        return new(
+            Content: certificateBytes,
             FileName: $"certificate-{request.Id:D}.pdf",
             ContentType: "application/pdf",
             OwnerType: ownerType,
@@ -307,18 +482,6 @@ public static class SignatureRequestCompletedConsumer
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId
         );
-        var uploadResult = await storage.UploadAsync(request.TenantId, upload, ct);
-        if (uploadResult.IsFailure)
-        {
-            logger.LogWarning(
-                "Certificate upload failed for {RequestId}: {Error}",
-                request.Id,
-                uploadResult.Error.Message
-            );
-            return Result.Failure<Guid?>(uploadResult.Error);
-        }
-
-        return Result.Success<Guid?>(uploadResult.Value);
     }
 
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(

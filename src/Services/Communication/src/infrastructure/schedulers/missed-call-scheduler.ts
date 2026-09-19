@@ -1,8 +1,10 @@
 import { logger } from '../logger/logger.js';
 import { processMissedCalls } from '../../application/use-cases/process-missed-calls.js';
 import type { CallRepository } from '../../application/ports/call-repository.js';
+import type { ConversationRepository } from '../../application/ports/conversation-repository.js';
 import type { IntegrationEventPublisher } from '../../application/ports/integration-event-publisher.js';
 import type { PresenceService } from '../../application/ports/presence-service.js';
+import type { RealtimeEmitter } from '../../application/ports/realtime-emitter.js';
 import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
 
 /**
@@ -25,8 +27,10 @@ export function startMissedCallScheduler(
   config: MissedCallSchedulerConfig,
   deps: {
     calls: CallRepository;
+    conversations: ConversationRepository;
     publisher: IntegrationEventPublisher;
     presence: PresenceService;
+    emitter: RealtimeEmitter;
     lock: RedisDistributedLock;
   },
 ): { stop(): void } {

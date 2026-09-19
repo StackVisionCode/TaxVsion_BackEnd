@@ -1,16 +1,18 @@
 # Campaigns — Idempotency Spec
 
 - **Servicio:** Campaigns (`TaxVision.Campaigns`)
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-09-16 (revisión: **sin claves de dinero**)
 - **Estado:** DISEÑO — no implementado
 
 Mensajería at-least-once (Wolverine outbox/inbox durable). **Exactly-once no existe.** Toda operación con efecto es idempotente por diseño, en tres capas:
 
 1. **Transporte:** inbox durable de Wolverine deduplica *envelopes* reentregados.
 2. **Constraint de BD:** unique keys hacen que la segunda escritura del "mismo hecho" falle o sea no-op.
-3. **Efecto de negocio:** `ProcessedBusinessMessage` (copia local del de Growth, `Growth/.../Idempotency/ProcessedBusinessMessage.cs:9-23`) protege operaciones que no se pueden expresar como un solo constraint (p.ej. una llamada M2M con respuesta cacheable).
+3. **Efecto de negocio:** `ProcessedBusinessMessage` (copia local del de Growth, `Growth/.../Idempotency/ProcessedBusinessMessage.cs:9-23`) protege operaciones que no se pueden expresar como un solo constraint (p.ej. crear campaign vía API con respuesta cacheable).
 
 Las tres son necesarias: el inbox protege del redelivery del **mismo** mensaje; el constraint y `ProcessedBusinessMessage` protegen del **mismo efecto** llegando por mensajes distintos o rutas distintas.
+
+> **Regla dura:** Campaign no tiene operaciones monetarias, así que **ninguna clave de idempotencia aquí es de reserve/consume/refund**. Las únicas operaciones idempotentes son de definición, creación de run, dispatch por destinatario y su result.
 
 ---
 
@@ -18,15 +20,12 @@ Las tres son necesarias: el inbox protege del redelivery del **mismo** mensaje; 
 
 | Operación | Clave lógica | Mecanismo primario |
 |---|---|---|
-| Crear Campaign (API) | header `Idempotency-Key` + fingerprint del body | `ProcessedBusinessMessage(op="create_campaign", scope=tenant)` |
+| Crear/editar Campaign (API) | header `Idempotency-Key` + fingerprint del body | `ProcessedBusinessMessage(op="write_campaign", scope=tenant)` |
+| Import de contactos (API) | `Idempotency-Key` + fingerprint del batch | `ProcessedBusinessMessage(op="import_contacts", scope=tenant)` |
 | Trigger / StartCampaignRun | `occurrence_key` = `campaignId:<instant o triggerId>` | `UNIQUE(tenant, campaign_id, occurrence_key)` en `campaign_run` |
-| Wallet RESERVE | `(reserve, runId)` | `ProcessedBusinessMessage(op="reserve", scope=runId)` + Wallet-side |
-| Dispatch por destinatario | `dispatch_idempotency_key` = `f(runId, recipientId, attemptNo)` | `UNIQUE(run_id, dispatch_idempotency_key)` en `campaign_recipient` |
-| Registrar dispatch result | mismo `dispatch_idempotency_key` | guard de estado del recipient (transición monótona) |
-| Tracking (open/click/bounce) | `(recipientId, providerEventId)` | dedupe + campos set-once |
-| Wallet CONSUME | `(consume, runId)` | `ProcessedBusinessMessage(op="consume", scope=runId)` + Wallet-side |
-| Wallet REFUND | `(refund, runId)` | idem |
-| Reconcile / Complete | `run_status` guard set-once (`cost_actual` una vez) | guard de estado del run |
+| Dispatch por destinatario | `dispatch_id` = `f(runId, contactRef, channel, attemptNo)` | `UNIQUE(run_id, dispatch_id)` en `campaign_recipient` |
+| Registrar dispatch result | mismo `dispatch_id` | guard de estado del recipient (transición monótona) |
+| Cierre / Complete | `run_status` guard set-once | guard de estado del run |
 
 ---
 
@@ -38,44 +37,38 @@ Dos entregas de `scheduler.run_due.v1` con el mismo `occurrenceKey`, o dos POST 
 
 ## 3. Dispatch por destinatario (el corazón)
 
-`dispatch_idempotency_key = hash(runId | recipientId | attemptNo)`. Propiedades:
+`dispatch_id = hash(runId | contactRef | channel | attemptNo)`. Propiedades:
 
-- Estable para un `(run, recipient, attempt)` → el ejecutor puede deduplicar su lado.
-- `UNIQUE(run_id, dispatch_idempotency_key)` → el fan-out nunca emite dos dispatch para el mismo recipient/attempt aunque el handler `DispatchRun` se reejecute (redelivery).
+- Estable para un `(run, recipient, channel, attempt)` → el ejecutor puede deduplicar su lado y devolverlo intacto en el result (patrón `CampaignId` de `PostmasterEmailEvents.cs:37,104`).
+- `UNIQUE(run_id, dispatch_id)` → el fan-out nunca emite dos dispatch para el mismo recipient/canal/attempt aunque el handler `DispatchRun` se reejecute (redelivery).
 - Un reintento **legítimo** (el anterior falló) usa `attemptNo+1` → key nueva → dispatch nuevo, sin colisión.
 
 Esto corrige el anti-patrón legado #3 (ADR-CAMP-000): el legado marcaba `Sent` a todos los no-fallidos en un solo `SaveChanges` (`CampaignSendService.cs:63-71`) sin clave por destinatario, así que un reintento del batch re-enviaba a todos.
 
 ---
 
-## 4. Dispatch result idempotente (guard de estado)
+## 4. Dispatch result idempotente (guard de estado) — v2 con Accepted/Unknown
 
-`RecordDispatchResult` avanza `dispatch_state` solo si la transición es válida **y nueva**:
+`RecordDispatchResult` se correlaciona por el `dispatch_id` **del intento** (no de la unidad) y avanza `dispatch_state` solo si la transición es válida **y nueva**:
 
 ```
-Dispatched --delivered--> Delivered   (primer delivered gana; segundo delivered = no-op)
+Dispatched --accepted---> Accepted     (proveedor aceptó; aún no confirmado)
+Dispatched --delivered--> Delivered
 Dispatched --failed-----> Failed
-Delivered  --delivered--> (no-op, ya terminal)
-Failed     --delivered--> (conflicto tardío: log + no-op; no revierte)
+Accepted   --delivered--> Delivered    (reconciliación por webhook; delivered++, accepted--)
+Accepted   --failed-----> Failed
+(deadline) Dispatched --> Unknown      (sweeper; ver Concurrency §7)
+Unknown    --delivered--> Delivered    (reconciliación tardía, auditada, sin doble conteo)
+Unknown    --failed-----> Failed
+Delivered  --*---------> (no-op, terminal)
+Failed     --delivered--> (conflicto tardío: log + no-op; no revierte a la fuerza)
 ```
 
-Como Delivered/Failed/Suppressed son **terminales**, un result duplicado o fuera de orden es no-op. El contador asociado incrementa **solo** en la transición efectiva (dentro de la misma tx), nunca en el no-op. Así el reintento de webhook no doble-cuenta (corrige `CampaignStatistics` sin dedupe del legado).
+Claves: (a) un `200 OK`/"encolado" del proveedor es **Accepted**, no Delivered (fix #03); (b) un result que llega para un `attempt_no` **anterior** cuando ya existe uno posterior se registra en su intento pero **no** pisa el outcome de la unidad si el intento vigente es otro (fix #09); (c) el contador incrementa solo en la transición efectiva, nunca en el no-op (corrige el doble-conteo del legado).
 
 ---
 
-## 5. Tracking set-once
-
-Open/click/bounce llegan por webhook del ejecutor, con reintentos y duplicados. Reglas:
-
-- `first_open_at_utc` / `first_click_at_utc`: **set-once** (solo si NULL). El segundo open no cambia el timestamp.
-- `open_count` / `click_count`: incrementan **solo** si `(recipientId, providerEventId)` no fue visto → dedupe por `ProcessedBusinessMessage(op="tracking")` o tabla `tracking_event_dedupe`. `providerEventId` es la clave que el ejecutor/proveedor garantiza única por evento físico.
-- Un open sobre un recipient no-`Delivered` se ignora (defensa; no debería ocurrir).
-
-Esto corrige el doble-conteo de `CampaignTrackingEvent` del legado en reintento de webhook (ADR-CAMP-000 §Anti-patrones #3).
-
----
-
-## 6. `ProcessedBusinessMessage` (patrón)
+## 5. `ProcessedBusinessMessage` (patrón)
 
 Ciclo (idéntico al de Growth, `ProcessedBusinessMessage.cs:27-105`):
 
@@ -88,25 +81,31 @@ Begin(tenant, op, scopeId, idempotencyKey, requestFingerprint, now, expiresAt)  
 - Reentrada con **mismo fingerprint** y estado `Completed` → devolver la respuesta cacheada (no re-ejecutar).
 - Reentrada con **distinto fingerprint** sobre la misma `(op,scope,key)` → conflicto `409` (reuso de key con payload distinto), igual que la semántica HTTP Idempotency-Key.
 - `request_fingerprint` = SHA-256 hex (64 chars) del body canónico — validado por el propio VO (`ProcessedBusinessMessage.cs:52-56`).
-- `expires_at_utc` acota la ventana de dedupe (GC de filas viejas).
+- `expires_at_utc` acota la ventana de dedupe. **El TTL cubre la ventana real de replay + la política de repetición del usuario** (no se elige solo por limpieza de BD, fix #23).
 
-Se usa para: crear campaign (API), reserve/consume/refund (M2M a Wallet), y tracking dedupe.
+Se usa para: crear/editar campaign, import de contactos, y cualquier comando de escritura de la API con `Idempotency-Key`. **No** para dinero (no existe en Campaign).
+
+### 6.1 Recuperación de `Processing` y concurrencia (fix #23)
+
+- **Solicitud concurrente con la misma clave mientras está `Processing`:** responde `409 Conflict` (o `425 Too Early`) con `Retry-After`; **no** ejecuta un segundo efecto. La primera en tomar la fila (insert que gana el `UNIQUE`) es la que procesa.
+- **`Processing` abandonado (crash del handler):** una fila `Processing` con `updated_at` anterior a un `processing_lease_timeout` se considera huérfana; un barredor la marca `Failed(stale)` **o** la rehabilita para reintento **solo si** la operación es segura de reejecutar (idempotente aguas abajo). No se deja `Processing` colgado indefinidamente bloqueando la clave.
+- **Captura del conflicto `UNIQUE` en PostgreSQL:** el "insert-gana / pierde → devuelve lo existente" se implementa capturando la violación **dentro de una subtransacción/`SAVEPOINT`** (o `INSERT ... ON CONFLICT`), porque un error aborta la transacción actual; no basta "capturar y devolver" sin cuidar el estado transaccional.
+- **Alcance por endpoint:** cada endpoint declara qué recurso/método cubre la clave, el fingerprint canónico y el TTL (ver `API_Contracts.md`).
 
 ---
 
-## 7. Interacción con Wolverine inbox
+## 6. Interacción con Wolverine inbox
 
-El inbox durable ya deduplica el **mismo** envelope reentregado; `ProcessedBusinessMessage`/unique-constraints cubren el caso de **efecto duplicado por rutas distintas** (p.ej. un result que llega por webhook y por reconciliación, o dos `RunDue` distintos por misma occurrence). No se confía solo en el inbox — es defensa en profundidad exigida por CLAUDE.md ("nunca exactly-once; handlers idempotentes + unique constraints + state guards").
+El inbox durable ya deduplica el **mismo** envelope reentregado; `ProcessedBusinessMessage`/unique-constraints cubren el caso de **efecto duplicado por rutas distintas** (p.ej. un result que llega por dos entregas, o dos `RunDue` distintos por misma occurrence). No se confía solo en el inbox — es defensa en profundidad exigida por CLAUDE.md ("nunca exactly-once; handlers idempotentes + unique constraints + state guards").
 
 ---
 
-## 8. Tabla de evidencia
+## 7. Tabla de evidencia
 
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
 | `ProcessedBusinessMessage` API (Begin/Complete/Fail, fingerprint SHA-256) | `Growth/.../ProcessedBusinessMessage.cs:27-105,52-56` | VERIFIED | 97% |
 | Legado marca Sent a todos sin clave por destinatario | `CampaignSendService.cs:63-71` | VERIFIED | 97% |
-| Legado sin dedupe de tracking (doble-cuenta) | ADR-CAMP-000 §Anti-patrones #3 | DOCUMENTED_ONLY | 90% |
+| Correlación opaca devuelta por el ejecutor (modelo `dispatch_id`) | `PostmasterEmailEvents.cs:37,104` | VERIFIED | 95% |
 | Legado sin entidad de run / sin unique de ocurrencia | `CampaignSchedulerBackgroundService.cs` (ausencia) | VERIFIED | 93% |
-| Claves de idempotencia por operación | diseño (este doc §1) | NEW | 87% |
-| Tracking set-once + dedupe providerEventId | diseño (este doc §5) | NEW | 86% |
+| Claves de idempotencia sin dinero | ADR-CAMP-001 D1 (decisión del usuario) | DECISION | 99% |

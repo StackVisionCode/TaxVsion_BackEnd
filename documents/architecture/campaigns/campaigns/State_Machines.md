@@ -1,16 +1,19 @@
 # Campaigns — State Machines
 
 - **Servicio:** Campaigns (`TaxVision.Campaigns`)
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-09-17 (revisión v2 — hallazgos de review #01/#03/#04/#09/#10/#17/#22)
 - **Estado:** DISEÑO — no implementado
 
-Tres máquinas de estado independientes: **Campaign** (la definición), **CampaignRun** (una ejecución), **CampaignRecipient.DispatchState** (un destinatario). Cada transición es un método del aggregate que devuelve `Result` y está protegido por un state-guard (rechaza transiciones inválidas de forma idempotente). Coherente con `../06_Cross_Service_Transactional_Protocol.md`.
+> **Modelo canónico v2 (decisiones del usuario 2026-09-17):**
+> - **Unidad de trabajo = destinatario/canal.** Si una campaña selecciona Email+SMS, cada persona genera **2 unidades** (una por canal). `recipient_count` del run = **total congelado de unidades**, no de personas. Personas ≠ unidades ≠ intentos.
+> - **Semántica de entrega explícita:** `Accepted` (proveedor aceptó) ≠ `Delivered` (confirmado por webhook) ≠ `Unknown` (sin confirmación / timeout). Un timeout **no** es `Failed`.
+> - **Cierre por total congelado**, no por `Dispatched` (fix #01).
+
+Tres máquinas independientes: **Campaign** (definición), **CampaignRun** (una ejecución), **CampaignRecipient** (una unidad destinatario/canal). Cada transición es un método del aggregate que devuelve `Result`, protegido por un state-guard idempotente. **Sin dinero** (ADR-CAMP-001 D1). Tracking de engagement (open/click) y `Suppressed`/`Bounced` = diferidos post-MVP.
 
 ---
 
-## 1. Campaign
-
-Ciclo de vida de la **definición**. Contrasta con el legado, que aplanaba definición + ejecución en un solo `CampaignStatus` de 9 valores (`CampaignStatus.cs`), incluyendo `Sending`/`Sent`/`Paused` que en realidad describen una ejecución.
+## 1. Campaign (definición)
 
 ```
         create
@@ -19,25 +22,22 @@ Ciclo de vida de la **definición**. Contrasta con el legado, que aplanaba defin
       ┌────────┐  edit content/audience/schedule (permitido solo aquí)
       │ Draft  │◄─────────────┐
       └───┬────┘              │
-   MarkReady │ (validación completa)
+   MarkReady │ (validación)   │ edit → vuelve a Draft (invalida readiness)
           ▼                   │
-      ┌────────┐  edit ──────►│ (vuelve a Draft, invalida readiness)
+      ┌────────┐──────────────┘
       │ Ready  │
       └───┬────┘
    Schedule │ / TriggerNow
           ▼
       ┌───────────┐   (cada disparo NO cambia la Campaign; crea un CampaignRun)
-      │ Scheduled │──────────► [Scheduler crea CampaignRun N] ─┐
-      └───┬───────┘◄──────── recurrencia re-agenda la MISMA    │
-          │                   Campaign (nuevo run, no reset)   │
-   Archive │                                                   │
-          ▼                                                    │
-      ┌──────────┐                                             │
-      │ Archived │ (soft; runs históricos permanecen)          │
-      └──────────┘                                             ▼
+      │ Scheduled │──────────► [Scheduler crea CampaignRun N]
+      └───┬───────┘◄──────── recurrencia re-agenda la MISMA Campaign
+   Archive │
+          ▼
+      ┌──────────┐
+      │ Archived │ (soft; runs históricos permanecen)
+      └──────────┘
 ```
-
-Estados:
 
 | Estado | Significado | Transiciones salientes |
 |---|---|---|
@@ -46,114 +46,132 @@ Estados:
 | `Scheduled` | Con ScheduleSpec activo (incl. recurrente) | `Unschedule`→`Ready`, `Archive` |
 | `Archived` | Retirada (soft) | — (terminal) |
 
-**Clave:** una Campaign `Scheduled` recurrente **permanece `Scheduled`** y genera **N CampaignRun**. No hay estado `Sending`/`Sent` en la Campaign — eso es del run. Corrige el reset destructivo del legado (`CampaignSchedulerBackgroundService.cs:124-135`, que sobreescribe `ScheduledAt`/`SentAt`/`Status` sobre la única fila).
+**Envío inmediato (fix #10):** `TriggerNow` desde `Draft` **no** salta a un estado `Sending`. Ejecuta un único recorrido interno: **validar → `MarkReady` interno → crear `CampaignRun`**. No existe estado `Sending` en la Campaign — eso es del run. La API expone `send-now`; internamente aplica esa secuencia (documentado en `API_Contracts.md`). Una Campaign `Scheduled` recurrente **permanece `Scheduled`** y genera **N CampaignRun** (corrige el reset destructivo del legado `CampaignSchedulerBackgroundService.cs:124-135`).
 
 ---
 
-## 2. CampaignRun
+## 2. CampaignRun (una ejecución)
 
-Ciclo de vida de **una ejecución**. Es donde vive la saga balance+dispatch (ver `Transactional_Protocol.md`). El run es inmutable en su snapshot; solo su estado y contadores mutan.
+El run es inmutable en su snapshot; solo su estado, contadores y flags de progreso mutan.
 
 ```
-   StartCampaignRun (desde lease del Scheduler)
+   StartCampaignRun (send-now, o lease del Scheduler)
           │
           ▼
-     ┌─────────┐  materializa audiencia (Customer) + congela precio
-     │ Created │  estimación de costo = RecipientCount × UnitPriceMinor
+     ┌─────────┐  (persiste DispatchRun en la MISMA tx → outbox; ver Transactional_Protocol §T1)
+     │ Created │
      └────┬────┘
-  gate check │ module.campaigns (Subscription) — falla-> Rejected
+  gate check │ module.campaigns (Subscription, enforce en prod) — falla → Rejected
           ▼
-     ┌──────────┐  Wallet RESERVE (movimiento inmutable, idempotente)
-     │ Reserving│──── reserve falla / saldo insuficiente ──► Rejected
-     └────┬─────┘
+     ┌──────────────┐  materializa audiencia por PÁGINAS (Clients+Listas+Manual, aplica opt-out)
+     │ Materializing│  → una unidad (CampaignRecipient) por (contacto, canal); Skip los suprimidos
+     └────┬─────────┘  al terminar: congela recipient_count (total de unidades) + materialization_complete
           ▼
-     ┌──────────┐  fan-out: 1 evento dispatch por destinatario (idempotente)
-     │Dispatching│──── (backpressure; outbox durable)
-     └────┬─────┘
-          │ todos los recipients en estado terminal (Delivered/Failed/Suppressed/Bounced)
+     ┌───────────┐  fan-out: 1 dispatch por UNIDAD (idempotente por dispatch_id), por lotes con checkpoint
+     │ Dispatching│  al terminar la emisión: emission_complete
+     └────┬──────┘
+          │ cierre (ver predicado abajo)
           ▼
-     ┌──────────┐  Wallet: CONSUME entregados + REFUND no-entregados
-     │Reconciling│
-     └────┬─────┘
-          ▼
-     ┌──────────┐
-     │Completed │ (terminal)   ── liquidación cerrada, CostActual fijado
-     └──────────┘
+     ┌───────────────────────────────────────┐
+     │ Completed | PartiallyFailed | Failed   │ (terminal) ── contadores finales congelados
+     └───────────────────────────────────────┘
 
-   Cancel/Fail en Reserving/Dispatching:
-     Reserving   -> cancel  -> Rejected  (release reserva si existía)
-     Dispatching -> Cancel  -> Cancelling -> Reconciling (consume ya entregados, refund resto)
+   Cancel → Cancelling → Cancelled  (deja de emitir; drena/vence in-flight; conserva lo ya entregado)
 ```
 
-Estados:
+| Estado | Significado | Salientes |
+|---|---|---|
+| `Created` | Snapshot congelado; `DispatchRun` encolado durable | `Materializing`, `Rejected` |
+| `Materializing` | Resolviendo audiencia por páginas; creando unidades | `Dispatching`, `Cancelling`, `Rejected` |
+| `Dispatching` | Fan-out por unidad en curso (lotes con checkpoint) | `Completed`, `PartiallyFailed`, `Failed`, `Cancelling` |
+| `Cancelling` | Cancelación solicitada; drenando in-flight | `Cancelled` |
+| `Completed` | Cerró sin fallos ni desconocidos | — terminal |
+| `PartiallyFailed` | Cerró con ≥1 `Failed` o ≥1 `Unknown`, y ≥1 `Delivered/Accepted` | — terminal |
+| `Failed` | Cerró sin ningún `Delivered/Accepted` (todo Failed/Skipped/Unknown) | — terminal |
+| `Cancelled` | Cancelado | — terminal |
+| `Rejected` | Nunca despachó (gate `module.campaigns` inactivo) | — terminal |
 
-| Estado | Significado | Wallet | Salientes |
-|---|---|---|---|
-| `Created` | Snapshot congelado, audiencia materializada | — | `Reserving`, `Rejected` |
-| `Reserving` | Solicitando RESERVE | reserve pendiente | `Dispatching`, `Rejected` |
-| `Dispatching` | Fan-out en curso | reservado | `Reconciling`, `Cancelling` |
-| `Cancelling` | Cancelación solicitada; drenando in-flight | reservado | `Reconciling` |
-| `Reconciling` | Agregando results, liquidando | consume/refund | `Completed` |
-| `Completed` | Liquidado (CostActual fijo) | liquidado | — terminal |
-| `Rejected` | Nunca despachó (gate/reserve/saldo) | release si aplica | — terminal |
-
-**Guards clave:**
-- `Created → Reserving` solo si el gate `module.campaigns` está activo (ortogonal al balance).
-- `Reserving → Dispatching` solo con `WalletReservationId` confirmado.
-- `Dispatching → Reconciling` solo cuando `Dispatched == Delivered + Failed + Suppressed + Bounced` (todos los recipients terminales). Este cierre es **idempotente**: re-evaluarlo no re-liquida.
-- `Reconciling → Completed` fija `CostActual` una vez (guard set-once).
+**Guards y predicado de cierre (fix #01):**
+- `Created → Materializing → Dispatching` solo si el gate `module.campaigns` está **activo** (enforce en producción; el modo log-only es solo una etapa de rollout acotada, ver `Security.md` y #17).
+- El run cierra **solo cuando**: `materialization_complete` ∧ `emission_complete` ∧ **no quedan unidades `Pending` ni `Dispatched` vivas** (las `Dispatched` vencidas pasan a `Unknown` por el sweeper). Equivale al invariante de conteo:
+  `delivered + accepted + failed + skipped + unknown == recipient_count`  (total **congelado** de unidades).
+- El estado terminal se deriva de los contadores: `Failed` si `delivered+accepted == 0`; `Completed` si `failed+unknown == 0`; `PartiallyFailed` en el resto.
+- **No se cierra contra `Dispatched`** (que nunca incluye los `Skipped`). El total autoritativo es `recipient_count`.
+- CAS sobre `run_status` + RowVersion garantiza cierre único (`Concurrency_Spec.md §4`). El cierre consulta una **condición autoritativa** (conteo sobre unidades o contador reconciliado), no una caché posiblemente atrasada.
 
 ---
 
-## 3. CampaignRecipient.DispatchState
+## 3. CampaignRecipient (una unidad destinatario/canal)
 
-Ciclo de vida de **un destinatario dentro de un run**. Reemplaza el `RecipientStatus` legado de 9 valores (`RecipientStatus.cs`) que mezclaba estado de dispatch con estado de tracking (Opened/Clicked) en la misma máquina lineal.
+Reemplaza el `RecipientStatus` legado de 9 valores (`RecipientStatus.cs`) que mezclaba dispatch con tracking.
 
 ```
-     materialize
+     materialize  (una unidad por (contacto, canal))
         │
+        ├─► Skipped   (opt-out del canal, sin destino válido, remitente no verificado) — terminal
         ▼
-   ┌─────────┐  dispatch event emitido (idempotencyKey = f(RunId,RecipientId,AttemptNo))
+   ┌─────────┐  dispatch emitido (dispatch_id = f(run_id, recipient_id, channel, attempt_no))
    │ Pending │
    └────┬────┘
         ▼
-   ┌────────────┐   result del ejecutor (correlacionado por idempotencyKey)
+   ┌────────────┐   result del consumer (correlacionado por dispatch_id)
    │ Dispatched │
    └────┬───────┘
-        ├─ delivered.succeeded  ─► Delivered  (set DeliveredAtUtc once)  → CONSUME 1
-        ├─ delivery.failed      ─► Failed     (FailureCode)              → REFUND 1
-        ├─ delivery.suppressed  ─► Suppressed (no se intentó)            → REFUND 1
-        └─ delivery.bounced     ─► Bounced    (sobre un Delivered previo)→ (ya consumido)
+        ├─ Accepted   (proveedor aceptó para procesar; puede avanzar por webhook)
+        │     ├─ Delivered  (entrega confirmada por webhook) — terminal
+        │     └─ Failed     (fallo confirmado posterior) — terminal
+        ├─ Failed     (rechazo/fallo confirmado sin aceptación) — terminal
+        └─ Unknown    (timeout / sin confirmación tras dispatch_deadline) — reconciliable
 ```
 
-Estados de **dispatch** (terminal = liquidable):
-
-| Estado | Significado | Efecto Wallet |
+| Estado | Significado | ¿Cuenta para cierre? |
 |---|---|---|
-| `Pending` | Materializado, aún no despachado | — |
-| `Dispatched` | Evento emitido, esperando result | (reservado) |
-| `Delivered` | Ejecutor confirmó entrega al MTA/proveedor | CONSUME 1 unidad |
-| `Failed` | Falló tras reintentos del ejecutor | REFUND 1 unidad |
-| `Suppressed` | Suppression list / no se intentó | REFUND 1 unidad |
-| `Bounced` | Bounce posterior a Delivered (webhook) | sin cambio de saldo (ya consumido); marca calidad |
+| `Pending` | Materializado, aún no despachado | no (bloquea cierre) |
+| `Dispatched` | Evento emitido, esperando result | no (bloquea cierre hasta `Unknown` por deadline) |
+| `Accepted` | Proveedor aceptó para procesar | **sí** (settled; puede refinarse a Delivered/Failed) |
+| `Delivered` | Entrega confirmada (webhook) | **sí** (terminal) |
+| `Failed` | Fallo confirmado (`Reason`) | **sí** (terminal) |
+| `Skipped` | No se intentó (opt-out / sin destino / remitente inválido) | **sí** (terminal) |
+| `Unknown` | Sin confirmación tras `dispatch_deadline` | **sí** (settled con incertidumbre; reconciliable) |
 
-**Tracking (ortogonal al dispatch, no es máquina lineal):** `Open` y `Click` son *señales set-once* sobre un recipient ya `Delivered`. `FirstOpenAtUtc`/`FirstClickAtUtc` se fijan una vez; `OpenCount`/`ClickCount` incrementan con dedupe por `ProcessedBusinessMessage(operation, recipientId, providerEventId)`. Un webhook duplicado **no** avanza estado ni doble-cuenta (corrige anti-patrón legado #3, ADR-CAMP-000).
+**Accepted vs Delivered (fix #03):** un `200 OK` del proveedor o "encolado" es **`Accepted`**, no `Delivered`. `Delivered` requiere confirmación posterior (webhook). Si un canal en el MVP **no** provee confirmación de entrega, `Accepted` es su outcome final y así se reporta (no se disfraza de `Delivered`).
 
-**Reintentos:** un reintento de dispatch incrementa `AttemptNo` → nueva `DispatchIdempotencyKey`. El ejecutor deduplica por su lado; Campaigns nunca crea un recipient nuevo por reintento (corrige el fan-out fire-and-forget legado que perdía trabajo al reiniciar, `CampaignSchedulerBackgroundService.cs:38` `Task.Delay` loop).
+**Timeout → `Unknown`, no `Failed` (fix #04):** cuando falta el result tras `dispatch_deadline`, la unidad pasa a `Unknown` (settled para permitir el cierre), **no** a `Failed`. Un `Delivered`/`Failed` que llegue después **reconcilia** `Unknown` → estado real (auditado), sin doble conteo. Nunca se convierte "perdí la respuesta" en "no se envió"; antes de crear un nuevo intento se reconcilia con el ejecutor/proveedor.
+
+**Política de envío en la unidad (§7.5 confirmada):**
+- **Quiet hours = diferir, no omitir:** una unidad fuera de la ventana del contacto queda `Pending` con `eligible_at_utc = nextEligibleAt`; el fan-out solo emite unidades con `eligible_at_utc <= now`. No es `Skipped`; el run sigue `Dispatching` hasta enviarlas (están programadas, no "stuck").
+- **Frequency cap:** al emitir, si el `contact_send_ledger` ya alcanzó `MaxSendsPerContactPerWindow` → `Skipped(frequency_cap)` (chequeo atómico entre campañas, `Data_Model.md §1.5b`).
+- **Preferencia de canal:** en la materialización, un canal no permitido/preferido por el contacto → `Skipped(channel_pref)`.
+
+**Reconciliación tardía:** transiciones permitidas post-settle: `Unknown → Delivered/Failed`, `Accepted → Delivered/Failed`. Ajustan contadores de forma auditada aunque el run ya haya cerrado (corrección, no reapertura).
+
+---
+
+## 3.1 Intentos (DispatchAttempt) — fix #09
+
+Un **reintento legítimo** (el anterior falló de forma transitoria) es un **nuevo intento**, no un recipient nuevo:
+
+- `recipient_id` es **estable por unidad** `(run_id, contactRef, channel)`. El `contactRef` es un id estable incluso para contactos **manuales** (se asigna un id generado por entrada manual; nunca el literal `"manual"`, que colisionaría — fix #09).
+- Cada intento es una fila `campaign_dispatch_attempt` con `UNIQUE(run_id, recipient_id, attempt_no)` y su propio `dispatch_id`. El recipient guarda `current_attempt_no` y su `outcome` final.
+- **Reentrega del bus del MISMO intento** (mismo `dispatch_id`) → no-op idempotente. **Nuevo intento de negocio** (`attempt_no+1`) → fila nueva, `dispatch_id` nuevo.
+- El `outcome` final de la unidad = el del último intento settled; un result del intento anterior que llegue tarde se correlaciona por su `dispatch_id` (del intento) y no pisa un intento posterior.
 
 ---
 
 ## 4. Acoplamiento entre máquinas
 
-| Evento | Recipient | RunCounters | RunStatus |
+| Evento | Recipient (unidad) | RunCounters | RunStatus |
 |---|---|---|---|
-| dispatch emitido | Pending→Dispatched | Dispatched++ | (Dispatching) |
-| delivered | Dispatched→Delivered | Delivered++ | evalúa cierre |
-| failed/suppressed | Dispatched→Failed/Suppressed | Failed/Suppressed++ | evalúa cierre |
-| todos terminales | — | — | Dispatching→Reconciling |
-| liquidación hecha | — | — | Reconciling→Completed |
+| materialize unidad | (nace) Pending o Skipped | recipient_count (congelado al fin) | Materializing |
+| dispatch emitido | Pending→Dispatched | dispatched++ | Dispatching |
+| accepted | Dispatched→Accepted | accepted++ | evalúa cierre |
+| delivered | Dispatched/Accepted→Delivered | delivered++ (accepted-- si venía de Accepted) | evalúa cierre |
+| failed | Dispatched/Accepted→Failed | failed++ | evalúa cierre |
+| skipped | Pending→Skipped (o al materializar) | skipped++ | (no bloquea) |
+| timeout (deadline) | Dispatched→Unknown | unknown++ | evalúa cierre |
+| reconcile tardío | Unknown/Accepted→Delivered/Failed | ajusta contadores (auditado) | run ya cerrado; corrige stats |
 
-El cierre del run se dispara por **conteo idempotente**, no por un "último callback" (que puede llegar duplicado o fuera de orden). Ver `Concurrency_Spec.md`.
+Los contadores son **caché**; la **fuente de verdad** son las unidades (`Concurrency_Spec.md §3`). El cierre evalúa una condición autoritativa sobre unidades, no la caché.
 
 ---
 
@@ -164,6 +182,6 @@ El cierre del run se dispara por **conteo idempotente**, no por un "último call
 | Legado aplana definición+ejecución en un `CampaignStatus` de 9 valores | `CampaignStatus.cs:4-12` | VERIFIED | 98% |
 | Legado mezcla dispatch+tracking en `RecipientStatus` lineal | `RecipientStatus.cs:4-12` | VERIFIED | 97% |
 | Legado resetea la misma fila en recurrencia | `CampaignSchedulerBackgroundService.cs:124-135` | VERIFIED | 96% |
-| Result events con `CampaignId` opaco de vuelta ya existen (modelo del contrato) | `PostmasterEmailEvents.cs:91-172` | VERIFIED | 97% |
-| Separación 3 máquinas (Campaign/Run/Recipient) | diseño ADR-CAMP-000 §Decisiones/#8 | DESIGN | 90% |
-| Cierre de run por conteo idempotente | diseño (este doc §4) | NEW | 87% |
+| Result events con correlación opaca de vuelta ya existen | `PostmasterEmailEvents.cs:104` | VERIFIED | 97% |
+| Unidad=destinatario/canal; Accepted/Delivered/Unknown; cierre por total congelado | decisiones del usuario 2026-09-17 | DECISION | 99% |
+| Cierre por conteo idempotente sobre total congelado | diseño (este doc §2) | NEW | 88% |

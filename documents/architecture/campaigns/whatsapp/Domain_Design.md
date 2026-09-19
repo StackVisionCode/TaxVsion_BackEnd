@@ -1,5 +1,7 @@
 # WhatsApp (TaxVision.WhatsApp) — Domain Design
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (ejecutor de canal WhatsApp, NEW / greenfield)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
@@ -7,19 +9,19 @@
 
 ## 1. Rol y frontera del bounded context
 
-`TaxVision.WhatsApp` es un **ejecutor de canal**, no un creador. Recibe un contrato **dispatch por destinatario** desde Campaigns (o desde un consumidor de envío individual), **renderiza** la plantilla, **entrega** vía **WhatsApp Business Platform (Meta Cloud API)**, procesa los **webhooks de estado** (sent/delivered/read/failed), y **reporta un result** con el contrato común. No define audiencia, no agenda, no muta el saldo del Wallet, no conoce planes.
+`TaxVision.WhatsApp` es un **ejecutor de canal**, no un creador. Recibe un contrato **dispatch por destinatario** desde Campaigns (o desde un consumidor de envío individual), **renderiza** la plantilla, **entrega** vía **WhatsApp Business Platform (Meta Cloud API)**, procesa los **webhooks de estado** (sent/delivered/read/failed), y **reporta un result** con el contrato común. No define audiencia, no agenda, no maneja dinero ni saldo (autorización por balance externa y diferida, ver banner), no conoce planes.
 
 Lo que el servicio **posee**:
 - El adaptador y los secretos de Meta (System Access Token, App Secret, Phone Number ID, WABA ID) **cifrados**, por tenant o por plataforma (ver `Security.md`).
-- El **catálogo local de plantillas aprobadas (HSM)** espejado desde Meta (nombre, idioma, categoría, componentes, estado de aprobación) — no es la fuente de verdad (Meta lo es) pero es el índice consultable para validar un dispatch antes de gastar.
+- El **catálogo local de plantillas aprobadas (HSM)** espejado desde Meta (nombre, idioma, categoría, componentes, estado de aprobación) — no es la fuente de verdad (Meta lo es) pero es el índice consultable para validar un dispatch antes de enviar.
 - La **máquina de estado por mensaje** (`WhatsAppMessage`) y la **ventana de sesión de 24h** por (tenant, phone number, destinatario).
-- El **costeo real por conversación/plantilla** que Meta reporta, para informar a Wallet el `consume` correcto.
+- — (removido: sin dinero en el canal; ver banner)
 
 Lo que el servicio **NO** posee (frontera dura, ver `02_Context_Map.md §Fronteras`):
 - Audiencia, schedule, stats agregadas de campaña → Campaigns.
-- Saldo/movimientos → Wallet/Ledger. WhatsApp **solicita** consume/refund; **nunca** edita saldo.
+- — (removido: sin dinero en el canal; ver banner)
 - El motor de render Fluid/Liquid → **Scribe (REUSE)**. WhatsApp solo mapea variables a componentes de plantilla.
-- El cobro del top-up → PaymentApp.
+- — (removido: sin dinero en el canal; ver banner)
 
 ## 2. Diferencia estructural con el resto de canales (por qué WhatsApp es su propio contexto)
 
@@ -28,9 +30,9 @@ WhatsApp no es "SMS con imágenes". Impone reglas de negocio del proveedor que n
 | Regla de Meta | Consecuencia de dominio |
 |---|---|
 | Fuera de la ventana de sesión de 24h **solo** se puede iniciar con una **plantilla aprobada (HSM)** | Un dispatch de campaña (marketing/utility) es **siempre** template-first; texto libre solo cabe dentro de sesión abierta. |
-| Cada plantilla tiene **categoría** (marketing / utility / authentication) | La categoría determina el **precio de conversación** y las reglas de opt-in → el costo no es plano por mensaje. |
-| El envío abre/consume una **conversación** facturable (modelo Meta), migrando a **per-message pricing** (jul-2025) según categoría | El `consume` a Wallet se calcula por **categoría de plantilla**, no por un tarifa fija global (corrige el legado de 0.005 plano). |
-| Los estados llegan **asíncronos por webhook** (`sent→delivered→read`, o `failed`) con `pricing`/`conversation` embebidos | El result no es síncrono al POST; hay un **avance de estado diferido** que actualiza costo real. |
+| Cada plantilla tiene **categoría** (marketing / utility / authentication) | La categoría determina las reglas de opt-in y qué plantilla aplica → **sin efecto de dinero en este canal** (removido, ver banner). |
+| El envío abre/renueva una **conversación** (modelo Meta, hilo 24h por categoría) | El modelo de conversación aplica al opt-in y a la ventana de sesión; **sin cobro/consume en este canal** (removido, ver banner). |
+| Los estados llegan **asíncronos por webhook** (`sent→delivered→read`, o `failed`) | El result no es síncrono al POST; hay un **avance de estado diferido** — (importe/precio removido: sin dinero en el canal; ver banner). |
 
 ## 3. Agregados y entidades
 
@@ -46,11 +48,11 @@ Campos clave:
 - `RecipientRef` — id opaco del contacto (no snapshot stale; el número viaja en el dispatch ya resuelto por Campaigns vía Customer).
 - `ToPhoneE164` — destino normalizado E.164 (ver `FormatWhatsAppNumber` legado hardcodeaba +1 RD, `WhatsAppCampaignSender.cs:136-140` — **anti-patrón a corregir**: normalización debe usar país explícito del contacto, no default).
 - `TemplateRef` (nombre + idioma + versión de la plantilla usada) o `SessionFreeText` (solo si sesión abierta).
-- `Category` (Marketing | Utility | Authentication) — copiada de la plantilla en el momento del dispatch (auditoría de precio).
+- `Category` (Marketing | Utility | Authentication) — copiada de la plantilla en el momento del dispatch (auditoría de plantilla/categoría; **sin precio en este canal**).
 - `ProviderMessageId?` — `wamid.*` que devuelve Meta (reemplaza el `Guid.NewGuid()` simulado del legado, `WhatsAppCampaignSender.cs:99`).
 - `Status` (ver `State_Machines.md`).
-- `ConversationId?`, `ConversationCategory?`, `PricingModel?`, `BilledAmount` (Money, minor units) — poblados desde el webhook.
-- `ReservationRef` / `ConsumeRef` — correlación con el movimiento Wallet.
+- `ConversationId?`, `ConversationCategory?` — poblados desde el webhook (modelo de conversación). Campos de importe/precio — (removido: sin dinero en el canal; ver banner).
+- — (removido: sin dinero en el canal; ver banner)
 - `Attempt` (int) — número de intento; la triple `(CampaignId, RecipientRef, Attempt)` es la clave de idempotencia de dispatch (ver `Idempotency_Spec.md`).
 - `RowVersion` (concurrencia optimista).
 - Timestamps: `AcceptedAtUtc, SentAtUtc, DeliveredAtUtc, ReadAtUtc, FailedAtUtc`.
@@ -74,8 +76,8 @@ Campos clave:
 |---|---|
 | HSM / Plantilla | Highly Structured Message pre-aprobado por Meta; obligatorio fuera de sesión. |
 | Ventana de sesión | 24h desde el último inbound del usuario; dentro se permite free-form. |
-| Categoría | Marketing / Utility / Authentication; fija el precio de conversación y el opt-in requerido. |
-| Conversación | Unidad facturable de Meta (hilo 24h por categoría); base del costeo real. |
+| Categoría | Marketing / Utility / Authentication; determina reglas de opt-in y plantilla (**sin efecto de dinero en este canal**, ver banner). |
+| Conversación | Unidad de Meta (hilo 24h por categoría); base del modelo de sesión/opt-in (**sin costeo en este canal**, ver banner). |
 | `wamid` | Id de mensaje que Meta asigna; nuestra `ProviderMessageId`. |
 | Dispatch / Result | Contrato común entrante/saliente por destinatario (idéntico a los otros canales). |
 
@@ -86,7 +88,6 @@ Campos clave:
 | Backend WhatsApp nuevo no existe (solo stub simulado legado) | `WhatsAppCampaignSender.cs:77-101` (Task.Delay + Guid falso) | VERIFIED | 97% |
 | Legado usa Twilio, no Cloud API nativa, token plano | `appsettings.json:130-136` (`Provider:"Twilio"`, `AuthToken`) | VERIFIED | 95% |
 | Legado sin plantilla/sesión/webhook/categoría | `WhatsAppCampaignSender.cs` (no hay ninguno) | VERIFIED | 95% |
-| Legado costo plano 0.005/0.01 (no por conversación) | `CostService.cs:17`, `appsettings.json:141` | VERIFIED | 96% |
 | ChannelConfiguration sin esquema | `WhatsAppCampaignSender.cs:49-54` | VERIFIED | 97% |
 | Normalización de número hardcodea país | `WhatsAppCampaignSender.cs:136-140` | VERIFIED | 96% |
 | Seam CampaignId opaco reutilizable | `PostmasterEmailEvents.cs:37` | VERIFIED | 95% |
@@ -95,4 +96,4 @@ Campos clave:
 
 ## 6. Blockers de dominio
 - **B-WA-DOM-1**: Onboarding de WABA (embedded signup Meta) por tenant no existe; sin un WABA + Phone Number + plantillas aprobadas, el canal no puede enviar. Prerrequisito operativo (ver `Deployment.md`).
-- **B-WA-DOM-2**: El precio por categoría/país de Meta cambia (migración a per-message jul-2025). El costeo debe leerse del webhook (`pricing`), no cablearse. Ver `Transactional_Protocol.md §Costeo`.
+- **B-WA-DOM-2**: — (removido: sin dinero en el canal; el costeo/precio ya no aplica a este canal; ver banner)

@@ -1,5 +1,7 @@
 # Push + In-app — Diseño de integración (canal REUSE)
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Push es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `FcmPushSender` + un contrato **bulk** nuevo). Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **Push (reusa `Notification`/`FcmPushSender`) + In-app (reusa `Communication`)**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -30,7 +32,7 @@ El trabajo de diseño = definir el **contrato bulk/campaña** sobre esos senders
 | `NotificationLog` **nunca** guarda el cuerpo (solo canal/destinatario/plantilla/estado) | `Notification.Domain/Notifications/NotificationLog.cs:21-24` | VERIFIED | 96% |
 | Contrato bulk/campaña sobre push/in-app | — no existe | NEW | 99% |
 | Business-inbox en `Notification` (copia de `ProcessedBusinessMessage`) para dedupe por destinatario | Growth tiene el patrón; Notification no lo tiene aún | NEW | 90% |
-| Legado: sender push **batchea en un loop síncrono**, sin idempotencia por destinatario, `ChannelConfiguration` dict sin esquema, precio push = 0 | `CRMTAXPROBACKEND/CampaignService/Infrastructure/Services/PushNotificationCampaignSender.cs:50,115-121,126-196` | VERIFIED | 94% |
+| Legado: sender push **batchea en un loop síncrono**, sin idempotencia por destinatario, `ChannelConfiguration` dict sin esquema | `CRMTAXPROBACKEND/CampaignService/Infrastructure/Services/PushNotificationCampaignSender.cs:50,115-121,126-196` | VERIFIED | 94% |
 
 ## 3. Principio: Campaigns hace el fan-out; el ejecutor es por-destinatario
 
@@ -47,7 +49,7 @@ Campaigns (owner del run + audiencia + outbox)
                       → pushNotification use-case (createIfMissing idempotente)
                       → emitToUser (best-effort si hay socket; si offline, queda persistida)
                       → publica 1 result
-  └─ Campaigns agrega results → Wallet consume entregados / refund no-entregados
+  └─ Campaigns agrega results (Outcome Delivered/Failed/Skipped)  — (removido: sin dinero en el canal; ver banner)
 ```
 
 **Notification/Communication siguen siendo por-destinatario.** Un evento dispatch = un destinatario. El fan-out (miles de destinatarios) es responsabilidad de Campaigns (su outbox + backpressure), no del ejecutor. Esto reusa `SendPushAsync`/`pushNotification` casi tal cual, envueltos por un consumer nuevo.
@@ -77,14 +79,14 @@ Push e In-app **no** entregan a un email/teléfono: entregan a un **UserId inter
 2. **Publicación del result** vía el outbox existente (`outbox-drainer.ts`).
 3. **Cero** secretos nuevos; **cero** endpoints públicos nuevos.
 
-## 7. Semántica de "entregado" por canal (define billing)
+## 7. Semántica de "entregado" por canal (Outcome)
 
-| Canal | Delivered = | NoDelivery no-billable | Fuente |
+| Canal | Delivered = | NoDelivery (Skipped/Failed) | Fuente |
 |---|---|---|---|
 | Push | ≥1 dispositivo activo aceptado por FCM (best-effort multi-device) | `NoDevices` (sin tokens activos), `SuppressedByPreference` | `NotificationDispatcher.cs:116-165` |
 | In-app | notificación **persistida** (`createIfMissing=true`); el emit por socket es best-effort (offline → la ve al reconectar) | `AlreadyDelivered` (dedupe, `created=false`), `NoRecipientUser` | `push-notification.ts:49-67` |
 
-Campaigns **consume balance solo por `Delivered`**; `Failed` transitorio se reintenta (mismo `attempt` → dedupe), `Failed` permanente/`No*` → refund de la reserva (ver `../06_Cross_Service_Transactional_Protocol.md`).
+El ejecutor reporta `Outcome` (Delivered/Failed/Skipped); `Failed` transitorio se reintenta (mismo `attempt` → dedupe). — (removido: sin dinero en el canal; ver banner)
 
 ## 8. Anti-patrones legado corregidos aquí
 
@@ -94,12 +96,12 @@ Campaigns **consume balance solo por `Delivered`**; `Failed` transitorio se rein
 | Sin idempotencia por destinatario | Business-inbox `(campaign,run,recipient,attempt)` (Notification) + `createIfMissing`/`ProcessedEventStore` (Communication) |
 | `ChannelConfiguration: Dictionary<string,string>` sin esquema (`:115-121`) | Evento dispatch tipado y versionado (`.v1`) |
 | Sin entidad de run (recurrentes mutan una fila) | `CampaignRun` inmutable vive en Campaigns; result se ancla al `RunId` |
-| Cost check no atómico / cobro fuera de un ledger (`:93-99`) | Reserve→consume/refund en Wallet; push/in-app nunca tocan saldo |
-| `RecipientId==Empty`→fail, resto→Sent silencioso | `NoDevices`/`NoRecipientUser` explícitos y no-billable |
+| Cobro/ledger dentro del sender (`:93-99`) | — (removido: sin dinero en el canal; autorización por balance es interceptor/PEP externo y DIFERIDO; ver banner) |
+| `RecipientId==Empty`→fail, resto→Sent silencioso | `NoDevices`/`NoRecipientUser` explícitos (Skipped) |
 
 ## 9. Blockers / dependencias duras
 
 - **BLOCKER-PUSH-1**: audiencia debe resolver a **UserId** para estos dos canales; sin el mapeo contacto→userId en Campaigns, push/in-app no tienen destinatario direccionable. (Depende de `campaigns/` audiencia.)
 - **BLOCKER-PUSH-2**: `Notification` necesita business-inbox (`ProcessedBusinessMessage`) — hoy no existe ahí. (NEW, ver `Deployment.md`.)
 - **BLOCKER-PUSH-3**: compatibilidad de transporte de contratos entre **Wolverine (.NET, Notification/Campaigns)** y el **ConsumerRuntime propio de Communication (Node)** — el `MessageIdentity`/envelope debe alinearse (ver `Deployment.md §4`).
-- **DECISIÓN abierta**: precio push/in-app. Legado = 0 (gratis). Si el catálogo de Wallet los deja en 0, la reserva/consumo es un movimiento de monto 0 pero el contrato saga es idéntico. Ver `../09_Open_Questions.md`.
+- **DECISIÓN abierta**: — (removido: sin dinero en el canal; precio/cobro por balance son un interceptor/PEP externo y DIFERIDO, fuera de este canal; ver banner).

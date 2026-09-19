@@ -475,6 +475,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("AutoRemindersEnabled")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("CanceledAtUtc")
                         .HasColumnType("datetime2");
 
@@ -555,6 +558,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RejectedBySignerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("ReminderIntervalHours")
+                        .HasColumnType("int");
+
                     b.Property<int>("RemindersSent")
                         .HasColumnType("int");
 
@@ -569,6 +575,12 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("SealedFileId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("SendCertificateToSigners")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SendSignedDocumentToSigners")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime?>("SentAtUtc")
                         .HasColumnType("datetime2");
@@ -607,6 +619,32 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status");
 
                     b.ToTable("SignatureRequests", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignedFieldValue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CapturedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SignerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SignerId");
+
+                    b.ToTable("SignedFieldValues", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.Signer", b =>
@@ -753,6 +791,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("DefaultReminderIntervalHoursValue")
+                        .HasColumnType("int");
+
                     b.Property<int>("DefaultTokenExpirationHoursValue")
                         .HasColumnType("int");
 
@@ -788,6 +829,12 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ArchivedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("AutoRemindersEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("BaseDocumentFileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -809,13 +856,26 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("GenerateCertificate")
                         .HasColumnType("bit");
 
+                    b.Property<string>("PractitionerPinHash")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<DateTime?>("PublishedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("ReminderIntervalHours")
+                        .HasColumnType("int");
 
                     b.Property<bool>("RequiresConsent")
                         .HasColumnType("bit");
 
                     b.Property<bool>("RequiresSequentialSigning")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SendCertificateToSigners")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SendSignedDocumentToSigners")
                         .HasColumnType("bit");
 
                     b.Property<string>("Status")
@@ -1082,6 +1142,15 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Navigation("DocumentHashPre");
 
                     b.Navigation("Preparer");
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignedFieldValue", b =>
+                {
+                    b.HasOne("TaxVision.Signature.Domain.Requests.Signer", null)
+                        .WithMany("FieldValues")
+                        .HasForeignKey("SignerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.Signer", b =>
@@ -1366,6 +1435,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.Signer", b =>
                 {
                     b.Navigation("Challenges");
+
+                    b.Navigation("FieldValues");
 
                     b.Navigation("Fields");
                 });

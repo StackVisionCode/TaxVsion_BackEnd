@@ -1,5 +1,7 @@
 # WhatsApp — Data Model
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (NEW)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
@@ -20,21 +22,18 @@
 | `ToPhoneE164` | text | destino normalizado |
 | `TemplateName` / `TemplateLanguage` | text null | HSM usado |
 | `TemplateVersion` | int null | versión del catálogo local en el envío |
-| `Category` | smallint | Marketing/Utility/Authentication (auditoría de precio) |
+| `Category` | smallint | Marketing/Utility/Authentication (auditoría de plantilla/categoría; sin precio en este canal) |
 | `IsFreeForm` | bool | true solo dentro de sesión |
 | `ProviderMessageId` | text null | `wamid`; **UNIQUE (TenantId, ProviderMessageId) WHERE not null** |
 | `Status` | smallint | Pending/Accepted/Sent/Delivered/Read/Failed/Rejected |
-| `ConversationId` | text null | de webhook |
-| `ConversationCategory` | smallint null | de webhook pricing |
-| `PricingModel` | text null | de webhook |
-| `BilledAmountCents` | bigint null | Money minor units (USD) |
-| `BilledCurrency` | char(3) null | ISO |
-| `ReservationRef` | uuid | correlación reserva Wallet |
-| `ConsumeRef` / `RefundRef` | uuid null | movimiento aplicado |
+| `ConversationId` | text null | de webhook (modelo de conversación) |
+| `ConversationCategory` | smallint null | de webhook (modelo de conversación) |
 | `FailureCode` / `FailureDetail` | text null | taxonomía interna |
 | `AcceptedAtUtc, SentAtUtc, DeliveredAtUtc, ReadAtUtc, FailedAtUtc` | timestamptz null | |
 | `CreatedAtUtc` | timestamptz | |
 | `RowVersion` | bytea/rowversion | concurrencia optimista |
+
+> Columnas `PricingModel`, `BilledAmountCents`, `BilledCurrency`, `ReservationRef`, `ConsumeRef`/`RefundRef` — (removidas: sin dinero en el canal; ver banner).
 
 Índices: `(TenantId, DispatchId)` unique; `(TenantId, ProviderMessageId)` unique parcial; `(TenantId, CampaignRunId, Status)` para agregados; `(TenantId, Status)` para reintentos/rezagados.
 
@@ -83,9 +82,9 @@ Copia local del patrón `Growth/.../Idempotency/ProcessedBusinessMessage.cs` (`O
 Tablas de **outbox/inbox durable** del servicio (envelopes + dedupe de transporte). El inbox de Wolverine deduplica envelopes; `ProcessedBusinessMessage` deduplica efecto de negocio (dos capas distintas).
 
 ## 2. Reglas de datos
-- **Dinero en minor units (`bigint` cents) + ISO currency**; nunca `float`/`decimal` confiado del frontend (corrige `SendResult.Cost` decimal y precio de appsettings del legado).
+- **Dinero** — (removido: sin dinero en el canal; no hay columnas de importe/moneda; la autorización por balance es externa/diferida, ver banner).
 - Sin snapshot de contacto (nombre/teléfono se resuelven vía Customer en Campaigns; aquí solo el `ToPhoneE164` ya resuelto + `RecipientRef` opaco). Corrige el snapshot stale del legado (`CampaignRecipient` copiaba Email/Phone/Name, `CampaignRecipient.cs:12-16`).
-- Retención: `WhatsAppMessages` con TTL configurable (auditoría de costo); `ProcessedBusinessMessage` con `ExpiresAtUtc`.
+- Retención: `WhatsAppMessages` con TTL configurable (auditoría de entrega); `ProcessedBusinessMessage` con `ExpiresAtUtc`.
 
 ## 3. Comparación con legado
 | Legado | Nuevo |
@@ -93,7 +92,6 @@ Tablas de **outbox/inbox durable** del servicio (envelopes + dedupe de transport
 | `CampaignRecipient` mutable con timestamps sueltos (`CampaignRecipient.cs:18-28`) | `WhatsAppMessage` con máquina de estado + RowVersion |
 | `ChannelConfiguration Dictionary<string,string>` (`WhatsAppCampaignSender.cs:49-54`) | `WhatsAppTemplates.ComponentsSchema jsonb` tipado |
 | Token Twilio plano en appsettings (`appsettings.json:132-134`) | `AccessTokenEnc/AppSecretEnc` cifrados |
-| Costo decimal plano (`CostService.cs:17`) | `BilledAmountCents` desde webhook `pricing` |
 
 ## 4. Evidencia
 | Hecho | Evidencia | Clasificación | Confianza |

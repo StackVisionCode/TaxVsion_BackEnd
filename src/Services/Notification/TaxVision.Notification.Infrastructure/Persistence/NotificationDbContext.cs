@@ -8,7 +8,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notification.Domain.Authorization;
 using TaxVision.Notification.Domain.Directory;
-using TaxVision.Notification.Domain.Emailing.Campaigns;
 using TaxVision.Notification.Domain.Emailing.Configurations;
 using TaxVision.Notification.Domain.Emailing.Layouts;
 using TaxVision.Notification.Domain.Emailing.Sending;
@@ -25,8 +24,8 @@ namespace TaxVision.Notification.Infrastructure.Persistence;
 /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — tenant del actor autenticado, poblado por
 /// <c>JwtTenantContextMiddleware</c> desde el JWT. Alimenta el <c>HasQueryFilter</c> global
 /// fail-closed (safety net EF Core). EmailProviderConfiguration/EmailTemplate/EmailTemplateVersion/
-/// EmailLayout/EmailRecipient/EmailDeliveryLog/EmailCampaignRecipient deliberadamente NO
-/// implementan <see cref="ITenantOwned"/> (System vs Tenant scope con TenantId nullable, o hijos
+/// EmailLayout/EmailRecipient/EmailDeliveryLog deliberadamente NO implementan
+/// <see cref="ITenantOwned"/> (System vs Tenant scope con TenantId nullable, o hijos
 /// sin columna propia) — el filtro genérico no los alcanza, igual que en Scribe.
 /// </param>
 public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext> options, ITenantContext tenantContext)
@@ -43,8 +42,6 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<OutboundEmailMessage> OutboundEmailMessages => Set<OutboundEmailMessage>();
     public DbSet<EmailRecipient> EmailRecipients => Set<EmailRecipient>();
     public DbSet<EmailDeliveryLog> EmailDeliveryLogs => Set<EmailDeliveryLog>();
-    public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
-    public DbSet<EmailCampaignRecipient> EmailCampaignRecipients => Set<EmailCampaignRecipient>();
     public DbSet<NotificationRecipientPermissionsProjection> NotificationRecipientPermissionsProjections =>
         Set<NotificationRecipientPermissionsProjection>();
     public DbSet<NotificationRecipientRolePermissionsProjection> NotificationRecipientRolePermissionsProjections =>

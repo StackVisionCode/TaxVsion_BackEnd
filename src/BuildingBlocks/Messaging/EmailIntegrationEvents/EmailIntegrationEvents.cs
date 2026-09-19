@@ -25,32 +25,3 @@ public sealed record EmailDeliveryFailedIntegrationEvent : IntegrationEvent
     public required string Error { get; init; }
     public Guid? CampaignId { get; init; }
 }
-
-/// <summary>La campaña llegó a su hora programada y debe iniciar el fan-out de envíos (consumo interno).</summary>
-public sealed record EmailCampaignStartedIntegrationEvent : IntegrationEvent
-{
-    public required Guid CampaignId { get; init; }
-}
-
-/// <summary>Un lote de destinatarios de una campaña a procesar (fan-out por lotes, consumo interno).</summary>
-public sealed record EmailCampaignBatchIntegrationEvent : IntegrationEvent
-{
-    public required Guid CampaignId { get; init; }
-    public required int Skip { get; init; }
-    public required int Take { get; init; }
-}
-
-/// <summary>La campaña quedó programada.</summary>
-public sealed record EmailCampaignScheduledIntegrationEvent : IntegrationEvent
-{
-    public required Guid CampaignId { get; init; }
-    public required DateTime ScheduledAtUtc { get; init; }
-}
-
-/// <summary>La campaña terminó (todos los destinatarios procesados).</summary>
-public sealed record EmailCampaignCompletedIntegrationEvent : IntegrationEvent
-{
-    public required Guid CampaignId { get; init; }
-    public required int SentCount { get; init; }
-    public required int FailedCount { get; init; }
-}

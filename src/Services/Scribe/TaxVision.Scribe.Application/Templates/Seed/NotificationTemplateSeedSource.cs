@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 7
+    int ContentVersion = 8
 );
 
 /// <summary>
@@ -49,6 +49,7 @@ public static class NotificationTemplateSeedSource
             SignatureInvitation,
             SignatureReminder,
             SignatureCompleted,
+            SignatureCertificateReady,
             SignatureExpired,
             SignatureDeclined,
             SignatureVerificationChallenge,
@@ -90,6 +91,7 @@ public static class NotificationTemplateSeedSource
         ["sig.invitation.v1"] = "A document is waiting for your signature. It only takes a minute.",
         ["sig.reminder.v1"] = "A friendly reminder: your signature is still pending.",
         ["sig.completed.v1"] = "All signatures are in — your document is complete.",
+        ["sig.certificate.v1"] = "Your signature certificate of completion is ready to download.",
         ["sig.expired.v1"] = "This signature request has expired. Reach out if you still need to sign.",
         ["sig.declined.v1"] = "A signature request was cancelled. Here are the details.",
         ["sig.verification-challenge.v1"] = "Here's your verification code to continue signing securely.",
@@ -566,6 +568,46 @@ public static class NotificationTemplateSeedSource
                     null,
                     "URL pública de descarga del documento firmado (opcional)."
                 ),
+                ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SignatureCertificateReady { get; } =
+        new(
+            EventKey: "sig.certificate_ready.v1",
+            TemplateKey: "sig.certificate.v1",
+            Name: "Signature — Certificado listo",
+            Subject: "{% if language == 'Es' %}TaxProffice — Tu certificado de firma{% else %}TaxProffice — Your signature certificate{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              {% if language == 'Es' %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu certificado de firma</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el certificado de finalización de tu firma del {{ completed_at }} UTC ya está disponible.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your signature certificate</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the certificate of completion for your signature on {{ completed_at }} UTC is now available.</td></tr>
+              {% endif %}
+              {% if download_link %}
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ download_link }}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">{% if language == 'Es' %}Descargar certificado{% else %}Download certificate{% endif %}</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ download_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Descargar certificado{% else %}Download certificate{% endif %}</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+            """,
+            Variables:
+            [
+                ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
+                ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
+                ("download_link", VariableType.Url, false, null, "URL pública de descarga del certificado (opcional)."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ]
         );

@@ -118,6 +118,10 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("SourceContext")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");

@@ -7,6 +7,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -113,6 +114,11 @@ builder.Host.UseWolverine(options =>
         typeof(TaxVision.Sms.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
     );
 
+    // Punto de entrada genérico de envío de SMS (OTP de firma, invitación, entrega…): consume
+    // SmsSendRequestedIntegrationEvent y lo ejecuta con SendSmsBatchCommand. Registro explícito por el
+    // mismo motivo que los de arriba (static class + Handle estático).
+    options.Discovery.IncludeType(typeof(TaxVision.Sms.Application.Messages.Consumers.SmsSendRequestedConsumer));
+
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =
@@ -131,6 +137,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SmsMessageDeliveredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SmsMessageFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SmsMessageSuppressedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Canal SMS del orquestador Campaigns (ADR-CAMP-001 D3) — el consumer publica el result del dispatch.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     options
         .Policies.ForMessagesOfType<IIntegrationEvent>()
@@ -142,7 +152,12 @@ builder.Host.UseWolverine(options =>
         .UseDurableInbox();
 });
 
+builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
+
 var app = builder.Build();
+
+// IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
+app.UseTaxVisionClientIp();
 
 if (app.Environment.IsDevelopment())
 {

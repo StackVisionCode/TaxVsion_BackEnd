@@ -1,5 +1,7 @@
 # Push + In-app — ADRs
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Push es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `FcmPushSender` + un contrato **bulk** nuevo). Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 Servicio: **Push (reusa `Notification`) + In-app (reusa `Communication`)**
 Fecha: 2026-07-28
 Estado: **DISEÑO — no implementado**
@@ -27,7 +29,7 @@ Convención: IDs `ADR-PUSH-00x`. Deriva de las decisiones aprobadas del usuario 
 
 **Estado:** APPROVED.
 
-**Contexto.** El legado (`PushNotificationCampaignSender.SendBatchAsync`, `:126-196`) mete el loop de destinatarios **dentro del sender**, síncrono y sin idempotencia → se pierde al reiniciar y doble-cuenta en reintento (anti-patrón ADR-CAMP-000 §2,§3).
+**Contexto.** El legado (`PushNotificationCampaignSender.SendBatchAsync`, `:126-196`) mete el loop de destinatarios **dentro del sender**, síncrono y sin idempotencia → se pierde al reiniciar y doble-entrega en reintento (anti-patrón ADR-CAMP-000 §2,§3).
 
 **Decisión.** Campaigns emite **un evento dispatch por destinatario** desde su outbox durable. Notification/Communication consumen **un evento = un destinatario** y reusan su lógica single-recipient (`SendPushAsync` / `pushNotification`) envuelta por un consumer. El fan-out masivo y la backpressure viven en Campaigns, no en el ejecutor.
 
@@ -39,29 +41,29 @@ Convención: IDs `ADR-PUSH-00x`. Deriva de las decisiones aprobadas del usuario 
 
 **Estado:** APPROVED.
 
-**Contexto.** At-least-once (Wolverine/RabbitMQ) garantiza re-entregas; el legado no dedupe por destinatario y doble-cuenta.
+**Contexto.** At-least-once (Wolverine/RabbitMQ) garantiza re-entregas; el legado no dedupe por destinatario y doble-entrega.
 
 **Decisión.**
 - **Push (Notification):** copiar `ProcessedBusinessMessage` (business-inbox, `Growth/.../Idempotency/ProcessedBusinessMessage.cs`) — Notification hoy **no** lo tiene → migración nueva. Clave `(TenantId,"campaigns.push",IdempotencyKey)`, marcada en la misma transacción que el `NotificationLog`.
 - **In-app (Communication):** reusar la **doble guarda existente** — `createIfMissing` unique `(TenantId,SourceEventId,UserId)` (`prisma-notification-repository.ts:30-33`) + `ProcessedEventStore.tryMarkProcessed` (`consumer-runtime.ts:232`). `SourceEventId=IdempotencyKey` → cero schema nuevo.
 - `Attempt` es parte de la clave: un reintento **deliberado** de Campaigns (`Attempt+1`) es un envío nuevo; una re-entrega del bus (mismo `Attempt`) es un duplicado → `AlreadyDelivered`.
 
-**Consecuencias.** No hay doble push ni doble notificación in-app ante re-entrega. Notification carga una tabla nueva; Communication no.
+**Consecuencias.** No hay doble push ni doble notificación in-app ante re-entrega (idempotencia por dispatch id). Notification carga una tabla nueva; Communication no.
 
 ---
 
-## ADR-PUSH-004 — Semántica de "entregado" difiere por canal (define billing)
+## ADR-PUSH-004 — Semántica de "entregado" difiere por canal (define el `Outcome`)
 
 **Estado:** APPROVED.
 
-**Contexto.** Campaigns consume balance solo por entrega efectiva (ver `../06_Cross_Service_Transactional_Protocol.md`). "Entregado" no significa lo mismo en push que en in-app.
+**Contexto.** El ejecutor reporta el `Outcome` real de la entrega (ver `../06_Cross_Service_Transactional_Protocol.md`). "Entregado" no significa lo mismo en push que en in-app. — (removido: sin dinero en el canal; ver banner).
 
 **Decisión.**
 - **Push `Delivered`** = ≥1 dispositivo activo **aceptado por FCM** (best-effort multi-device, mismo criterio que `NotificationDispatcher.SendPushAsync` `:155-160`: un device basta).
 - **In-app `Delivered`** = notificación **persistida** (`createIfMissing=true`); el emit por socket es best-effort (offline → la ve al reconectar). `SocketEmitted` es solo telemetría.
-- No-entrega no-billable con outcome explícito: `NoDevices`, `NoRecipientUser`, `SuppressedByPreference`, `FailedPermanent` (refund); `FailedTransient` (retry, no refund); `AlreadyDelivered` (idempotente, no cobra de nuevo).
+- No-entrega con outcome explícito (Skipped/Failed): `NoDevices`, `NoRecipientUser`, `SuppressedByPreference`, `FailedPermanent`; `FailedTransient` (retry); `AlreadyDelivered` (idempotente). — (removido: sin dinero en el canal; ver banner).
 
-**Consecuencias.** El contrato result lleva un `Outcome` enumerado común (`Commands_And_Events.md §3.3`) que Campaigns traduce a consume/refund. Evita el `Sent` silencioso del legado.
+**Consecuencias.** El contrato result lleva un `Outcome` enumerado común (`Commands_And_Events.md §3.3`) — (removido: sin dinero en el canal; ver banner). Evita el `Sent` silencioso del legado.
 
 ---
 
@@ -83,15 +85,15 @@ Convención: IDs `ADR-PUSH-00x`. Deriva de las decisiones aprobadas del usuario 
 
 **Contexto.** Push/In-app entregan a un **usuario con dispositivos/sesión**, no a un email/teléfono. El legado marcaba fail solo si `RecipientId==Empty` (`:71-77`) y luego el monolito marcaba `Sent` al resto sin verificar direccionabilidad.
 
-**Decisión.** La audiencia de Campaigns debe resolver a `TargetUserId` para estos dos canales (vía `Customer`, `02_Context_Map`). Un contacto sin userId → `NoRecipientUser`; un user sin tokens activos → `NoDevices` (`ListActiveForUserAsync`→0). Ambos son resultados **no-billable explícitos**, nunca un `Sent` silencioso. `RecipientId` es opaco para el ejecutor (mismo criterio que `CampaignId`).
+**Decisión.** La audiencia de Campaigns debe resolver a `TargetUserId` para estos dos canales (vía `Customer`, `02_Context_Map`). Un contacto sin userId → `NoRecipientUser`; un user sin tokens activos → `NoDevices` (`ListActiveForUserAsync`→0). Ambos son resultados **explícitos** (Skipped), nunca un `Sent` silencioso. `RecipientId` es opaco para el ejecutor (mismo criterio que `CampaignId`).
 
-**Consecuencias.** Métricas honestas (no infla entregas), refund correcto, y una dependencia dura sobre la resolución contacto→userId en Campaigns (**BLOCKER-PUSH-1**).
+**Consecuencias.** Métricas honestas (no infla entregas), outcome correcto — (removido: sin dinero en el canal; ver banner) —, y una dependencia dura sobre la resolución contacto→userId en Campaigns (**BLOCKER-PUSH-1**).
 
 ---
 
 ## Decisión abierta (no resuelta aquí)
 
-**OQ-PUSH-A — Precio de push/in-app.** Legado = 0 (gratis; `01_Executive_Summary` cita Push 0). Si el catálogo de Wallet deja push/in-app en 0, la reserva/consumo es un movimiento de **monto 0** pero el contrato saga (reserve→consume/refund) es **idéntico** — no se bifurca el flujo. Si se les pone precio, nada del contrato dispatch/result cambia. Se difiere la fijación de precio a `wallet-ledger/` + `../09_Open_Questions.md`. Esta ADR-set es **agnóstica al precio**.
+**OQ-PUSH-A** — (removido: sin dinero en el canal; el precio/cobro por balance de push/in-app es un interceptor/PEP externo y DIFERIDO, fuera de este canal; ver banner). El contrato dispatch/result no cambia por ello. Esta ADR-set es **agnóstica al precio**.
 
 ## Blockers (resumen, ver docs de detalle)
 

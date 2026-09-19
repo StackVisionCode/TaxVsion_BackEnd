@@ -128,6 +128,9 @@ jobs:
           # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
           CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
           INVENTORY_DB_CONNECTION=${{ secrets.INVENTORY_DB_CONNECTION }}
+          # Campaigns (servicio nuevo, sep-2026). docker-compose.yml lo exige con :? en campaigns-api
+          # y en migrations. No usa M2M (sin ServiceAuthClient), así que no lleva *_SERVICE_CLIENT_*.
+          CAMPAIGNS_DB_CONNECTION=${{ secrets.CAMPAIGNS_DB_CONNECTION }}
           # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
           # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
           # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.
@@ -294,6 +297,19 @@ jobs:
           # SUBSCRIPTION_GROWTH_* (audiencia acotada + scopes, solo referidos).
           SUBSCRIPTION_SERVICE_CLIENT_ID=${{ secrets.SUBSCRIPTION_SERVICE_CLIENT_ID }}
           SUBSCRIPTION_SERVICE_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_SERVICE_CLIENT_SECRET }}
+
+          # Campaigns: identidad M2M propia (campaigns-worker, audiencia TaxVision.Services,
+          # ServiceAuth__Clients__28 en docker-compose.yml). Sin esto, la recuperación pull de
+          # permisos queda fail-closed (TenantAdmin/Employee con permiso pero sin sincronizar dan
+          # 403) y la resolución de audiencia desde el directorio de Customer no se autentica.
+          CAMPAIGNS_SERVICE_CLIENT_ID=${{ secrets.CAMPAIGNS_SERVICE_CLIENT_ID }}
+          CAMPAIGNS_SERVICE_CLIENT_SECRET=${{ secrets.CAMPAIGNS_SERVICE_CLIENT_SECRET }}
+
+          # SMS: identidad M2M propia (sms-worker, audiencia TaxVision.Services, ServiceAuth__Clients__29
+          # en docker-compose.yml). Sin esto, la recuperación pull de permisos queda fail-closed (un
+          # usuario sin fila local de proyección da 403) y el catálogo de plan-rate-limits no se autentica.
+          SMS_SERVICE_CLIENT_ID=${{ secrets.SMS_SERVICE_CLIENT_ID }}
+          SMS_SERVICE_CLIENT_SECRET=${{ secrets.SMS_SERVICE_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}

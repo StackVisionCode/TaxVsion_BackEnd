@@ -30,6 +30,10 @@ public static class SignaturePermissions
     public const string DocumentSign = "signature.document.sign";
     public const string DocumentView = "signature.document.view";
     public const string DocumentDownload = "signature.document.download";
+
+    // Entrega al firmante (email/SMS) del documento firmado y del certificado. Separado de crear/firmar
+    // para que el preparador/admin controle por-empleado (deny-layer) qué se envía hacia afuera.
+    public const string DocumentSend = "signature.document.send";
     public const string DocumentAuditRead = "signature.document.audit.read";
 
     // Colocar/levantar retención legal (legal hold) sobre una firma. Es gobernanza que escribe estado

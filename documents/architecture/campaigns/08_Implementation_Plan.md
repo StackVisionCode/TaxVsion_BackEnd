@@ -1,6 +1,16 @@
 # Campaigns Suite — Plan de Implementación
 
-Fecha: 2026-07-28. Fases ordenadas **respetando la dependencia dura Wallet→ejecución** (BLK-1). Cada fase tiene entregable verificable y no arranca sin sus precondiciones. El orden minimiza el riesgo de reintroducir anti-patrones del legado (`05_Master_ADR §Anti-patrones`).
+> **Revisión 2026-09-16 (ADR-CAMP-001) — Wallet DIFERIDO.** El plan de abajo (Fase 1 = Wallet) queda **superseded**. **Orden vigente (Wallet-free):**
+> 1. **Orquestador + audiencia + contrato + loopback:** `TaxVision.Campaigns` (Campaign/CampaignRun/Recipients + **Contactos/Listas** + **SenderProfiles** + proyecciones RBAC/plan copiadas de Notes) + eventos `campaign.dispatch.requested/result.v1` + ejecutor **loopback** (valida saga + resiliencia a reinicio). Envío **inmediato**. Detalles básicos.
+> 2. **Email + SMS (primeros canales reales, juntos):** consumer `channel=Email` en `Notification` (seam `CampaignId`) y `channel=Sms` en `TaxVision.Sms` (ya M2M); resolución de `SenderRef` en cada ejecutor; **detalles por destinatario**.
+> 3. **Scheduler con lease atómico** (Immediate/Scheduled/Recurring; un `CampaignRun` por disparo) — reemplaza el `CampaignSchedulerService` poll-sin-lease de Notification.
+> 4. **Push (contrato bulk) + WhatsApp (nuevo).**
+> 5. **Frontend multicanal** en `features/campaigns` (canal(es)+remitente+audiencia+inmediato/agenda+detalles); retira el camino email-only.
+>    - **Nota (review #27):** adelantar una **UI mínima** (crear, revisar audiencia/remitente, enviar, ver estado `Accepted/Delivered/Unknown/Skipped`, cancelar) junto con la Fase 2 (Email+SMS) para un **piloto acotado** end-to-end, sin esperar Push/WhatsApp.
+> 6. **(Futuro) Autorización por saldo, FUERA de Campaign** — un **interceptor/PEP** delante de la ejecución (trigger manual y cada `RunDue`) calcula `recipientCount` (+ recurrencia), consulta el **Wallet/Ledger + top-up** y **cobra/reserva antes** o **veta**. Campaign no cambia (recibe solo triggers autorizados). Ver `05_Master_ADR.md` D7, `campaigns/Domain_Design.md §8.1`.
+> Despliegue del servicio nuevo: los 6 sitios de `Guia_Creacion_Microservicio.md §9` (slnx, Dockerfile, compose block, gateway route/cluster/DNS/loadshed, `CAMPAIGNS_DB_CONNECTION` ×3, `apply-migrations.sh`, secretos CI).
+
+Fecha: 2026-07-28 (original, con Wallet). Fases ordenadas **respetando la dependencia dura Wallet→ejecución** (BLK-1) — **superseded por la revisión de arriba**. Cada fase tiene entregable verificable y no arranca sin sus precondiciones.
 
 ## Resumen de fases
 

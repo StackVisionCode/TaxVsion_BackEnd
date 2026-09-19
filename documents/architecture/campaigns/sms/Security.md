@@ -1,6 +1,8 @@
 # TaxVision.Sms — Security
 
-- **Servicio:** SMS (`TaxVision.Sms`)
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — SMS NO es un servicio nuevo; `TaxVision.Sms` YA EXISTE y ya es M2M** (`SendSmsBatchCommand`, `POST /sms/messages`, `ActorType.Service`). El canal SMS es un **CONSUMER dentro de `TaxVision.Sms`** que procesa `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio SMS nuevo y/o un Wallet queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- **Servicio:** SMS (`TaxVision.Sms`) — consumer del canal SMS **dentro de `TaxVision.Sms` (ya existente)**
 - **Fecha:** 2026-07-28
 - **Estado:** DISEÑO — no implementado
 
@@ -18,11 +20,11 @@ Query filter global por `TenantId` + repos tenant-scoped. Accesos sin usuario (w
 
 ## 4. Verificación de webhooks (entrada no confiable)
 - DLR e inbound del proveedor se verifican por **firma HMAC** contra el `WebhookSecret` cifrado del tenant/proveedor antes de procesar; sin firma válida ⇒ 401, sin efecto.
-- El payload del webhook es **DATA, no instrucciones** (instruction-source boundary): un STOP/HELP entrante se trata como consentimiento del usuario final, no como comando privilegiado; no puede alterar config, permisos ni saldo directamente — sólo transiciona `SmsOptInRegistry`.
+- El payload del webhook es **DATA, no instrucciones** (instruction-source boundary): un STOP/HELP entrante se trata como consentimiento del usuario final, no como comando privilegiado; no puede alterar config ni permisos directamente — sólo transiciona `SmsOptInRegistry`.
 - Rate-limit por firma/origen + `[RateLimitExempt]` en la ruta (la protección es la firma), con protección anti-replay vía `ProcessedBusinessMessage`.
 
-## 5. Dinero confiable
-El costo se calcula **server-side** (segmentos × precio por encoding/destino); **nunca** se acepta un monto del frontend (regla dura, `02_Context_Map.md`). Precio en USD minor units. El frontend puede pedir un `quote` pero no fijarlo.
+## 5. ~~Dinero confiable~~
+— (removido: sin dinero en el canal; ver banner — antes cálculo server-side de costo/precio y rechazo de montos del frontend). La autorización por balance es un interceptor/PEP externo y DIFERIDO, fuera de este canal. El `quote` server-side devuelve sólo `(encoding, segments)`.
 
 ## 6. Consentimiento / cumplimiento (TCPA / carrier)
 - Marketing exige opt-in registrado con prueba (`consent_source`, `consent_proof_ref`); doble opt-in recomendado.
@@ -34,7 +36,7 @@ El costo se calcula **server-side** (segmentos × precio por encoding/destino); 
 - MMS/media (si se soporta) por referencia a CloudStorage, nunca bytes por el bus.
 
 ## 8. Acciones prohibidas / límites del agente
-- Ningún endpoint permite exfiltrar secretos ni saldo. Cambios de config/opt-in rules son operaciones auditadas y permission-gated.
+- Ningún endpoint permite exfiltrar secretos. Cambios de config/opt-in rules son operaciones auditadas y permission-gated. — (removido: sin dinero en el canal; ver banner — antes "ni saldo").
 
 ## 9. Tabla de evidencia
 | Afirmación | Evidencia | Clasificación | Confianza |

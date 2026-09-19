@@ -46,9 +46,11 @@ public sealed class WebhooksController(IMessageBus bus) : ControllerBase
     }
 
     // Header de firma por convención; los proveedores que usen otro nombre lo mapean en su config/adapter.
-    // Se incluye X-Twilio-Signature porque Twilio firma con su propio header.
+    // Se incluye X-Twilio-Signature (Twilio) y X-Hub-Signature (default de Infobip, estilo GitHub) además
+    // de los genéricos. El adapter de cada proveedor interpreta el formato del valor.
     private string ReadSignature() =>
         Request.Headers.TryGetValue("X-Twilio-Signature", out var t) ? t.ToString()
+        : Request.Headers.TryGetValue("X-Hub-Signature", out var h) ? h.ToString()
         : Request.Headers.TryGetValue("X-Signature", out var v) ? v.ToString()
         : Request.Headers.TryGetValue("X-Sms-Signature", out var v2) ? v2.ToString()
         : string.Empty;

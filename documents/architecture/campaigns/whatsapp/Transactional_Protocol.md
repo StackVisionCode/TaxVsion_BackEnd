@@ -1,46 +1,43 @@
 # WhatsApp — Transactional Protocol
 
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — WhatsApp SÍ es un servicio nuevo (`TaxVision.WhatsApp`, Meta/WABA), pero de FASE POSTERIOR y solo como CONSUMER del contrato de dispatch — sin dinero.** Consume `campaign.dispatch.requested.v1` y responde `campaign.dispatch.result.v1`. Campaign es un orquestador agnóstico que **no envía**. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un Wallet o cobro por este canal queda **superseded**. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
 - Servicio: **TaxVision.WhatsApp** (NEW)
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
-- Coherente con `../06_Cross_Service_Transactional_Protocol.md` (saga balance + dispatch).
+- Coherente con `../06_Cross_Service_Transactional_Protocol.md` (dispatch). **Saga de balance — (removida: sin dinero en el canal; ver banner).**
 
-## 1. Principio: entrega asíncrona con costo real diferido
+## 1. Principio: entrega asíncrona (estado diferido por webhook)
 
-WhatsApp rompe el patrón "cobra al enviar" porque **el costo real solo se conoce por webhook** (`pricing.category`, `billable`). La saga separa **reserva** (antes de tocar Meta), **envío** (POST idempotente), y **consumo/refund** (al confirmar entrega o fallo). Corrige el TOCTOU del legado (check+debit en 2 HTTP calls, debit antes de `SaveChanges` — anti-patrón §4 de ADR-CAMP-000).
+WhatsApp entrega de forma **asíncrona**: el POST a Meta devuelve `wamid` y el estado real (`delivered`/`read`/`failed`) llega por webhook. El POST es **idempotente** (ver §5). **Sin dinero:** este canal NO reserva/consume/refunda saldo; toda saga de reserva/consumo/refund queda **superseded** — la autorización por balance es un interceptor/PEP externo y diferido (ver banner y `../05_Master_ADR.md` D1/D3/D7).
 
-## 2. Flujo campaña (reserva la trae Campaigns)
+## 2. Flujo campaña (dispatch → send → webhook)
 
 ```
-Campaigns  ── reserve(estimado, N destinatarios) ──►  Wallet   (movimiento RESERVE inmutable)
-Campaigns  ── WhatsAppDispatchRequested(ReservationRef) ──►  WhatsApp
+Campaigns  ── campaign.dispatch.requested.v1 ──►  WhatsApp
 WhatsApp:
   1. ValidateAndAcceptDispatch (plantilla Approved? sesión? E.164? categoría)
-        └─ falla ⇒ WhatsAppMessage(Rejected) + refund(ReservationRef, DispatchId)  → result Rejected
+        └─ falla ⇒ WhatsAppMessage(Rejected)  → result Rejected
   2. SendToMeta (POST Cloud API, Idempotency por DispatchId → wamid)  → WhatsAppMessage(Sent) → result Sent
-  3. webhook delivered ⇒ ApplyDeliveryStatus + captura pricing.BilledAmount
-        └─ RequestConsume(ReservationRef, DispatchId, BilledAmount)  → Wallet CONSUME inmutable → result Delivered
-  4. webhook read ⇒ result Read (sin efecto Wallet)
-  X. webhook failed (en no-terminal) ⇒ RequestRefund(ReservationRef, DispatchId) → Wallet REFUND → result Failed
+  3. webhook delivered ⇒ ApplyDeliveryStatus  → result Delivered
+  4. webhook read ⇒ result Read
+  X. webhook failed (en no-terminal) ⇒ WhatsAppMessage(Failed) → result Failed
 ```
 
-- **Un solo consume y un solo refund por `DispatchId`** (mutuamente excluyentes), garantizado por `ProcessedBusinessMessage(op="wa.settle", scope=DispatchId)`.
-- La **reserva** cubre el estimado (precio máximo por categoría); el **consume** ajusta al costo real del webhook. Si `real < reservado`, Wallet libera la diferencia en el mismo movimiento de consume (política de Wallet, no de WhatsApp).
+- Reserva / consume / refund por `DispatchId` — (removido: sin dinero en el canal; ver banner).
+- Estimado / costo real / ajuste de saldo — (removido: sin dinero en el canal; la autorización por balance es externa/diferida, ver banner).
 
-## 3. Flujo envío individual (WhatsApp origina la reserva)
+## 3. Flujo envío individual
 
 ```
 POST /messages (Idempotency-Key)
-  └─ reserve(estimado) → Wallet   (si falla: 409 INSUFFICIENT_BALANCE, no se llama a Meta)
-  └─ ValidateAndAccept → SendToMeta → (webhooks) consume/refund
+  └─ ValidateAndAccept → SendToMeta → (webhooks) avance de estado
 ```
-Idéntico settlement; la única diferencia es quién crea la reserva.
+Reserva y settlement de saldo — (removido: sin dinero en el canal; la autorización por balance es un interceptor/PEP externo y diferido, ver banner).
 
-## 4. Costeo (per-conversación / per-plantilla)
+## 4. Costeo — (removido)
 
-- El costo **autoritativo** es el `pricing`/`conversation` del webhook de Meta, mapeado a `Money(cents, "USD")`.
-- El **estimado de reserva** usa una tabla de precio por `(Category, Country)` mantenida en Wallet/Campaigns (no en el frontend, no en appsettings del ejecutor). Migración de Meta a per-message pricing (jul-2025): el estimado se parametriza por categoría; el real siempre viene del webhook. Ver blocker B-WA-DOM-2.
-- Corrige el costo plano del legado (`CostService.cs:17` = 0.005; `appsettings.json:141` = 0.01) que ignoraba categoría, país y conversación.
+— (removido: sin dinero en el canal; no hay costeo/estimado/pricing por este canal; el blocker B-WA-DOM-2 queda superseded; ver banner).
 
 ## 5. Idempotencia del POST a Meta
 
@@ -48,13 +45,13 @@ Idéntico settlement; la única diferencia es quién crea la reserva.
 
 ## 6. Orden y compensación
 - No hay 2PC. La consistencia es **eventual vía outbox at-least-once + handlers idempotentes**.
-- Fallo tras `Sent` sin webhook en `T_max` (SLA): reaper marca `Failed(timeout)` y **refund** (política conservadora: no cobrar lo no confirmado). Si un webhook `delivered` tardío llega después, se reconcilia (consume + revertir refund) idempotentemente por `DispatchId`. Ver `Concurrency_Spec.md §Reaper`.
-- Fallo del `consume` (Wallet caído): reintento outbox; el `WhatsAppMessage` queda en `Delivered` con `ConsumeRef=null` hasta confirmarse (no se pierde dinero: la reserva sigue viva).
+- Fallo tras `Sent` sin webhook en `T_max` (SLA): reaper marca `Failed(timeout)`. Si un webhook `delivered` tardío llega después, se reconcilia el **estado** idempotentemente por `DispatchId`. Ver `Concurrency_Spec.md §Reaper`. (Efecto de refund/consume — removido: sin dinero en el canal, ver banner.)
+- Compensación de saldo (consume/refund/reserva) — (removido: sin dinero en el canal; ver banner).
 
 ## 7. Evidencia
+> Filas de evidencia sobre TOCTOU/costo/saga reserve→consume/refund/pricing — (removidas: sin dinero en el canal; ver banner).
+
 | Hecho | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| TOCTOU legado (check+debit 2 HTTP) | ADR-CAMP-000 §Anti-patrones 4; `05_Master_ADR.md:47` | VERIFIED | 92% |
-| Costo plano legado | `CostService.cs:17`, `appsettings.json:141` | VERIFIED | 96% |
-| Saga reserve→consume/refund es la decisión aprobada | `05_Master_ADR.md:29` (decisión 3) | VERIFIED | 95% |
-| pricing/conversation por webhook | Meta Cloud API docs | DOCUMENTED_ONLY | 85% |
+| POST idempotente por `DispatchId` + `wamid` UNIQUE | `Idempotency_Spec.md §2` | VERIFIED | 95% |
+| Reenvío/orden de webhooks Meta | Meta Cloud API docs | DOCUMENTED_ONLY | 85% |

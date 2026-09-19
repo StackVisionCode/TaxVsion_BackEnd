@@ -19,6 +19,13 @@ public sealed record SignerInvitedIntegrationEvent : IntegrationEvent
     public required string FullName { get; init; }
     public required int Order { get; init; }
     public required string Language { get; init; } // Es | En
+
+    /// <summary>Teléfono E.164 del firmante (null si no se capturó). Necesario para la rama SMS.</summary>
+    public string? PhoneE164 { get; init; }
+
+    /// <summary>Canal preferido de la invitación: "Email" | "Sms". Default "Email" (retro-compat).</summary>
+    public string PreferredChannel { get; init; } = "Email";
+
     public required string PublicToken { get; init; }
     public required DateTime ExpiresAtUtc { get; init; }
     public required int RevocationEpoch { get; init; }

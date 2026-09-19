@@ -2,14 +2,35 @@
 
 Colecciones para probar los microservicios **contra el Gateway** (`http://localhost:5047`), sin
 pegarle directo a cada puerto. Cubren los servicios construidos/verificados en esta tanda:
-**Auth**, **SMS**, **Catalog**, **Inventory** y el wiring de **Billing** con el catálogo.
+**Auth**, **SMS**, **Catalog**, **Inventory**, el wiring de **Billing** con el catálogo, y el
+orquestador **Campaigns** (campañas multicanal: contactos/listas, remitentes, envíos y agendado).
 
 ## Archivos
 
 | Archivo | Qué es |
 |---|---|
 | `TaxVision-NewServices.postman_collection.json` | Colección v2.1: carpetas Auth / SMS / Catalog / Inventory / Billing. |
+| `TaxVision-Campaigns.postman_collection.json` | Colección v2.1 de **Campaigns**: Auth / Sender Profiles / Contacts / Contact Lists / Campaigns / Schedules (34 requests). |
 | `TaxVision-Local.postman_environment.json` | Environment con `gateway`, `tenantId` y los secretos (vacíos, se llenan a mano). |
+
+## Campaigns (colección aparte)
+
+`TaxVision-Campaigns.postman_collection.json` prueba el vertical completo del orquestador por el
+gateway. **Requiere `campaigns.manage` + actor staff** (TenantEmployee/TenantAdmin/PlatformAdmin) en
+`{{userToken}}` — usá **Auth → Login** con un usuario con ese permiso, o pegá un token a mano. La
+colección lleva `Authorization: Bearer {{userToken}}` a nivel colección (las requests de Auth van
+sin auth). Flujo sugerido:
+
+1. **Auth → Login** → puebla `{{userToken}}`.
+2. **Sender Profiles → Create sender (Email)** → `{{senderProfileId}}`.
+3. **Contacts → Create contact** → `{{contactId}}`.
+4. **Contact Lists → Create list** (`{{contactListId}}`) → **Import CSV** (dedupe + filas inválidas descartadas) → **Add member**.
+5. **Campaigns → Create campaign** (`{{campaignId}}`) → **Set sender (Email)** → **Send to audience** (listas + `includeCustomers` + manual; opt-out y dedupe aplicados) → **List runs** / **Get run**.
+6. **Schedules → Schedule (one-time/recurring)** (`{{scheduleId}}`) → **List / Pause / Resume / Cancel**.
+
+`includeCustomers: true` hace que el envío/agendado sume los clientes activos del directorio de
+**Customer** por M2M (el servicio adquiere su propio token; `serviceClientId=campaigns-worker`). Todas
+las rutas viven bajo el gateway: `/campaigns`, `/contacts`, `/contact-lists`, `/sender-profiles`.
 
 ## Importar
 

@@ -24,6 +24,7 @@ public static class SignerInvitedConsumer
         SignerInvitedIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ISmsSender smsSender,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
@@ -37,6 +38,27 @@ public static class SignerInvitedConsumer
             // El firmante entra a SU oficina: la URL se arma con el subdominio del tenant, no un base fijo.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var inviteLink = TenantEmailLinks.SigningLink(tenantHost, portal.Value, evt.PublicToken);
+
+            // Canal preferido del firmante: si eligió SMS y hay teléfono, la invitación va por SMS con el
+            // enlace de firma; si no, se mantiene el correo. El puente publica al microservicio Sms.
+            if (PrefersSms(evt))
+            {
+                var smsBody = BuildInviteSms(evt, inviteLink, portal.Value);
+                var smsResult = await smsSender.SendAsync(evt.PhoneE164!, smsBody, ct);
+                if (smsResult.IsSuccess)
+                    logger.LogInformation(
+                        "SignerInvited SMS dispatched to signer {SignerId} for request {RequestId}.",
+                        evt.SignerId,
+                        evt.SignatureRequestId
+                    );
+                else
+                    logger.LogWarning(
+                        "SignerInvited SMS failed for signer {SignerId}: {Error}",
+                        evt.SignerId,
+                        smsResult.Error
+                    );
+                return;
+            }
 
             // Hardening Fase 7: un render fallido ya no se loguea-y-descarta — EnsureRendered lanza
             // ScribeRenderFailedException para que Wolverine reintente/DLQ en vez de que la
@@ -89,6 +111,18 @@ public static class SignerInvitedConsumer
                 );
             }
         }
+    }
+
+    private static bool PrefersSms(SignerInvitedIntegrationEvent evt) =>
+        string.Equals(evt.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(evt.PhoneE164);
+
+    private static string BuildInviteSms(SignerInvitedIntegrationEvent evt, string inviteLink, PortalOptions portal)
+    {
+        var product = portal.ProductName;
+        return evt.Language == "Es"
+            ? $"{product}: {evt.FullName}, tienes un documento para firmar. Ábrelo aquí: {inviteLink}"
+            : $"{product}: {evt.FullName}, you have a document to sign. Open it here: {inviteLink}";
     }
 
     private static string ResolveCorrelationId(SignerInvitedIntegrationEvent evt) =>

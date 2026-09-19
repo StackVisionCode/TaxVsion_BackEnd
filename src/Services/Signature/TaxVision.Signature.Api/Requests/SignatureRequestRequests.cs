@@ -10,7 +10,14 @@ public sealed record CreateSignatureRequestBody(
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
-    bool GenerateCertificate
+    bool GenerateCertificate,
+    // Default true = comportamiento histórico (se emailaba el documento firmado siempre). El gate de
+    // permiso vive en el controller: sin signature.document.send estos quedan forzados a false.
+    bool SendSignedDocumentToSigners = true,
+    bool SendCertificateToSigners = false,
+    // Recordatorios automáticos a firmantes: null = usar el default del tenant; con valor = override.
+    bool? AutoRemindersEnabled = null,
+    int? ReminderIntervalHours = null
 );
 
 public sealed record AddSignerBody(

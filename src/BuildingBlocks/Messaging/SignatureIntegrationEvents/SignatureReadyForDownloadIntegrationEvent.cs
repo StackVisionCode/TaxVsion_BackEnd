@@ -21,4 +21,10 @@ public sealed record SignatureReadyForDownloadIntegrationEvent : IntegrationEven
 
     /// <summary>Snapshot de contacto de cada firmante — destinatarios del correo, sin lookup síncrono.</summary>
     public required IReadOnlyList<SignerContactSnapshot> Signers { get; init; }
+
+    /// <summary>
+    /// Si la request pidió entregar el documento firmado a los firmantes (P2). Default <c>true</c> =
+    /// comportamiento histórico. Notification omite la entrega cuando es <c>false</c>.
+    /// </summary>
+    public bool SendSignedDocumentToSigners { get; init; } = true;
 }

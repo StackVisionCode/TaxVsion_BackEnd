@@ -32,7 +32,12 @@ public sealed record CreateShareLinkCommand(
     IReadOnlyList<string> RecipientEmails,
     RequestAuditContext Audit,
     // Idioma del email al destinatario externo ("Es"/"En"). Solo aplica a visibility ExternalRecipients.
-    string? RecipientLanguage = null
+    string? RecipientLanguage = null,
+    // Cuando true, se acuña el share-link pero NO se publica el evento de invitación por email a los
+    // destinatarios externos: el llamador (p. ej. Signature) entrega el enlace en su PROPIO correo y
+    // el email genérico de CloudStorage "A document was shared with you" sería un duplicado. Default
+    // false → el flujo normal de Documents sigue notificando.
+    bool SuppressRecipientEmails = false
 );
 
 public static class CreateShareLinkHandler
@@ -80,7 +85,8 @@ public static class CreateShareLinkHandler
             clock,
             bus,
             unitOfWork,
-            ct
+            ct,
+            command.SuppressRecipientEmails
         );
     }
 
@@ -203,7 +209,8 @@ internal static class ShareLinkCreationCore
         ISystemClock clock,
         IMessageBus bus,
         IUnitOfWork unitOfWork,
-        CancellationToken ct
+        CancellationToken ct,
+        bool suppressRecipientEmails = false
     )
     {
         var policyResult = await ValidatePolicy(
@@ -276,7 +283,13 @@ internal static class ShareLinkCreationCore
 
         // Magic-link por destinatario externo: un evento por email para que Notification emaile la
         // página pública `/s/{token}?email=`. Solo para archivos con visibility ExternalRecipients.
-        if (resourceType == ShareResourceType.File && visibility == ShareVisibility.ExternalRecipients)
+        // Se omite cuando el llamador ya entrega el enlace en su propio correo (suppressRecipientEmails),
+        // para no mandar el email genérico de CloudStorage por duplicado.
+        if (
+            resourceType == ShareResourceType.File
+            && visibility == ShareVisibility.ExternalRecipients
+            && !suppressRecipientEmails
+        )
         {
             var language = string.IsNullOrWhiteSpace(recipientLanguage) ? "En" : recipientLanguage;
             foreach (var email in recipientEmails)

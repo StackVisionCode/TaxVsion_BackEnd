@@ -43,6 +43,12 @@ public sealed class SignatureRequestsControllerOwnershipTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
+        public Task<SignatureRequest?> GetByCertificateFileIdAsync(
+            Guid tenantId,
+            Guid certificateFileId,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
@@ -71,9 +77,6 @@ public sealed class SignatureRequestsControllerOwnershipTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
             DateTime nowUtc,
-            TimeSpan minTimeSinceSent,
-            TimeSpan minTimeSinceLastReminder,
-            int maxReminders,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
@@ -231,6 +234,7 @@ public sealed class SignatureRequestsControllerOwnershipTests
             bus,
             repo,
             authorizationService,
+            new JwtEmbeddedPermissionsSource(),
             new FakeOwnershipOptionsMonitor(flagEnabled)
         )
         {

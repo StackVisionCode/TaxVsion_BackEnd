@@ -49,7 +49,11 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
         pdf.Info.Subject = $"Legal audit trail for signature request {model.SignatureRequestId:D}";
         pdf.Info.Keywords = "e-signature; audit trail; ESIGN; eIDAS; PAdES-B";
 
-        XImage? platformLogo = TryLoadImage(model.PlatformLogo ?? PlatformLogoBytes);
+        // El logo embebido (marca de plataforma) es SOLO último recurso: se usa cuando no hay ni logo
+        // de plataforma proyectado ni logo de oficina. Si la oficina tiene su propio logo, no queremos
+        // estampar además el de plataforma embebido al lado (saldrían dos marcas).
+        var platformSource = model.PlatformLogo ?? (model.TenantLogo is null ? PlatformLogoBytes : null);
+        XImage? platformLogo = TryLoadImage(platformSource);
         XImage? tenantLogo = TryLoadImage(model.TenantLogo);
         try
         {

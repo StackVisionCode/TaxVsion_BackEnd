@@ -293,9 +293,10 @@ public sealed class SignatureRequestTests
         var request = NewReadyDraftWithSignatureField("s@example.com");
         request.Send(DateTime.UtcNow);
 
-        Assert.Throws<InvalidOperationException>(() =>
-            request.AddSigner(NewEmail("late@example.com"), NewName("Late"), null)
-        );
+        var result = request.AddSigner(NewEmail("late@example.com"), NewName("Late"), null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
     }
 
     // ================== helpers ==================

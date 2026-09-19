@@ -10,9 +10,16 @@ import {
 import type {
   ConsumerInfo,
   RemoteProducerInfo,
+  SfuMediaSource,
   SfuService,
   TransportInfo,
 } from '../../application/ports/sfu-service.js';
+
+/** Lee el `source` guardado en el appData del producer (default 'camera' para producers viejos/audio). */
+function producerSource(producer: MediasoupTypes.Producer): SfuMediaSource {
+  const source = (producer.appData as { source?: unknown }).source;
+  return source === 'screen' ? 'screen' : 'camera';
+}
 
 interface ParticipantMedia {
   sendTransport: MediasoupTypes.WebRtcTransport | null;
@@ -115,13 +122,20 @@ export class MediasoupSfuService implements SfuService {
     transportId: string;
     kind: MediasoupTypes.MediaKind;
     rtpParameters: MediasoupTypes.RtpParameters;
+    source?: SfuMediaSource;
   }): Promise<{ producerId: string } | null> {
     const room = this.rooms.get(input.meetingId);
     const participant = room?.participants.get(input.userId);
     const transport = participant?.sendTransport;
     if (!transport || transport.id !== input.transportId) return null;
 
-    const producer = await transport.produce({ kind: input.kind, rtpParameters: input.rtpParameters });
+    // El `source` viaja en el appData del producer para poder clasificar cámara vs pantalla en los
+    // listados (un participante puede tener producers de video de AMBOS a la vez).
+    const producer = await transport.produce({
+      kind: input.kind,
+      rtpParameters: input.rtpParameters,
+      appData: { source: input.source ?? 'camera' },
+    });
     participant.producers.set(producer.id, producer);
     producer.on('transportclose', () => participant.producers.delete(producer.id));
     return { producerId: producer.id };
@@ -196,7 +210,7 @@ export class MediasoupSfuService implements SfuService {
     for (const [userId, participant] of room.participants) {
       if (userId === excludeUserId) continue;
       for (const producer of participant.producers.values()) {
-        result.push({ userId, producerId: producer.id, kind: producer.kind });
+        result.push({ userId, producerId: producer.id, kind: producer.kind, source: producerSource(producer) });
       }
     }
     return result;
@@ -205,7 +219,12 @@ export class MediasoupSfuService implements SfuService {
   listProducersForUser(meetingId: string, userId: string): readonly RemoteProducerInfo[] {
     const participant = this.rooms.get(meetingId)?.participants.get(userId);
     if (!participant) return [];
-    return [...participant.producers.values()].map((p) => ({ userId, producerId: p.id, kind: p.kind }));
+    return [...participant.producers.values()].map((p) => ({
+      userId,
+      producerId: p.id,
+      kind: p.kind,
+      source: producerSource(p),
+    }));
   }
 
   async closeParticipant(meetingId: string, userId: string): Promise<void> {

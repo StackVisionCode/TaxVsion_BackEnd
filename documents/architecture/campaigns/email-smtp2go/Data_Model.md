@@ -1,14 +1,16 @@
 # Email (SMTP2GO) — Data Model
 
-- Servicio: **TaxVision.Campaigns.Email**
+> **REVISIÓN 2026-09-16 (ADR-CAMP-001, APPROVED) — Email NO es un ejecutor dedicado nuevo; es un CONSUMER dentro del servicio EXISTENTE `Notification`** (reusa `SendEmailCommand` con el seam `CampaignId`; SMTP2GO es solo el proveedor que usa Notification). Campaign es un orquestador agnóstico que **no envía**: publica `campaign.dispatch.requested.v1` por destinatario y este consumer lo procesa (`ActorType.Service`) y responde `campaign.dispatch.result.v1`. **Sin dinero:** este doc NO reserva/consume/cobra saldo; la autorización por balance es un interceptor/PEP externo y DIFERIDO (ver `../05_Master_ADR.md` D1/D3/D7). Todo lo que abajo asuma un microservicio dedicado `TaxVision.Campaigns.Email` y/o un Wallet queda **superseded** por esta nota. Canónico: `../campaigns/` + `../05_Master_ADR.md`.
+
+- Componente: **Consumer/handler dentro del servicio EXISTENTE `Notification`** (SMTP2GO = proveedor que usa Notification).
 - Fecha: 2026-07-28
 - Estado: **DISEÑO — no implementado**
-- BD: PostgreSQL propio del servicio (schema `campaigns_email`), NO comparte BD con Postmaster/Notification/Campaigns.
+- BD: **persistencia dentro del servicio `Notification`** (tablas/esquema propios del canal Email dentro de Notification), NO una BD dedicada nueva ni el store de Postmaster/Campaigns.
 
 ## 1. Principios
 - **Sin FK cross-context**: `campaign_id`, `campaign_run_id`, `recipient_id`, `tenant_id` son `uuid` opacos (no FK a Campaigns).
 - **Multi-tenant fail-closed**: toda tabla con datos de tenant lleva `tenant_id` + **query filter global**; repos tenant-scoped; `.IgnoreQueryFilters()`+tenant explícito solo en handlers de bus (ver `Guia_IgnoreQueryFilters...`).
-- **Dinero: ninguno acá.** Este servicio no persiste montos ni saldo (eso es Wallet). Corrige el `EstimatedCost/Currency` que el legado embebía en `EmailSendLog` (`Smtp2GoService.cs:322-324`).
+- **Dinero: ninguno acá** — (removido: sin dinero en el canal; ver banner). No se persisten montos, moneda ni saldo.
 - **Secretos cifrados** siempre (envelope encryption), nunca texto plano.
 - Optimistic concurrency vía `xmin`/`RowVersion` en aggregates mutables.
 
@@ -77,11 +79,12 @@
 | `provider_event_id` | text NOT NULL | del payload SMTP2GO |
 | `provider_message_id` | text NULL | correlación al dispatch |
 | `event_type` | text NOT NULL | delivered/bounce/spam/unsubscribe |
-| `raw_payload` | jsonb NOT NULL | crudo, auditable |
-| `signature_valid` | bool NOT NULL | |
+| `raw_payload` | jsonb NOT NULL | crudo — **redactado/cifrado** antes de persistir (ver nota) |
+| `credential_valid` | bool NOT NULL | credencial del webhook validada (Authorization Bearer/Basic; ver `Security.md §2`) |
 | `received_at_utc` | timestamptz NOT NULL | |
 | `processed_at_utc` | timestamptz NULL | |
 - **UNIQUE `(provider_event_id)`** — dedupe de reintento del proveedor.
+- **PII en `raw_payload` (fix #24):** el payload del webhook puede contener destinatario, `subject` y campos de remitente/auth. **Redactar o cifrar** esos campos antes de persistir (no guardar auth en claro); **restringir el acceso** a la tabla; **retención por superficie** (ver §3). Guardar solo lo mínimo auditable.
 
 ### 2.5 `processed_business_message` (business-inbox)
 Copia local del patrón `Growth/.../Idempotency/ProcessedBusinessMessage.cs`: `(handler, message_key)` unique, para dedupe de **efecto de negocio** (no solo de transporte). Usado por `ProcessEmailDispatch` y `ApplyProviderWebhook`.
@@ -91,13 +94,12 @@ Solo si se hostea open/click propio. `(tenant_id, dispatch_id, kind)` con dedupe
 
 ## 3. Retención / PII
 - `to_address` es PII: retención por política del tenant; purga tras N días de terminal. No se guarda el cuerpo.
-- `raw_payload` del webhook puede contener PII: mismo régimen de retención.
+- `raw_payload` del webhook puede contener PII y secretos (destinatario, `subject`, remitente, campos de auth): **redactar/cifrar antes de persistir**, acceso restringido, y **retención por superficie** (más corta que la suppression list; purga tras el proceso/ventana de auditoría). Nunca persistir credenciales de auth en claro.
 - Suppression list se conserva (obligación anti-spam) aunque se purguen dispatches.
 
 ## 4. Evidencia
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| Legado guardaba costo/moneda en el log de email (mezcla de concerns) | `Smtp2GoService.cs:322-324` | VERIFIED | 90% |
 | Legado: ApiKey en claro en tabla | `SmtpProviderConfig.cs:7` | VERIFIED | 98% |
 | Legado `EmailSendLog` guardaba tracking URLs con cid/rid en claro | `Smtp2GoService.cs:317-319` | VERIFIED | 92% |
 | Modelo nuevo por-dispatch + suppression + credencial cifrada | este diseño | NEW | n/a |

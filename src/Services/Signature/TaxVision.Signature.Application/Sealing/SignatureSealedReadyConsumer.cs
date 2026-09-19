@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -42,7 +43,11 @@ public static class SignatureSealedReadyConsumer
 
             var emails = request.Signers.Select(s => s.Email.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            var shareToken = await MintShareTokenAsync(request, evt.FileId, emails, storage, logger, ct);
+            // P2: solo se emite el share-link si la request pide entregar el documento firmado; si no,
+            // el evento igual sale (con flag false) para no romper otros consumidores, pero sin link.
+            var shareToken = request.SendSignedDocumentToSigners
+                ? await MintShareTokenAsync(request, evt.FileId, emails, storage, logger, ct)
+                : null;
 
             await bus.PublishAsync(
                 new SignatureReadyForDownloadIntegrationEvent
@@ -53,6 +58,7 @@ public static class SignatureSealedReadyConsumer
                     SealedFileId = evt.FileId,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
                     ShareToken = shareToken,
+                    SendSignedDocumentToSigners = request.SendSignedDocumentToSigners,
                     Signers = request
                         .Signers.Select(s => new SignerContactSnapshot(
                             s.Id,
@@ -60,7 +66,9 @@ public static class SignatureSealedReadyConsumer
                             s.FullName.Value,
                             s.Language,
                             s.Order,
-                            s.MappedCustomerId
+                            s.MappedCustomerId,
+                            s.PhoneNumber?.Value,
+                            SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
                 }
