@@ -14,6 +14,9 @@ public static class CampaignScheduleErrors
     );
     public static readonly Error NotActive = new("CampaignSchedule.NotActive", "The schedule is not active.");
     public static readonly Error NotPaused = new("CampaignSchedule.NotPaused", "The schedule is not paused.");
-    public static readonly Error InvalidTransition = new("CampaignSchedule.InvalidTransition", "Invalid state transition.");
+    public static readonly Error InvalidTransition = new(
+        "CampaignSchedule.InvalidTransition",
+        "Invalid state transition."
+    );
     public static readonly Error NotFound = new("CampaignSchedule.NotFound", "Schedule not found.");
 }

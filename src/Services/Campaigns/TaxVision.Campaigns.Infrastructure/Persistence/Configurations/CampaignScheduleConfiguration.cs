@@ -27,8 +27,12 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
 
         // Scan del claim: schedules Active vencidos por NextFireAtUtc.
-        builder.HasIndex(s => new { s.Status, s.NextFireAtUtc }).HasDatabaseName("IX_CampaignSchedules_Status_NextFireAtUtc");
-        builder.HasIndex(s => new { s.TenantId, s.CampaignId }).HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");
+        builder
+            .HasIndex(s => new { s.Status, s.NextFireAtUtc })
+            .HasDatabaseName("IX_CampaignSchedules_Status_NextFireAtUtc");
+        builder
+            .HasIndex(s => new { s.TenantId, s.CampaignId })
+            .HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");
         builder.HasIndex(s => s.ActiveRunId).HasDatabaseName("IX_CampaignSchedules_ActiveRunId");
     }
 }

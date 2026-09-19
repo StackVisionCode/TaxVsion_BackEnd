@@ -68,7 +68,20 @@ public static class CampaignEmailDeliveredConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => EmailDeliveryReport.ApplyAsync(evt.TenantId, evt.CampaignId, DispatchOutcome.Delivered, evt.ProviderMessageId, null, runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        EmailDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.CampaignId,
+            DispatchOutcome.Delivered,
+            evt.ProviderMessageId,
+            null,
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }
 
 public static class CampaignEmailFailedConsumer
@@ -81,7 +94,20 @@ public static class CampaignEmailFailedConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => EmailDeliveryReport.ApplyAsync(evt.TenantId, evt.CampaignId, DispatchOutcome.Failed, evt.ProviderMessageId, evt.Reason, runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        EmailDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.CampaignId,
+            DispatchOutcome.Failed,
+            evt.ProviderMessageId,
+            evt.Reason,
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }
 
 // Nota: PostmasterEmailDeliveryBouncedIntegrationEvent está definido en el contrato pero Postmaster
@@ -99,7 +125,20 @@ public static class CampaignEmailProviderNotConfiguredConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => EmailDeliveryReport.ApplyAsync(evt.TenantId, evt.CampaignId, DispatchOutcome.Failed, null, "provider_not_configured", runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        EmailDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.CampaignId,
+            DispatchOutcome.Failed,
+            null,
+            "provider_not_configured",
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }
 
 public static class CampaignEmailSuppressedConsumer
@@ -112,5 +151,18 @@ public static class CampaignEmailSuppressedConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => EmailDeliveryReport.ApplyAsync(evt.TenantId, evt.CampaignId, DispatchOutcome.Skipped, null, $"suppressed:{evt.SuppressionReason}", runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        EmailDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.CampaignId,
+            DispatchOutcome.Skipped,
+            null,
+            $"suppressed:{evt.SuppressionReason}",
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }

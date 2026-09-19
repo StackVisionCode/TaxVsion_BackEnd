@@ -10,7 +10,11 @@ public interface ISenderProfileRepository
     Task<SenderProfile?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     /// <summary>Carga varios remitentes por id (para resolver el <c>SenderRef</c> de un run). Solo los del tenant.</summary>
-    Task<IReadOnlyList<SenderProfile>> GetManyByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+    Task<IReadOnlyList<SenderProfile>> GetManyByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct = default
+    );
 
     Task<PagedResult<SenderProfile>> ListAsync(
         Guid tenantId,

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Contacts;
 using TaxVision.Campaigns.Domain.Permissions;
+using TaxVision.Campaigns.Domain.RateLimiting;
 using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
 using TaxVision.Campaigns.Domain.Senders;
@@ -33,6 +34,7 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     public DbSet<CampaignSchedule> CampaignSchedules => Set<CampaignSchedule>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

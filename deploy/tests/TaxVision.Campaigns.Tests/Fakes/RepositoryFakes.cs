@@ -13,18 +13,29 @@ internal sealed class FakeContactRepository : IContactRepository
     public Task<Contact?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(Store.FirstOrDefault(c => c.TenantId == tenantId && c.Id == id));
 
-    public Task<Contact?> FindByDestinationAsync(Guid tenantId, string? email, string? phoneE164, CancellationToken ct = default)
+    public Task<Contact?> FindByDestinationAsync(
+        Guid tenantId,
+        string? email,
+        string? phoneE164,
+        CancellationToken ct = default
+    )
     {
         var e = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
         var p = string.IsNullOrWhiteSpace(phoneE164) ? null : phoneE164.Trim();
         if (e is null && p is null)
             return Task.FromResult<Contact?>(null);
         return Task.FromResult(
-            Store.FirstOrDefault(c => c.TenantId == tenantId && ((e != null && c.Email == e) || (p != null && c.PhoneE164 == p)))
+            Store.FirstOrDefault(c =>
+                c.TenantId == tenantId && ((e != null && c.Email == e) || (p != null && c.PhoneE164 == p))
+            )
         );
     }
 
-    public Task<IReadOnlyList<Contact>> GetManyByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    public Task<IReadOnlyList<Contact>> GetManyByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct = default
+    )
     {
         IReadOnlyList<Contact> list = Store.Where(c => c.TenantId == tenantId && ids.Contains(c.Id)).ToList();
         return Task.FromResult(list);
@@ -50,10 +61,13 @@ internal sealed class FakeCustomerAudienceClient : ICustomerAudienceClient
 {
     public List<CustomerAudienceMember> Members { get; } = [];
 
-    public void Seed(string? email, string? phone) => Members.Add(new CustomerAudienceMember(Guid.NewGuid(), email, phone));
+    public void Seed(string? email, string? phone) =>
+        Members.Add(new CustomerAudienceMember(Guid.NewGuid(), email, phone));
 
-    public Task<IReadOnlyList<CustomerAudienceMember>> GetActiveCustomersAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<CustomerAudienceMember>>(Members);
+    public Task<IReadOnlyList<CustomerAudienceMember>> GetActiveCustomersAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<CustomerAudienceMember>>(Members);
 }
 
 internal sealed class FakeContactListRepository : IContactListRepository
@@ -65,7 +79,11 @@ internal sealed class FakeContactListRepository : IContactListRepository
     public Task<ContactList?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(Store.FirstOrDefault(l => l.TenantId == tenantId && l.Id == id));
 
-    public Task<IReadOnlyList<Guid>> GetMemberContactIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> listIds, CancellationToken ct = default)
+    public Task<IReadOnlyList<Guid>> GetMemberContactIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> listIds,
+        CancellationToken ct = default
+    )
     {
         IReadOnlyList<Guid> ids = Store
             .Where(l => l.TenantId == tenantId && listIds.Contains(l.Id))

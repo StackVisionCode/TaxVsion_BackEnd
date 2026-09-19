@@ -29,7 +29,9 @@ public sealed record CampaignResponse(
             campaign.Subject,
             campaign.Message,
             campaign.Status.ToString(),
-            campaign.Senders.Select(s => new CampaignSenderSelectionResponse(s.Channel.ToString(), s.SenderProfileId)).ToList(),
+            campaign
+                .Senders.Select(s => new CampaignSenderSelectionResponse(s.Channel.ToString(), s.SenderProfileId))
+                .ToList(),
             campaign.CreatedAtUtc,
             campaign.UpdatedAtUtc
         );

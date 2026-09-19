@@ -12,9 +12,7 @@ public sealed record UpdateContactRequest(string? Name, string? Email, string? P
 public sealed record SetContactOptOutRequest(IReadOnlyList<CampaignChannel> Channels, bool OptedOut)
 {
     public CampaignChannel ToFlag() =>
-        Channels is null
-            ? CampaignChannel.None
-            : Channels.Aggregate(CampaignChannel.None, (acc, c) => acc | c);
+        Channels is null ? CampaignChannel.None : Channels.Aggregate(CampaignChannel.None, (acc, c) => acc | c);
 }
 
 // ─────────────────────────── Contact lists ───────────────────────────

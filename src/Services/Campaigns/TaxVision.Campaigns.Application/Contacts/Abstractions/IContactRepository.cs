@@ -12,10 +12,19 @@ public interface IContactRepository
     Task<Contact?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     /// <summary>Busca un contacto existente por email o teléfono normalizados (dedupe de import/alta). Cualquiera puede ser null.</summary>
-    Task<Contact?> FindByDestinationAsync(Guid tenantId, string? email, string? phoneE164, CancellationToken ct = default);
+    Task<Contact?> FindByDestinationAsync(
+        Guid tenantId,
+        string? email,
+        string? phoneE164,
+        CancellationToken ct = default
+    );
 
     /// <summary>Carga varios contactos por id (para resolver audiencia de un run). Solo los del tenant.</summary>
-    Task<IReadOnlyList<Contact>> GetManyByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+    Task<IReadOnlyList<Contact>> GetManyByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct = default
+    );
 
     Task<PagedResult<Contact>> ListAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 

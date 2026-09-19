@@ -21,17 +21,24 @@ public sealed class ContactListRepository(CampaignsDbContext db) : IContactListR
     {
         if (listIds.Count == 0)
             return [];
-        return await db
-            .Set<ContactListMember>()
+        return await db.Set<ContactListMember>()
             .Where(m => m.TenantId == tenantId && listIds.Contains(m.ContactListId))
             .Select(m => m.ContactId)
             .Distinct()
             .ToListAsync(ct);
     }
 
-    public async Task<PagedResult<ContactList>> ListAsync(Guid tenantId, int page, int size, CancellationToken ct = default)
+    public async Task<PagedResult<ContactList>> ListAsync(
+        Guid tenantId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
     {
-        var query = db.ContactLists.IgnoreQueryFilters().Where(l => l.TenantId == tenantId).OrderByDescending(l => l.CreatedAtUtc);
+        var query = db
+            .ContactLists.IgnoreQueryFilters()
+            .Where(l => l.TenantId == tenantId)
+            .OrderByDescending(l => l.CreatedAtUtc);
         var totalCount = await query.CountAsync(ct);
         var items = await query.Skip((page - 1) * size).Take(size).Include(l => l.Members).ToListAsync(ct);
         return new PagedResult<ContactList>(items, page, size, totalCount);

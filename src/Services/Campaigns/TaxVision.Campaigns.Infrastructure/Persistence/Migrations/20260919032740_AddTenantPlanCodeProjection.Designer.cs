@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Campaigns.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Campaigns.Infrastructure.Persistence;
 namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CampaignsDbContext))]
-    partial class CampaignsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260919032740_AddTenantPlanCodeProjection")]
+    partial class AddTenantPlanCodeProjection
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -64,7 +64,11 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
 
         await db
             .CampaignSchedules.IgnoreQueryFilters()
-            .Where(s => claimableIds.Contains(s.Id) && (s.LeasedUntilUtc == null || s.LeasedUntilUtc < nowUtc) && s.ActiveRunId == null)
+            .Where(s =>
+                claimableIds.Contains(s.Id)
+                && (s.LeasedUntilUtc == null || s.LeasedUntilUtc < nowUtc)
+                && s.ActiveRunId == null
+            )
             .ExecuteUpdateAsync(
                 set => set.SetProperty(s => s.LeaseToken, token).SetProperty(s => s.LeasedUntilUtc, until),
                 ct

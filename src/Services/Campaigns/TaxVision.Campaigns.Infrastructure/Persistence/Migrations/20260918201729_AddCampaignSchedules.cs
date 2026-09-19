@@ -28,34 +28,37 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     LeasedUntilUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CampaignSchedules", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignSchedules_ActiveRunId",
                 table: "CampaignSchedules",
-                column: "ActiveRunId");
+                column: "ActiveRunId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignSchedules_Status_NextFireAtUtc",
                 table: "CampaignSchedules",
-                columns: new[] { "Status", "NextFireAtUtc" });
+                columns: new[] { "Status", "NextFireAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignSchedules_TenantId_CampaignId",
                 table: "CampaignSchedules",
-                columns: new[] { "TenantId", "CampaignId" });
+                columns: new[] { "TenantId", "CampaignId" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CampaignSchedules");
+            migrationBuilder.DropTable(name: "CampaignSchedules");
         }
     }
 }

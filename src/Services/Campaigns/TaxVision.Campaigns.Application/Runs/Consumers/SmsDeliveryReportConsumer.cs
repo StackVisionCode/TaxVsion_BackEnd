@@ -34,14 +34,21 @@ internal static class SmsDeliveryReport
         CancellationToken ct
     )
     {
-        if (string.IsNullOrWhiteSpace(sourceContext) || !sourceContext.StartsWith(CampaignPrefix, StringComparison.Ordinal))
+        if (
+            string.IsNullOrWhiteSpace(sourceContext)
+            || !sourceContext.StartsWith(CampaignPrefix, StringComparison.Ordinal)
+        )
             return; // no es un envío de campaña
 
         var dispatchId = sourceContext[CampaignPrefix.Length..];
         var run = await runs.GetByDispatchIdAsync(tenantId, dispatchId, ct);
         if (run is null)
         {
-            logger.LogWarning("SMS DLR for unknown dispatch {DispatchId} (tenant {TenantId}); ignoring.", dispatchId, tenantId);
+            logger.LogWarning(
+                "SMS DLR for unknown dispatch {DispatchId} (tenant {TenantId}); ignoring.",
+                dispatchId,
+                tenantId
+            );
             return;
         }
 
@@ -66,7 +73,20 @@ public static class CampaignSmsDeliveredConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => SmsDeliveryReport.ApplyAsync(evt.TenantId, evt.SourceContext, DispatchOutcome.Delivered, evt.ProviderMessageId, null, runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        SmsDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.SourceContext,
+            DispatchOutcome.Delivered,
+            evt.ProviderMessageId,
+            null,
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }
 
 public static class CampaignSmsFailedConsumer
@@ -79,5 +99,18 @@ public static class CampaignSmsFailedConsumer
         ICorrelationContext correlation,
         ILogger<CampaignRun> logger,
         CancellationToken ct
-    ) => SmsDeliveryReport.ApplyAsync(evt.TenantId, evt.SourceContext, DispatchOutcome.Failed, evt.ProviderMessageId, evt.FailureCode, runs, unitOfWork, bus, correlation, logger, ct);
+    ) =>
+        SmsDeliveryReport.ApplyAsync(
+            evt.TenantId,
+            evt.SourceContext,
+            DispatchOutcome.Failed,
+            evt.ProviderMessageId,
+            evt.FailureCode,
+            runs,
+            unitOfWork,
+            bus,
+            correlation,
+            logger,
+            ct
+        );
 }

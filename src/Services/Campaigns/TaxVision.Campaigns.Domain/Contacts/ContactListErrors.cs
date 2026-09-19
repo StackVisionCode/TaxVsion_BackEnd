@@ -12,6 +12,9 @@ public static class ContactListErrors
         "ContactList.DescriptionTooLong",
         "Description exceeds the maximum length."
     );
-    public static readonly Error MemberNotFound = new("ContactList.MemberNotFound", "Contact is not a member of this list.");
+    public static readonly Error MemberNotFound = new(
+        "ContactList.MemberNotFound",
+        "Contact is not a member of this list."
+    );
     public static readonly Error NotFound = new("ContactList.NotFound", "Contact list not found.");
 }

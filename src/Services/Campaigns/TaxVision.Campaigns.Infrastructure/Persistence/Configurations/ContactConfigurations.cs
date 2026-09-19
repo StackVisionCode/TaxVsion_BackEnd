@@ -50,14 +50,12 @@ public sealed class ContactListConfiguration : IEntityTypeConfiguration<ContactL
         builder.Property(l => l.CreatedAtUtc).IsRequired();
         builder.Property(l => l.UpdatedAtUtc).IsRequired();
 
-        builder
-            .HasMany(l => l.Members)
-            .WithOne()
-            .HasForeignKey(m => m.ContactListId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(l => l.Members).WithOne().HasForeignKey(m => m.ContactListId).OnDelete(DeleteBehavior.Cascade);
         builder.Metadata.FindNavigation(nameof(ContactList.Members))!.SetPropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasIndex(l => new { l.TenantId, l.CreatedAtUtc }).HasDatabaseName("IX_ContactLists_TenantId_CreatedAtUtc");
+        builder
+            .HasIndex(l => new { l.TenantId, l.CreatedAtUtc })
+            .HasDatabaseName("IX_ContactLists_TenantId_CreatedAtUtc");
     }
 }
 
@@ -79,6 +77,8 @@ public sealed class ContactListMemberConfiguration : IEntityTypeConfiguration<Co
             .HasIndex(m => new { m.ContactListId, m.ContactId })
             .IsUnique()
             .HasDatabaseName("UX_ContactListMembers_ContactListId_ContactId");
-        builder.HasIndex(m => new { m.TenantId, m.ContactId }).HasDatabaseName("IX_ContactListMembers_TenantId_ContactId");
+        builder
+            .HasIndex(m => new { m.TenantId, m.ContactId })
+            .HasDatabaseName("IX_ContactListMembers_TenantId_ContactId");
     }
 }

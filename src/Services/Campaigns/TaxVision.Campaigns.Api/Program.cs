@@ -53,13 +53,16 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "campaigns-ser
 // Autorización por permiso ([HasPermission("campaigns.manage")]); los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo (module.campaigns): OPT-IN. Se omite mientras no se registre
-// ITenantModuleEntitlementsSource + su ITenantEntitlementModulesReader (proyección local de
-// entitlements — slice RBAC posterior, igual que en Notes). Por ahora no se enforza (equivale a
-// log-only), coherente con `campaigns/Security.md §2`.
+// Gate de módulo (module.campaigns): fuente de entitlements desde la proyección local
+// (EfTenantEntitlementModulesReader, alimentada por TenantEntitlementsChangedIntegrationEvent de
+// Subscription), igual que Notes/Reminder/Tasks.
+builder.Services.AddScoped<
+    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
+    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
+>();
 
 // Fuente de permisos de la Capa 2 (modo Projection). Requiere Authorization:PermissionsSource=Projection
-// + IUserPermissionsProjectionReader registrado (interino fail-closed en Infrastructure) + IMemoryCache.
+// + IUserPermissionsProjectionReader registrado (proyección local en Infrastructure) + IMemoryCache.
 builder.Services.AddMemoryCache();
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
@@ -71,6 +74,21 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     )
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// Tier-aware quotas. Flag OFF por default (fail-open a la cuota base sin escalar, vía los readers Null
+// de AddTieredRateLimiting); con RateLimit:EnforceTierQuotas se enchufan los lectores reales
+// (proyección local de PlanCode + catálogo de Subscription), registrados en AddRateLimitTierQuotas.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
 builder.Services.AddTieredRateLimiting();
 
 // ---------- Health checks ----------

@@ -26,6 +26,7 @@ $fleet = @(
   @{ n = "Reminder";       d = "src\Services\Reminder\TaxVision.Reminder.Api";         p = 5500 },
   @{ n = "Tasks";          d = "src\Services\Tasks\TaxVision.Tasks.Api";               p = 5510 },
   @{ n = "Calendar";       d = "src\Services\Calendar\TaxVision.Calendar.Api";         p = 5520 },
+  @{ n = "Campaigns";      d = "src\Services\Campaigns\TaxVision.Campaigns.Api";       p = 5530 },
   @{ n = "Gateway";        d = "src\Gateway\TaxVision.Gateway";                        p = 5047 }
 )
 

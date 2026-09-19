@@ -15,15 +15,14 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                 table: "CampaignSchedules",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "IncludeCustomers",
-                table: "CampaignSchedules");
+            migrationBuilder.DropColumn(name: "IncludeCustomers", table: "CampaignSchedules");
         }
     }
 }

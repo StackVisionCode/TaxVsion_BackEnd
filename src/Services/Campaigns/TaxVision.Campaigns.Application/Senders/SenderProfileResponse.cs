@@ -15,5 +15,14 @@ public sealed record SenderProfileResponse(
 )
 {
     public static SenderProfileResponse From(SenderProfile s) =>
-        new(s.Id, s.TenantId, s.Channel.ToString(), s.Name, s.SenderRef, s.Status.ToString(), s.CreatedAtUtc, s.UpdatedAtUtc);
+        new(
+            s.Id,
+            s.TenantId,
+            s.Channel.ToString(),
+            s.Name,
+            s.SenderRef,
+            s.Status.ToString(),
+            s.CreatedAtUtc,
+            s.UpdatedAtUtc
+        );
 }

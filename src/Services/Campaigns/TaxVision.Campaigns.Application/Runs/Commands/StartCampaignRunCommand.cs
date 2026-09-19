@@ -47,7 +47,18 @@ public static class StartCampaignRunHandler
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
         var units = ExpandUnits(campaign.Channels, command.Recipients);
-        return await StartAndDispatchAsync(campaign, "Manual", command.TriggeredByUserId, units, runs, senderProfiles, unitOfWork, bus, correlation, ct);
+        return await StartAndDispatchAsync(
+            campaign,
+            "Manual",
+            command.TriggeredByUserId,
+            units,
+            runs,
+            senderProfiles,
+            unitOfWork,
+            bus,
+            correlation,
+            ct
+        );
     }
 
     /// <summary>

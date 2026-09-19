@@ -53,7 +53,12 @@ public static class ImportContactsHandler
             var contact = FindInBatch(batch, normalized);
             if (contact is null)
             {
-                contact = await contacts.FindByDestinationAsync(command.TenantId, normalized.Email, normalized.PhoneE164, ct);
+                contact = await contacts.FindByDestinationAsync(
+                    command.TenantId,
+                    normalized.Email,
+                    normalized.PhoneE164,
+                    ct
+                );
                 if (contact is null)
                 {
                     contact = normalized;
@@ -131,7 +136,10 @@ public static class ImportContactsHandler
     private static bool LooksLikeHeader(string? a, string? b, string? c)
     {
         var joined = string.Join(",", a, b, c).ToLowerInvariant();
-        return joined.Contains("email") || joined.Contains("name") || joined.Contains("phone") || joined.Contains("tel");
+        return joined.Contains("email")
+            || joined.Contains("name")
+            || joined.Contains("phone")
+            || joined.Contains("tel");
     }
 
     private static string? Field(string[] cols, int i)

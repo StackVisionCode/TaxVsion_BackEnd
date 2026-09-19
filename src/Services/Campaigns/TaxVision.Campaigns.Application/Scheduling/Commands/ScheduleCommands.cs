@@ -42,8 +42,21 @@ public static class ScheduleCampaignHandler
 
         var lists = command.ContactListIds ?? [];
         var result = command.Recurring
-            ? CampaignSchedule.CreateRecurring(command.TenantId, command.CampaignId, command.RunAtUtc, command.IntervalMinutes ?? 0, lists, command.IncludeCustomers)
-            : CampaignSchedule.CreateOneTime(command.TenantId, command.CampaignId, command.RunAtUtc, lists, command.IncludeCustomers);
+            ? CampaignSchedule.CreateRecurring(
+                command.TenantId,
+                command.CampaignId,
+                command.RunAtUtc,
+                command.IntervalMinutes ?? 0,
+                lists,
+                command.IncludeCustomers
+            )
+            : CampaignSchedule.CreateOneTime(
+                command.TenantId,
+                command.CampaignId,
+                command.RunAtUtc,
+                lists,
+                command.IncludeCustomers
+            );
         if (result.IsFailure)
             return Result.Failure<CampaignScheduleResponse>(result.Error);
 
