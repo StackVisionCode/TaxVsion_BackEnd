@@ -6,8 +6,9 @@ namespace TaxVision.Gateway.LoadShedding;
 /// <summary>
 /// Capa 1 (load shedder global de flota). Mide su propia latencia (incluye el round-trip completo al
 /// cluster YARP de destino) y la tasa de 5xx en <see cref="RequestOutcomeWindow"/>; cuando
-/// <see cref="ILoadShedder"/> devuelve un descarte, responde 503. Health checks (<c>/health/*</c>)
-/// nunca se cuentan ni se sheddean — se excluyen antes de tocar cualquier estado. Debe ir después de
+/// <see cref="ILoadShedder"/> devuelve un descarte, responde 503. Health checks (<c>/health/*</c>) y
+/// upgrades WebSocket (long-lived, envenenarían el p99) nunca se cuentan ni se sheddean — se excluyen
+/// antes de tocar cualquier estado. Debe ir después de
 /// <c>UseAuthentication()</c>/<c>UseAuthorization()</c> para poder leer <c>tenant_id</c> del JWT ya
 /// validado.
 /// </summary>
@@ -21,6 +22,16 @@ public sealed class LoadSheddingMiddleware(
     public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Path.StartsWithSegments("/health"))
+        {
+            await next(context);
+            return;
+        }
+
+        // Los upgrades WebSocket (Socket.IO de communication) son conexiones long-lived: su "duración"
+        // es la vida del socket (segundos o minutos), no el trabajo de una request. Si se registran en
+        // la ventana, envenenan el p99 (una conexión de 4 min entra como una latencia de 240.000 ms) y
+        // disparan load shedding sobre toda la flota. No se cuentan ni se sheddean — como /health.
+        if (context.WebSockets.IsWebSocketRequest)
         {
             await next(context);
             return;
