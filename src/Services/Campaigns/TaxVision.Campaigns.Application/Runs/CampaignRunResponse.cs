@@ -6,6 +6,8 @@ public sealed record CampaignRecipientResponse(
     Guid Id,
     string ContactRef,
     string Channel,
+    string? Email,
+    string? PhoneE164,
     string State,
     string? Reason,
     string? ProviderRef,
@@ -13,7 +15,7 @@ public sealed record CampaignRecipientResponse(
 )
 {
     public static CampaignRecipientResponse From(CampaignRecipient r) =>
-        new(r.Id, r.ContactRef, r.Channel.ToString(), r.State.ToString(), r.Reason, r.ProviderRef, r.DispatchId);
+        new(r.Id, r.ContactRef, r.Channel.ToString(), r.Email, r.PhoneE164, r.State.ToString(), r.Reason, r.ProviderRef, r.DispatchId);
 }
 
 public sealed record CampaignRunResponse(

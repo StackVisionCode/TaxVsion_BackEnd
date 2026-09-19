@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
+using TaxVision.Campaigns.Domain;
 using TaxVision.Campaigns.Domain.Contacts;
 
 namespace TaxVision.Campaigns.Application.Contacts.Commands;
@@ -39,7 +40,9 @@ public static class ImportContactsHandler
 
         foreach (var (name, email, phone) in ParseRows(command.CsvContent))
         {
-            var draft = Contact.Create(command.TenantId, name, email, phone, ContactSource.Import);
+            // Import tolerante: un teléfono no-E.164 se descarta (se conserva el email) en vez de tumbar la fila.
+            var e164 = PhoneNumbers.ToE164(phone);
+            var draft = Contact.Create(command.TenantId, name, email, e164, ContactSource.Import);
             if (draft.IsFailure)
             {
                 invalid++;

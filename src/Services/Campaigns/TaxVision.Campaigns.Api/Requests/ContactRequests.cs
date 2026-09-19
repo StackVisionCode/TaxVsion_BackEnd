@@ -19,6 +19,8 @@ public sealed record SetContactOptOutRequest(IReadOnlyList<CampaignChannel> Chan
 
 public sealed record CreateContactListRequest(string Name, string? Description);
 
+public sealed record UpdateContactListRequest(string Name, string? Description);
+
 public sealed record AddListMemberRequest(Guid ContactId);
 
 /// <summary>Import CSV: contenido crudo <c>name,email,phone</c> por línea (encabezado opcional).</summary>

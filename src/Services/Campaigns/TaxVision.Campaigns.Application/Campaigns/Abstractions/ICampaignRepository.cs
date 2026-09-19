@@ -22,4 +22,7 @@ public interface ICampaignRepository
     );
 
     Task AddAsync(Campaign campaign, CancellationToken ct = default);
+
+    /// <summary>Elimina la campaña (sus selecciones de remitente caen por cascade). Los runs históricos quedan.</summary>
+    void Remove(Campaign campaign);
 }

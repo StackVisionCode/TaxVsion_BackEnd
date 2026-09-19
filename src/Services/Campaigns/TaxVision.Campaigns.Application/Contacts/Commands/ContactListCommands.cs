@@ -28,6 +28,55 @@ public static class CreateContactListHandler
     }
 }
 
+// ─────────────────────────── Update (rename) ───────────────────────────
+
+public sealed record UpdateContactListCommand(Guid TenantId, Guid ContactListId, string Name, string? Description);
+
+public static class UpdateContactListHandler
+{
+    public static async Task<Result<ContactListResponse>> Handle(
+        UpdateContactListCommand command,
+        IContactListRepository lists,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var list = await lists.GetByIdAsync(command.TenantId, command.ContactListId, ct);
+        if (list is null)
+            return Result.Failure<ContactListResponse>(ContactListErrors.NotFound);
+
+        var updated = list.Update(command.Name, command.Description);
+        if (updated.IsFailure)
+            return Result.Failure<ContactListResponse>(updated.Error);
+
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success(ContactListResponse.From(list));
+    }
+}
+
+// ─────────────────────────── Delete ───────────────────────────
+
+public sealed record DeleteContactListCommand(Guid TenantId, Guid ContactListId);
+
+public static class DeleteContactListHandler
+{
+    public static async Task<Result> Handle(
+        DeleteContactListCommand command,
+        IContactListRepository lists,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var list = await lists.GetByIdAsync(command.TenantId, command.ContactListId, ct);
+        if (list is null)
+            return Result.Failure(ContactListErrors.NotFound);
+
+        lists.Remove(list); // membresías caen por cascade
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
 // ─────────────────────────── Add member ───────────────────────────
 
 public sealed record AddContactToListCommand(Guid TenantId, Guid ContactListId, Guid ContactId);

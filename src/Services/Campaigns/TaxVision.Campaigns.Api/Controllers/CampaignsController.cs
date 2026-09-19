@@ -94,6 +94,79 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Edita una campaña en Draft (nombre/canales/contenido).</summary>
+    [HttpPut("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(Guid id, CreateCampaignRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(
+            new UpdateCampaignCommand(tenantId, id, request.Name, request.ToChannelsFlag(), request.Message, request.Subject),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Elimina la campaña (los runs históricos quedan).</summary>
+    [HttpDelete("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new DeleteCampaignCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Draft → Ready.</summary>
+    [HttpPost("{id:guid}/ready")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> MarkReady(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(new MarkCampaignReadyCommand(tenantId, id), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Ready/Scheduled → Draft (para reeditar).</summary>
+    [HttpPost("{id:guid}/revise")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Revise(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(new RevertCampaignToDraftCommand(tenantId, id), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Archiva la campaña.</summary>
+    [HttpPost("{id:guid}/archive")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CampaignResponse>>(new ArchiveCampaignCommand(tenantId, id), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Selecciona el remitente (SenderProfile) de la campaña para un canal (solo en Draft).</summary>
     [HttpPost("{id:guid}/senders")]
     [HasPermission(CampaignsPermissions.Manage)]

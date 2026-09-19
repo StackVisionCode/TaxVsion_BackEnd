@@ -1,4 +1,5 @@
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
+using TaxVision.Campaigns.Domain;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Contacts;
 using TaxVision.Campaigns.Domain.Runs;
@@ -73,26 +74,25 @@ public static class AudienceResolver
         {
             var customers = await customerClient.GetActiveCustomersAsync(tenantId, ct);
             foreach (var customer in customers)
-            foreach (var channel in activeChannels)
             {
-                var destination = channel switch
+                // El directorio de Customer puede traer el teléfono en formato de presentación
+                // ("+1 (829) 592-4420") o el email con mayúsculas → normalizar para dedupe/entrega.
+                var custEmail = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim().ToLowerInvariant();
+                var custPhone = PhoneNumbers.ToE164(customer.PhoneE164);
+                foreach (var channel in activeChannels)
                 {
-                    CampaignChannel.Email => customer.Email,
-                    CampaignChannel.Sms or CampaignChannel.WhatsApp => customer.PhoneE164,
-                    _ => null,
-                };
-                if (string.IsNullOrWhiteSpace(destination))
-                    continue;
-                if (!seen.Add($"{channel}|{destination}"))
-                    continue;
-                units.Add(
-                    new RunRecipientDraft(
-                        customer.CustomerId.ToString("N"),
-                        channel,
-                        customer.Email,
-                        customer.PhoneE164
-                    )
-                );
+                    var destination = channel switch
+                    {
+                        CampaignChannel.Email => custEmail,
+                        CampaignChannel.Sms or CampaignChannel.WhatsApp => custPhone,
+                        _ => null,
+                    };
+                    if (string.IsNullOrWhiteSpace(destination))
+                        continue;
+                    if (!seen.Add($"{channel}|{destination}"))
+                        continue;
+                    units.Add(new RunRecipientDraft(customer.CustomerId.ToString("N"), channel, custEmail, custPhone));
+                }
             }
         }
 
@@ -100,7 +100,7 @@ public static class AudienceResolver
         foreach (var entry in manual)
         {
             var email = string.IsNullOrWhiteSpace(entry.Email) ? null : entry.Email.Trim().ToLowerInvariant();
-            var phone = string.IsNullOrWhiteSpace(entry.PhoneE164) ? null : entry.PhoneE164.Trim();
+            var phone = PhoneNumbers.ToE164(entry.PhoneE164); // null si no es E.164 → no genera unidad SMS
             if (email is null && phone is null)
                 continue;
 

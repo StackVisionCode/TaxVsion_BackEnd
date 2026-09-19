@@ -74,6 +74,35 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpPut("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<ContactListResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(Guid id, UpdateContactListRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<ContactListResponse>>(
+            new UpdateContactListCommand(tenantId, id, request.Name, request.Description),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new DeleteContactListCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{id:guid}/members")]
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.g.create")]

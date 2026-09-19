@@ -58,6 +58,7 @@ public sealed class ContactRepository(CampaignsDbContext db) : IContactRepositor
         return new PagedResult<Contact>(items, page, size, totalCount);
     }
 
-    public async Task AddAsync(Contact contact, CancellationToken ct = default) =>
-        await db.Contacts.AddAsync(contact, ct);
+    public async Task AddAsync(Contact contact, CancellationToken ct = default) => await db.Contacts.AddAsync(contact, ct);
+
+    public void Remove(Contact contact) => db.Contacts.Remove(contact);
 }

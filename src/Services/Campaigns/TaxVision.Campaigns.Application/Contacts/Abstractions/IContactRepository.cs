@@ -29,4 +29,6 @@ public interface IContactRepository
     Task<PagedResult<Contact>> ListAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 
     Task AddAsync(Contact contact, CancellationToken ct = default);
+
+    void Remove(Contact contact);
 }
