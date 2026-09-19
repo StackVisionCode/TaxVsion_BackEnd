@@ -143,9 +143,7 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var manual = (request.Manual ?? [])
-            .Select(m => new ManualAudienceEntry(m.Email, m.PhoneE164))
-            .ToList();
+        var manual = (request.Manual ?? []).Select(m => new ManualAudienceEntry(m.Email, m.PhoneE164)).ToList();
 
         var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(
             new StartCampaignRunFromAudienceCommand(
@@ -194,7 +192,12 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<CampaignScheduleResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListSchedules(Guid id, [FromQuery] int page, [FromQuery] int size, CancellationToken ct)
+    public async Task<IActionResult> ListSchedules(
+        Guid id,
+        [FromQuery] int page,
+        [FromQuery] int size,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
@@ -217,7 +220,9 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         if (!Enum.TryParse<ScheduleAction>(action, ignoreCase: true, out var parsed))
-            return BadRequest(new { code = "Schedule.UnknownAction", message = "Action must be pause, resume or cancel." });
+            return BadRequest(
+                new { code = "Schedule.UnknownAction", message = "Action must be pause, resume or cancel." }
+            );
 
         var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
             new SetScheduleStateCommand(tenantId, scheduleId, parsed),

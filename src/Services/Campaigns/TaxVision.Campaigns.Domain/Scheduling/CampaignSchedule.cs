@@ -71,7 +71,9 @@ public sealed class CampaignSchedule : TenantEntity
         if (runAtUtc == default)
             return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.RunAtRequired);
 
-        return Result.Success(New(tenantId, campaignId, ScheduleKind.OneTime, runAtUtc, null, contactListIds, includeCustomers));
+        return Result.Success(
+            New(tenantId, campaignId, ScheduleKind.OneTime, runAtUtc, null, contactListIds, includeCustomers)
+        );
     }
 
     public static Result<CampaignSchedule> CreateRecurring(
@@ -92,7 +94,15 @@ public sealed class CampaignSchedule : TenantEntity
             return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.IntervalInvalid);
 
         return Result.Success(
-            New(tenantId, campaignId, ScheduleKind.Recurring, firstRunAtUtc, intervalMinutes, contactListIds, includeCustomers)
+            New(
+                tenantId,
+                campaignId,
+                ScheduleKind.Recurring,
+                firstRunAtUtc,
+                intervalMinutes,
+                contactListIds,
+                includeCustomers
+            )
         );
     }
 
@@ -172,7 +182,8 @@ public sealed class CampaignSchedule : TenantEntity
     public IReadOnlyList<Guid> ContactListIds() =>
         string.IsNullOrWhiteSpace(ContactListIdsCsv)
             ? []
-            : ContactListIdsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : ContactListIdsCsv
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
                 .Where(g => g != Guid.Empty)
                 .ToList();

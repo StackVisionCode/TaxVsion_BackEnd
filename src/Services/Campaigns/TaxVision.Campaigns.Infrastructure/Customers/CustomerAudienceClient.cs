@@ -69,7 +69,9 @@ public sealed class CustomerAudienceClient(
                 if (body?.Items is null || body.Items.Count == 0)
                     break;
 
-                members.AddRange(body.Items.Select(i => new CustomerAudienceMember(i.Id, i.PrimaryEmail, i.PrimaryPhone)));
+                members.AddRange(
+                    body.Items.Select(i => new CustomerAudienceMember(i.Id, i.PrimaryEmail, i.PrimaryPhone))
+                );
 
                 if (page >= body.TotalPagesSafe(PageSize))
                     break;
@@ -77,7 +79,11 @@ public sealed class CustomerAudienceClient(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(ex, "Could not reach Customer for tenant {TenantId}; skipping Customer audience.", tenantId);
+            logger.LogWarning(
+                ex,
+                "Could not reach Customer for tenant {TenantId}; skipping Customer audience.",
+                tenantId
+            );
         }
 
         return members;

@@ -49,11 +49,15 @@ public sealed class ContactRepository(CampaignsDbContext db) : IContactRepositor
 
     public async Task<PagedResult<Contact>> ListAsync(Guid tenantId, int page, int size, CancellationToken ct = default)
     {
-        var query = db.Contacts.IgnoreQueryFilters().Where(c => c.TenantId == tenantId).OrderByDescending(c => c.CreatedAtUtc);
+        var query = db
+            .Contacts.IgnoreQueryFilters()
+            .Where(c => c.TenantId == tenantId)
+            .OrderByDescending(c => c.CreatedAtUtc);
         var totalCount = await query.CountAsync(ct);
         var items = await query.Skip((page - 1) * size).Take(size).ToListAsync(ct);
         return new PagedResult<Contact>(items, page, size, totalCount);
     }
 
-    public async Task AddAsync(Contact contact, CancellationToken ct = default) => await db.Contacts.AddAsync(contact, ct);
+    public async Task AddAsync(Contact contact, CancellationToken ct = default) =>
+        await db.Contacts.AddAsync(contact, ct);
 }

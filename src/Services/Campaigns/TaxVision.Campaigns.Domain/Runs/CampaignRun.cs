@@ -116,10 +116,19 @@ public sealed class CampaignRun : TenantEntity
     /// el <c>DispatchId</c> string — hoy el DLR de Email (Postmaster reenvía <c>CampaignId</c> = el
     /// RecipientId). Misma semántica idempotente/tardía que <see cref="ApplyResult(string,DispatchOutcome,string?,string?)"/>.
     /// </summary>
-    public Result<bool> ApplyResultForRecipient(Guid recipientId, DispatchOutcome outcome, string? providerRef, string? reason) =>
-        Apply(_recipients.Find(r => r.Id == recipientId), outcome, providerRef, reason);
+    public Result<bool> ApplyResultForRecipient(
+        Guid recipientId,
+        DispatchOutcome outcome,
+        string? providerRef,
+        string? reason
+    ) => Apply(_recipients.Find(r => r.Id == recipientId), outcome, providerRef, reason);
 
-    private Result<bool> Apply(CampaignRecipient? recipient, DispatchOutcome outcome, string? providerRef, string? reason)
+    private Result<bool> Apply(
+        CampaignRecipient? recipient,
+        DispatchOutcome outcome,
+        string? providerRef,
+        string? reason
+    )
     {
         if (recipient is null)
             return Result.Failure<bool>(CampaignRunErrors.RecipientNotFound);
@@ -151,11 +160,10 @@ public sealed class CampaignRun : TenantEntity
         // Sin fallos ni desconocidos → Completed (cubre todo entregado/aceptado y también el caso
         // "todo Skipped" legítimo: opt-out/sin destino no es un fallo del run). Solo si NO hubo
         // ningún entregado/aceptado y sí hubo fallos/desconocidos → Failed; el resto → PartiallyFailed.
-        Status = CounterFailed + CounterUnknown == 0
-            ? CampaignRunStatus.Completed
-            : CounterDelivered + CounterAccepted == 0
-                ? CampaignRunStatus.Failed
-                : CampaignRunStatus.PartiallyFailed;
+        Status =
+            CounterFailed + CounterUnknown == 0 ? CampaignRunStatus.Completed
+            : CounterDelivered + CounterAccepted == 0 ? CampaignRunStatus.Failed
+            : CampaignRunStatus.PartiallyFailed;
         FinishedAtUtc = DateTime.UtcNow;
         return true;
     }

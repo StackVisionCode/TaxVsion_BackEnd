@@ -187,15 +187,9 @@ public static class DependencyInjection
         services.AddScoped<IEmailConfigurationResolver, EmailConfigurationResolver>();
         services.AddScoped<ISmtpSendClient, SystemNetSmtpSendClient>();
 
-        // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage).
-        // NO retirado en la Fase 18 del plan de hardening (Notification): el self-service HTTP
-        // de un envío ad-hoc por plantilla (POST /notifications/email/send-template) estaba
-        // confirmado sin caller real y se eliminó, pero este módulo entero (repos, renderer,
-        // storage services) sigue siendo una dependencia real y viva de EmailCampaigns
-        // (EmailCampaignBatchConsumer/ScheduleEmailCampaignHandler/SendCampaignTestHandler,
-        // fuera de alcance de este plan por instrucción explícita del usuario) — ver el
-        // comentario XML de EmailTemplatesController/EmailLayoutsController para el detalle
-        // completo de por qué esos dos controllers tampoco se pudieron retirar.
+        // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage). Se conserva
+        // por su superficie HTTP de gestión de plantillas (GET/POST /notifications/email/templates),
+        // que el frontend consume; ya no lo consume el motor de EmailCampaigns (retirado).
         services.Configure<CloudStorageClientOptions>(configuration.GetSection(CloudStorageClientOptions.SectionName));
         services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IEmailLayoutRepository, EmailLayoutRepository>();
@@ -206,9 +200,6 @@ public static class DependencyInjection
         // Módulo de envío (correos salientes, entrega asíncrona). IEmailDeliveryService se registra
         // más arriba, gateado por Notification:UsePostmasterDispatch (Fase 19) — no acá.
         services.AddScoped<IOutboundEmailRepository, OutboundEmailRepository>();
-
-        // Módulo de campañas.
-        services.AddScoped<IEmailCampaignRepository, EmailCampaignRepository>();
 
         // Observabilidad del ciclo de vida de la suscripción (Expiración/Dunning, Fase 6).
         services.AddSingleton<

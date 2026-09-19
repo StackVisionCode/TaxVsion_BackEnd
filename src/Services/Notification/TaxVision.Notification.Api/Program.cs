@@ -22,7 +22,6 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Notification.Api.Common;
-using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Infrastructure;
@@ -176,8 +175,6 @@ builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
 // única fuente de verdad de tracking de entrega/bounce/suppression para los correos que routea
 // (MarkBounced se alimenta de PostmasterEmailDeliveryBouncedIntegrationEvent en vez de este webhook muerto).
 
-// Scheduler de campañas: inicia el fan-out cuando llega la hora programada.
-builder.Services.AddHostedService<CampaignSchedulerService>();
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "notification-service",
@@ -212,10 +209,6 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<EmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailDeliverySucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailDeliveryFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignScheduledIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignBatchIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailCampaignCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Canal Email del orquestador Campaigns (ADR-CAMP-001 D3) — el consumer publica el result del dispatch.
     options
         .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()

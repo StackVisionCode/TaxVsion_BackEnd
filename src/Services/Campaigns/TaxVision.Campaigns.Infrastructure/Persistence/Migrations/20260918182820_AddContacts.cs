@@ -20,12 +20,13 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ContactLists", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Contacts",
@@ -40,12 +41,13 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     OptedOutChannels = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Contacts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "ContactListMembers",
@@ -55,7 +57,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     ContactListId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ContactId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    AddedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    AddedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -65,56 +67,61 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         column: x => x.ContactListId,
                         principalTable: "ContactLists",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ContactListMembers_TenantId_ContactId",
                 table: "ContactListMembers",
-                columns: new[] { "TenantId", "ContactId" });
+                columns: new[] { "TenantId", "ContactId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_ContactListMembers_ContactListId_ContactId",
                 table: "ContactListMembers",
                 columns: new[] { "ContactListId", "ContactId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ContactLists_TenantId_CreatedAtUtc",
                 table: "ContactLists",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Contacts_TenantId_CreatedAtUtc",
                 table: "Contacts",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_Contacts_TenantId_Email",
                 table: "Contacts",
                 columns: new[] { "TenantId", "Email" },
                 unique: true,
-                filter: "[Email] IS NOT NULL");
+                filter: "[Email] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_Contacts_TenantId_PhoneE164",
                 table: "Contacts",
                 columns: new[] { "TenantId", "PhoneE164" },
                 unique: true,
-                filter: "[PhoneE164] IS NOT NULL");
+                filter: "[PhoneE164] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ContactListMembers");
+            migrationBuilder.DropTable(name: "ContactListMembers");
 
-            migrationBuilder.DropTable(
-                name: "Contacts");
+            migrationBuilder.DropTable(name: "Contacts");
 
-            migrationBuilder.DropTable(
-                name: "ContactLists");
+            migrationBuilder.DropTable(name: "ContactLists");
         }
     }
 }

@@ -71,13 +71,14 @@ public sealed class PractitionerPinTests
     }
 
     [Fact]
-    public void SetPractitionerPin_after_send_throws()
+    public void SetPractitionerPin_after_send_fails()
     {
         var request = NewInProgressWithField();
 
-        Assert.Throws<InvalidOperationException>(() =>
-            request.SetPractitionerPin("hash", Guid.NewGuid(), DateTime.UtcNow)
-        );
+        var result = request.SetPractitionerPin("hash", Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
     }
 
     [Fact]

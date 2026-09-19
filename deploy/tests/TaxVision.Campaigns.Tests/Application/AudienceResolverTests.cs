@@ -67,7 +67,14 @@ public sealed class AudienceResolverTests
         h.AddContact("dup@x.com", null);
         h.AddContact("dup@x.com", null); // mismo destino → una sola unidad Email
 
-        var units = await AudienceResolver.ResolveAsync(Tenant, CampaignChannel.Email, [h.List.Id], [], h.Contacts, h.Lists);
+        var units = await AudienceResolver.ResolveAsync(
+            Tenant,
+            CampaignChannel.Email,
+            [h.List.Id],
+            [],
+            h.Contacts,
+            h.Lists
+        );
 
         Assert.Single(units);
     }

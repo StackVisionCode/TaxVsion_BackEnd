@@ -20,7 +20,13 @@ public static class CreateContactHandler
         CancellationToken ct
     )
     {
-        var result = Contact.Create(command.TenantId, command.Name, command.Email, command.PhoneE164, ContactSource.Manual);
+        var result = Contact.Create(
+            command.TenantId,
+            command.Name,
+            command.Email,
+            command.PhoneE164,
+            ContactSource.Manual
+        );
         if (result.IsFailure)
             return Result.Failure<ContactResponse>(result.Error);
 
@@ -32,7 +38,13 @@ public static class CreateContactHandler
 
 // ─────────────────────────── Update ───────────────────────────
 
-public sealed record UpdateContactCommand(Guid TenantId, Guid ContactId, string? Name, string? Email, string? PhoneE164);
+public sealed record UpdateContactCommand(
+    Guid TenantId,
+    Guid ContactId,
+    string? Name,
+    string? Email,
+    string? PhoneE164
+);
 
 public static class UpdateContactHandler
 {

@@ -19,7 +19,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     CampaignId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Channel = table.Column<int>(type: "int", nullable: false),
-                    SenderProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    SenderProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -29,8 +29,10 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         column: x => x.CampaignId,
                         principalTable: "Campaigns",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SenderProfiles",
@@ -43,38 +45,40 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Status = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SenderProfiles", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CampaignSenderSelections_CampaignId_Channel",
                 table: "CampaignSenderSelections",
                 columns: new[] { "CampaignId", "Channel" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SenderProfiles_TenantId_Channel",
                 table: "SenderProfiles",
-                columns: new[] { "TenantId", "Channel" });
+                columns: new[] { "TenantId", "Channel" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SenderProfiles_TenantId_Status",
                 table: "SenderProfiles",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CampaignSenderSelections");
+            migrationBuilder.DropTable(name: "CampaignSenderSelections");
 
-            migrationBuilder.DropTable(
-                name: "SenderProfiles");
+            migrationBuilder.DropTable(name: "SenderProfiles");
         }
     }
 }
