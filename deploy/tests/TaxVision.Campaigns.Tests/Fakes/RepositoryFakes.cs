@@ -42,6 +42,8 @@ internal sealed class FakeContactRepository : IContactRepository
         Store.Add(contact);
         return Task.CompletedTask;
     }
+
+    public void Remove(Contact contact) => Store.Remove(contact);
 }
 
 internal sealed class FakeCustomerAudienceClient : ICustomerAudienceClient
@@ -85,4 +87,9 @@ internal sealed class FakeContactListRepository : IContactListRepository
         Store.Add(list);
         return Task.CompletedTask;
     }
+
+    public void Remove(ContactList list) => Store.Remove(list);
+
+    public Task RemoveMembershipsForContactAsync(Guid tenantId, Guid contactId, CancellationToken ct = default) =>
+        Task.CompletedTask;
 }

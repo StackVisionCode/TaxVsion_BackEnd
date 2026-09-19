@@ -19,4 +19,10 @@ public interface IContactListRepository
     Task<PagedResult<ContactList>> ListAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 
     Task AddAsync(ContactList list, CancellationToken ct = default);
+
+    /// <summary>Elimina la lista (sus membresías caen por cascade).</summary>
+    void Remove(ContactList list);
+
+    /// <summary>Elimina cualquier membresía que apunte a un contacto (al borrar el contacto).</summary>
+    Task RemoveMembershipsForContactAsync(Guid tenantId, Guid contactId, CancellationToken ct = default);
 }

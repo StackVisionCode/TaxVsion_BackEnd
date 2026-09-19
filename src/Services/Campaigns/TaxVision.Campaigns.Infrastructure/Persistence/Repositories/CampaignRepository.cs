@@ -37,4 +37,6 @@ public sealed class CampaignRepository(CampaignsDbContext db) : ICampaignReposit
 
     public async Task AddAsync(Campaign campaign, CancellationToken ct = default) =>
         await db.Campaigns.AddAsync(campaign, ct);
+
+    public void Remove(Campaign campaign) => db.Campaigns.Remove(campaign);
 }

@@ -1,4 +1,5 @@
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
+using TaxVision.Campaigns.Domain;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Contacts;
 using TaxVision.Campaigns.Domain.Runs;
@@ -91,7 +92,7 @@ public static class AudienceResolver
         foreach (var entry in manual)
         {
             var email = string.IsNullOrWhiteSpace(entry.Email) ? null : entry.Email.Trim().ToLowerInvariant();
-            var phone = string.IsNullOrWhiteSpace(entry.PhoneE164) ? null : entry.PhoneE164.Trim();
+            var phone = PhoneNumbers.ToE164(entry.PhoneE164); // null si no es E.164 → no genera unidad SMS
             if (email is null && phone is null)
                 continue;
 

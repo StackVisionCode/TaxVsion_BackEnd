@@ -195,6 +195,19 @@ public sealed class Campaign : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Ready/Scheduled → Draft, para volver a editar. No aplica a Archived.</summary>
+    public Result RevertToDraft()
+    {
+        if (Status == CampaignStatus.Archived)
+            return Result.Failure(CampaignErrors.Archived);
+        if (Status == CampaignStatus.Draft)
+            return Result.Success();
+
+        Status = CampaignStatus.Draft;
+        Touch();
+        return Result.Success();
+    }
+
     public Result Archive()
     {
         if (Status == CampaignStatus.Archived)

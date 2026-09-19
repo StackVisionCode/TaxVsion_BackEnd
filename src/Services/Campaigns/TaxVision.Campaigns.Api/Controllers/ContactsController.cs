@@ -77,6 +77,19 @@ public sealed class ContactsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpDelete("{id:guid}")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new DeleteContactCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{id:guid}/opt-out")]
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.g.create")]

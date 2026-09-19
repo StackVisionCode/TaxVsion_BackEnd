@@ -56,6 +56,31 @@ public static class UpdateContactHandler
     }
 }
 
+// ─────────────────────────── Delete ───────────────────────────
+
+public sealed record DeleteContactCommand(Guid TenantId, Guid ContactId);
+
+public static class DeleteContactHandler
+{
+    public static async Task<Result> Handle(
+        DeleteContactCommand command,
+        IContactRepository contacts,
+        IContactListRepository lists,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var contact = await contacts.GetByIdAsync(command.TenantId, command.ContactId, ct);
+        if (contact is null)
+            return Result.Failure(ContactErrors.NotFound);
+
+        await lists.RemoveMembershipsForContactAsync(command.TenantId, command.ContactId, ct);
+        contacts.Remove(contact);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
 // ─────────────────────────── Opt-out / Opt-in ───────────────────────────
 
 /// <summary>Cambia el consentimiento por canal. <paramref name="OptedOut"/> true = baja; false = re-suscribe.</summary>
