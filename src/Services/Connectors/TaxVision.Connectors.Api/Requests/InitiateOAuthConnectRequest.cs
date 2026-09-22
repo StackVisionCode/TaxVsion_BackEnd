@@ -7,4 +7,9 @@ namespace TaxVision.Connectors.Api.Requests;
 /// tenant); el callback de OAuth devuelve el navegador ahí. Opcional: si no viene, el controller cae
 /// al header Origin, y en última instancia el callback usa el BaseUrl configurado.
 /// </summary>
-public sealed record InitiateOAuthConnectRequest(ProviderCode ProviderCode, string? ReturnUrl = null);
+public sealed record InitiateOAuthConnectRequest(
+    ProviderCode ProviderCode,
+    string? ReturnUrl = null,
+    // true = conectar el buzón de oficina (compartido); false (default) = el buzón personal del usuario.
+    bool AsOffice = false
+);

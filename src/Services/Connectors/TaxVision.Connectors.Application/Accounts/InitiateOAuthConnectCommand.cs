@@ -13,7 +13,9 @@ public sealed record InitiateOAuthConnectCommand(
     Guid InitiatedByUserId,
     string? InitiatorEmail = null,
     // Origen del frontend (subdominio del tenant) al que el callback debe devolver el navegador.
-    string? ReturnOrigin = null
+    string? ReturnOrigin = null,
+    // true = buzón de oficina (compartido, sin restricción de identidad); false = personal del usuario.
+    bool AsOffice = false
 );
 
 public sealed record InitiateOAuthConnectResult(string AuthorizationUrl);

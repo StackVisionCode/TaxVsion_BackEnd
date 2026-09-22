@@ -13,8 +13,10 @@ public sealed record CompleteOAuthConnectCommand(
     ProviderCode ProviderCode,
     Guid InitiatedByUserId,
     string AuthorizationCode,
-    // Email del usuario en el sistema (del state) — el buzón autorizado debe coincidir.
-    string? InitiatorEmail = null
+    // Email del usuario en el sistema (del state) — el buzón autorizado debe coincidir (solo personal).
+    string? InitiatorEmail = null,
+    // true = buzón de oficina (guard de identidad NO aplica); false = personal (== login).
+    bool AsOffice = false
 );
 
 public sealed record CompleteOAuthConnectResult(Guid AccountId, string EmailAddress);

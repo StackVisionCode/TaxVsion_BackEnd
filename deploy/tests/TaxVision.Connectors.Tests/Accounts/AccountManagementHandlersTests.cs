@@ -73,17 +73,18 @@ public class AccountManagementHandlersTests
         repository.Accounts.Add(otherAccount);
 
         var accounts = await ListTenantEmailAccountsHandler.Handle(
-            new ListTenantEmailAccountsQuery(tenantId),
+            new ListTenantEmailAccountsQuery(tenantId, Guid.NewGuid()),
             repository,
             CancellationToken.None
         );
 
+        // Ambas son de oficina (sin dueño) → la del tenant llamante se ve, la de otro tenant no.
         var dto = Assert.Single(accounts);
         Assert.Equal("mine@gmail.com", dto.EmailAddress);
     }
 
     [Fact]
-    public async Task GetTenantEmailAccount_ForAnotherTenant_ReturnsForbidden()
+    public async Task GetTenantEmailAccount_ForAnotherTenant_ReturnsNotFound()
     {
         var repository = new FakeTenantEmailAccountRepository();
         var account = TenantEmailAccount
@@ -92,13 +93,125 @@ public class AccountManagementHandlersTests
         repository.Accounts.Add(account);
 
         var result = await GetTenantEmailAccountHandler.Handle(
-            new GetTenantEmailAccountQuery(Guid.NewGuid(), account.Id),
+            new GetTenantEmailAccountQuery(Guid.NewGuid(), account.Id, Guid.NewGuid()),
             repository,
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
-        Assert.Equal("GetTenantEmailAccountHandler.Forbidden", result.Error.Code);
+        Assert.Equal("TenantEmailAccount.NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task GetTenantEmailAccount_PersonalOfAnotherUser_ReturnsNotFound()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var owner = Guid.NewGuid();
+        var personal = TenantEmailAccount
+            .Create(tenantId, "colleague@gmail.com", ProviderCode.Gmail, owner, Now, ownerUserId: owner)
+            .Value;
+        repository.Accounts.Add(personal);
+
+        var result = await GetTenantEmailAccountHandler.Handle(
+            new GetTenantEmailAccountQuery(tenantId, personal.Id, Guid.NewGuid()), // otro usuario
+            repository,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantEmailAccount.NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task ListVisible_HidesOtherEmployeesPersonalMailboxes()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var me = Guid.NewGuid();
+        repository.Accounts.Add(
+            TenantEmailAccount.Create(tenantId, "office@taxpro.com", ProviderCode.Gmail, Guid.NewGuid(), Now).Value
+        );
+        repository.Accounts.Add(
+            TenantEmailAccount.Create(tenantId, "me@taxpro.com", ProviderCode.Gmail, me, Now, ownerUserId: me).Value
+        );
+        repository.Accounts.Add(
+            TenantEmailAccount
+                .Create(
+                    tenantId,
+                    "colleague@taxpro.com",
+                    ProviderCode.Gmail,
+                    Guid.NewGuid(),
+                    Now,
+                    ownerUserId: Guid.NewGuid()
+                )
+                .Value
+        );
+
+        var accounts = await ListTenantEmailAccountsHandler.Handle(
+            new ListTenantEmailAccountsQuery(tenantId, me),
+            repository,
+            CancellationToken.None
+        );
+
+        // Oficina + el mío; NO el personal del colega.
+        Assert.Equal(2, accounts.Count);
+        Assert.Contains(accounts, a => a.IsOffice);
+        Assert.Contains(accounts, a => a.EmailAddress == "me@taxpro.com");
+        Assert.DoesNotContain(accounts, a => a.EmailAddress == "colleague@taxpro.com");
+    }
+
+    [Fact]
+    public async Task ListVisible_WithoutOfficeAccess_HidesOfficeMailbox()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var me = Guid.NewGuid();
+        repository.Accounts.Add(
+            TenantEmailAccount.Create(tenantId, "office@taxpro.com", ProviderCode.Gmail, Guid.NewGuid(), Now).Value
+        );
+        repository.Accounts.Add(
+            TenantEmailAccount.Create(tenantId, "me@taxpro.com", ProviderCode.Gmail, me, Now, ownerUserId: me).Value
+        );
+
+        var accounts = await ListTenantEmailAccountsHandler.Handle(
+            new ListTenantEmailAccountsQuery(tenantId, me, CanSeeOffice: false),
+            repository,
+            CancellationToken.None
+        );
+
+        // Sin office.read: solo el propio; la oficina desaparece.
+        var dto = Assert.Single(accounts);
+        Assert.Equal("me@taxpro.com", dto.EmailAddress);
+        Assert.DoesNotContain(accounts, a => a.IsOffice);
+    }
+
+    [Fact]
+    public async Task GetTenantEmailAccount_OfficeWithoutOfficeAccess_ReturnsNotFound()
+    {
+        var repository = new FakeTenantEmailAccountRepository();
+        var tenantId = Guid.NewGuid();
+        var office = TenantEmailAccount
+            .Create(tenantId, "office@taxpro.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        repository.Accounts.Add(office);
+
+        var denied = await GetTenantEmailAccountHandler.Handle(
+            new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: false),
+            repository,
+            CancellationToken.None
+        );
+        Assert.True(denied.IsFailure);
+        Assert.Equal("TenantEmailAccount.NotFound", denied.Error.Code);
+
+        // Con office.read sí lo ve.
+        var allowed = await GetTenantEmailAccountHandler.Handle(
+            new GetTenantEmailAccountQuery(tenantId, office.Id, Guid.NewGuid(), CanSeeOffice: true),
+            repository,
+            CancellationToken.None
+        );
+        Assert.True(allowed.IsSuccess);
+        Assert.True(allowed.Value.IsOffice);
     }
 
     [Fact]

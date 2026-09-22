@@ -8,7 +8,12 @@ public static class ListTenantEmailAccountsHandler
         CancellationToken ct
     )
     {
-        var accounts = await accountRepository.ListByTenantAsync(query.TenantId, ct);
+        var accounts = await accountRepository.ListVisibleAsync(
+            query.TenantId,
+            query.CallerUserId,
+            query.CanSeeOffice,
+            ct
+        );
         return accounts
             .Select(a => new TenantEmailAccountDto(
                 a.Id,
@@ -17,7 +22,9 @@ public static class ListTenantEmailAccountsHandler
                 a.DisplayName,
                 a.Status.ToString(),
                 a.ConnectedAtUtc,
-                a.CreatedAtUtc
+                a.CreatedAtUtc,
+                a.OwnerUserId,
+                a.IsOffice
             ))
             .ToList();
     }

@@ -123,6 +123,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -133,6 +134,13 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .IncomingEmails.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.DeletedAtUtc != null);
+
+        // Gate de buzón de oficina: oculta entrantes borrados de buzones no visibles.
+        if (visibleAccountIds is not null)
+        {
+            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
+            query = query.Where(x => ids.Contains(x.AccountId));
+        }
 
         var totalCount = await query.CountAsync(ct);
 

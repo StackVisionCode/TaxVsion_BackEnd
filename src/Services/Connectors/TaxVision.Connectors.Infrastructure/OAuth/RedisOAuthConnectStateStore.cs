@@ -21,13 +21,15 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         Guid initiatedByUserId,
         string? initiatorEmail = null,
         string? returnOrigin = null,
+        bool asOffice = false,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        // 4º campo = email del usuario, 5º = origen de retorno (ni email ni una URL de origen
-        // contienen '|'); vacíos si no vinieron.
-        var value = $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}|{returnOrigin}";
+        // 4º campo = email del usuario, 5º = origen de retorno, 6º = buzón de oficina (bool). Ni email
+        // ni una URL de origen contienen '|'; vacíos si no vinieron.
+        var value =
+            $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}|{returnOrigin}|{(asOffice ? "1" : "0")}";
         await redis.GetDatabase().StringSetAsync(Key(state), value, Ttl);
         return state;
     }
@@ -50,7 +52,8 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
 
         var initiatorEmail = parts.Length >= 4 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3] : null;
         var returnOrigin = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4]) ? parts[4] : null;
-        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin);
+        var asOffice = parts.Length >= 6 && parts[5] == "1";
+        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin, asOffice);
     }
 
     private static string Key(string state) => $"connectors:oauth-connect-state:{state}";

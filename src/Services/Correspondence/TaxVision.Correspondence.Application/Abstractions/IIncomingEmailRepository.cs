@@ -86,6 +86,7 @@ public interface IIncomingEmailRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     );
 

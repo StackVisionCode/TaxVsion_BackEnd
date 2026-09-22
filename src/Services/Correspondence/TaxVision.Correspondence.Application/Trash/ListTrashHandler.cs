@@ -17,8 +17,22 @@ public static class ListTrashHandler
     )
     {
         var take = query.Page * query.Size;
-        var incoming = await incomingEmails.ListTrashedByCustomerAsync(query.TenantId, query.CustomerId, 1, take, ct);
-        var sent = await drafts.ListTrashedSentByCustomerAsync(query.TenantId, query.CustomerId, 1, take, ct);
+        var incoming = await incomingEmails.ListTrashedByCustomerAsync(
+            query.TenantId,
+            query.CustomerId,
+            1,
+            take,
+            query.VisibleAccountIds,
+            ct
+        );
+        var sent = await drafts.ListTrashedSentByCustomerAsync(
+            query.TenantId,
+            query.CustomerId,
+            1,
+            take,
+            query.VisibleAccountIds,
+            ct
+        );
 
         var merged = incoming
             .Items.Select(ToItem)

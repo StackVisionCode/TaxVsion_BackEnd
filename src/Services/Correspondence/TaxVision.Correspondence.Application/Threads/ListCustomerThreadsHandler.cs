@@ -21,7 +21,14 @@ public static class ListCustomerThreadsHandler
         CancellationToken ct
     )
     {
-        var page = await emailThreads.ListByCustomerAsync(query.TenantId, query.CustomerId, query.Page, query.Size, ct);
+        var page = await emailThreads.ListByCustomerAsync(
+            query.TenantId,
+            query.CustomerId,
+            query.Page,
+            query.Size,
+            query.VisibleAccountIds,
+            ct
+        );
 
         // Conteo de no-leídos solo para los hilos de ESTA página (una consulta agregada, no N).
         var threadIds = page.Items.Select(thread => thread.Id).ToList();

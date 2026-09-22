@@ -82,6 +82,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -97,6 +98,13 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
                 && d.Status == DraftStatus.Sent
                 && d.DeletedAtUtc == null
             );
+
+        // Gate de buzón de oficina: oculta enviados desde buzones no visibles.
+        if (visibleAccountIds is not null)
+        {
+            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
+            query = query.Where(d => ids.Contains(d.AccountId));
+        }
 
         var totalCount = await query.CountAsync(ct);
 
@@ -136,6 +144,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -151,6 +160,13 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
                 && d.Status == DraftStatus.Sent
                 && d.DeletedAtUtc != null
             );
+
+        // Gate de buzón de oficina: oculta enviados borrados desde buzones no visibles.
+        if (visibleAccountIds is not null)
+        {
+            var ids = visibleAccountIds as Guid[] ?? visibleAccountIds.ToArray();
+            query = query.Where(d => ids.Contains(d.AccountId));
+        }
 
         var totalCount = await query.CountAsync(ct);
 

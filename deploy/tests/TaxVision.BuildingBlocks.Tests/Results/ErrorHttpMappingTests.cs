@@ -23,6 +23,7 @@ public sealed class ErrorHttpMappingTests
     [InlineData("File.Forbidden", StatusCodes.Status403Forbidden)]
     [InlineData("Auth.SubscriptionInactive", StatusCodes.Status403Forbidden)]
     [InlineData("Folder.NotDeleted", StatusCodes.Status404NotFound)]
+    [InlineData("TenantEmailAccount.NotFound", StatusCodes.Status404NotFound)]
     [InlineData("ShareLink.LinkSharingDisabled", StatusCodes.Status403Forbidden)]
     [InlineData("ShareLink.PasswordRequiredForLinkShare", StatusCodes.Status400BadRequest)]
     [InlineData("ShareLink.ShareLifetimeExceedsMax", StatusCodes.Status400BadRequest)]

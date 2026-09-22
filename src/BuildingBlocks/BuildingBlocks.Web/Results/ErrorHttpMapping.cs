@@ -35,6 +35,7 @@ public static class ErrorHttpMapping
             // Restaurar por un folderId que no es una raíz de papelera válida → 404 (como un NotFound).
             or "Folder.NotDeleted"
             or "TenantEmailAccount.NotFound"
+            or "TenantEmailAccount.NotFound"
             or "ProviderWatchSubscription.NotFound"
             or "GetMessageAttachmentHandler.AttachmentNotFound"
             or "IncomingEmail.NotFound"

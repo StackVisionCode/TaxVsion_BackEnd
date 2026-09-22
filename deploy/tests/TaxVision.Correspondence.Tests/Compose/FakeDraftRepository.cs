@@ -62,6 +62,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -70,6 +71,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
         var filtered = _store
             .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent)
+            .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
 
@@ -108,6 +110,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -118,6 +121,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
             .Where(x =>
                 x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent && x.IsDeleted
             )
+            .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.DeletedAtUtc)
             .ToList();
 

@@ -45,6 +45,16 @@ public static class ListThreadMessagesHandler
                 new Error("EmailThread.NotFound", "The thread was not found for this tenant.")
             );
 
+        // Gate de buzón de oficina: un hilo sin ningún mensaje de un buzón visible se oculta (mismo
+        // NotFound que "no existe"). Si es visible se muestra ENTERO (incluidos los de oficina).
+        if (
+            query.VisibleAccountIds is not null
+            && !await emailThreads.HasVisibleMessageAsync(query.TenantId, thread.Id, query.VisibleAccountIds, ct)
+        )
+            return Result.Failure<PagedResult<MessageSummary>>(
+                new Error("EmailThread.NotFound", "The thread was not found for this tenant.")
+            );
+
         var inbound = await incomingEmails.ListAllByThreadAsync(query.TenantId, thread.Id, ct);
         var outbound = await drafts.ListSentByThreadAsync(query.TenantId, thread.Id, ct);
 

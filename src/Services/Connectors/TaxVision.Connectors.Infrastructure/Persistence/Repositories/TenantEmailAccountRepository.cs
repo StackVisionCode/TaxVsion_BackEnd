@@ -69,6 +69,18 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
             .OrderBy(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantEmailAccount>> ListVisibleAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && (a.OwnerUserId == userId || (includeOffice && a.OwnerUserId == null)))
+            .OrderBy(a => a.CreatedAtUtc)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default) =>
         await dbContext
             .TenantEmailAccounts.IgnoreQueryFilters()
