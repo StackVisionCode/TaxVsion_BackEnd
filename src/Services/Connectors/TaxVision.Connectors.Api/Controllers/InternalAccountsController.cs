@@ -17,7 +17,7 @@ namespace TaxVision.Connectors.Api.Controllers;
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
-[Route("connectors/internal/accounts")]
+[Route("internal/accounts")]
 public sealed class InternalAccountsController(IMessageBus bus) : ControllerBase
 {
     [HttpPost("visible-ids")]

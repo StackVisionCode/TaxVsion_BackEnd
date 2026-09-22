@@ -18,6 +18,7 @@ using TaxVision.Signature.Application.Requests.Commands.Cancel;
 using TaxVision.Signature.Application.Requests.Commands.ClearPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.ClearPreparer;
 using TaxVision.Signature.Application.Requests.Commands.Create;
+using TaxVision.Signature.Application.Requests.Commands.Delete;
 using TaxVision.Signature.Application.Requests.Commands.ExtendExpiration;
 using TaxVision.Signature.Application.Requests.Commands.LegalHold;
 using TaxVision.Signature.Application.Requests.Commands.PlaceField;
@@ -29,6 +30,7 @@ using TaxVision.Signature.Application.Requests.Commands.Send;
 using TaxVision.Signature.Application.Requests.Commands.SetPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.SetPreparer;
 using TaxVision.Signature.Application.Requests.Commands.SignAsPreparer;
+using TaxVision.Signature.Application.Requests.Commands.Update;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
 using TaxVision.Signature.Domain.Requests;
@@ -139,6 +141,7 @@ public sealed class SignatureRequestsController(
         [FromQuery] SignatureCategory? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
+        [FromQuery] bool editableOnly = false,
         CancellationToken ct = default
     )
     {
@@ -146,7 +149,7 @@ public sealed class SignatureRequestsController(
             return Unauthorized();
 
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
-            new ListSignatureRequestsQuery(tenantId, status, category, page, size),
+            new ListSignatureRequestsQuery(tenantId, status, category, page, size, editableOnly),
             ct
         );
         return Ok(result);
@@ -328,6 +331,65 @@ public sealed class SignatureRequestsController(
             new CancelSignatureRequestCommand(tenantId, id, userId, body.Reason),
             ct
         );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id} ----------
+    // Edita la metadata de un borrador (Draft/Ready). El dominio rechaza editar una enviada/terminal.
+    [HttpPut("{id:guid}")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Update(
+        [FromRoute] Guid id,
+        [FromBody] UpdateSignatureRequestBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(
+            new UpdateSignatureRequestCommand(
+                tenantId,
+                id,
+                body.Title,
+                body.Description,
+                body.Category,
+                body.TokenExpirationHours,
+                body.SendSignedDocumentToSigners,
+                body.SendCertificateToSigners,
+                body.AutoRemindersEnabled,
+                body.ReminderIntervalHours
+            ),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id} ----------
+    // Borra en firme un borrador sin enviar. Enviadas/terminales no se borran (se cancelan) — lo
+    // impone el dominio. Misma autoría que crear/editar un borrador (RequestCreate) + ownership.
+    [HttpDelete("{id:guid}")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(new DeleteSignatureRequestCommand(tenantId, id), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

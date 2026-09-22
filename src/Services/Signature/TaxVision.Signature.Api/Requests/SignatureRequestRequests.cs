@@ -20,6 +20,20 @@ public sealed record CreateSignatureRequestBody(
     int? ReminderIntervalHours = null
 );
 
+// Edición de metadata de un borrador (Draft/Ready). GenerateCertificate y el documento no se editan
+// aquí: son decisiones de creación. Los flags de entrega/reminders son OPCIONALES (null = no tocar),
+// porque el detalle no los devuelve y no queremos pisarlos al editar solo título/categoría.
+public sealed record UpdateSignatureRequestBody(
+    string Title,
+    string? Description,
+    SignatureCategory Category,
+    int TokenExpirationHours,
+    bool? SendSignedDocumentToSigners = null,
+    bool? SendCertificateToSigners = null,
+    bool? AutoRemindersEnabled = null,
+    int? ReminderIntervalHours = null
+);
+
 public sealed record AddSignerBody(
     string Email,
     string FullName,

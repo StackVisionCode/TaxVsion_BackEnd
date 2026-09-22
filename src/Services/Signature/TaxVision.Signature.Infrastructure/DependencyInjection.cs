@@ -113,6 +113,11 @@ public static class DependencyInjection
         services.AddHostedService<ReminderScheduler>();
         services.AddOptions<PurgeSchedulerOptions>().Bind(configuration.GetSection(PurgeSchedulerOptions.SectionName));
         services.AddHostedService<PurgeScheduler>();
+        // Retención de borradores sin enviar (default 30 días); los borradores no expiran por reloj de firma.
+        services
+            .AddOptions<DraftRetentionSchedulerOptions>()
+            .Bind(configuration.GetSection(DraftRetentionSchedulerOptions.SectionName));
+        services.AddHostedService<DraftRetentionScheduler>();
 
         // Distributed lock + cache (Redis). Si no hay connection string se degrada a no-op.
         var redisConnectionString = configuration.GetConnectionString("Redis");

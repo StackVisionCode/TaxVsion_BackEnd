@@ -182,6 +182,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             Status = SignatureRequestStatus.Draft,
             OriginalFileId = originalFileId,
             TokenExpirationHours = tokenExpirationHours,
+            // Provisional: el borrador no expira; Send lo recalcula desde la fecha de envío.
             ExpiresAtUtc = now.AddHours(tokenExpirationHours),
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
@@ -200,6 +201,59 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         };
         request.SetTenant(tenantId);
         return Result.Success(request);
+    }
+
+    // ------------------------------------------------------------------
+    // Edición de metadata del borrador (solo Draft/Ready)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Edita la metadata del borrador: título, descripción, categoría y horas de expiración del token.
+    /// Solo en Draft/Ready. Las horas actualizan la expiración provisional; Send la recalcula desde el envío.
+    /// </summary>
+    public Result UpdateMetadata(
+        string title,
+        string? description,
+        SignatureCategory category,
+        int tokenExpirationHours
+    )
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (string.IsNullOrWhiteSpace(title))
+            return Result.Failure(new Error("Signature.Request.Title", "Title is required."));
+
+        var trimmedTitle = title.Trim();
+        if (trimmedTitle.Length is < MinTitleLength or > MaxTitleLength)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.Title",
+                    $"Title must be between {MinTitleLength} and {MaxTitleLength} characters."
+                )
+            );
+
+        if (description is not null && description.Length > MaxDescriptionLength)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.Description",
+                    $"Description cannot exceed {MaxDescriptionLength} characters."
+                )
+            );
+
+        if (tokenExpirationHours is < 1 or > 720)
+            return Result.Failure(
+                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
+            );
+
+        Title = trimmedTitle;
+        Description = NormalizeDescription(description);
+        Category = category;
+        TokenExpirationHours = tokenExpirationHours;
+        ExpiresAtUtc = DateTime.UtcNow.AddHours(tokenExpirationHours);
+        Touch();
+        return Result.Success();
     }
 
     // ------------------------------------------------------------------
@@ -521,6 +575,8 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
         Status = SignatureRequestStatus.InProgress;
         SentAtUtc = sentAtUtc;
+        // El reloj de expiración corre desde el envío, no desde la creación: los borradores no expiran.
+        ExpiresAtUtc = sentAtUtc.AddHours(TokenExpirationHours);
         Touch();
         return Result.Success();
     }
@@ -1045,6 +1101,23 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         BumpRevocationEpoch();
         Touch();
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Borrado permanente: sólo un borrador sin enviar (Draft o Ready). Una vez enviada la
+    /// solicitud se cancela, no se borra — hay firmantes, enlaces y auditoría de por medio.
+    /// </summary>
+    public Result EnsureCanBeDeleted()
+    {
+        if (Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready)
+            return Result.Success();
+
+        return Result.Failure(
+            new Error(
+                "Signature.Request.NotDeletable",
+                "Only an unsent draft can be deleted. Sent, completed, canceled or expired requests are kept for your records."
+            )
+        );
     }
 
     // ------------------------------------------------------------------

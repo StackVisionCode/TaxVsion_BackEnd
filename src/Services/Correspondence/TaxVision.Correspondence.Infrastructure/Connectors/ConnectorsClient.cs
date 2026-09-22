@@ -314,7 +314,7 @@ internal sealed class ConnectorsClient(
         {
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, "connectors/internal/accounts/visible-ids")
+                using var request = new HttpRequestMessage(HttpMethod.Post, "internal/accounts/visible-ids")
                 {
                     Content = JsonContent.Create(
                         new

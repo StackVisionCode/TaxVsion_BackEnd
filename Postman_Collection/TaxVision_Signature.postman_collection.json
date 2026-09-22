@@ -146,10 +146,16 @@
 									"key": "category",
 									"value": "Fiscal",
 									"disabled": true
+								},
+								{
+									"key": "editableOnly",
+									"value": "true",
+									"description": "Solo borradores editables (Draft/Ready) — la pestaña Drafts del front.",
+									"disabled": true
 								}
 							]
 						},
-						"description": "Lista con cache Redis 30s. Filtros opcionales status/category. Requiere signature.request.read."
+						"description": "Lista paginada. Filtros opcionales status/category/editableOnly (editableOnly=true → solo Draft/Ready). Cache Redis por tenant cuya clave incluye status/category/editableOnly/page. Requiere signature.request.read."
 					},
 					"response": [],
 					"event": [
@@ -187,6 +193,89 @@
 							]
 						},
 						"description": "Devuelve el detalle completo (signers, fields, status)."
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateSignatureRequest",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Consent to Disclose 2026 (edited)\",\n  \"description\": \"Updated notes\",\n  \"category\": \"ConsentToDisclose\",\n  \"tokenExpirationHours\": 120,\n  \"sendSignedDocumentToSigners\": true,\n  \"sendCertificateToSigners\": false,\n  \"autoRemindersEnabled\": true,\n  \"reminderIntervalHours\": 48\n}"
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"signature",
+								"requests",
+								"{{signatureRequestId}}"
+							]
+						},
+						"description": "Edita la metadata de un BORRADOR (solo Draft/Ready). El documento y GenerateCertificate no se editan aqui. Los flags de entrega/reminders son opcionales (null/omitido = no cambiar); sendCertificateToSigners solo puede activarse si la solicitud genera certificado. 204 en exito; 400 si ya fue enviada. Requiere signature.request.create + ownership."
+					},
+					"response": []
+				},
+				{
+					"name": "DeleteSignatureRequest",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"signature",
+								"requests",
+								"{{signatureRequestId}}"
+							]
+						},
+						"description": "Borra EN FIRME un borrador sin enviar (solo Draft/Ready). Enviadas/terminales no se borran (se cancelan) — el dominio devuelve 400 'Only an unsent draft can be deleted...'. 204 en exito. Requiere signature.request.create + ownership."
 					},
 					"response": []
 				},

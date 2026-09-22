@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Requests.Queries.List;
+using TaxVision.Signature.Domain.Requests;
 
 namespace TaxVision.Signature.Infrastructure.Persistence.Queries;
 
@@ -30,6 +31,10 @@ internal sealed class SignatureRequestReadService(SignatureDbContext db) : ISign
             baseQuery = baseQuery.Where(r => r.Status == query.Status.Value);
         if (query.Category.HasValue)
             baseQuery = baseQuery.Where(r => r.Category == query.Category.Value);
+        if (query.EditableOnly)
+            baseQuery = baseQuery.Where(r =>
+                r.Status == SignatureRequestStatus.Draft || r.Status == SignatureRequestStatus.Ready
+            );
 
         var total = await baseQuery.CountAsync(ct);
 

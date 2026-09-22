@@ -7,5 +7,7 @@ public sealed record ListSignatureRequestsQuery(
     SignatureRequestStatus? Status,
     SignatureCategory? Category,
     int Page,
-    int PageSize
+    int PageSize,
+    // Solo borradores editables (Draft/Ready), para la pestaña "Drafts".
+    bool EditableOnly = false
 );
