@@ -57,6 +57,60 @@ public sealed class RecycleBinDomainTests
         Assert.Equal(FileErrors.InvalidTransition, result.Error);
     }
 
+    private static FileObject InfectedFile(Guid tenantId)
+    {
+        var key = ObjectKey.Create($"tenants/{tenantId:N}/tenant/documents/2025/{Guid.NewGuid():N}.txt").Value;
+        var file = FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                FolderType.Documents,
+                2025,
+                key,
+                "eicar.txt",
+                "text/plain",
+                68,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(24)
+            )
+            .Value;
+        file.MarkPendingScan();
+        file.MarkScanning();
+        file.MarkInfected("EICAR test signature", "text/plain", DateTime.UtcNow);
+        return file;
+    }
+
+    [Fact]
+    public void SoftDelete_of_a_blocked_file_succeeds_and_Restore_returns_it_to_blocked_not_available()
+    {
+        var file = InfectedFile(Guid.NewGuid());
+        Assert.Equal(FileStatus.Infected, file.Status);
+
+        var deleted = file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+        Assert.True(deleted.IsSuccess);
+        Assert.Equal(FileStatus.SoftDeleted, file.Status);
+
+        var restored = file.Restore();
+        Assert.True(restored.IsSuccess);
+        // Un infectado NO puede reaparecer como Available al restaurarse.
+        Assert.Equal(FileStatus.Infected, file.Status);
+    }
+
+    [Fact]
+    public void SoftDelete_of_an_already_deleted_file_fails()
+    {
+        var file = AvailableFile(Guid.NewGuid());
+        file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        var second = file.SoftDelete(DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        Assert.True(second.IsFailure);
+        Assert.Equal(FileErrors.InvalidTransition, second.Error);
+    }
+
     [Fact]
     public void ReleaseUsed_decrements_UsedBytes_and_floors_at_zero()
     {

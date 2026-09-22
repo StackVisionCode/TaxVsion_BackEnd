@@ -166,6 +166,9 @@ export async function processRecordingReady(
 
     const transcriptFileName = `${event.kind}-${event.targetId}-transcript-${randomUUID()}.txt`;
     const transcriptPath = path.join(workDir, transcriptFileName);
+    // Nombre de descarga profesional (no el GUID); el nombre local queda único aparte.
+    const capKind = event.kind.charAt(0).toUpperCase() + event.kind.slice(1);
+    const transcriptDownloadName = `${capKind}_Transcript_${new Date().toISOString().slice(0, 10)}.txt`;
     await writeFile(transcriptPath, text, 'utf-8');
 
     logger.info({ eventId: event.eventId }, 'uploading transcript');
@@ -176,7 +179,7 @@ export async function processRecordingReady(
           deps.cloudStorage.uploadFile({
             tenantId: event.tenantId,
             filePath: transcriptPath,
-            originalName: transcriptFileName,
+            originalName: transcriptDownloadName,
             contentType: 'text/plain',
             sizeBytes: Buffer.byteLength(text, 'utf-8'),
             ownerId: event.targetId,

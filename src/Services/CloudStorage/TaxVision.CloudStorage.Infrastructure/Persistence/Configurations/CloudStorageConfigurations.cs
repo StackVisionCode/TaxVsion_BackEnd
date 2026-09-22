@@ -24,6 +24,7 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
         builder.Property(file => file.DetectedContentType).HasMaxLength(128);
         builder.Property(file => file.ChecksumSha256).HasMaxLength(64);
         builder.Property(file => file.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(file => file.StatusBeforeSoftDelete).HasConversion<string>().HasMaxLength(32);
         builder.Property(file => file.ScanReport).HasMaxLength(2048);
         builder.Property(file => file.MultipartUploadId).HasMaxLength(1024);
         builder.HasIndex(file => new { file.TenantId, file.Id });
@@ -62,6 +63,9 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
             folder.ParentFolderId,
             folder.Name,
         });
+        // Papelera de carpetas (soft-delete por batch): listar raíces borradas, restaurar/purgar por batch.
+        builder.HasIndex(folder => new { folder.TenantId, folder.DeletedBatchId });
+        builder.HasIndex(folder => folder.SoftDeleteExpiresAtUtc);
         // Cascadear rename/move a todo el subarbol via prefijo de RelativePath.
         builder.HasIndex(folder => new { folder.TenantId, folder.RelativePath });
         // Get-or-create por (dueno, categoria) — ver FolderCategory.cs. Filtrado a
@@ -90,6 +94,9 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder.Property(limit => limit.TenantId).IsRequired();
         builder.Property(limit => limit.PlanCode).HasMaxLength(64).IsRequired();
         builder.Property(limit => limit.AllowPublicShareLinks).HasDefaultValue(true);
+        builder.Property(limit => limit.AllowLinkOnlyExternalShares).HasDefaultValue(true);
+        builder.Property(limit => limit.RequirePasswordOnLinkShares).HasDefaultValue(false);
+        builder.Property(limit => limit.MaxShareLifetimeDays).HasDefaultValue(30);
         builder.Property(limit => limit.RowVersion).IsRowVersion();
         builder.HasIndex(limit => limit.TenantId).IsUnique();
     }

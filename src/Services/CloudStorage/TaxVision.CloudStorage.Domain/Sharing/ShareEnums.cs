@@ -23,6 +23,9 @@ public enum ShareVisibility
 
     /// <summary>Direcciones de email externas sin cuenta — se resuelven por el flujo publico + verificacion de email.</summary>
     ExternalRecipients,
+
+    /// <summary>Link externo sin email: abre por token solo (como Public) pero con guardrails propios y gobernanza aparte (AllowLinkOnlyExternalShares).</summary>
+    ExternalLink,
 }
 
 public enum SharePermission

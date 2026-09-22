@@ -2,7 +2,9 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
@@ -506,13 +508,19 @@ public static class MoveFileToFolderHandler
 }
 
 /// <summary>
-/// Borra una carpeta navegable. Decision explicita del usuario (no cascada,
-/// no mover a la raiz): rechaza con FolderErrors.NotEmpty si tiene subfolders o archivos
-/// directos — el llamador debe vaciarla primero. Mas simple y seguro que una cascada
-/// oculta de un solo click; los archivos ya tienen su propia papelera (Fase C1,
-/// DeleteFileHandler) para quien quiera vaciar la carpeta borrando de a uno.
+/// Borra una carpeta navegable de forma RECURSIVA (UX tipo Drive): manda todos sus archivos —los
+/// directos y los de cualquier subcarpeta— a la papelera (soft-delete, recuperables durante la
+/// retención) y elimina el subárbol de carpetas. No hace falta vaciarla antes. Guardas: no toca
+/// carpetas de sistema y falla en bloque (sin borrado parcial) si algún archivo está en retención
+/// legal. No borra MinIO: los bytes viven hasta que el purger los limpie tras la retención.
 /// </summary>
-public sealed record DeleteFolderCommand(Guid TenantId, Guid ActorId, StorageActorScope Scope, Guid FolderId);
+public sealed record DeleteFolderCommand(
+    Guid TenantId,
+    Guid ActorId,
+    StorageActorScope Scope,
+    Guid FolderId,
+    RequestAuditContext Audit
+);
 
 public static class DeleteFolderHandler
 {
@@ -520,7 +528,11 @@ public static class DeleteFolderHandler
         DeleteFolderCommand command,
         IFolderRepository folders,
         IFileObjectRepository files,
+        IStorageAuditRepository audit,
+        IOptions<CloudStorageOptions> options,
+        ISystemClock clock,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -533,31 +545,87 @@ public static class DeleteFolderHandler
         );
         if (loaded.IsFailure)
             return Result.Failure(loaded.Error);
-        if (SystemFolderCatalog.IsSystemCategory(loaded.Value.Category))
+        var root = loaded.Value;
+        if (SystemFolderCatalog.IsSystemCategory(root.Category))
             return Result.Failure(FolderErrors.SystemFolderProtected);
 
-        var emptyCheck = await EnsureEmpty(command.TenantId, command.FolderId, folders, files, ct);
-        if (emptyCheck.IsFailure)
-            return emptyCheck;
+        // Subárbol completo: la carpeta + todos sus descendientes (por prefijo de RelativePath).
+        var descendants = await folders.ListByPathPrefixAsync(command.TenantId, root.RelativePath, ct);
+        // Defensa en profundidad: ninguna carpeta de sistema debe caer dentro de una de usuario.
+        if (descendants.Any(f => SystemFolderCatalog.IsSystemCategory(f.Category)))
+            return Result.Failure(FolderErrors.SystemFolderProtected);
 
-        folders.Remove(loaded.Value);
+        var allFolders = descendants.Prepend(root).ToList();
+        var allFolderIds = allFolders.Select(f => f.Id).ToList();
+
+        // Archivos activos del subárbol (tracked para mandarlos a la papelera).
+        var filesInside = await files.ListInFoldersForUpdateAsync(command.TenantId, allFolderIds, ct);
+
+        // Fail-closed: no se borra una carpeta con archivos en retención legal (sin borrado parcial).
+        if (filesInside.Any(f => f.IsLegalHeld))
+            return Result.Failure(FolderErrors.HasLegalHold);
+
+        var now = clock.UtcNow;
+        var retention = TimeSpan.FromDays(options.Value.RecycleBinRetentionDays);
+        // El batch agrupa toda la operación; la carpeta RAÍZ usa su propio Id como batchId (así la
+        // papelera lista una sola entrada por carpeta borrada y restaura/purga todo el subárbol junto).
+        var batchId = root.Id;
+
+        foreach (var file in filesInside)
+        {
+            // Se conserva el FolderId: al restaurar la carpeta, el archivo vuelve a su sitio original.
+            var soft = file.SoftDelete(now, retention, batchId);
+            if (soft.IsFailure)
+                return soft;
+            audit.Add(
+                StorageAccessLog.Create(
+                    command.TenantId,
+                    file.Id,
+                    command.ActorId,
+                    "delete.soft",
+                    "success",
+                    command.Audit.IpAddress,
+                    command.Audit.UserAgent,
+                    command.Audit.CorrelationId,
+                    $"via=folder-delete;batch={batchId}",
+                    now
+                )
+            );
+            await bus.PublishAsync(
+                new FileDeletedIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    FileId = file.Id,
+                    CreatedBy = file.CreatedBy,
+                    CorrelationId = command.Audit.CorrelationId,
+                }
+            );
+        }
+
+        // La carpeta entera (y su subárbol) va a la papelera — recuperable, no se borra en duro.
+        foreach (var folder in allFolders)
+        {
+            var soft = folder.SoftDelete(batchId, now, retention);
+            if (soft.IsFailure)
+                return soft;
+        }
+
+        audit.Add(
+            StorageAccessLog.Create(
+                command.TenantId,
+                root.Id,
+                command.ActorId,
+                "folder.delete",
+                "success",
+                command.Audit.IpAddress,
+                command.Audit.UserAgent,
+                command.Audit.CorrelationId,
+                $"folders={allFolders.Count};files={filesInside.Count};batch={batchId}",
+                now
+            )
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
-    }
-
-    private static async Task<Result> EnsureEmpty(
-        Guid tenantId,
-        Guid folderId,
-        IFolderRepository folders,
-        IFileObjectRepository files,
-        CancellationToken ct
-    )
-    {
-        var subfolders = await folders.ListSubfoldersAsync(tenantId, folderId, null, null, null, ct);
-        if (subfolders.Count > 0)
-            return Result.Failure(FolderErrors.NotEmpty);
-
-        var filesInFolder = await files.ListInFolderAsync(tenantId, folderId, null, null, null, ct);
-        return filesInFolder.Count > 0 ? Result.Failure(FolderErrors.NotEmpty) : Result.Success();
     }
 }

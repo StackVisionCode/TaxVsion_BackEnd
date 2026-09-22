@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -231,6 +232,125 @@ public sealed class ShareLinkHandlerTests
         );
 
         Assert.True(result.IsSuccess);
+    }
+
+    // ---------- 8.1 ExternalLink (link seguro sin email) ----------
+
+    private static async Task<Result<CreatedShareLinkResponse>> CreateExternalLink(
+        Guid tenantId,
+        FileObject file,
+        TenantStorageLimit limit,
+        bool actorHasManage = false,
+        SharePermission permission = SharePermission.Download,
+        string? password = null,
+        DateTime? expiresAtUtc = null
+    )
+    {
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(limit);
+        return await CreateShareLinkHandler.Handle(
+            new CreateShareLinkCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                actorHasManage,
+                file.Id,
+                ShareVisibility.ExternalLink,
+                permission,
+                password,
+                expiresAtUtc,
+                null,
+                [],
+                [],
+                [],
+                Audit
+            ),
+            files,
+            new FakeShareLinkRepository(),
+            limits,
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+    }
+
+    [Fact]
+    public async Task Create_ExternalLink_succeeds_without_recipients_by_default()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var result = await CreateExternalLink(
+            tenantId,
+            file,
+            TenantStorageLimit.Create(tenantId, "starter", 1000, 1000)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ShareVisibility.ExternalLink, result.Value.Link.Visibility);
+    }
+
+    [Fact]
+    public async Task Create_ExternalLink_rejected_when_tenant_disabled_it()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
+        limit.SetLinkSharingPolicy(allow: false, requirePassword: false, maxLifetimeDays: 30);
+
+        var result = await CreateExternalLink(tenantId, file, limit);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.LinkSharingDisabled, result.Error);
+    }
+
+    [Fact]
+    public async Task Create_ExternalLink_requires_password_when_tenant_requires_it()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
+        limit.SetLinkSharingPolicy(allow: true, requirePassword: true, maxLifetimeDays: 30);
+
+        var result = await CreateExternalLink(tenantId, file, limit, password: null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.PasswordRequiredForLinkShare, result.Error);
+    }
+
+    [Fact]
+    public async Task Create_ExternalLink_rejects_expiration_beyond_max_lifetime()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
+        limit.SetLinkSharingPolicy(allow: true, requirePassword: false, maxLifetimeDays: 7);
+
+        var result = await CreateExternalLink(tenantId, file, limit, expiresAtUtc: DateTime.UtcNow.AddDays(30));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.ShareLifetimeExceedsMax, result.Error);
+    }
+
+    [Fact]
+    public async Task Create_ExternalLink_rejects_Upload_permission_even_with_manage()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var result = await CreateExternalLink(
+            tenantId,
+            file,
+            TenantStorageLimit.Create(tenantId, "starter", 1000, 1000),
+            actorHasManage: true,
+            permission: SharePermission.Upload
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink, result.Error);
     }
 
     [Fact]

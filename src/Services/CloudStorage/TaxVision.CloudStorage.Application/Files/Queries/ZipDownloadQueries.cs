@@ -182,7 +182,7 @@ public static class PrepareZipDownloadHandler
     }
 
     /// <summary>Desambigua un nombre repetido a este nivel (root de carpetas pedidas, o nombre de archivo) con sufijo _1, _2...</summary>
-    private static string ReservePrefix(Dictionary<string, int> used, string name)
+    internal static string ReservePrefix(Dictionary<string, int> used, string name)
     {
         var occurrence = used.TryGetValue(name, out var count) ? count : 0;
         used[name] = occurrence + 1;
@@ -194,7 +194,7 @@ public static class PrepareZipDownloadHandler
     /// un FileId suelto) y desambigua colisiones DENTRO del mismo directorio del
     /// ZIP con sufijo _1, _2... antes de la extension, en el orden pedido.
     /// </summary>
-    private static List<ZipDownloadEntry> BuildEntries(IReadOnlyList<(FileObject File, string? FolderPrefix)> items)
+    internal static List<ZipDownloadEntry> BuildEntries(IReadOnlyList<(FileObject File, string? FolderPrefix)> items)
     {
         var seenCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var entries = new List<ZipDownloadEntry>(items.Count);

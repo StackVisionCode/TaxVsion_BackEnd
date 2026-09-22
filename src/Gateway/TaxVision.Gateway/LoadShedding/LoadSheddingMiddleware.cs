@@ -6,9 +6,10 @@ namespace TaxVision.Gateway.LoadShedding;
 /// <summary>
 /// Capa 1 (load shedder global de flota). Mide su propia latencia (incluye el round-trip completo al
 /// cluster YARP de destino) y la tasa de 5xx en <see cref="RequestOutcomeWindow"/>; cuando
-/// <see cref="ILoadShedder"/> devuelve un descarte, responde 503. Health checks (<c>/health/*</c>) y
-/// upgrades WebSocket (long-lived, envenenarían el p99) nunca se cuentan ni se sheddean — se excluyen
-/// antes de tocar cualquier estado. Debe ir después de
+/// <see cref="ILoadShedder"/> devuelve un descarte, responde 503. Health checks (<c>/health/*</c>),
+/// upgrades WebSocket (long-lived) y descargas ZIP streameadas (<c>/storage/**/zip</c>) nunca se
+/// cuentan ni se sheddean — todos envenenarían el p99 con duraciones que no miden carga del servidor,
+/// así que se excluyen antes de tocar cualquier estado. Debe ir después de
 /// <c>UseAuthentication()</c>/<c>UseAuthorization()</c> para poder leer <c>tenant_id</c> del JWT ya
 /// validado.
 /// </summary>
@@ -37,6 +38,17 @@ public sealed class LoadSheddingMiddleware(
             return;
         }
 
+        // Las descargas ZIP (bulk autenticado y "Download all" público de carpetas) se streamean
+        // ENTERAS a través del Gateway; su duración la marca el ancho de banda del cliente, no la carga
+        // del servidor (un ZIP grande por una conexión lenta entraría como minutos de "latencia"). Como
+        // los WebSockets, envenenarían el p99 y dispararían load shedding sobre toda la flota. El resto
+        // de descargas de archivo son un 302 a MinIO, así que no pasan bytes por aquí.
+        if (IsZipStreamingDownload(context.Request.Path))
+        {
+            await next(context);
+            return;
+        }
+
         var tenantKey = context.User.FindFirst("tenant_id")?.Value ?? TenantConsumptionTracker.AnonymousKey;
         tenantTracker.RecordRequest(tenantKey);
 
@@ -58,6 +70,11 @@ public sealed class LoadSheddingMiddleware(
             window.Record(stopwatch.Elapsed.TotalMilliseconds, context.Response.StatusCode);
         }
     }
+
+    // Los dos endpoints que streamean un .zip por el Gateway terminan en "/zip" bajo "/storage"
+    // (/storage/files/zip y /storage/public/{token}/zip). Todo lo demás de /storage es JSON o un 302.
+    private static bool IsZipStreamingDownload(PathString path) =>
+        path.StartsWithSegments("/storage") && path.Value?.EndsWith("/zip", StringComparison.OrdinalIgnoreCase) == true;
 
     private async Task RejectAsync(HttpContext context, string tenantKey, SheddingVerdict verdict)
     {

@@ -34,7 +34,7 @@ public sealed class CloudStorageOptions
     public int MaxZipFiles { get; set; } = 500;
 
     /// <summary>Fase B2 — cap duro de tamano agregado (suma de SizeBytes) por descarga ZIP (413 si se supera).</summary>
-    public long MaxZipAggregateBytes { get; set; } = 500L * 1024 * 1024;
+    public long MaxZipAggregateBytes { get; set; } = 2L * 1024 * 1024 * 1024;
 
     /// <summary>
     /// Fase B2.1 — cap duro de cantidad de carpetas por descarga ZIP (413 si se

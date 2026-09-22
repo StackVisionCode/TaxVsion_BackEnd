@@ -53,4 +53,38 @@ internal static class FolderShareCoverage
 
         return false;
     }
+
+    /// <summary>
+    /// ¿La carpeta pedida está dentro del alcance del link? Es la carpeta raíz del link, o —solo si
+    /// IsRecursive— un descendiente de ella. Usado por la navegación/ZIP público del folder share.
+    /// </summary>
+    public static async Task<bool> FolderWithinShareAsync(
+        ShareLink link,
+        Guid folderId,
+        IFolderRepository folders,
+        CancellationToken ct
+    )
+    {
+        if (link.ResourceType != ShareResourceType.Folder)
+            return false;
+        if (folderId == link.ResourceId)
+            return true;
+        if (!link.IsRecursive)
+            return false;
+
+        var currentFolderId = (Guid?)folderId;
+        for (var depth = 0; depth < MaxWalkDepth && currentFolderId is { } id; depth++)
+        {
+            if (id == link.ResourceId)
+                return true;
+            var folder = await folders.GetAsync(link.TenantId, id, ct);
+            currentFolderId = folder?.ParentFolderId;
+        }
+        return false;
+    }
+
+    /// <summary>Regla de "future items" para un file directo de una carpeta ya validada como cubierta.</summary>
+    public static bool IncludesFileByTime(ShareLink link, FileObject file) =>
+        link.AppliesToFutureItems
+        || (file.FolderAssignedAtUtc is { } assignedAtUtc && assignedAtUtc <= link.CreatedAtUtc);
 }

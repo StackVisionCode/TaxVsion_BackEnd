@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -404,7 +406,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: sealResult.SealedPdfBytes,
-            FileName: $"signed-{request.Id:D}.pdf",
+            FileName: BuildDocumentFileName(request.Title, "_Signed.pdf"),
             ContentType: "application/pdf",
             // Values must match CloudStorage's OwnerType / FolderType enums.
             OwnerType: ownerType,
@@ -474,7 +476,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: certificateBytes,
-            FileName: $"certificate-{request.Id:D}.pdf",
+            FileName: BuildDocumentFileName(request.Title, "_Certificate.pdf"),
             ContentType: "application/pdf",
             OwnerType: ownerType,
             OwnerId: ownerId,
@@ -482,6 +484,39 @@ public static class SignatureRequestCompletedConsumer
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId
         );
+    }
+
+    private const int MaxFileNameBaseLength = 120;
+
+    /// <summary>Nombre de descarga profesional desde el Title (translitera acentos, deja [A-Za-z0-9._-]). No toca el ObjectKey.</summary>
+    private static string BuildDocumentFileName(string title, string suffix)
+    {
+        var normalized = (title ?? string.Empty).Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalized.Length);
+        var lastWasUnderscore = false;
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '.')
+            {
+                sb.Append(ch);
+                lastWasUnderscore = false;
+            }
+            else if (!lastWasUnderscore)
+            {
+                sb.Append('_');
+                lastWasUnderscore = true;
+            }
+        }
+
+        var cleaned = sb.ToString().Trim('_', '.', '-');
+        if (cleaned.Length > MaxFileNameBaseLength)
+            cleaned = cleaned[..MaxFileNameBaseLength].Trim('_', '.', '-');
+        if (string.IsNullOrEmpty(cleaned))
+            cleaned = "Document";
+        return cleaned + suffix;
     }
 
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(

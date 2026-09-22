@@ -34,7 +34,10 @@ public sealed record FileResponse(
     FileStatus Status,
     string? ScanReport,
     DateTime CreatedAtUtc,
-    DateTime? ScannedAtUtc
+    DateTime? ScannedAtUtc,
+    // true si el archivo tiene un link de compartir vigente (indicador del listado). Lo setea solo el
+    // listado de carpeta; el resto de mapeos lo dejan en false.
+    bool IsShared = false
 );
 
 public sealed record DownloadUrlResponse(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
