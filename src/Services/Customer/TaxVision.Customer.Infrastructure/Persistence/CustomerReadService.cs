@@ -10,6 +10,9 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 
 public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProtector protector) : ICustomerReadService
 {
+    /// <summary>Tope de `size` de la búsqueda pública (guardrail anti-barrido del directorio).</summary>
+    private const int MaxPageSize = 100;
+
     public async Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         Guid tenantId,
         string? term,
@@ -21,8 +24,9 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
     {
         if (page < 1)
             page = 1;
-        if (size < 1)
-            size = 20;
+        // Cap de tamaño de página (guardrail): sin tope, un cliente podía pedir `size` arbitrario y
+        // barrer el directorio entero en una request. 100 alcanza de sobra para pickers/typeahead.
+        size = Math.Clamp(size, 1, MaxPageSize);
 
         // Aislamiento multi-tenant: filtro explícito por el tenant del solicitante.
         // IgnoreQueryFilters() — este query corre dentro de un handler de Wolverine
@@ -73,6 +77,45 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             .ToListAsync(ct);
 
         return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
+    }
+
+    public async Task<CustomerDirectoryOverviewResponse> GetOverviewAsync(
+        Guid tenantId,
+        int months,
+        CancellationToken ct = default
+    )
+    {
+        months = Math.Clamp(months, 1, 24);
+        var now = DateTime.UtcNow;
+        // Primer día (UTC) del primer mes de la ventana; los meses previos no cuentan para el desglose.
+        var since = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-(months - 1));
+
+        // Mismo aislamiento que SearchAsync (IgnoreQueryFilters + filtro explícito de tenant).
+        var scoped = db.Customers.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
+
+        var totalCount = await scoped.CountAsync(ct);
+
+        var monthly = await scoped
+            .Where(c => c.CreatedAtUtc >= since)
+            .GroupBy(c => new { c.CreatedAtUtc.Year, c.CreatedAtUtc.Month })
+            .Select(g => new MonthlyNewCustomers(g.Key.Year, g.Key.Month, g.Count()))
+            .ToListAsync(ct);
+
+        var recent = await scoped
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Take(3)
+            .Select(c => new CustomerSummaryResponse(
+                c.Id,
+                c.Kind,
+                c.Status,
+                c.DisplayName,
+                c.PrimaryEmail.Value,
+                c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
+                c.CreatedAtUtc
+            ))
+            .ToListAsync(ct);
+
+        return new CustomerDirectoryOverviewResponse(totalCount, monthly, recent);
     }
 
     public async Task<PagedResult<CustomerReconciliationResponse>> ListForReconciliationAsync(

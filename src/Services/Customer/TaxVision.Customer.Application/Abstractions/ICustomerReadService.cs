@@ -24,6 +24,9 @@ public interface ICustomerReadService
         CancellationToken ct = default
     );
 
+    /// <summary>Resumen para el dashboard: total exacto + altas por mes (últimos <paramref name="months"/>) + últimas altas.</summary>
+    Task<CustomerDirectoryOverviewResponse> GetOverviewAsync(Guid tenantId, int months, CancellationToken ct = default);
+
     /// <summary>
     /// Enumera customers de TODOS los tenants (paginado) para la reconciliación M2M de proyecciones.
     /// Cross-tenant a propósito: no lleva tenantId y el llamador debe ser el token de la PlatformTenant

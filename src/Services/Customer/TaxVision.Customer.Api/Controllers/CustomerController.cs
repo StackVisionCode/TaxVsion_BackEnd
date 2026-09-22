@@ -36,6 +36,7 @@ using TaxVision.Customer.Application.Customers.Commands.UpdateRelation;
 using TaxVision.Customer.Application.Customers.FiscalProfiles;
 using TaxVision.Customer.Application.Customers.Queries.CheckExists;
 using TaxVision.Customer.Application.Customers.Queries.GetById;
+using TaxVision.Customer.Application.Customers.Queries.Overview;
 using TaxVision.Customer.Application.Customers.Queries.Search;
 using Wolverine;
 
@@ -107,6 +108,45 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
         var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
             new SearchCustomersQuery(tenantId, term, status, page, size),
+            ct
+        );
+
+        // ETag/If-None-Match: el navegador revalida barato (304 sin cuerpo) cuando el directorio no
+        // cambió. `private, no-cache` = cachea por-usuario pero siempre revalida. Weak ETag: refleja
+        // el contenido devuelto (ids/estado/nombre/…), no la representación byte a byte.
+        var etag = WeakETag(result);
+        Response.Headers.CacheControl = "private, no-cache";
+        Response.Headers.ETag = etag;
+        if (Request.Headers.IfNoneMatch.Contains(etag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return Ok(result);
+    }
+
+    /// <summary>Weak ETag estable del contenido de una respuesta (SHA-256 del JSON canónico).</summary>
+    private static string WeakETag(object payload)
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(payload);
+        var hash = System.Security.Cryptography.SHA256.HashData(json);
+        return $"W/\"{Convert.ToHexString(hash)}\"";
+    }
+
+    // ---------- GET /customers/overview ----------
+    [HttpGet("overview")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.h.search")]
+    [ProducesResponseType<CustomerDirectoryOverviewResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<CustomerDirectoryOverviewResponse>> Overview(
+        [FromQuery] int months = 6,
+        CancellationToken ct = default
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<CustomerDirectoryOverviewResponse>(
+            new CustomerOverviewQuery(tenantId, months),
             ct
         );
         return Ok(result);
