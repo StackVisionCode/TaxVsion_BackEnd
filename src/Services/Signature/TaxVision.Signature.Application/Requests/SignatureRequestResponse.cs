@@ -32,7 +32,7 @@ public sealed record SignatureRequestResponse(
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     SignatureRequestStatus Status,
     Guid OriginalFileId,
     string? DocumentHashPre,

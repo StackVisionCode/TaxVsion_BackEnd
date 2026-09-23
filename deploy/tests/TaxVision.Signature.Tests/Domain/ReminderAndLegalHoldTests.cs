@@ -86,7 +86,7 @@ public sealed class ReminderAndLegalHoldTests
                 Guid.NewGuid(),
                 "Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

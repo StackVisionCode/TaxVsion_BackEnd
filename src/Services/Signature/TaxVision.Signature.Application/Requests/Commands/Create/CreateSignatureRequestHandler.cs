@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Settings;
@@ -26,9 +27,15 @@ public static class CreateSignatureRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ISignatureRequestListCacheInvalidator listCache,
+        ISignatureCategoryResolver categoryResolver,
         CancellationToken ct
     )
     {
+        // La categoría debe ser de sistema o una custom del tenant; se guarda con su nombre canónico.
+        var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
+        if (category.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(category.Error);
+
         // La política de recordatorio: override del preparador o, si no lo mandó, el default del tenant.
         var settings = await settingsRepository.GetByTenantIdAsync(cmd.TenantId, ct);
         var remindersEnabled = cmd.AutoRemindersEnabled ?? settings?.RemindersEnabledByDefault ?? true;
@@ -37,7 +44,7 @@ public static class CreateSignatureRequestHandler
             ?? settings?.DefaultReminderIntervalHoursValue
             ?? TenantSignatureSettings.DefaultReminderIntervalHours;
 
-        var draftResult = CreateDraft(cmd, remindersEnabled, reminderInterval);
+        var draftResult = CreateDraft(cmd, category.Value, remindersEnabled, reminderInterval);
         if (draftResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(draftResult.Error);
 
@@ -54,6 +61,7 @@ public static class CreateSignatureRequestHandler
 
     private static Result<SignatureRequest> CreateDraft(
         CreateSignatureRequestCommand cmd,
+        string category,
         bool autoRemindersEnabled,
         int reminderIntervalHours
     ) =>
@@ -62,7 +70,7 @@ public static class CreateSignatureRequestHandler
             createdByUserId: cmd.CreatedByUserId,
             title: cmd.Title,
             description: cmd.Description,
-            category: cmd.Category,
+            category: category,
             originalFileId: cmd.OriginalFileId,
             tokenExpirationHours: cmd.TokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,

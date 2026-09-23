@@ -256,7 +256,7 @@ public sealed class SignatureRequestsControllerOwnershipTests
                 createdByUserId,
                 "Test request",
                 description: null,
-                SignatureCategory.Other,
+                "Other",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

@@ -84,7 +84,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<ListTemplatesResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListTemplatesResult>> List(
         [FromQuery] SignatureTemplateStatus? status = null,
-        [FromQuery] SignatureCategory? category = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken ct = default

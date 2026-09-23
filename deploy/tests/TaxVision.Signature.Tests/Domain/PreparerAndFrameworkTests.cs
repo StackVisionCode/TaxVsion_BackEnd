@@ -268,7 +268,7 @@ public sealed class PreparerAndFrameworkTests
                 Guid.NewGuid(),
                 "Test Preparer/Framework",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

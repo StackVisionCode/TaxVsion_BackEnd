@@ -10,6 +10,7 @@ using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
@@ -62,6 +63,8 @@ public static class DependencyInjection
             (CachedSignatureRequestReadService)sp.GetRequiredService<ISignatureRequestReadService>()
         );
         services.AddScoped<ISignatureTemplateRepository, SignatureTemplateRepository>();
+        services.AddScoped<ITenantSignatureCategoryRepository, TenantSignatureCategoryRepository>();
+        services.AddScoped<ISignatureCategoryResolver, SignatureCategoryResolver>();
         services.AddScoped<ISignatureTemplateReadService, SignatureTemplateReadService>();
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();
         services.AddScoped<ISignatureAnalyticsReadService, SignatureAnalyticsReadService>();

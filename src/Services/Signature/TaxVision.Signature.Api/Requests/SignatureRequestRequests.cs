@@ -5,7 +5,7 @@ namespace TaxVision.Signature.Api.Requests;
 public sealed record CreateSignatureRequestBody(
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     Guid OriginalFileId,
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
@@ -26,7 +26,7 @@ public sealed record CreateSignatureRequestBody(
 public sealed record UpdateSignatureRequestBody(
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     int TokenExpirationHours,
     bool? SendSignedDocumentToSigners = null,
     bool? SendCertificateToSigners = null,

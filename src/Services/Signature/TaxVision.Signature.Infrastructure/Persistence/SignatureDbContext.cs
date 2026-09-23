@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Signature.Domain.Analytics;
 using TaxVision.Signature.Domain.Audit;
+using TaxVision.Signature.Domain.Categories;
 using TaxVision.Signature.Domain.Consents;
 using TaxVision.Signature.Domain.Permissions;
 using TaxVision.Signature.Domain.Projections;
@@ -38,6 +39,8 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     public DbSet<FileMetadataRef> FileMetadataRefs => Set<FileMetadataRef>();
 
     public DbSet<SignatureTemplate> SignatureTemplates => Set<SignatureTemplate>();
+
+    public DbSet<TenantSignatureCategory> SignatureCategories => Set<TenantSignatureCategory>();
 
     public DbSet<TemplateSignerSlot> TemplateSignerSlots => Set<TemplateSignerSlot>();
 

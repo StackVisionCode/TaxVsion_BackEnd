@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Categories;
 
 namespace TaxVision.Signature.Application.Requests.Commands.Update;
 
@@ -15,6 +16,7 @@ public static class UpdateSignatureRequestHandler
         ISignatureRequestRepository repository,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
+        ISignatureCategoryResolver categoryResolver,
         CancellationToken ct
     )
     {
@@ -22,7 +24,11 @@ public static class UpdateSignatureRequestHandler
         if (request is null)
             return NotFound();
 
-        var metadata = request.UpdateMetadata(cmd.Title, cmd.Description, cmd.Category, cmd.TokenExpirationHours);
+        var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
+        if (category.IsFailure)
+            return Result.Failure(category.Error);
+
+        var metadata = request.UpdateMetadata(cmd.Title, cmd.Description, category.Value, cmd.TokenExpirationHours);
         if (metadata.IsFailure)
             return metadata;
 

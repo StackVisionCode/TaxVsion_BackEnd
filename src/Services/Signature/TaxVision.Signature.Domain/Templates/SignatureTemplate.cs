@@ -41,7 +41,7 @@ public sealed class SignatureTemplate : TenantEntity
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
-    public SignatureCategory Category { get; private set; }
+    public string Category { get; private set; } = default!;
     public SignatureTemplateStatus Status { get; private set; }
 
     public int DefaultTokenExpirationHours { get; private set; }
@@ -90,7 +90,7 @@ public sealed class SignatureTemplate : TenantEntity
         Guid createdByUserId,
         string title,
         string? description,
-        SignatureCategory category,
+        string category,
         int defaultTokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
@@ -128,7 +128,7 @@ public sealed class SignatureTemplate : TenantEntity
             CreatedByUserId = createdByUserId,
             Title = title.Trim(),
             Description = NormalizeDescription(description),
-            Category = category,
+            Category = category.Trim(),
             Status = SignatureTemplateStatus.Draft,
             DefaultTokenExpirationHours = defaultTokenExpirationHours,
             RequiresSequentialSigning = requiresSequentialSigning,
@@ -150,7 +150,7 @@ public sealed class SignatureTemplate : TenantEntity
     // Metadata / defaults
     // ------------------------------------------------------------------
 
-    public Result UpdateMetadata(string title, string? description, SignatureCategory category)
+    public Result UpdateMetadata(string title, string? description, string category)
     {
         EnsureDraft();
 
@@ -174,7 +174,7 @@ public sealed class SignatureTemplate : TenantEntity
 
         Title = trimmedTitle;
         Description = NormalizeDescription(description);
-        Category = category;
+        Category = category.Trim();
         Touch();
         return Result.Success();
     }

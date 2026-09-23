@@ -35,7 +35,7 @@ public sealed class SignatureRequestTests
             Guid.NewGuid(),
             title,
             null,
-            SignatureCategory.Fiscal,
+            "Fiscal",
             Guid.NewGuid(),
             tokenExpirationHours: 72,
             requiresSequentialSigning: false,
@@ -57,7 +57,7 @@ public sealed class SignatureRequestTests
             Guid.NewGuid(),
             "Consent to Disclose",
             null,
-            SignatureCategory.ConsentToDisclose,
+            "ConsentToDisclose",
             Guid.NewGuid(),
             tokenExpirationHours: hours,
             requiresSequentialSigning: false,
@@ -242,17 +242,12 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
 
-        var result = request.UpdateMetadata(
-            "Renamed request 2026",
-            "Updated notes",
-            SignatureCategory.ConsentToDisclose,
-            120
-        );
+        var result = request.UpdateMetadata("Renamed request 2026", "Updated notes", "ConsentToDisclose", 120);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Renamed request 2026", request.Title);
         Assert.Equal("Updated notes", request.Description);
-        Assert.Equal(SignatureCategory.ConsentToDisclose, request.Category);
+        Assert.Equal("ConsentToDisclose", request.Category);
         Assert.Equal(120, request.TokenExpirationHours);
     }
 
@@ -261,13 +256,10 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
 
-        Assert.Equal(
-            "Signature.Request.Title",
-            request.UpdateMetadata("ab", null, SignatureCategory.Fiscal, 72).Error.Code
-        );
+        Assert.Equal("Signature.Request.Title", request.UpdateMetadata("ab", null, "Fiscal", 72).Error.Code);
         Assert.Equal(
             "Signature.Request.TokenExpiration",
-            request.UpdateMetadata("A valid title", null, SignatureCategory.Fiscal, 1000).Error.Code
+            request.UpdateMetadata("A valid title", null, "Fiscal", 1000).Error.Code
         );
     }
 
@@ -277,7 +269,7 @@ public sealed class SignatureRequestTests
         var request = NewReadyDraftWithSignatureField("s@example.com");
         request.Send(DateTime.UtcNow);
 
-        var result = request.UpdateMetadata("A valid title", null, SignatureCategory.Fiscal, 72);
+        var result = request.UpdateMetadata("A valid title", null, "Fiscal", 72);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
@@ -379,7 +371,7 @@ public sealed class SignatureRequestTests
             createdByUserId: Guid.NewGuid(),
             title: "Consent to Disclose 2026",
             description: null,
-            category: SignatureCategory.ConsentToDisclose,
+            category: "ConsentToDisclose",
             originalFileId: Guid.NewGuid(),
             tokenExpirationHours: 72,
             requiresSequentialSigning: false,

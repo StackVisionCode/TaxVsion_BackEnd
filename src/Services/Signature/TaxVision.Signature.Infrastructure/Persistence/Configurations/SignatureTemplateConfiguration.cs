@@ -15,7 +15,7 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.Title).IsRequired().HasMaxLength(SignatureTemplate.MaxTitleLength);
         builder.Property(t => t.Description).HasMaxLength(SignatureTemplate.MaxDescriptionLength);
-        builder.Property(t => t.Category).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(t => t.Category).HasMaxLength(64).IsRequired();
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(t => t.DefaultTokenExpirationHours).IsRequired();
         builder.Property(t => t.RequiresSequentialSigning).IsRequired();

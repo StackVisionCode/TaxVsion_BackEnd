@@ -138,7 +138,7 @@ public sealed class SignatureRequestsController(
     [ProducesResponseType<ListSignatureRequestsResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListSignatureRequestsResult>> List(
         [FromQuery] SignatureRequestStatus? status = null,
-        [FromQuery] SignatureCategory? category = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         [FromQuery] bool editableOnly = false,

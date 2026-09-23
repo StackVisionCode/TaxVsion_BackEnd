@@ -8,7 +8,7 @@ public sealed record UpdateSignatureRequestCommand(
     Guid SignatureRequestId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     int TokenExpirationHours,
     // null = no cambiar (el detalle no expone estos flags; edición parcial).
     bool? SendSignedDocumentToSigners = null,

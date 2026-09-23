@@ -30,6 +30,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MinTitleLength = 3;
     public const int MaxTitleLength = 300;
     public const int MaxDescriptionLength = 2000;
+
+    /// <summary>Máximo del nombre de categoría (sistema o custom del tenant). Guardado como texto congelado.</summary>
+    public const int MaxCategoryLength = 64;
     public const int MinSigners = 1;
     public const int MaxSigners = 50;
 
@@ -46,7 +49,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
-    public SignatureCategory Category { get; private set; }
+
+    /// <summary>Nombre de la categoría (de sistema o custom del tenant) congelado como texto en la solicitud.</summary>
+    public string Category { get; private set; } = default!;
     public SignatureRequestStatus Status { get; private set; }
 
     public Guid OriginalFileId { get; private set; }
@@ -148,7 +153,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Guid createdByUserId,
         string title,
         string? description,
-        SignatureCategory category,
+        string category,
         Guid originalFileId,
         int tokenExpirationHours,
         bool requiresSequentialSigning,
@@ -171,6 +176,10 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (baseValidation.IsFailure)
             return Result.Failure<SignatureRequest>(baseValidation.Error);
 
+        var categoryCheck = ValidateCategory(category);
+        if (categoryCheck.IsFailure)
+            return Result.Failure<SignatureRequest>(categoryCheck.Error);
+
         var now = DateTime.UtcNow;
         var request = new SignatureRequest
         {
@@ -178,7 +187,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             CreatedByUserId = createdByUserId,
             Title = title.Trim(),
             Description = NormalizeDescription(description),
-            Category = category,
+            Category = category.Trim(),
             Status = SignatureRequestStatus.Draft,
             OriginalFileId = originalFileId,
             TokenExpirationHours = tokenExpirationHours,
@@ -211,12 +220,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// Edita la metadata del borrador: título, descripción, categoría y horas de expiración del token.
     /// Solo en Draft/Ready. Las horas actualizan la expiración provisional; Send la recalcula desde el envío.
     /// </summary>
-    public Result UpdateMetadata(
-        string title,
-        string? description,
-        SignatureCategory category,
-        int tokenExpirationHours
-    )
+    public Result UpdateMetadata(string title, string? description, string category, int tokenExpirationHours)
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
@@ -247,9 +251,13 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
             );
 
+        var categoryCheck = ValidateCategory(category);
+        if (categoryCheck.IsFailure)
+            return categoryCheck;
+
         Title = trimmedTitle;
         Description = NormalizeDescription(description);
-        Category = category;
+        Category = category.Trim();
         TokenExpirationHours = tokenExpirationHours;
         ExpiresAtUtc = DateTime.UtcNow.AddHours(tokenExpirationHours);
         Touch();
@@ -1350,6 +1358,19 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// enviada). Devuelve <see cref="Result.Failure"/> — NO lanza — para que la API responda 4xx en vez
     /// de 500 cuando el actor intenta editar una solicitud ya enviada/completada (p. ej. fijar el PIN).
     /// </summary>
+    // La existencia de la categoría (sistema o custom del tenant) la valida el handler contra el repo;
+    // aquí solo se guarda la forma (no vacía, dentro del largo).
+    private static Result ValidateCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return Result.Failure(new Error("Signature.Request.Category", "Category is required."));
+        if (category.Trim().Length > MaxCategoryLength)
+            return Result.Failure(
+                new Error("Signature.Request.Category", $"Category cannot exceed {MaxCategoryLength} characters.")
+            );
+        return Result.Success();
+    }
+
     private Result EnsureCanBeEdited() =>
         Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready
             ? Result.Success()

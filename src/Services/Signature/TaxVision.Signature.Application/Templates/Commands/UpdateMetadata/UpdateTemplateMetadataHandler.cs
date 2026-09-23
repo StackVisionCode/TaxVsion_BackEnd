@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Categories;
 
 namespace TaxVision.Signature.Application.Templates.Commands.UpdateMetadata;
 
@@ -10,6 +11,7 @@ public static class UpdateTemplateMetadataHandler
         UpdateTemplateMetadataCommand cmd,
         ISignatureTemplateRepository repository,
         IUnitOfWork unitOfWork,
+        ISignatureCategoryResolver categoryResolver,
         CancellationToken ct
     )
     {
@@ -19,7 +21,11 @@ public static class UpdateTemplateMetadataHandler
                 new Error("Signature.Template.NotFound", "The signature template does not exist for this tenant.")
             );
 
-        var result = template.UpdateMetadata(cmd.Title, cmd.Description, cmd.Category);
+        var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
+        if (category.IsFailure)
+            return Result.Failure(category.Error);
+
+        var result = template.UpdateMetadata(cmd.Title, cmd.Description, category.Value);
         if (result.IsFailure)
             return result;
 

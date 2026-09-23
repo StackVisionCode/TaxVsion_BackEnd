@@ -30,7 +30,7 @@ public sealed record SignatureTemplateResponse(
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     SignatureTemplateStatus Status,
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,

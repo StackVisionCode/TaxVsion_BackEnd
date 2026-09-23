@@ -75,7 +75,7 @@ public sealed class ReminderPolicyTests
                 Guid.NewGuid(),
                 "Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 720,
                 requiresSequentialSigning: false,
@@ -92,7 +92,7 @@ public sealed class ReminderPolicyTests
                 Guid.NewGuid(),
                 "Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 720, // no expira en el rango de estas pruebas
                 requiresSequentialSigning: false,

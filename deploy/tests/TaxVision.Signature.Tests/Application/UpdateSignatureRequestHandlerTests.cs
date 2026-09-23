@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Application.Requests.Commands.Update;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -19,18 +20,19 @@ public sealed class UpdateSignatureRequestHandlerTests
             Command(draft) with
             {
                 Title = "Renamed 2026",
-                Category = SignatureCategory.ConsentToDisclose,
+                Category = "ConsentToDisclose",
                 TokenExpirationHours = 120,
             },
             repo,
             new FakeUnitOfWork(),
             cache,
+            new FakeCategoryResolver(),
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Renamed 2026", draft.Title);
-        Assert.Equal(SignatureCategory.ConsentToDisclose, draft.Category);
+        Assert.Equal("ConsentToDisclose", draft.Category);
         Assert.Equal(120, draft.TokenExpirationHours);
         Assert.Equal(draft.TenantId, cache.InvalidatedTenant);
     }
@@ -47,6 +49,7 @@ public sealed class UpdateSignatureRequestHandlerTests
             repo,
             new FakeUnitOfWork(),
             new FakeCache(),
+            new FakeCategoryResolver(),
             CancellationToken.None
         );
 
@@ -68,6 +71,7 @@ public sealed class UpdateSignatureRequestHandlerTests
             repo,
             new FakeUnitOfWork(),
             new FakeCache(),
+            new FakeCategoryResolver(),
             CancellationToken.None
         );
 
@@ -86,7 +90,7 @@ public sealed class UpdateSignatureRequestHandlerTests
                 Guid.NewGuid(),
                 "A valid title",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 72,
                 true,
                 false,
@@ -96,6 +100,7 @@ public sealed class UpdateSignatureRequestHandlerTests
             repo,
             new FakeUnitOfWork(),
             new FakeCache(),
+            new FakeCategoryResolver(),
             CancellationToken.None
         );
 
@@ -111,7 +116,7 @@ public sealed class UpdateSignatureRequestHandlerTests
             request.Id,
             "A valid title",
             null,
-            SignatureCategory.Fiscal,
+            "Fiscal",
             72,
             SendSignedDocumentToSigners: true,
             SendCertificateToSigners: false,
@@ -126,7 +131,7 @@ public sealed class UpdateSignatureRequestHandlerTests
                 Guid.NewGuid(),
                 "Consent 2026",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,
@@ -211,6 +216,16 @@ public sealed class UpdateSignatureRequestHandlerTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+    }
+
+    private sealed class FakeCategoryResolver : ISignatureCategoryResolver
+    {
+        // Devuelve la categoría tal cual (válida) — la validación real se prueba en el resolver.
+        public Task<BuildingBlocks.Results.Result<string>> ResolveAsync(
+            Guid tenantId,
+            string category,
+            CancellationToken ct = default
+        ) => Task.FromResult(BuildingBlocks.Results.Result.Success(category));
     }
 
     private sealed class FakeCache : ISignatureRequestListCacheInvalidator

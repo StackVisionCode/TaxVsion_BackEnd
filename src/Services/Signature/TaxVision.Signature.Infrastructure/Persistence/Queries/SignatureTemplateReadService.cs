@@ -24,8 +24,8 @@ internal sealed class SignatureTemplateReadService(SignatureDbContext db) : ISig
             .Where(t => t.TenantId == query.TenantId);
         if (query.Status.HasValue)
             baseQuery = baseQuery.Where(t => t.Status == query.Status.Value);
-        if (query.Category.HasValue)
-            baseQuery = baseQuery.Where(t => t.Category == query.Category.Value);
+        if (query.Category is not null)
+            baseQuery = baseQuery.Where(t => t.Category == query.Category);
 
         var total = await baseQuery.CountAsync(ct);
         var items = await baseQuery

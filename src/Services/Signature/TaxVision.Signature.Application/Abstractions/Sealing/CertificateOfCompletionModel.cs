@@ -29,7 +29,7 @@ public sealed record CertificateSignerEntry(
 public sealed record CertificateOfCompletionModel(
     Guid SignatureRequestId,
     string Title,
-    SignatureCategory Category,
+    string Category,
     DateTime CreatedAtUtc,
     DateTime CompletedAtUtc,
     string DocumentHashPre,

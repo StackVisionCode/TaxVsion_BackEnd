@@ -82,7 +82,7 @@ public sealed class SignatureRequestExpiryAndRetentionTests
                 Guid.NewGuid(),
                 "Consent 2026",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,
