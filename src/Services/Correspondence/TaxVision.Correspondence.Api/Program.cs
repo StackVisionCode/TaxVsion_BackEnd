@@ -22,7 +22,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Correspondence.Api.Authorization;
 using TaxVision.Correspondence.Application;
+using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Infrastructure;
 using TaxVision.Correspondence.Infrastructure.Persistence;
@@ -69,6 +71,10 @@ builder.Services.AddScoped<
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
+
+// Gate de buzón de oficina: resuelve qué buzones ve el usuario (office.read) para ocultar el correo
+// de oficina en los listados a quien no tiene el permiso.
+builder.Services.AddScoped<IMailboxVisibilityResolver, MailboxVisibilityResolver>();
 
 // RBAC Fase 4 (RBAC_Hardening_Plan.md) — resource ownership sobre Draft, apagado por default
 // (Authorization:ResourceOwnership:Enabled). Sin permiso "manage" de override (a diferencia de

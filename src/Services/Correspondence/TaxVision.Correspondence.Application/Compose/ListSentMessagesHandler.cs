@@ -19,7 +19,14 @@ public static class ListSentMessagesHandler
         CancellationToken ct
     )
     {
-        var page = await drafts.ListSentByCustomerAsync(query.TenantId, query.CustomerId, query.Page, query.Size, ct);
+        var page = await drafts.ListSentByCustomerAsync(
+            query.TenantId,
+            query.CustomerId,
+            query.Page,
+            query.Size,
+            query.VisibleAccountIds,
+            ct
+        );
 
         var items = page.Items.Select(ToListItem).ToList();
         return new PagedResult<SentMessageListItem>(items, page.Page, page.Size, page.TotalCount);

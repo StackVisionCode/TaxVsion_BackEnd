@@ -6,7 +6,7 @@ namespace TaxVision.Signature.Application.Templates.Queries.List;
 public sealed record ListTemplatesQuery(
     Guid TenantId,
     SignatureTemplateStatus? Status,
-    SignatureCategory? Category,
+    string? Category,
     int Page,
     int PageSize
 );
@@ -14,7 +14,7 @@ public sealed record ListTemplatesQuery(
 public sealed record TemplateSummary(
     Guid Id,
     string Title,
-    SignatureCategory Category,
+    string Category,
     SignatureTemplateStatus Status,
     int SlotCount,
     int FieldCount,

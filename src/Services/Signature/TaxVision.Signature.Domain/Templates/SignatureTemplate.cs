@@ -35,13 +35,14 @@ public sealed class SignatureTemplate : TenantEntity
 
     private readonly List<TemplateSignerSlot> _slots = [];
     private readonly List<TemplateField> _fields = [];
+    private readonly List<TemplatePreparerField> _preparerFields = [];
 
     private SignatureTemplate() { }
 
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
-    public SignatureCategory Category { get; private set; }
+    public string Category { get; private set; } = default!;
     public SignatureTemplateStatus Status { get; private set; }
 
     public int DefaultTokenExpirationHours { get; private set; }
@@ -80,6 +81,7 @@ public sealed class SignatureTemplate : TenantEntity
 
     public IReadOnlyList<TemplateSignerSlot> Slots => _slots.AsReadOnly();
     public IReadOnlyList<TemplateField> Fields => _fields.AsReadOnly();
+    public IReadOnlyList<TemplatePreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
     // ------------------------------------------------------------------
     // Factory
@@ -90,7 +92,7 @@ public sealed class SignatureTemplate : TenantEntity
         Guid createdByUserId,
         string title,
         string? description,
-        SignatureCategory category,
+        string category,
         int defaultTokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
@@ -128,7 +130,7 @@ public sealed class SignatureTemplate : TenantEntity
             CreatedByUserId = createdByUserId,
             Title = title.Trim(),
             Description = NormalizeDescription(description),
-            Category = category,
+            Category = category.Trim(),
             Status = SignatureTemplateStatus.Draft,
             DefaultTokenExpirationHours = defaultTokenExpirationHours,
             RequiresSequentialSigning = requiresSequentialSigning,
@@ -150,7 +152,7 @@ public sealed class SignatureTemplate : TenantEntity
     // Metadata / defaults
     // ------------------------------------------------------------------
 
-    public Result UpdateMetadata(string title, string? description, SignatureCategory category)
+    public Result UpdateMetadata(string title, string? description, string category)
     {
         EnsureDraft();
 
@@ -174,7 +176,7 @@ public sealed class SignatureTemplate : TenantEntity
 
         Title = trimmedTitle;
         Description = NormalizeDescription(description);
-        Category = category;
+        Category = category.Trim();
         Touch();
         return Result.Success();
     }
@@ -422,6 +424,39 @@ public sealed class SignatureTemplate : TenantEntity
             return Result.Failure(new Error("Signature.Template.FieldMissing", "Field not found in this template."));
 
         _fields.Remove(field);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Predefine un campo de firma del preparador (sin slot). Solo en Draft.</summary>
+    public Result<TemplatePreparerField> PlacePreparerField(
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label
+    )
+    {
+        EnsureDraft();
+
+        var fieldResult = TemplatePreparerField.Create(Id, kind, position, label);
+        if (fieldResult.IsFailure)
+            return fieldResult;
+
+        _preparerFields.Add(fieldResult.Value);
+        Touch();
+        return fieldResult;
+    }
+
+    public Result RemovePreparerField(Guid fieldId)
+    {
+        EnsureDraft();
+
+        var field = _preparerFields.Find(f => f.Id == fieldId);
+        if (field is null)
+            return Result.Failure(
+                new Error("Signature.Template.PreparerFieldMissing", "Preparer field not found in this template.")
+            );
+
+        _preparerFields.Remove(field);
         Touch();
         return Result.Success();
     }

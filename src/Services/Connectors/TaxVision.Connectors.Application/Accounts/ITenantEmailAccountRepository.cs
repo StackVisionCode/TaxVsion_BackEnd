@@ -36,6 +36,14 @@ public interface ITenantEmailAccountRepository
     /// <summary>Cuentas del tenant llamante — <c>GET /connectors/accounts</c> (D3 §12.4), a diferencia de GetByIdAsync/GetByEmailAddressAsync sí filtra por tenant porque el caller es un usuario autenticado del frontend.</summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Buzones visibles para un usuario: siempre los suyos propios; el de oficina (OwnerUserId null) solo si <paramref name="includeOffice"/>. No expone los personales de otros empleados.</summary>
+    Task<IReadOnlyList<TenantEmailAccount>> ListVisibleAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    );
+
     /// <summary>
     /// Cuentas Active de TODOS los tenants/proveedores — usada por ReconciliationJob, mismo patrón
     /// sin filtro de tenant que GetByIdAsync/GetByEmailAddressAsync (background job system-level).

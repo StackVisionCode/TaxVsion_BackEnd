@@ -3,6 +3,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Files;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -163,6 +164,7 @@ public static class ResolvePublicShareHandler
         link.Visibility switch
         {
             ShareVisibility.Public => true,
+            ShareVisibility.ExternalLink => true,
             ShareVisibility.ExternalRecipients => !string.IsNullOrWhiteSpace(query.RecipientEmail)
                 && link.HasEmailRecipient(query.RecipientEmail),
             _ => false,
@@ -257,7 +259,7 @@ public static class ResolvePrivateShareHandler
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, null, "private", "TokenNotFound", ct);
             return ShareAccessResult.Denied();
         }
-        if (!link.IsUsable(now) || link.Visibility == ShareVisibility.Public)
+        if (!link.IsUsable(now) || link.Visibility is ShareVisibility.Public or ShareVisibility.ExternalLink)
         {
             AuditDenied(link, query, audit, clock);
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotUsable", ct);
@@ -423,6 +425,7 @@ public static class ResolvePublicShareMetaHandler
         link.Visibility switch
         {
             ShareVisibility.Public => true,
+            ShareVisibility.ExternalLink => true,
             ShareVisibility.ExternalRecipients => !string.IsNullOrWhiteSpace(recipientEmail)
                 && link.HasEmailRecipient(recipientEmail),
             _ => false,
@@ -480,8 +483,7 @@ internal static class ShareLinkResolutionSignals
     public static string ContentDispositionFor(SharePermission permission, string originalName)
     {
         var kind = permission == SharePermission.Download ? "attachment" : "inline";
-        var safeName = originalName.Replace('"', '_');
-        return $"{kind}; filename=\"{safeName}\"";
+        return ContentDispositionBuilder.Build(kind, originalName);
     }
 
     public static ValueTask PublishAccessedAsync(

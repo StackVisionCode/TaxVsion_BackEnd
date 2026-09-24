@@ -98,7 +98,8 @@ public sealed class OAuthCallbackController(
                 providerCode,
                 connectState.InitiatedByUserId,
                 code,
-                connectState.InitiatorEmail
+                connectState.InitiatorEmail,
+                connectState.AsOffice
             ),
             ct
         );

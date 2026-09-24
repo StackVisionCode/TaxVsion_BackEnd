@@ -26,13 +26,25 @@ public sealed record SignatureFieldResponse(
     bool IsRequired
 );
 
+/// <summary>Campo del preparador (canal paralelo). Sin SignerId: no pertenece a un firmante.</summary>
+public sealed record PreparerFieldResponse(
+    Guid Id,
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
+);
+
 public sealed record SignatureRequestResponse(
     Guid Id,
     Guid TenantId,
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     SignatureRequestStatus Status,
     Guid OriginalFileId,
     string? DocumentHashPre,
@@ -42,6 +54,10 @@ public sealed record SignatureRequestResponse(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
+    bool SendSignedDocumentToSigners,
+    bool SendCertificateToSigners,
+    bool AutoRemindersEnabled,
+    int ReminderIntervalHours,
     bool RequiresPractitionerPin,
     DateTime? PractitionerPinSetAtUtc,
     int TokenExpirationHours,
@@ -53,6 +69,11 @@ public sealed record SignatureRequestResponse(
     DateTime? CompletedAtUtc,
     DateTime? CanceledAtUtc,
     DateTime? ExpiredAtUtc,
+    // Estado del preparador (canal paralelo Form 8879) — para rehidratar el editor y mostrar su firma.
+    bool IsPreparerSigned,
+    DateTime? PreparerSignedAtUtc,
+    Guid? PreparerSignatureFileId,
+    IReadOnlyList<PreparerFieldResponse> PreparerFields,
     IReadOnlyList<SignerResponse> Signers
 )
 {
@@ -73,6 +94,10 @@ public sealed record SignatureRequestResponse(
             request.RequiresSequentialSigning,
             request.RequiresConsent,
             request.GenerateCertificate,
+            request.SendSignedDocumentToSigners,
+            request.SendCertificateToSigners,
+            request.AutoRemindersEnabled,
+            request.ReminderIntervalHours,
             request.RequiresPractitionerPin,
             request.PractitionerPinSetAtUtc,
             request.TokenExpirationHours,
@@ -84,7 +109,23 @@ public sealed record SignatureRequestResponse(
             request.CompletedAtUtc,
             request.CanceledAtUtc,
             request.ExpiredAtUtc,
+            request.IsPreparerSigned,
+            request.PreparerSignedAtUtc,
+            request.PreparerSignatureFileId,
+            request.PreparerFields.Select(MapPreparerField).ToList(),
             request.Signers.Select(MapSigner).ToList()
+        );
+
+    private static PreparerFieldResponse MapPreparerField(PreparerField field) =>
+        new(
+            field.Id,
+            field.Kind,
+            field.Position.Page,
+            field.Position.X,
+            field.Position.Y,
+            field.Position.Width,
+            field.Position.Height,
+            field.Label
         );
 
     private static SignerResponse MapSigner(Signer signer) =>

@@ -11,6 +11,7 @@ public sealed record UpdateSignatureSettingsCommand(
     bool RemindersEnabledByDefault,
     int DefaultReminderIntervalHours,
     bool GenerateCertificateByDefault,
+    bool AllowEmployeeOwnSignature,
     long MaxPdfBytes,
     long MaxImageBytes,
     int MaxPagesPerDocument,

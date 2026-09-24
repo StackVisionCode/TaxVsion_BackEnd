@@ -46,6 +46,15 @@ public interface IEmailThreadRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿El hilo tiene ≥1 mensaje (entrante vivo o enviado) de alguno de esos buzones? Gate de buzón de oficina: si es false para el set visible del usuario, el hilo se le oculta.</summary>
+    Task<bool> HasVisibleMessageAsync(
+        Guid tenantId,
+        Guid threadId,
+        IReadOnlyCollection<Guid> visibleAccountIds,
         CancellationToken ct = default
     );
 }

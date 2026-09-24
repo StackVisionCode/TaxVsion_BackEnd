@@ -19,8 +19,12 @@ public sealed class TenantEmailAccountConfiguration : IEntityTypeConfiguration<T
         builder.Property(a => a.LastActivityAtUtc).IsRequired();
         builder.Property(a => a.CreatedByUserId).IsRequired();
         builder.Property(a => a.CreatedAtUtc).IsRequired();
+        // null = buzón de oficina (compartido); con valor = personal de ese usuario.
+        builder.Property(a => a.OwnerUserId);
 
         builder.HasIndex(a => new { a.TenantId, a.EmailAddress }).IsUnique();
+        // Listar los buzones visibles para un usuario (oficina + los suyos).
+        builder.HasIndex(a => new { a.TenantId, a.OwnerUserId });
 
         // ReconciliationJob filtra únicamente por Status (sin TenantId — background job
         // system-level, ver ITenantEmailAccountRepository.ListActiveAsync) cada vez que corre.

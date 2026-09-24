@@ -1,8 +1,12 @@
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
+using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Tests.Application;
 
@@ -425,13 +429,17 @@ public sealed class FolderHandlerTests
             new GetFolderContentsQuery(tenantId, TenantScope, null),
             folders,
             files,
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
             CancellationToken.None
         );
 
         var subfolder = Assert.Single(result.Subfolders);
         Assert.Equal(ownFolder.Id, subfolder.Id);
+        Assert.False(subfolder.IsShared);
         var fileResponse = Assert.Single(result.Files);
         Assert.Equal(ownFile.Id, fileResponse.Id);
+        Assert.False(fileResponse.IsShared);
     }
 
     [Fact]
@@ -476,11 +484,160 @@ public sealed class FolderHandlerTests
             new GetFolderContentsQuery(tenantId, TenantScope, null, OwnerType.Customer, customerAId),
             folders,
             new FakeFileObjectRepository(),
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
             CancellationToken.None
         );
 
         var subfolder = Assert.Single(result.Subfolders);
         Assert.Equal(folderA.Id, subfolder.Id);
+    }
+
+    [Fact]
+    public async Task GetFolderContents_paginates_folders_first_and_reports_totals()
+    {
+        var tenantId = Guid.NewGuid();
+        var folders = new FakeFolderRepository();
+        for (var i = 0; i < 3; i++)
+            folders.Seed(RootFolder(tenantId, $"F{i}"));
+        var files = new FakeFileObjectRepository();
+        for (var i = 0; i < 4; i++)
+            files.Seed(RegisteredFile(tenantId));
+
+        // Página 1: take=2 → 2 carpetas (carpetas primero), 0 archivos.
+        var page1 = await GetFolderContentsHandler.Handle(
+            new GetFolderContentsQuery(tenantId, TenantScope, null, null, null, 0, 2),
+            folders,
+            files,
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            CancellationToken.None
+        );
+        Assert.Equal(2, page1.Subfolders.Count);
+        Assert.Empty(page1.Files);
+        Assert.Equal(3, page1.FolderCount);
+        Assert.Equal(4, page1.FileCount);
+        Assert.Equal(7, page1.TotalCount);
+
+        // Página 2 (skip=2, take=2): la última carpeta + el primer archivo (cruce del límite).
+        var page2 = await GetFolderContentsHandler.Handle(
+            new GetFolderContentsQuery(tenantId, TenantScope, null, null, null, 2, 2),
+            folders,
+            files,
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            CancellationToken.None
+        );
+        Assert.Single(page2.Subfolders);
+        Assert.Single(page2.Files);
+
+        // Última página (skip=6, take=2): solo el archivo restante.
+        var page4 = await GetFolderContentsHandler.Handle(
+            new GetFolderContentsQuery(tenantId, TenantScope, null, null, null, 6, 2),
+            folders,
+            files,
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            CancellationToken.None
+        );
+        Assert.Empty(page4.Subfolders);
+        Assert.Single(page4.Files);
+    }
+
+    [Fact]
+    public async Task GetFolderContents_with_a_file_filter_hides_folders_and_applies_the_filter()
+    {
+        var tenantId = Guid.NewGuid();
+        var folders = new FakeFolderRepository();
+        folders.Seed(RootFolder(tenantId, "Una carpeta"));
+        var files = new FakeFileObjectRepository();
+        files.Seed(FileWithName(tenantId, "a.pdf", 2024));
+        files.Seed(FileWithName(tenantId, "b.xlsx", 2024));
+        files.Seed(FileWithName(tenantId, "c.pdf", 2023));
+
+        // Filtro: solo PDF de 2024 → 1 archivo, y las carpetas se ocultan.
+        var filter = new FolderContentsFilter(TaxYears: [2024], Extensions: ["PDF"], SortKey: FileSortKey.Name);
+        var result = await GetFolderContentsHandler.Handle(
+            new GetFolderContentsQuery(tenantId, TenantScope, null, null, null, 0, 25, filter),
+            folders,
+            files,
+            new FakeShareLinkRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            CancellationToken.None
+        );
+
+        Assert.Empty(result.Subfolders); // ocultas por el file-filter
+        Assert.Equal(0, result.FolderCount);
+        var only = Assert.Single(result.Files);
+        Assert.Equal("a.pdf", only.OriginalName);
+        Assert.Equal(1, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetFolderContents_marks_files_and_folders_that_have_an_active_share()
+    {
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var sharedFolder = RootFolder(tenantId, "Compartida");
+        var plainFolder = RootFolder(tenantId, "Normal");
+        var sharedFile = RegisteredFile(tenantId);
+        var plainFile = RegisteredFile(tenantId);
+        var folders = new FakeFolderRepository();
+        folders.Seed(sharedFolder);
+        folders.Seed(plainFolder);
+        var files = new FakeFileObjectRepository();
+        files.Seed(sharedFile);
+        files.Seed(plainFile);
+
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(
+            ShareLink
+                .Create(
+                    Guid.NewGuid(),
+                    tenantId,
+                    sharedFolder.Id,
+                    ShareResourceType.Folder,
+                    ShareVisibility.ExternalLink,
+                    SharePermission.Download,
+                    null,
+                    null,
+                    null,
+                    Guid.NewGuid(),
+                    now
+                )
+                .Value.Item1
+        );
+        shares.Seed(
+            ShareLink
+                .Create(
+                    Guid.NewGuid(),
+                    tenantId,
+                    sharedFile.Id,
+                    ShareResourceType.File,
+                    ShareVisibility.ExternalLink,
+                    SharePermission.View,
+                    null,
+                    null,
+                    null,
+                    Guid.NewGuid(),
+                    now
+                )
+                .Value.Item1
+        );
+
+        var result = await GetFolderContentsHandler.Handle(
+            new GetFolderContentsQuery(tenantId, TenantScope, null),
+            folders,
+            files,
+            shares,
+            new FakeSystemClock(now),
+            CancellationToken.None
+        );
+
+        Assert.True(result.Subfolders.Single(f => f.Id == sharedFolder.Id).IsShared);
+        Assert.False(result.Subfolders.Single(f => f.Id == plainFolder.Id).IsShared);
+        Assert.True(result.Files.Single(f => f.Id == sharedFile.Id).IsShared);
+        Assert.False(result.Files.Single(f => f.Id == plainFile.Id).IsShared);
     }
 
     [Fact]
@@ -553,8 +710,50 @@ public sealed class FolderHandlerTests
         Assert.Equal(FolderErrors.Forbidden, result.Error);
     }
 
+    /// <summary>Invoca DeleteFolderHandler con los fakes por defecto (papelera recursiva).</summary>
+    private static Task<Result> DeleteFolder(
+        Guid tenantId,
+        Guid folderId,
+        FakeFolderRepository folders,
+        FakeFileObjectRepository files,
+        FakeUnitOfWork unitOfWork,
+        StorageActorScope? scope = null
+    ) =>
+        DeleteFolderHandler.Handle(
+            new DeleteFolderCommand(
+                tenantId,
+                Guid.NewGuid(),
+                scope ?? TenantScope,
+                folderId,
+                new RequestAuditContext(null, null, "corr-1")
+            ),
+            folders,
+            files,
+            new FakeStorageAuditRepository(),
+            Options.Create(new CloudStorageOptions()),
+            new FakeSystemClock(DateTime.UtcNow),
+            unitOfWork,
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+    private static Folder ChildFolder(Guid tenantId, Folder parent, string name = "Hijo") =>
+        Folder
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                parent.Id,
+                FolderName.Create(name).Value,
+                parent.RelativePath,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+
     [Fact]
-    public async Task DeleteFolder_removes_an_empty_folder()
+    public async Task DeleteFolder_sends_an_empty_folder_to_the_recycle_bin()
     {
         var tenantId = Guid.NewGuid();
         var folder = RootFolder(tenantId);
@@ -562,56 +761,56 @@ public sealed class FolderHandlerTests
         folders.Seed(folder);
         var unitOfWork = new FakeUnitOfWork();
 
-        var result = await DeleteFolderHandler.Handle(
-            new DeleteFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id),
-            folders,
-            new FakeFileObjectRepository(),
-            unitOfWork,
-            CancellationToken.None
-        );
+        var result = await DeleteFolder(tenantId, folder.Id, folders, new FakeFileObjectRepository(), unitOfWork);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
-        Assert.Null(await folders.GetAsync(tenantId, folder.Id, CancellationToken.None));
+        Assert.True(folder.IsDeleted); // a la papelera, no borrada en duro
+        Assert.Equal(folder.Id, folder.DeletedBatchId); // es la raíz del batch
+        // Ya no aparece navegando.
+        Assert.Empty(
+            await folders.ListSubfoldersAsync(
+                tenantId,
+                null,
+                null,
+                null,
+                null,
+                FolderContentsFilter.None,
+                null,
+                null,
+                CancellationToken.None
+            )
+        );
     }
 
     [Fact]
-    public async Task DeleteFolder_rejects_a_folder_that_still_has_a_subfolder()
+    public async Task DeleteFolder_recursively_sends_the_whole_subtree_to_the_recycle_bin()
     {
         var tenantId = Guid.NewGuid();
         var parent = RootFolder(tenantId, "Padre");
-        var child = Folder
-            .Create(
-                Guid.NewGuid(),
-                tenantId,
-                OwnerType.Tenant,
-                null,
-                parent.Id,
-                FolderName.Create("Hijo").Value,
-                parent.RelativePath,
-                Guid.NewGuid(),
-                DateTime.UtcNow
-            )
-            .Value;
+        var child = ChildFolder(tenantId, parent);
         var folders = new FakeFolderRepository();
         folders.Seed(parent);
         folders.Seed(child);
 
-        var result = await DeleteFolderHandler.Handle(
-            new DeleteFolderCommand(tenantId, Guid.NewGuid(), TenantScope, parent.Id),
+        var result = await DeleteFolder(
+            tenantId,
+            parent.Id,
             folders,
             new FakeFileObjectRepository(),
-            new FakeUnitOfWork(),
-            CancellationToken.None
+            new FakeUnitOfWork()
         );
 
-        Assert.True(result.IsFailure);
-        Assert.Equal(FolderErrors.NotEmpty, result.Error);
-        Assert.NotNull(await folders.GetAsync(tenantId, parent.Id, CancellationToken.None)); // no se borró
+        Assert.True(result.IsSuccess);
+        Assert.True(parent.IsDeleted);
+        Assert.True(child.IsDeleted);
+        // Ambas comparten el batch de la raíz.
+        Assert.Equal(parent.Id, parent.DeletedBatchId);
+        Assert.Equal(parent.Id, child.DeletedBatchId);
     }
 
     [Fact]
-    public async Task DeleteFolder_rejects_a_folder_that_still_has_a_file()
+    public async Task DeleteFolder_recursively_sends_files_to_the_recycle_bin_keeping_their_folder()
     {
         var tenantId = Guid.NewGuid();
         var folder = RootFolder(tenantId);
@@ -622,16 +821,34 @@ public sealed class FolderHandlerTests
         var files = new FakeFileObjectRepository();
         files.Seed(file);
 
-        var result = await DeleteFolderHandler.Handle(
-            new DeleteFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id),
-            folders,
-            files,
-            new FakeUnitOfWork(),
-            CancellationToken.None
-        );
+        var result = await DeleteFolder(tenantId, folder.Id, folders, files, new FakeUnitOfWork());
+
+        Assert.True(result.IsSuccess);
+        Assert.True(folder.IsDeleted);
+        Assert.Equal(FileStatus.SoftDeleted, file.Status); // a la papelera, no se perdió
+        Assert.Equal(folder.Id, file.DeletedBatchId); // agrupado con su carpeta
+        Assert.Equal(folder.Id, file.FolderId); // conserva su carpeta → al restaurar vuelve a su sitio
+    }
+
+    [Fact]
+    public async Task DeleteFolder_with_a_legally_held_file_fails_without_deleting_anything()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = RootFolder(tenantId);
+        var file = RegisteredFile(tenantId);
+        file.MoveToFolder(folder.Id, DateTime.UtcNow);
+        file.PlaceLegalHold();
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await DeleteFolder(tenantId, folder.Id, folders, files, new FakeUnitOfWork());
 
         Assert.True(result.IsFailure);
-        Assert.Equal(FolderErrors.NotEmpty, result.Error);
+        Assert.Equal(FolderErrors.HasLegalHold, result.Error);
+        Assert.NotNull(await folders.GetAsync(tenantId, folder.Id, CancellationToken.None)); // no se borró
+        Assert.NotEqual(FileStatus.SoftDeleted, file.Status);
     }
 
     [Fact]
@@ -641,12 +858,12 @@ public sealed class FolderHandlerTests
         var folders = new FakeFolderRepository();
         folders.Seed(folder);
 
-        var result = await DeleteFolderHandler.Handle(
-            new DeleteFolderCommand(Guid.NewGuid(), Guid.NewGuid(), TenantScope, folder.Id),
+        var result = await DeleteFolder(
+            Guid.NewGuid(),
+            folder.Id,
             folders,
             new FakeFileObjectRepository(),
-            new FakeUnitOfWork(),
-            CancellationToken.None
+            new FakeUnitOfWork()
         );
 
         Assert.True(result.IsFailure);
@@ -667,6 +884,28 @@ public sealed class FolderHandlerTests
                 key,
                 "return.pdf",
                 "application/pdf",
+                10,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(24)
+            )
+            .Value;
+    }
+
+    private static FileObject FileWithName(Guid tenantId, string originalName, int taxYear)
+    {
+        var key = ObjectKey.Create($"tenants/{tenantId:N}/tenant/documents/{taxYear}/{Guid.NewGuid():N}").Value;
+        return FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                FolderType.Documents,
+                taxYear,
+                key,
+                originalName,
+                "application/octet-stream",
                 10,
                 Guid.NewGuid(),
                 DateTime.UtcNow,
@@ -720,12 +959,12 @@ public sealed class FolderHandlerTests
         var folders = new FakeFolderRepository();
         folders.Seed(folder);
 
-        var result = await DeleteFolderHandler.Handle(
-            new DeleteFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id),
+        var result = await DeleteFolder(
+            tenantId,
+            folder.Id,
             folders,
             new FakeFileObjectRepository(),
-            new FakeUnitOfWork(),
-            CancellationToken.None
+            new FakeUnitOfWork()
         );
 
         Assert.True(result.IsFailure);

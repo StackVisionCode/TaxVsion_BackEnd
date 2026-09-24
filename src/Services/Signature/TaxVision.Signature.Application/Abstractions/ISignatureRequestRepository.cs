@@ -52,11 +52,22 @@ public interface ISignatureRequestRepository
     );
 
     /// <summary>
-    /// Solicitudes cuyo <c>ExpiresAtUtc</c> ya pasó y aún no están en estado terminal.
-    /// Consumida por el <c>ExpirationScheduler</c> — filtro global tenant desactivado
-    /// para permitir escaneo cross-tenant desde el background job.
+    /// Solicitudes <c>InProgress</c> (enviadas) cuyo <c>ExpiresAtUtc</c> ya pasó. Sólo lo enviado
+    /// expira por reloj de firma; los borradores se limpian por retención. Consumida por el
+    /// <c>ExpirationScheduler</c> — filtro global tenant desactivado (escaneo cross-tenant).
     /// </summary>
     Task<IReadOnlyList<SignatureRequest>> ListExpiredCandidatesAsync(DateTime nowUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// Borradores sin enviar (<c>Draft</c>/<c>Ready</c>), sin <c>LegalHold</c> y sin tocar desde
+    /// <paramref name="olderThanUtc"/>. Consumida por el <c>DraftRetentionScheduler</c> para
+    /// borrarlos en firme. Scan cross-tenant (filtro global desactivado).
+    /// </summary>
+    Task<IReadOnlyList<SignatureRequest>> ListStaleUnsentAsync(
+        DateTime olderThanUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Solicitudes InProgress con recordatorios activos a las que ya les toca un reminder según su

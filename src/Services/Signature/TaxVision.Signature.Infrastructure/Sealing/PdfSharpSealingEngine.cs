@@ -2,6 +2,10 @@ using System.Security.Cryptography;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Requests;
 
@@ -242,7 +246,11 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
     {
         try
         {
-            using var stream = new MemoryStream(imageBytes, writable: false);
+            // Aplanar sobre blanco ANTES de que PdfSharp lo dibuje: un PNG con transparencia (p. ej. una
+            // firma dibujada) se estampa NEGRO porque PdfSharp ignora el alfa y pinta los píxeles
+            // transparentes (RGB 0,0,0) en negro. Aplanar quita el alfa (fondo blanco) → se ve la firma.
+            var opaqueBytes = FlattenOntoWhite(imageBytes);
+            using var stream = new MemoryStream(opaqueBytes, writable: false);
             using var image = XImage.FromStream(stream);
 
             if (image.PixelWidth <= 0 || image.PixelHeight <= 0)
@@ -264,6 +272,29 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         catch (Exception)
         {
             // Imagen ilegible/corrupta: dejamos el campo sin estampa gráfica en lugar de romper el sellado.
+        }
+    }
+
+    /// <summary>
+    /// Aplana un PNG/imagen sobre fondo BLANCO y lo re-codifica como PNG SIN canal alfa (RGB 24-bit).
+    /// Necesario porque PdfSharp pinta el alfa como negro. Si la imagen no se puede decodificar, devuelve
+    /// los bytes originales (el estampado nunca aborta por una firma malformada).
+    /// </summary>
+    private static byte[] FlattenOntoWhite(byte[] imageBytes)
+    {
+        try
+        {
+            using var image = Image.Load<Rgba32>(imageBytes);
+            // BackgroundColor compone la imagen sobre blanco (los píxeles transparentes quedan blancos).
+            image.Mutate(ctx => ctx.BackgroundColor(Color.White));
+            using var output = new MemoryStream();
+            // ColorType Rgb = sin canal alfa → PdfSharp lo trata como opaco, nunca negro.
+            image.SaveAsPng(output, new PngEncoder { ColorType = PngColorType.Rgb });
+            return output.ToArray();
+        }
+        catch (Exception)
+        {
+            return imageBytes;
         }
     }
 
@@ -289,9 +320,43 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         XColor textPrimary
     )
     {
-        var font = new XFont("Times New Roman", Math.Max(11, height * 0.5), XFontStyleEx.BoldItalic);
+        // Autoajuste por ANCHO y ALTO. Se usa ~0.55×alto (no todo el alto) para que las iniciales se vean
+        // como una marca proporcionada dentro de la caja, no un monograma gigante, y con cap bajo (20pt).
+        var size = FitFontSize(gfx, initials, "Times New Roman", XFontStyleEx.BoldItalic, width, height * 0.55, 6, 20);
+        var font = new XFont("Times New Roman", size, XFontStyleEx.BoldItalic);
         var area = new XRect(x, y, width, height);
         gfx.DrawString(initials, font, new XSolidBrush(textPrimary), area, XStringFormats.Center);
+    }
+
+    /// <summary>
+    /// Mayor tamaño de fuente (en puntos) con el que <paramref name="text"/> cabe dentro de
+    /// <paramref name="maxWidth"/> × <paramref name="maxHeight"/>. Parte del alto disponible y baja hasta
+    /// que quepa a lo ancho, acotado a [minPt, maxPt]. Así el estampado escala con el tamaño del campo.
+    /// </summary>
+    private static double FitFontSize(
+        XGraphics gfx,
+        string text,
+        string family,
+        XFontStyleEx style,
+        double maxWidth,
+        double maxHeight,
+        double minPt,
+        double maxPt
+    )
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0 || maxHeight <= 0)
+            return minPt;
+
+        // El alto de línea ≈ 1.25× el em: se arranca desde ~0.8×alto para que quepa verticalmente.
+        var size = Math.Clamp(maxHeight * 0.8, minPt, maxPt);
+        while (size > minPt)
+        {
+            var font = new XFont(family, size, style);
+            if (gfx.MeasureString(text, font).Width <= maxWidth)
+                break;
+            size -= 0.5;
+        }
+        return Math.Max(size, minPt);
     }
 
     private static void DrawSingleValueStamp(
@@ -307,9 +372,12 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
     )
     {
         var captionFont = new XFont("Helvetica", 5.5, XFontStyleEx.Bold);
-        var valueFont = new XFont("Helvetica", Math.Max(8, height * 0.36), XFontStyleEx.Bold);
         gfx.DrawString(caption.ToUpperInvariant(), captionFont, new XSolidBrush(textMuted), new XPoint(x, y + 8));
-        var valueArea = new XRect(x, y + 10, width, height - 12);
+        var valueAreaHeight = Math.Max(1, height - 12);
+        var valueArea = new XRect(x, y + 10, width, valueAreaHeight);
+        // Autoajuste por ancho y alto: el valor (fecha, ✓, etc.) escala con la caja en vez de fijarse al alto.
+        var valueSize = FitFontSize(gfx, value, "Helvetica", XFontStyleEx.Bold, width, valueAreaHeight, 6, 18);
+        var valueFont = new XFont("Helvetica", valueSize, XFontStyleEx.Bold);
         gfx.DrawString(value, valueFont, new XSolidBrush(textPrimary), valueArea, XStringFormats.CenterLeft);
     }
 

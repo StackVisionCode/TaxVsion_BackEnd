@@ -1,5 +1,7 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
@@ -159,15 +161,16 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Take(take)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<FileObject>> ListInFolderAsync(
+    private IQueryable<FileObject> FilesInFolder(
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
         OwnerType? ownerType,
         Guid? ownerId,
-        CancellationToken ct
-    ) =>
-        await db
+        FolderContentsFilter filter
+    )
+    {
+        var query = db
             .Files.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(file =>
@@ -182,9 +185,83 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 // ya acoto el alcance arriba, portal de cliente siempre gana.
                 && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
                 && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
-            )
-            .OrderByDescending(file => file.CreatedAtUtc)
-            .ToListAsync(ct);
+            );
+
+        if (filter.FolderTypes is { Count: > 0 } folderTypes)
+            query = query.Where(file => folderTypes.Contains(file.FolderType));
+        if (filter.TaxYears is { Count: > 0 } years)
+            query = query.Where(file => file.TaxYear != null && years.Contains(file.TaxYear.Value));
+        if (filter.Statuses is { Count: > 0 } statuses)
+            query = query.Where(file => statuses.Contains(file.Status));
+        if (filter.Extensions is { Count: > 0 } extensions)
+            query = query.Where(BuildExtensionPredicate(extensions));
+        return query;
+    }
+
+    // OR de EndsWith(".ext") — EF lo traduce a LIKE '%.ext' (colación CI de SQL Server ⇒ no
+    // distingue mayúsculas). Se construye a mano para garantizar la traducción con una lista dinámica.
+    private static Expression<Func<FileObject, bool>> BuildExtensionPredicate(IReadOnlyList<string> extensions)
+    {
+        var param = Expression.Parameter(typeof(FileObject), "file");
+        var nameProperty = Expression.Property(param, nameof(FileObject.OriginalName));
+        var endsWith = typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string)])!;
+        Expression? body = null;
+        foreach (var extension in extensions)
+        {
+            var pattern = Expression.Constant("." + extension.TrimStart('.'));
+            var call = Expression.Call(nameProperty, endsWith, pattern);
+            body = body is null ? call : Expression.OrElse(body, call);
+        }
+        return Expression.Lambda<Func<FileObject, bool>>(body ?? Expression.Constant(true), param);
+    }
+
+    private static IOrderedQueryable<FileObject> OrderFiles(IQueryable<FileObject> query, FolderContentsFilter filter)
+    {
+        var desc = filter.SortDescending;
+        var ordered = filter.SortKey switch
+        {
+            FileSortKey.Modified => desc
+                ? query.OrderByDescending(file => file.ScannedAtUtc ?? file.CreatedAtUtc)
+                : query.OrderBy(file => file.ScannedAtUtc ?? file.CreatedAtUtc),
+            FileSortKey.Size => desc
+                ? query.OrderByDescending(file => file.SizeBytes)
+                : query.OrderBy(file => file.SizeBytes),
+            _ => desc ? query.OrderByDescending(file => file.OriginalName) : query.OrderBy(file => file.OriginalName),
+        };
+        // Desempate estable por Id para que la paginación no repita/salte filas con valores iguales.
+        return desc ? ordered.ThenByDescending(file => file.Id) : ordered.ThenBy(file => file.Id);
+    }
+
+    public async Task<IReadOnlyList<FileObject>> ListInFolderAsync(
+        Guid tenantId,
+        Guid? folderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        FolderContentsFilter filter,
+        int? skip,
+        int? take,
+        CancellationToken ct
+    )
+    {
+        var query = OrderFiles(
+            FilesInFolder(tenantId, folderId, restrictedCustomerId, ownerType, ownerId, filter),
+            filter
+        );
+        return take is null
+            ? await query.ToListAsync(ct)
+            : await query.Skip(skip ?? 0).Take(take.Value).ToListAsync(ct);
+    }
+
+    public Task<int> CountInFolderAsync(
+        Guid tenantId,
+        Guid? folderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        FolderContentsFilter filter,
+        CancellationToken ct
+    ) => FilesInFolder(tenantId, folderId, restrictedCustomerId, ownerType, ownerId, filter).CountAsync(ct);
 
     public async Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
         Guid tenantId,
@@ -206,6 +283,56 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 )
             )
             .ToListAsync(ct);
+
+    // TRACKED (sin AsNoTracking): el borrado recursivo de carpeta muta el Status de cada archivo.
+    public async Task<IReadOnlyList<FileObject>> ListInFoldersForUpdateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> folderIds,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .Where(file =>
+                file.TenantId == tenantId
+                && file.FolderId != null
+                && folderIds.Contains(file.FolderId.Value)
+                && file.Status != FileStatus.SoftDeleted
+            )
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<FileObject>> ListSoftDeletedLooseAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file =>
+                file.TenantId == tenantId && file.Status == FileStatus.SoftDeleted && file.DeletedBatchId == null
+            )
+            .OrderByDescending(file => file.SoftDeletedAtUtc)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+    // TRACKED: la restauración de una carpeta revierte el Status de sus archivos.
+    public async Task<IReadOnlyList<FileObject>> ListByDeletedBatchAsync(
+        Guid tenantId,
+        Guid batchId,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .Where(file => file.TenantId == tenantId && file.DeletedBatchId == batchId)
+            .ToListAsync(ct);
+
+    public Task<int> CountByDeletedBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct) =>
+        db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .CountAsync(file => file.TenantId == tenantId && file.DeletedBatchId == batchId, ct);
 }
 
 public sealed class FolderRepository(CloudStorageDbContext db) : IFolderRepository
@@ -219,29 +346,61 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
             .Folders.IgnoreQueryFilters()
             .SingleOrDefaultAsync(folder => folder.TenantId == tenantId && folder.Id == folderId, ct);
 
-    public async Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
+    private IQueryable<Folder> Subfolders(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
         OwnerType? ownerType,
-        Guid? ownerId,
-        CancellationToken ct
+        Guid? ownerId
     ) =>
-        await db
+        db
             .Folders.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(folder =>
                 folder.TenantId == tenantId
                 && folder.ParentFolderId == parentFolderId
+                && folder.SoftDeletedAtUtc == null
                 && (
                     restrictedCustomerId == null
                     || (folder.OwnerType == OwnerType.Customer && folder.OwnerId == restrictedCustomerId)
                 )
                 && (restrictedCustomerId != null || ownerType == null || folder.OwnerType == ownerType)
                 && (restrictedCustomerId != null || ownerId == null || folder.OwnerId == ownerId)
-            )
-            .OrderBy(folder => folder.Name)
-            .ToListAsync(ct);
+            );
+
+    public async Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        FolderContentsFilter filter,
+        int? skip,
+        int? take,
+        CancellationToken ct
+    )
+    {
+        var query = Subfolders(tenantId, parentFolderId, restrictedCustomerId, ownerType, ownerId);
+        var desc = filter.SortDescending;
+        // Las carpetas no tienen tamaño: "Size" cae a Name. "Modified" ordena por CreatedAtUtc.
+        var ordered =
+            filter.SortKey == FileSortKey.Modified
+                ? (desc ? query.OrderByDescending(f => f.CreatedAtUtc) : query.OrderBy(f => f.CreatedAtUtc))
+                : (desc ? query.OrderByDescending(f => f.Name) : query.OrderBy(f => f.Name));
+        var stable = desc ? ordered.ThenByDescending(f => f.Id) : ordered.ThenBy(f => f.Id);
+        return take is null
+            ? await stable.ToListAsync(ct)
+            : await stable.Skip(skip ?? 0).Take(take.Value).ToListAsync(ct);
+    }
+
+    public Task<int> CountSubfoldersAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) => Subfolders(tenantId, parentFolderId, restrictedCustomerId, ownerType, ownerId).CountAsync(ct);
 
     public async Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(
         Guid tenantId,
@@ -252,7 +411,9 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         var prefix = relativePathPrefix + "/";
         return await db
             .Folders.IgnoreQueryFilters()
-            .Where(folder => folder.TenantId == tenantId && folder.RelativePath.StartsWith(prefix))
+            .Where(folder =>
+                folder.TenantId == tenantId && folder.SoftDeletedAtUtc == null && folder.RelativePath.StartsWith(prefix)
+            )
             .ToListAsync(ct);
     }
 
@@ -274,6 +435,7 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                     && folder.Name == name
                     && folder.OwnerType == ownerType
                     && folder.OwnerId == ownerId
+                    && folder.SoftDeletedAtUtc == null
                     && folder.Id != (excludeFolderId ?? Guid.Empty),
                 ct
             );
@@ -310,9 +472,54 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
             .AsNoTracking()
             .Where(folder =>
                 folder.TenantId == tenantId
+                && folder.SoftDeletedAtUtc == null
                 && (ownerType == null || folder.OwnerType == ownerType)
                 && (ownerId == null || folder.OwnerId == ownerId)
             )
+            .ToListAsync(ct);
+
+    // ---------- Papelera de carpetas (soft-delete por batch) ----------
+
+    // Raíces borradas (DeletedBatchId == Id) → una entrada por carpeta en la papelera.
+    public async Task<IReadOnlyList<Folder>> ListSoftDeletedRootsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Folders.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(folder =>
+                folder.TenantId == tenantId && folder.SoftDeletedAtUtc != null && folder.DeletedBatchId == folder.Id
+            )
+            .OrderByDescending(folder => folder.SoftDeletedAtUtc)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+    // Todas las carpetas de un batch (TRACKED: restaurar/purgar las muta o elimina).
+    public async Task<IReadOnlyList<Folder>> ListBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct) =>
+        await db
+            .Folders.IgnoreQueryFilters()
+            .Where(folder => folder.TenantId == tenantId && folder.DeletedBatchId == batchId)
+            .ToListAsync(ct);
+
+    // Purga: raíces cuya retención venció (cross-tenant, lo corre el job diario). TRACKED para Remove del batch.
+    public async Task<IReadOnlyList<Folder>> ListPurgeableRootsPastRetentionAsync(
+        DateTime nowUtc,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Folders.IgnoreQueryFilters()
+            .Where(folder =>
+                folder.SoftDeletedAtUtc != null
+                && folder.DeletedBatchId == folder.Id
+                && folder.SoftDeleteExpiresAtUtc <= nowUtc
+            )
+            .OrderBy(folder => folder.SoftDeleteExpiresAtUtc)
+            .Take(take)
             .ToListAsync(ct);
 }
 
@@ -422,6 +629,26 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
                 && link.Visibility == ShareVisibility.Public
                 && folderIds.Contains(link.ResourceId)
             )
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> ListResourceIdsWithActiveShareAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> resourceIds,
+        DateTime nowUtc,
+        CancellationToken ct
+    ) =>
+        await db
+            .ShareLinks.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(link =>
+                link.TenantId == tenantId
+                && resourceIds.Contains(link.ResourceId)
+                && link.Status == ShareStatus.Active
+                && link.ExpiresAtUtc > nowUtc
+                && (link.MaxAccessCount == null || link.AccessCount < link.MaxAccessCount)
+            )
+            .Select(link => link.ResourceId)
+            .Distinct()
             .ToListAsync(ct);
 }
 

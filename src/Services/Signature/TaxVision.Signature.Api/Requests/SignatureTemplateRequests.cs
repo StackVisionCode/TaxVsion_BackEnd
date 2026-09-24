@@ -6,7 +6,7 @@ namespace TaxVision.Signature.Api.Requests;
 public sealed record CreateTemplateBody(
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
@@ -20,7 +20,7 @@ public sealed record CreateTemplateBody(
     int ReminderIntervalHours = 48
 );
 
-public sealed record UpdateTemplateMetadataBody(string Title, string? Description, SignatureCategory Category);
+public sealed record UpdateTemplateMetadataBody(string Title, string? Description, string Category);
 
 /// <summary>Practitioner PIN por defecto de la plantilla (Form 8879): 4–10 dígitos.</summary>
 public sealed record SetTemplatePractitionerPinBody(string Pin);
@@ -61,6 +61,16 @@ public sealed record PlaceTemplateFieldBody(
     double Height,
     string? Label,
     bool IsRequired
+);
+
+public sealed record PlaceTemplatePreparerFieldBody(
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
 );
 
 public sealed record InstantiateTemplateBody(

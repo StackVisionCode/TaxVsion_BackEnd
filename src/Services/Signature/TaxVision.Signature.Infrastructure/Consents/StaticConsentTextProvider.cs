@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Analytics;
 using TaxVision.Signature.Domain.Requests;
 
 namespace TaxVision.Signature.Infrastructure.Consents;
@@ -14,10 +15,12 @@ namespace TaxVision.Signature.Infrastructure.Consents;
 /// </summary>
 public sealed class StaticConsentTextProvider : IConsentTextProvider
 {
-    public ConsentTextSnapshot Resolve(SignatureCategory category, string language)
+    public ConsentTextSnapshot Resolve(string category, string language)
     {
         var normalizedLanguage = NormalizeLanguage(language);
-        var (version, text) = ResolveEntry(category, normalizedLanguage);
+        // Categoría custom del tenant → Other → texto genérico (revisión legal pendiente, 14.4).
+        var systemCategory = SignatureCategoryParsing.ToSystemCategory(category);
+        var (version, text) = ResolveEntry(systemCategory, normalizedLanguage);
         var hash = ComputeSha256(text);
         return new ConsentTextSnapshot(version, normalizedLanguage, text, hash);
     }

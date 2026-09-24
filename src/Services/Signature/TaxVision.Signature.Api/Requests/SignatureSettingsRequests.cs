@@ -14,7 +14,9 @@ public sealed record UpdateSignatureSettingsBody(
     DocumentLimitsBody DocumentLimits,
     RetentionPolicyBody RetentionPolicy,
     // Default 48h (cada 2 días); opcional para retro-compat con clientes que no lo envían.
-    int DefaultReminderIntervalHours = 48
+    int DefaultReminderIntervalHours = 48,
+    // Gobernanza de firma del preparador (My Signature); opcional, default true (norma industria).
+    bool AllowEmployeeOwnSignature = true
 );
 
 public sealed record DocumentLimitsBody(long MaxPdfBytes, long MaxImageBytes, int MaxPagesPerDocument);

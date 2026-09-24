@@ -9,7 +9,8 @@ namespace TaxVision.Gateway.Tests.LoadShedding;
 /// Incidente prod (sep-2026): los upgrades WebSocket de Socket.IO son long-lived; su duración (la vida
 /// del socket, minutos) entraba en la ventana del p99 y disparaba load shedding sobre toda la flota
 /// (503 en /campaigns, /customers, /tasks…). El fix los excluye igual que /health: ni se cuentan ni se
-/// sheddean. Estos tests fijan esa exclusión.
+/// sheddean. La misma clase de bug aplica a las descargas ZIP streameadas (/storage/**/zip): su
+/// duración es tiempo de descarga del cliente, no carga del servidor. Estos tests fijan ambas exclusiones.
 /// </summary>
 public sealed class LoadSheddingMiddlewareTests
 {
@@ -33,10 +34,10 @@ public sealed class LoadSheddingMiddlewareTests
             throw new NotSupportedException();
     }
 
-    private static HttpContext BuildContext(bool webSocket)
+    private static HttpContext BuildContext(bool webSocket, string path = "/communication/socket.io/")
     {
         var context = new DefaultHttpContext();
-        context.Request.Path = "/communication/socket.io/";
+        context.Request.Path = path;
         if (webSocket)
             context.Features.Set<IHttpWebSocketFeature>(new FakeWebSocketFeature());
         return context;
@@ -76,5 +77,25 @@ public sealed class LoadSheddingMiddlewareTests
 
         Assert.Equal(1, shedder.EvaluateCalls);
         Assert.Equal(1, window.GetSnapshot().SampleCount);
+    }
+
+    [Theory]
+    [InlineData("/storage/public/abc123/zip")] // "Download all" público de carpeta (8.2)
+    [InlineData("/storage/files/zip")] // ZIP bulk autenticado
+    public async Task DescargaZip_NoSeCuentaEnLaVentana_NiSeConsultaAlShedder(string path)
+    {
+        var window = new RequestOutcomeWindow(60);
+        var shedder = new SpyShedder();
+        var middleware = new LoadSheddingMiddleware(
+            _ => Task.CompletedTask,
+            shedder,
+            window,
+            new TenantConsumptionTracker(60)
+        );
+
+        await middleware.InvokeAsync(BuildContext(webSocket: false, path));
+
+        Assert.Equal(0, shedder.EvaluateCalls);
+        Assert.Equal(0, window.GetSnapshot().SampleCount);
     }
 }

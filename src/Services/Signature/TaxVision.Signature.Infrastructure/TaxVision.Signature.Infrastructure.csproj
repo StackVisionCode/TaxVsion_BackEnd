@@ -15,6 +15,9 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
     <PackageReference Include="Minio" Version="7.0.0" />
     <PackageReference Include="PdfSharp" Version="6.2.0" />
+    <!-- Aplanar firmas PNG transparentes sobre blanco antes de estampar: PdfSharp pinta el alfa como
+         negro. Pura-managed (apta contenedor Linux), igual criterio cross-platform que el resto. -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.9" />

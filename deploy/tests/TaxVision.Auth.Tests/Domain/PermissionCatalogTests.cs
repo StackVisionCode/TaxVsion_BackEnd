@@ -92,6 +92,20 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionCatalog.SmsSend, defaults);
     }
 
+    // connect_own = conectar/administrar el buzón PERSONAL propio (no el de oficina, que es write).
+    // Llega al empleado por defecto (para que pueda usar su propio correo sin depender del admin);
+    // el admin puede restringirlo por usuario desde Edit access. accounts.write NO llega al empleado.
+    [Fact]
+    public void Employee_defaults_include_connect_own_and_office_read_but_not_accounts_write()
+    {
+        var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsRead, defaults);
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsConnectOwn, defaults);
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsOfficeRead, defaults);
+        Assert.DoesNotContain(PermissionCatalog.ConnectorsAccountsWrite, defaults);
+    }
+
     /// <summary>
     /// Facturación tenant→cliente (invoicing.*): a DIFERENCIA de billing.* (suscripción SaaS, peligroso/
     /// admin-only), es operativa — no peligrosa, asignable, y llega tanto al empleado (bundle explícito)

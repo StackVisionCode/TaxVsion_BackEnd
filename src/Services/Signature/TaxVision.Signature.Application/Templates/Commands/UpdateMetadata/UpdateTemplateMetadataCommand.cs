@@ -7,5 +7,5 @@ public sealed record UpdateTemplateMetadataCommand(
     Guid TemplateId,
     string Title,
     string? Description,
-    SignatureCategory Category
+    string Category
 );

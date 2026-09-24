@@ -121,6 +121,45 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("SignatureAuditEvents", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Categories.TenantSignatureCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("SignatureCategories", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Consents.ConsentEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -245,6 +284,54 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("AuthzUserPermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Profiles.SignatureProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OwnerUserId");
+
+                    b.ToTable("SignatureProfiles", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Projections.CustomerEmailProjection", b =>
@@ -436,6 +523,33 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.PreparerField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("SignatureRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SignatureRequestId");
+
+                    b.ToTable("PreparerFields", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureField", b =>
                 {
                     b.Property<Guid>("Id")
@@ -483,8 +597,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Category")
                         .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<Guid?>("CertificateFileId")
                         .HasColumnType("uniqueidentifier");
@@ -544,6 +658,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("PractitionerPinSetByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreparerSignatureFileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("PreparerSignedAtUtc")
@@ -777,6 +894,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("AllowEmployeeOwnSignature")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<int>("AllowedVerificationChannels")
                         .HasColumnType("int");
 
@@ -837,8 +959,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Category")
                         .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -933,6 +1055,30 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("TemplateFields", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplatePreparerField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("SignatureTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SignatureTemplateId");
+
+                    b.ToTable("TemplatePreparerFields", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplateSignerSlot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1020,6 +1166,51 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
                     b.ToTable("DocumentValidationRecords", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Requests.PreparerField", b =>
+                {
+                    b.HasOne("TaxVision.Signature.Domain.Requests.SignatureRequest", null)
+                        .WithMany("PreparerFields")
+                        .HasForeignKey("SignatureRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.FieldPosition", "Position", b1 =>
+                        {
+                            b1.Property<Guid>("PreparerFieldId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<double>("Height")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Height");
+
+                            b1.Property<int>("Page")
+                                .HasColumnType("int")
+                                .HasColumnName("Position_Page");
+
+                            b1.Property<double>("Width")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Width");
+
+                            b1.Property<double>("X")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_X");
+
+                            b1.Property<double>("Y")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Y");
+
+                            b1.HasKey("PreparerFieldId");
+
+                            b1.ToTable("PreparerFields");
+
+                            b1.WithOwner()
+                                .HasForeignKey("PreparerFieldId");
+                        });
+
+                    b.Navigation("Position")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureField", b =>
@@ -1396,6 +1587,51 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplatePreparerField", b =>
+                {
+                    b.HasOne("TaxVision.Signature.Domain.Templates.SignatureTemplate", null)
+                        .WithMany("PreparerFields")
+                        .HasForeignKey("SignatureTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.FieldPosition", "Position", b1 =>
+                        {
+                            b1.Property<Guid>("TemplatePreparerFieldId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<double>("Height")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Height");
+
+                            b1.Property<int>("Page")
+                                .HasColumnType("int")
+                                .HasColumnName("Position_Page");
+
+                            b1.Property<double>("Width")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Width");
+
+                            b1.Property<double>("X")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_X");
+
+                            b1.Property<double>("Y")
+                                .HasColumnType("float")
+                                .HasColumnName("Position_Y");
+
+                            b1.HasKey("TemplatePreparerFieldId");
+
+                            b1.ToTable("TemplatePreparerFields");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TemplatePreparerFieldId");
+                        });
+
+                    b.Navigation("Position")
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplateSignerSlot", b =>
                 {
                     b.HasOne("TaxVision.Signature.Domain.Templates.SignatureTemplate", null)
@@ -1429,6 +1665,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureRequest", b =>
                 {
+                    b.Navigation("PreparerFields");
+
                     b.Navigation("Signers");
                 });
 
@@ -1444,6 +1682,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Templates.SignatureTemplate", b =>
                 {
                     b.Navigation("Fields");
+
+                    b.Navigation("PreparerFields");
 
                     b.Navigation("Slots");
                 });

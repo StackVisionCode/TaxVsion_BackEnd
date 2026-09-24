@@ -114,6 +114,27 @@ builder.Services.AddRateLimiter(options =>
             );
         }
     );
+
+    // 8.2 — el "Download all (ZIP)" público arma y streamea toda la carpeta: mucho más caro que
+    // resolver un token. Se le da un límite propio (6/min por IP), sin ramificar por token para
+    // que un mismo atacante no lo sortee variando el token.
+    options.AddPolicy(
+        "share-public-zip",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:zip",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 6,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
 });
 
 // Rate limiting por tenant/usuario (Fase 4.6 del plan) — la politica nativa "zip-download" de

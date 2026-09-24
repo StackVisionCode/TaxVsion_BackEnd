@@ -111,6 +111,8 @@ public static class PermissionCatalog
     // sembrado en este catálogo — sin fila real, ningún rol podía tenerlos asignados.
     public const string ConnectorsAccountsRead = ConnectorsPermissions.AccountsRead;
     public const string ConnectorsAccountsWrite = ConnectorsPermissions.AccountsWrite;
+    public const string ConnectorsAccountsConnectOwn = ConnectorsPermissions.AccountsConnectOwn;
+    public const string ConnectorsAccountsOfficeRead = ConnectorsPermissions.AccountsOfficeRead;
 
     // Scribe — templates/layouts de correo, event mappings y render (bounded context propio, ver
     // microservicio Scribe). Fase 10.5 (hardening): estos 9 permisos ya los exigían los 4
@@ -753,6 +755,25 @@ public static class PermissionCatalog
             ConnectorsAccountsWrite,
             "connectors",
             "Conectar, reconectar y desconectar cuentas de correo del tenant",
+            false
+        ),
+        new(
+            // Conectar/administrar SOLO el buzón personal propio (mismo riesgo que ConnectorsAccountsWrite
+            // pero acotado al correo del propio empleado): assignable por el tenant para que el
+            // TenantAdmin lo delegue sin dar el write completo (que administra el buzón de oficina y
+            // cualquiera). No se otorga por defecto al empleado.
+            new Guid("a1000000-0000-0000-0000-0000000000c7"),
+            ConnectorsAccountsConnectOwn,
+            "connectors",
+            "Conectar y administrar el buzón de correo personal propio",
+            false
+        ),
+        new(
+            // Ver el buzón de oficina y su correo. ON por defecto en el empleado; deny per-usuario.
+            new Guid("a1000000-0000-0000-0000-0000000000c8"),
+            ConnectorsAccountsOfficeRead,
+            "connectors",
+            "Ver el buzón de correo de oficina y su correo",
             false
         ),
         new(
@@ -2024,10 +2045,16 @@ public static class PermissionCatalog
                 CorrespondenceSend,
                 // Connectors: el empleado puede ver qué cuentas de correo están conectadas (para
                 // elegir remitente al redactar correspondencia, o diagnosticar por qué algo no
-                // llegó) — no incluye accounts.write (conectar/desconectar es una acción de
-                // configuración de integración, reservada a TenantAdmin por defecto, mismo
-                // criterio que CloudStorageSettingsManage/SignatureSettingsManage).
+                // llegó) — no incluye accounts.write (conectar/desconectar el buzón de OFICINA
+                // compartido es una acción de configuración reservada a TenantAdmin por defecto,
+                // mismo criterio que CloudStorageSettingsManage/SignatureSettingsManage).
                 ConnectorsAccountsRead,
+                // connect_own: conectar/administrar su propio buzón personal. ON por defecto; el admin
+                // lo restringe por usuario desde Edit access.
+                ConnectorsAccountsConnectOwn,
+                // office.read: ver el buzón de oficina y su correo. ON por defecto; deny per-usuario
+                // para dejar al empleado solo con su personal.
+                ConnectorsAccountsOfficeRead,
                 // Scribe: el empleado puede ver los templates/layouts/event-mappings vigentes
                 // (System y del tenant) para redactar/diagnosticar comunicaciones — mismo criterio
                 // operativo que ConnectorsAccountsRead. No incluye templates.write/layouts.write/

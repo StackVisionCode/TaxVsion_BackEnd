@@ -16,7 +16,9 @@ public sealed record ShareLinkResponse(
     ShareLinkEffectiveStatus Status,
     Guid CreatedByUserId,
     DateTime CreatedAtUtc,
-    DateTime? RevokedAtUtc
+    DateTime? RevokedAtUtc,
+    bool IsRecursive,
+    bool AppliesToFutureItems
 );
 
 /// <summary>El PlainToken solo se emite en la respuesta de creacion — nunca se puede volver a consultar.</summary>
@@ -39,6 +41,8 @@ internal static class ShareLinkResponseMapper
             link.EffectiveStatus(nowUtc),
             link.CreatedByUserId,
             link.CreatedAtUtc,
-            link.RevokedAtUtc
+            link.RevokedAtUtc,
+            link.IsRecursive,
+            link.AppliesToFutureItems
         );
 }

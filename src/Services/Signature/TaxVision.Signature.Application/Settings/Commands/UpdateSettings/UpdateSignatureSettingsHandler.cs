@@ -144,6 +144,11 @@ public static class UpdateSignatureSettingsHandler
         else
             settings.DisableCertificateOfCompletion();
 
+        if (cmd.AllowEmployeeOwnSignature)
+            settings.EnableEmployeeOwnSignature();
+        else
+            settings.DisableEmployeeOwnSignature();
+
         var pdfResult = DocumentLimits.Default().WithMaxPdfBytes(cmd.MaxPdfBytes);
         if (pdfResult.IsFailure)
             return Result.Failure(pdfResult.Error);

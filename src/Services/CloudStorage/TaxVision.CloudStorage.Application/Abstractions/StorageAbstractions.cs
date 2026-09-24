@@ -1,3 +1,4 @@
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
@@ -79,12 +80,27 @@ public interface IFileObjectRepository
     /// solo para staff interno — cuando el caller es portal de cliente estos se ignoran, ya
     /// que restrictedCustomerId ya fuerza el alcance real.
     /// </summary>
+    /// <summary>skip/take opcionales (null = sin paginar). filter aplica tipos/año/extensión/estado y orden.</summary>
     Task<IReadOnlyList<FileObject>> ListInFolderAsync(
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
         OwnerType? ownerType,
         Guid? ownerId,
+        FolderContentsFilter filter,
+        int? skip,
+        int? take,
+        CancellationToken ct
+    );
+
+    /// <summary>Total de archivos directos que pasan el mismo filtro que ListInFolderAsync — para la paginación.</summary>
+    Task<int> CountInFolderAsync(
+        Guid tenantId,
+        Guid? folderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        FolderContentsFilter filter,
         CancellationToken ct
     );
 
@@ -100,6 +116,26 @@ public interface IFileObjectRepository
         Guid? restrictedCustomerId,
         CancellationToken ct
     );
+
+    /// <summary>
+    /// Archivos activos (no SoftDeleted) de un conjunto de carpetas, TRACKED para mutar (usado por el
+    /// borrado recursivo de carpeta, que los manda a la papelera). A diferencia de ListInFoldersAsync,
+    /// no usa AsNoTracking.
+    /// </summary>
+    Task<IReadOnlyList<FileObject>> ListInFoldersForUpdateAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> folderIds,
+        CancellationToken ct
+    );
+
+    /// <summary>Papelera: archivos borrados INDIVIDUALMENTE (DeletedBatchId null) — los de carpeta se listan como su carpeta.</summary>
+    Task<IReadOnlyList<FileObject>> ListSoftDeletedLooseAsync(Guid tenantId, int skip, int take, CancellationToken ct);
+
+    /// <summary>Archivos de un batch de borrado de carpeta (TRACKED, para restaurarlos con la carpeta).</summary>
+    Task<IReadOnlyList<FileObject>> ListByDeletedBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct);
+
+    /// <summary>Cuántos archivos hay en un batch (para el conteo que muestra la papelera).</summary>
+    Task<int> CountByDeletedBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct);
 }
 
 /// <summary>Fase C2 — carpetas navegables (arbol logico, ver Domain/Folders/Folder.cs).</summary>
@@ -116,7 +152,21 @@ public interface IFolderRepository
     /// ownerType/ownerId en <see cref="IFileObjectRepository.ListInFolderAsync"/> — mismo
     /// criterio de seguridad exactamente igual acá.
     /// </summary>
+    /// <summary>skip/take opcionales (null = sin paginar). Orden por filter.SortKey/SortDescending (Size cae a Name), estable por Id.</summary>
     Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
+        Guid tenantId,
+        Guid? parentFolderId,
+        Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        FolderContentsFilter filter,
+        int? skip,
+        int? take,
+        CancellationToken ct
+    );
+
+    /// <summary>Total de subcarpetas directas (mismo filtro que ListSubfoldersAsync) — para la paginación.</summary>
+    Task<int> CountSubfoldersAsync(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
@@ -176,6 +226,17 @@ public interface IFolderRepository
         Guid? ownerId,
         CancellationToken ct
     );
+
+    // ---------- Papelera de carpetas (soft-delete por batch) ----------
+
+    /// <summary>Raíces borradas del tenant (una entrada por carpeta en la papelera), paginado.</summary>
+    Task<IReadOnlyList<Folder>> ListSoftDeletedRootsAsync(Guid tenantId, int skip, int take, CancellationToken ct);
+
+    /// <summary>Todas las carpetas de un batch de borrado (TRACKED, para restaurar o purgar).</summary>
+    Task<IReadOnlyList<Folder>> ListBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct);
+
+    /// <summary>Raíces borradas cuya retención venció (cross-tenant, job de purga). TRACKED.</summary>
+    Task<IReadOnlyList<Folder>> ListPurgeableRootsPastRetentionAsync(DateTime nowUtc, int take, CancellationToken ct);
 }
 
 public interface IStorageLimitRepository
@@ -233,6 +294,18 @@ public interface IShareLinkRepository
     Task<IReadOnlyList<ShareLink>> ListActivePublicFolderSharesAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> folderIds,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// De un conjunto de recursos (archivos y/o carpetas), cuáles tienen al menos un link de compartir
+    /// utilizable ahora (Active, sin expirar y sin agotar accesos). Alimenta el indicador "compartido"
+    /// del listado — una sola consulta para toda la página, sin importar la visibilidad del link.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListResourceIdsWithActiveShareAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> resourceIds,
+        DateTime nowUtc,
         CancellationToken ct
     );
 }

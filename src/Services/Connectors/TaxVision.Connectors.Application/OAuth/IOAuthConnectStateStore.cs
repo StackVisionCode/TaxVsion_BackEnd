@@ -13,7 +13,10 @@ public sealed record OAuthConnectState(
     // Origen (scheme+host) del frontend que inició el flujo — el callback redirige el navegador de
     // vuelta AHÍ (el subdominio del tenant donde el usuario está logueado), no a un BaseUrl fijo.
     // Se valida contra el dominio permitido antes de usarse (nunca open redirect).
-    string? ReturnOrigin = null
+    string? ReturnOrigin = null,
+    // true = conectar el buzón de OFICINA (compartido, sin restricción de identidad); false = buzón
+    // PERSONAL del usuario (el email autorizado debe coincidir con su login). Default false.
+    bool AsOffice = false
 );
 
 /// <summary>
@@ -29,6 +32,7 @@ public interface IOAuthConnectStateStore
         Guid initiatedByUserId,
         string? initiatorEmail = null,
         string? returnOrigin = null,
+        bool asOffice = false,
         CancellationToken ct = default
     );
 

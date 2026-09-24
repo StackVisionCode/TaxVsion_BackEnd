@@ -48,6 +48,7 @@ public sealed class GetMessageBodyHandlerTests
         var result = await GetMessageBodyHandler.Handle(
             new GetMessageBodyQuery(tenantId, email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
             CancellationToken.None
@@ -78,6 +79,7 @@ public sealed class GetMessageBodyHandlerTests
         var result = await GetMessageBodyHandler.Handle(
             new GetMessageBodyQuery(Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
             CancellationToken.None
@@ -99,6 +101,7 @@ public sealed class GetMessageBodyHandlerTests
         var result = await GetMessageBodyHandler.Handle(
             new GetMessageBodyQuery(Guid.NewGuid(), email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             new FakeConnectorsClient(),
             new FakeUnitOfWork(),
             CancellationToken.None
@@ -126,6 +129,7 @@ public sealed class GetMessageBodyHandlerTests
         var result = await GetMessageBodyHandler.Handle(
             new GetMessageBodyQuery(tenantId, email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             connectorsClient,
             unitOfWork,
             CancellationToken.None

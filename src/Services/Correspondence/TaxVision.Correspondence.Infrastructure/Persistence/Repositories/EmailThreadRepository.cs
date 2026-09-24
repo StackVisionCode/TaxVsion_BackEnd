@@ -50,6 +50,7 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -58,20 +59,36 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
         // AsNoTracking: listado de solo lectura para el cliente final, mismo criterio que
         // CustomerReadService.SearchAsync. Usa IX_EmailThreads_TenantId_CustomerId_LastMessageAtUtc.
-        // Se oculta solo el hilo SIN contenido visible: 0 entrantes (todos en papelera) Y 0 enviados vivos.
         var query = db
             .EmailThreads.AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(x =>
-                x.TenantId == tenantId
-                && x.CustomerId == customerId
-                && (
-                    x.MessageCount > 0
-                    || db.Drafts.Any(d =>
-                        d.EmailThreadId == x.Id && d.Status == DraftStatus.Sent && d.DeletedAtUtc == null
-                    )
+            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId);
+
+        if (visibleAccountIds is null)
+        {
+            // Sin gate: se oculta solo el hilo SIN contenido visible (0 entrantes vivos y 0 enviados vivos).
+            query = query.Where(x =>
+                x.MessageCount > 0
+                || db.Drafts.Any(d => d.EmailThreadId == x.Id && d.Status == DraftStatus.Sent && d.DeletedAtUtc == null)
+            );
+        }
+        else
+        {
+            // Gate de buzón de oficina: el hilo debe tener ≥1 mensaje (entrante vivo o enviado) de un
+            // buzón visible. Los hilos solo-oficina desaparecen; un hilo mixto se muestra entero.
+            var ids = AsArray(visibleAccountIds);
+            query = query.Where(x =>
+                db.IncomingEmails.Any(ie =>
+                    ie.EmailThreadId == x.Id && ie.DeletedAtUtc == null && ids.Contains(ie.AccountId)
+                )
+                || db.Drafts.Any(d =>
+                    d.EmailThreadId == x.Id
+                    && d.Status == DraftStatus.Sent
+                    && d.DeletedAtUtc == null
+                    && ids.Contains(d.AccountId)
                 )
             );
+        }
 
         var totalCount = await query.CountAsync(ct);
 
@@ -83,6 +100,45 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
         return new PagedResult<EmailThread>(items, normalizedPage, normalizedSize, totalCount);
     }
+
+    public async Task<bool> HasVisibleMessageAsync(
+        Guid tenantId,
+        Guid threadId,
+        IReadOnlyCollection<Guid> visibleAccountIds,
+        CancellationToken ct = default
+    )
+    {
+        var ids = AsArray(visibleAccountIds);
+        if (ids.Length == 0)
+            return false;
+
+        var inboundVisible = await db
+            .IncomingEmails.IgnoreQueryFilters()
+            .AnyAsync(
+                ie =>
+                    ie.TenantId == tenantId
+                    && ie.EmailThreadId == threadId
+                    && ie.DeletedAtUtc == null
+                    && ids.Contains(ie.AccountId),
+                ct
+            );
+        if (inboundVisible)
+            return true;
+
+        return await db
+            .Drafts.IgnoreQueryFilters()
+            .AnyAsync(
+                d =>
+                    d.TenantId == tenantId
+                    && d.EmailThreadId == threadId
+                    && d.Status == DraftStatus.Sent
+                    && d.DeletedAtUtc == null
+                    && ids.Contains(d.AccountId),
+                ct
+            );
+    }
+
+    private static Guid[] AsArray(IReadOnlyCollection<Guid> ids) => ids as Guid[] ?? ids.ToArray();
 
     private static int ClampPageSize(int requested) =>
         requested switch

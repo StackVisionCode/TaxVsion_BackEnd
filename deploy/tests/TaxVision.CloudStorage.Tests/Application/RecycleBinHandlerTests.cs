@@ -143,6 +143,7 @@ public sealed class RecycleBinHandlerTests
         var purgedCount = await EmptyRecycleBinHandler.Handle(
             new EmptyRecycleBinCommand(tenantId, Guid.NewGuid(), Audit()),
             files,
+            new FakeFolderRepository(),
             limits,
             audit,
             storage,
@@ -186,6 +187,7 @@ public sealed class RecycleBinHandlerTests
         var purgedCount = await EmptyRecycleBinHandler.Handle(
             new EmptyRecycleBinCommand(tenantId, Guid.NewGuid(), Audit()),
             files,
+            new FakeFolderRepository(),
             limits,
             audit,
             storage,
@@ -227,6 +229,7 @@ public sealed class RecycleBinHandlerTests
         var purgedCount = await EmptyRecycleBinHandler.Handle(
             new EmptyRecycleBinCommand(tenantId, Guid.NewGuid(), Audit()),
             files,
+            new FakeFolderRepository(),
             limits,
             audit,
             storage,
@@ -259,6 +262,7 @@ public sealed class RecycleBinHandlerTests
         var result = await GetRecycleBinHandler.Handle(
             new GetRecycleBinQuery(tenantId, 0, 50),
             files,
+            new FakeFolderRepository(),
             CancellationToken.None
         );
 

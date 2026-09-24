@@ -17,7 +17,7 @@ public sealed class CachedSignatureRequestReadService(ISignatureRequestReadServi
     : ISignatureRequestReadService,
         ISignatureRequestListCacheInvalidator
 {
-    private const string CacheKeyVersion = "v2";
+    private const string CacheKeyVersion = "v3";
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan VersionTtl = TimeSpan.FromDays(30);
     private static readonly DistributedCacheEntryOptions Options = new() { AbsoluteExpirationRelativeToNow = Ttl };
@@ -65,6 +65,7 @@ public sealed class CachedSignatureRequestReadService(ISignatureRequestReadServi
 
     private static string VersionKey(Guid tenantId) => $"sig:list:ver:{CacheKeyVersion}:{tenantId:N}";
 
+    // `e` (editableOnly) es parte de la clave: Draft y All comparten Status=null y colisionarían sin él.
     private static string BuildCacheKey(ListSignatureRequestsQuery q, long version) =>
-        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:s={q.Status}:c={q.Category}:p={q.Page}:z={q.PageSize}";
+        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:s={q.Status}:c={q.Category}:e={q.EditableOnly}:p={q.Page}:z={q.PageSize}";
 }

@@ -170,7 +170,8 @@ public sealed class DraftsControllerOwnershipTests
             repo,
             authorizationService,
             new FakeOwnershipOptionsMonitor(flagEnabled),
-            new Projections.FakeCorrelationContext()
+            new Projections.FakeCorrelationContext(),
+            new FakeMailboxVisibilityResolver()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },

@@ -7,6 +7,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.Folders;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.RecycleBin;
@@ -87,6 +88,67 @@ public static class RestoreFileHandler
 }
 
 /// <summary>
+/// Restaura una carpeta borrada desde la papelera: revierte el soft-delete de TODO su batch
+/// (la carpeta, sus subcarpetas y sus archivos), devolviéndolos a su jerarquía original.
+/// </summary>
+public sealed record RestoreFolderCommand(Guid TenantId, Guid ActorId, Guid FolderId, RequestAuditContext Audit);
+
+public static class RestoreFolderHandler
+{
+    public static async Task<Result> Handle(
+        RestoreFolderCommand command,
+        IFolderRepository folders,
+        IFileObjectRepository files,
+        IStorageAuditRepository audit,
+        ISystemClock clock,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        var root = await folders.GetAsync(command.TenantId, command.FolderId, ct);
+        // Solo se restaura desde una RAÍZ de papelera válida (borrada y cabeza de su batch).
+        if (root is null || !root.IsDeleted || root.DeletedBatchId != root.Id)
+            return Result.Failure(FolderErrors.NotDeleted);
+        var batchId = root.Id;
+
+        foreach (var folder in await folders.ListBatchAsync(command.TenantId, batchId, ct))
+            folder.Restore();
+
+        foreach (var file in await files.ListByDeletedBatchAsync(command.TenantId, batchId, ct))
+        {
+            file.Restore();
+            await bus.PublishAsync(
+                new FileRestoredIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    FileId = file.Id,
+                    CreatedBy = file.CreatedBy,
+                    CorrelationId = command.Audit.CorrelationId,
+                }
+            );
+        }
+
+        audit.Add(
+            StorageAccessLog.Create(
+                command.TenantId,
+                root.Id,
+                command.ActorId,
+                "folder.restore",
+                "success",
+                command.Audit.IpAddress,
+                command.Audit.UserAgent,
+                command.Audit.CorrelationId,
+                $"batch={batchId}",
+                clock.UtcNow
+            )
+        );
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
+/// <summary>
 /// Fase C1 — purga inmediata y manual de TODO lo que hay en la papelera del tenant,
 /// sin esperar a que venza la retencion (esa purga automatica es
 /// RecycleBinPurgeService, el job diario). Ambas rutas comparten RecycleBinPurger
@@ -101,6 +163,7 @@ public static class EmptyRecycleBinHandler
     public static async Task<int> Handle(
         EmptyRecycleBinCommand command,
         IFileObjectRepository files,
+        IFolderRepository folders,
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectStorage storage,
@@ -111,6 +174,7 @@ public static class EmptyRecycleBinHandler
         CancellationToken ct
     )
     {
+        // Purga TODOS los archivos de la papelera (sueltos y de batch de carpeta).
         var candidates = await files.ListSoftDeletedAsync(command.TenantId, 0, MaxBatchSize, ct);
         var purgedCount = await PurgeEach(
             candidates,
@@ -124,6 +188,15 @@ public static class EmptyRecycleBinHandler
             logger,
             ct
         );
+
+        // Elimina también las filas de carpeta borradas (sus archivos ya se purgaron arriba).
+        var roots = await folders.ListSoftDeletedRootsAsync(command.TenantId, 0, MaxBatchSize, ct);
+        foreach (var root in roots)
+        {
+            foreach (var folder in await folders.ListBatchAsync(command.TenantId, root.Id, ct))
+                folders.Remove(folder);
+        }
+
         await unitOfWork.SaveChangesAsync(ct);
         return purgedCount;
     }

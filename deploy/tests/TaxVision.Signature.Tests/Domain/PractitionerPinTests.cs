@@ -230,7 +230,7 @@ public sealed class PractitionerPinTests
                 Guid.NewGuid(),
                 "PIN Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

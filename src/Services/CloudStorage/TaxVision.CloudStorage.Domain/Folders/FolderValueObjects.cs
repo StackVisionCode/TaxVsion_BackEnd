@@ -60,4 +60,13 @@ public static class FolderErrors
         "Folder.SystemProtected",
         "This is a system folder and cannot be renamed, moved or deleted."
     );
+    public static readonly Error HasLegalHold = new(
+        "Folder.HasLegalHold",
+        "This folder contains files on legal hold and cannot be deleted."
+    );
+    public static readonly Error AlreadyDeleted = new(
+        "Folder.AlreadyDeleted",
+        "The folder is already in the recycle bin."
+    );
+    public static readonly Error NotDeleted = new("Folder.NotDeleted", "The folder is not in the recycle bin.");
 }

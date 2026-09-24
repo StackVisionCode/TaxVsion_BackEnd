@@ -11,7 +11,7 @@ public sealed record CreateSignatureRequestCommand(
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     Guid OriginalFileId,
     int TokenExpirationHours,
     bool RequiresSequentialSigning,

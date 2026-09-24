@@ -31,13 +31,23 @@ public sealed class TenantEmailAccount : TenantEntity
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// Dueño lógico del buzón: null = buzón de OFICINA (compartido, lo administra el TenantAdmin);
+    /// con valor = buzón PERSONAL de ese usuario (solo él lo usa/administra). Distinto de
+    /// <see cref="CreatedByUserId"/>, que es solo auditoría de quién lo creó.
+    /// </summary>
+    public Guid? OwnerUserId { get; private set; }
+
+    public bool IsOffice => OwnerUserId is null;
+
     public static Result<TenantEmailAccount> Create(
         Guid tenantId,
         string emailAddress,
         ProviderCode providerCode,
         Guid createdByUserId,
         DateTime createdAtUtc,
-        string? displayName = null
+        string? displayName = null,
+        Guid? ownerUserId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -62,6 +72,7 @@ public sealed class TenantEmailAccount : TenantEntity
             LastActivityAtUtc = createdAtUtc,
             CreatedByUserId = createdByUserId,
             CreatedAtUtc = createdAtUtc,
+            OwnerUserId = ownerUserId,
         };
         account.SetTenant(tenantId);
 

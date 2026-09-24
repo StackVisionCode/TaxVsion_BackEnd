@@ -180,6 +180,9 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LastActivityAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ProviderCode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -199,6 +202,8 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "EmailAddress")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "OwnerUserId");
 
                     b.ToTable("TenantEmailAccounts", (string)null);
                 });

@@ -19,7 +19,7 @@ public sealed record PublicSignerView(
     Guid SignerId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     SignatureRequestStatus RequestStatus,
     SignerStatus SignerStatus,
     Guid OriginalFileId,

@@ -16,6 +16,7 @@ public static class GetMessageBodyHandler
     public static async Task<Result<MessageBodyResult>> Handle(
         GetMessageBodyQuery query,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         IConnectorsClient connectorsClient,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -25,6 +26,19 @@ public static class GetMessageBodyHandler
         if (emailResult.IsFailure)
             return Result.Failure<MessageBodyResult>(emailResult.Error);
         var email = emailResult.Value;
+
+        if (
+            !await MailboxVisibility.CanSeeMessageAsync(
+                query.VisibleAccountIds,
+                query.TenantId,
+                email,
+                emailThreads,
+                ct
+            )
+        )
+            return Result.Failure<MessageBodyResult>(
+                new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
 
         var bodyResult = await connectorsClient.FetchMessageBodyAsync(
             query.TenantId,

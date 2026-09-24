@@ -32,7 +32,12 @@ public static class SignatureRequestCanceledAnalyticsConsumer
             if (request is null)
                 return;
             var day = DateOnly.FromDateTime(evt.CanceledAtUtc);
-            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(evt.TenantId, day, request.Category, ct);
+            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
+                evt.TenantId,
+                day,
+                SignatureCategoryParsing.ToSystemCategory(request.Category),
+                ct
+            );
             snapshot.IncrementCanceled();
             await unitOfWork.SaveChangesAsync(ct);
         }
@@ -60,7 +65,12 @@ public static class DocumentSignedAnalyticsConsumer
                 return;
 
             var day = DateOnly.FromDateTime(evt.SignedAtUtc);
-            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(evt.TenantId, day, request.Category, ct);
+            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
+                evt.TenantId,
+                day,
+                SignatureCategoryParsing.ToSystemCategory(request.Category),
+                ct
+            );
             snapshot.IncrementSignersSigned();
             if (evt.IsRequestCompleted)
                 snapshot.IncrementCompleted();
@@ -90,7 +100,12 @@ public static class SignerRejectedAnalyticsConsumer
             if (request is null)
                 return;
             var day = DateOnly.FromDateTime(evt.RejectedAtUtc);
-            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(evt.TenantId, day, request.Category, ct);
+            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
+                evt.TenantId,
+                day,
+                SignatureCategoryParsing.ToSystemCategory(request.Category),
+                ct
+            );
             snapshot.IncrementSignersRejected();
             await unitOfWork.SaveChangesAsync(ct);
         }
@@ -117,7 +132,12 @@ public static class SignatureRequestSealedAnalyticsConsumer
             if (request is null)
                 return;
             var day = DateOnly.FromDateTime(evt.SealedAtUtc);
-            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(evt.TenantId, day, request.Category, ct);
+            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
+                evt.TenantId,
+                day,
+                SignatureCategoryParsing.ToSystemCategory(request.Category),
+                ct
+            );
             snapshot.IncrementSealed();
             await unitOfWork.SaveChangesAsync(ct);
         }

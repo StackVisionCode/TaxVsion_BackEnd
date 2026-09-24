@@ -36,6 +36,7 @@ public sealed class NotificationLogRepository(NotificationDbContext db) : INotif
         Guid tenantId,
         Guid relatedEventId,
         string templateKey,
+        string recipient,
         CancellationToken ct = default
     ) =>
         await db
@@ -43,7 +44,10 @@ public sealed class NotificationLogRepository(NotificationDbContext db) : INotif
             .IgnoreQueryFilters()
             .Include(log => log.Attempts)
             .Where(log =>
-                log.TenantId == tenantId && log.RelatedEventId == relatedEventId && log.TemplateKey == templateKey
+                log.TenantId == tenantId
+                && log.RelatedEventId == relatedEventId
+                && log.TemplateKey == templateKey
+                && log.Recipient == recipient
             )
             .OrderByDescending(log => log.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);

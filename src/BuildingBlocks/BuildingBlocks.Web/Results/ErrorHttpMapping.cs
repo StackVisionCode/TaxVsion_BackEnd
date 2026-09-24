@@ -32,6 +32,9 @@ public static class ErrorHttpMapping
             or "EmailMessage.NotFound"
             or "TenantDomain.NotFound"
             or "ShareLink.NotFound"
+            // Restaurar por un folderId que no es una raíz de papelera válida → 404 (como un NotFound).
+            or "Folder.NotDeleted"
+            or "TenantEmailAccount.NotFound"
             or "TenantEmailAccount.NotFound"
             or "ProviderWatchSubscription.NotFound"
             or "GetMessageAttachmentHandler.AttachmentNotFound"
@@ -94,7 +97,9 @@ public static class ErrorHttpMapping
             or "catalog.categoryNotFound"
             or "inventory.stockLevelNotFound"
             or "inventory.supplierNotFound"
-            or "inventory.itemSupplierNotFound" => StatusCodes.Status404NotFound,
+            or "inventory.itemSupplierNotFound"
+            or "Signature.Profile.NotFound"
+            or "Signature.Profile.NoEffective" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -121,7 +126,11 @@ public static class ErrorHttpMapping
             // equivalentes de Templates/Layouts.
             or "EventTemplateMapping.Tenant"
             or "EventTemplateMapping.TenantRequired"
-            or "EventTemplateMapping.TenantNotAllowed" => StatusCodes.Status400BadRequest,
+            or "EventTemplateMapping.TenantNotAllowed"
+            // 8.1 — validación de los guardrails del link-only share al crearlo (falta password que la
+            // oficina exige / expiración por encima del máximo permitido): 400, no autorización.
+            or "ShareLink.PasswordRequiredForLinkShare"
+            or "ShareLink.ShareLifetimeExceedsMax" => StatusCodes.Status400BadRequest,
             "TenantDomain.ReservationConsumed"
             or "TenantDomain.ReservationExpired"
             or "TenantDomain.HostTaken"
@@ -245,6 +254,9 @@ public static class ErrorHttpMapping
             or "Role.NotAssignableToCustomerPortal"
             or "ShareLink.Forbidden"
             or "ShareLink.PublicSharingDisabled"
+            // 8.1 — la oficina apagó el link-only sharing: bloqueo de política de tenant, igual que
+            // PublicSharingDisabled (403), no un 400 de payload.
+            or "ShareLink.LinkSharingDisabled"
             or "ShareLink.ElevatedPermissionRequiresManage"
             or "Note.Forbidden"
             or "Task.Forbidden"
@@ -253,7 +265,10 @@ public static class ErrorHttpMapping
             or "Onboarding.SessionEmailMismatch"
             or "Onboarding.SessionChallengeMismatch"
             or "Onboarding.SessionOnboardingMismatch"
-            or "Onboarding.PayerEmailMismatch" => StatusCodes.Status403Forbidden,
+            or "Onboarding.PayerEmailMismatch"
+            or "Signature.Profile.Forbidden"
+            or "Signature.Profile.NotVisible"
+            or "Signature.Profile.OwnSignatureDisabled" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -271,6 +286,8 @@ public static class ErrorHttpMapping
             // 2026-07-20 — DeleteFolderHandler: la carpeta tiene subfolders o archivos directos,
             // el llamador debe vaciarla primero. Sin esta entrada caía al default 400.
             or "Folder.NotEmpty"
+            // Borrado recursivo de carpeta con archivos en retención legal: no se puede completar.
+            or "Folder.HasLegalHold"
             // Notes Fase 7: transiciones/estado inválido de la nota o del adjunto — mismo criterio
             // que TenantEmailAccount.InvalidTransition/EmailAccount.Conflict (409, no 400).
             or "Note.Deleted"

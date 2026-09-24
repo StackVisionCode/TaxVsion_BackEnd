@@ -10,6 +10,8 @@ using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
@@ -62,6 +64,10 @@ public static class DependencyInjection
             (CachedSignatureRequestReadService)sp.GetRequiredService<ISignatureRequestReadService>()
         );
         services.AddScoped<ISignatureTemplateRepository, SignatureTemplateRepository>();
+        services.AddScoped<ITenantSignatureCategoryRepository, TenantSignatureCategoryRepository>();
+        services.AddScoped<ISignatureCategoryResolver, SignatureCategoryResolver>();
+        services.AddScoped<ISignatureProfileRepository, SignatureProfileRepository>();
+        services.AddScoped<IEffectiveSignatureResolver, EffectiveSignatureResolver>();
         services.AddScoped<ISignatureTemplateReadService, SignatureTemplateReadService>();
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();
         services.AddScoped<ISignatureAnalyticsReadService, SignatureAnalyticsReadService>();
@@ -113,6 +119,11 @@ public static class DependencyInjection
         services.AddHostedService<ReminderScheduler>();
         services.AddOptions<PurgeSchedulerOptions>().Bind(configuration.GetSection(PurgeSchedulerOptions.SectionName));
         services.AddHostedService<PurgeScheduler>();
+        // Retención de borradores sin enviar (default 30 días); los borradores no expiran por reloj de firma.
+        services
+            .AddOptions<DraftRetentionSchedulerOptions>()
+            .Bind(configuration.GetSection(DraftRetentionSchedulerOptions.SectionName));
+        services.AddHostedService<DraftRetentionScheduler>();
 
         // Distributed lock + cache (Redis). Si no hay connection string se degrada a no-op.
         var redisConnectionString = configuration.GetConnectionString("Redis");

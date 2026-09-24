@@ -40,4 +40,17 @@ public static class ShareErrors
         "ShareLink.ElevatedPermissionNotAllowedOnPublicLink",
         "A Public share link can never grant Upload or EditMetadata."
     );
+
+    public static readonly Error LinkSharingDisabled = new(
+        "ShareLink.LinkSharingDisabled",
+        "Link-only external sharing is disabled for this tenant."
+    );
+    public static readonly Error PasswordRequiredForLinkShare = new(
+        "ShareLink.PasswordRequiredForLinkShare",
+        "This tenant requires a password on external share links."
+    );
+    public static readonly Error ShareLifetimeExceedsMax = new(
+        "ShareLink.ShareLifetimeExceedsMax",
+        "The expiration exceeds the maximum lifetime allowed for external share links."
+    );
 }

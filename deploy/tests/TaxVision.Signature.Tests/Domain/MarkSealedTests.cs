@@ -103,7 +103,7 @@ public sealed class MarkSealedTests
                 Guid.NewGuid(),
                 "Test Sealed",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

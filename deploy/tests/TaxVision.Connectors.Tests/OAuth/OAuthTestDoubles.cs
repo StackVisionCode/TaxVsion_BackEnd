@@ -195,6 +195,19 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         return Task.FromResult(accounts);
     }
 
+    public Task<IReadOnlyList<TenantEmailAccount>> ListVisibleAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a =>
+            a.TenantId == tenantId && (a.OwnerUserId == userId || (includeOffice && a.OwnerUserId == null))
+        );
+        return Task.FromResult(accounts);
+    }
+
     public Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default)
     {
         IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a => a.Status == TenantEmailAccountStatus.Active);

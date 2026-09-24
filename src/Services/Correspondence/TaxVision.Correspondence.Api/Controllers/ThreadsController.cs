@@ -6,6 +6,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Application.Threads;
 using Wolverine;
@@ -22,7 +23,7 @@ namespace TaxVision.Correspondence.Api.Controllers;
 /// </summary>
 [ApiController]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class ThreadsController(IMessageBus bus) : ControllerBase
+public sealed class ThreadsController(IMessageBus bus, IMailboxVisibilityResolver visibility) : ControllerBase
 {
     private const int DefaultSize = 20;
 
@@ -39,8 +40,9 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<PagedResult<ThreadSummary>>(
-            new ListCustomerThreadsQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size)),
+            new ListCustomerThreadsQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size), visible),
             ct
         );
         return Ok(result);
@@ -59,8 +61,9 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<PagedResult<MessageSummary>>>(
-            new ListThreadMessagesQuery(tenantId, threadId, NormalizePage(page), NormalizeSize(size)),
+            new ListThreadMessagesQuery(tenantId, threadId, NormalizePage(page), NormalizeSize(size), visible),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
