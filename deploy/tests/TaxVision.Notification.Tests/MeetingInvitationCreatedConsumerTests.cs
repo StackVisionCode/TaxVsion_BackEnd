@@ -161,6 +161,7 @@ public sealed class MeetingInvitationCreatedConsumerTests
             Guid tenantId,
             Guid relatedEventId,
             string templateKey,
+            string recipient,
             CancellationToken ct = default
         ) => Task.FromResult<NotificationLog?>(null);
     }

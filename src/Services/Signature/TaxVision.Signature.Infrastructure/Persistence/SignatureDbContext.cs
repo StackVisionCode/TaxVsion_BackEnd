@@ -11,6 +11,7 @@ using TaxVision.Signature.Domain.Audit;
 using TaxVision.Signature.Domain.Categories;
 using TaxVision.Signature.Domain.Consents;
 using TaxVision.Signature.Domain.Permissions;
+using TaxVision.Signature.Domain.Profiles;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.RateLimiting;
 using TaxVision.Signature.Domain.Requests;
@@ -32,6 +33,8 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureField> SignatureFields => Set<SignatureField>();
 
+    public DbSet<PreparerField> PreparerFields => Set<PreparerField>();
+
     public DbSet<SignerVerificationChallenge> SignerVerificationChallenges => Set<SignerVerificationChallenge>();
 
     public DbSet<CustomerEmailProjection> CustomerEmailProjections => Set<CustomerEmailProjection>();
@@ -42,9 +45,13 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<TenantSignatureCategory> SignatureCategories => Set<TenantSignatureCategory>();
 
+    public DbSet<SignatureProfile> SignatureProfiles => Set<SignatureProfile>();
+
     public DbSet<TemplateSignerSlot> TemplateSignerSlots => Set<TemplateSignerSlot>();
 
     public DbSet<TemplateField> TemplateFields => Set<TemplateField>();
+
+    public DbSet<TemplatePreparerField> TemplatePreparerFields => Set<TemplatePreparerField>();
 
     public DbSet<SignatureAnalyticsSnapshot> SignatureAnalyticsSnapshots => Set<SignatureAnalyticsSnapshot>();
 

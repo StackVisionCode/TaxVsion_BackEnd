@@ -64,4 +64,17 @@ public sealed record SetPractitionerPinBody(string Pin);
 
 public sealed record SetPreparerBody(string PtinOrEfin, string DisplayName, string? TitleLabel);
 
+public sealed record PlacePreparerFieldBody(
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
+);
+
+/// <summary>Firma reutilizable a estampar por el preparador. Null = usar la firma efectiva (personal u oficina).</summary>
+public sealed record SetPreparerSignatureBody(Guid? SignatureFileId);
+
 public sealed record PlaceLegalHoldBody(string Reason);

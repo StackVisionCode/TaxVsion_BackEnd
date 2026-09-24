@@ -46,10 +46,13 @@ public sealed class InProcessEmailDispatchGateway(
         // Wolverine reenviaría el correo real, no solo duplicaría una fila de log.
         if (request.RelatedEventId is { } relatedEventId)
         {
+            // El destinatario es parte de la clave: un fan-out a varios firmantes (mismo evento+plantilla,
+            // distinto correo) NO es un reintento y no debe deduparse.
             var existing = await logRepository.GetByRelatedEventIdAsync(
                 request.TenantId,
                 relatedEventId,
                 request.TemplateKey,
+                request.To,
                 ct
             );
             if (existing is not null)

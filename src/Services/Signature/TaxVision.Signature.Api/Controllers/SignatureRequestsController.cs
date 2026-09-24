@@ -22,6 +22,7 @@ using TaxVision.Signature.Application.Requests.Commands.Delete;
 using TaxVision.Signature.Application.Requests.Commands.ExtendExpiration;
 using TaxVision.Signature.Application.Requests.Commands.LegalHold;
 using TaxVision.Signature.Application.Requests.Commands.PlaceField;
+using TaxVision.Signature.Application.Requests.Commands.PreparerFields;
 using TaxVision.Signature.Application.Requests.Commands.RemoveField;
 using TaxVision.Signature.Application.Requests.Commands.RemoveSigner;
 using TaxVision.Signature.Application.Requests.Commands.ReorderSigners;
@@ -286,6 +287,82 @@ public sealed class SignatureRequestsController(
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveFieldCommand(tenantId, id, signerId, fieldId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/preparer-fields ----------
+    // Coloca un campo del preparador (canal paralelo, Form 8879). Se estampa con su firma al sellar.
+    [HttpPost("{id:guid}/preparer-fields")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<PreparerFieldResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PlacePreparerField(
+        [FromRoute] Guid id,
+        [FromBody] PlacePreparerFieldBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var cmd = new PlacePreparerFieldCommand(
+            tenantId,
+            id,
+            body.Kind,
+            body.Page,
+            body.X,
+            body.Y,
+            body.Width,
+            body.Height,
+            body.Label
+        );
+        var result = await bus.InvokeAsync<Result<PreparerFieldResponse>>(cmd, ct);
+        return result.IsSuccess
+            ? Created($"/signature/requests/{id}/preparer-fields/{result.Value.Id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id}/preparer-fields/{fieldId} ----------
+    [HttpDelete("{id:guid}/preparer-fields/{fieldId:guid}")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RemovePreparerField(
+        [FromRoute] Guid id,
+        [FromRoute] Guid fieldId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RemovePreparerFieldCommand(tenantId, id, fieldId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id}/preparer-signature ----------
+    // Fija qué firma reutilizable se estampará por el preparador (o la efectiva si no se envía fileId).
+    [HttpPut("{id:guid}/preparer-signature")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetPreparerSignature(
+        [FromRoute] Guid id,
+        [FromBody] SetPreparerSignatureBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
+        var result = await bus.InvokeAsync<Result>(
+            new SetPreparerSignatureCommand(tenantId, id, userId, isAdmin, body.SignatureFileId),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

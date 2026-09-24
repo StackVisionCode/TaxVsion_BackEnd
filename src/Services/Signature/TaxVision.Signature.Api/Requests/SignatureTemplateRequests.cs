@@ -63,6 +63,16 @@ public sealed record PlaceTemplateFieldBody(
     bool IsRequired
 );
 
+public sealed record PlaceTemplatePreparerFieldBody(
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
+);
+
 public sealed record InstantiateTemplateBody(
     IReadOnlyList<SlotBinding> SlotBindings,
     string? DescriptionOverride,

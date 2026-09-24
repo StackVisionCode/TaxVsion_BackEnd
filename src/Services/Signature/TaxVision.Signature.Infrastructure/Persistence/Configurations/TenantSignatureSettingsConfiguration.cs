@@ -21,6 +21,8 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
         builder.Property(settings => settings.RemindersEnabledByDefault).IsRequired();
         builder.Property(settings => settings.DefaultReminderIntervalHoursValue).IsRequired();
         builder.Property(settings => settings.GenerateCertificateByDefault).IsRequired();
+        // Default true en la BD: los tenants existentes conservan el comportamiento actual (firma propia permitida).
+        builder.Property(settings => settings.AllowEmployeeOwnSignature).HasDefaultValue(true).IsRequired();
 
         builder.Property(settings => settings.AuditSecretEncrypted).HasMaxLength(512).IsRequired();
         builder.Property(settings => settings.AuditKeyVersion).IsRequired();

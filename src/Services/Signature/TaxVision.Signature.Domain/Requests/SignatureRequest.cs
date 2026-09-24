@@ -43,6 +43,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MaxRemindersPerRequest = 20;
 
     private readonly List<Signer> _signers = [];
+    private readonly List<PreparerField> _preparerFields = [];
 
     private SignatureRequest() { }
 
@@ -100,6 +101,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public Guid? PreparerSignedByUserId { get; private set; }
     public DateTime? PreparerSignedAtUtc { get; private set; }
     public bool IsPreparerSigned => PreparerSignedByUserId is not null;
+
+    /// <summary>
+    /// Snapshot inmutable del FileId de la firma reutilizable elegida para estampar por el preparador.
+    /// Se congela al colocar/elegir (no un FK a SignatureProfile) para sobrevivir a renombrar/borrar el
+    /// perfil antes del sellado, que ocurre al completarse (posiblemente días después).
+    /// </summary>
+    public Guid? PreparerSignatureFileId { get; private set; }
+
+    /// <summary>Campos del preparador colocados sobre el documento (su firma se estampa al sellar).</summary>
+    public IReadOnlyList<PreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
     public int TokenExpirationHours { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
@@ -535,6 +546,58 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (removeResult.IsFailure)
             return removeResult;
 
+        Touch();
+        return Result.Success();
+    }
+
+    // ------------------------------------------------------------------
+    // Preparer fields — placement del canal paralelo del preparador
+    // ------------------------------------------------------------------
+
+    /// <summary>Coloca un campo del preparador (solo Draft/Ready). Su firma se estampa al sellar.</summary>
+    public Result<PreparerField> PlacePreparerField(SignatureFieldKind kind, FieldPosition position, string? label)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return Result.Failure<PreparerField>(editable.Error);
+
+        var fieldResult = PreparerField.Create(Id, kind, position, label);
+        if (fieldResult.IsFailure)
+            return fieldResult;
+
+        _preparerFields.Add(fieldResult.Value);
+        Touch();
+        return fieldResult;
+    }
+
+    public Result RemovePreparerField(Guid fieldId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        var field = _preparerFields.Find(f => f.Id == fieldId);
+        if (field is null)
+            return Result.Failure(
+                new Error("Signature.PreparerField.NotFound", "The preparer field does not exist in this request.")
+            );
+
+        _preparerFields.Remove(field);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Congela qué firma reutilizable se estampará por el preparador (solo Draft/Ready).</summary>
+    public Result SetPreparerSignature(Guid signatureFileId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (signatureFileId == Guid.Empty)
+            return Result.Failure(new Error("Signature.PreparerField.File", "A signature file is required."));
+
+        PreparerSignatureFileId = signatureFileId;
         Touch();
         return Result.Success();
     }

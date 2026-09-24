@@ -56,6 +56,10 @@ public static class SignatureImageValidator
         return Result.Success();
     }
 
+    /// <summary>Lee (ancho, alto) del chunk IHDR. Presupone un PNG ya validado con <see cref="Validate"/>.</summary>
+    public static (int Width, int Height) ReadDimensions(byte[] content) =>
+        ((int)ReadBigEndianUInt32(content, 16), (int)ReadBigEndianUInt32(content, 20));
+
     private static bool HasPngSignature(byte[] content)
     {
         for (var i = 0; i < PngSignature.Length; i++)

@@ -97,7 +97,9 @@ public static class ErrorHttpMapping
             or "catalog.categoryNotFound"
             or "inventory.stockLevelNotFound"
             or "inventory.supplierNotFound"
-            or "inventory.itemSupplierNotFound" => StatusCodes.Status404NotFound,
+            or "inventory.itemSupplierNotFound"
+            or "Signature.Profile.NotFound"
+            or "Signature.Profile.NoEffective" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -263,7 +265,10 @@ public static class ErrorHttpMapping
             or "Onboarding.SessionEmailMismatch"
             or "Onboarding.SessionChallengeMismatch"
             or "Onboarding.SessionOnboardingMismatch"
-            or "Onboarding.PayerEmailMismatch" => StatusCodes.Status403Forbidden,
+            or "Onboarding.PayerEmailMismatch"
+            or "Signature.Profile.Forbidden"
+            or "Signature.Profile.NotVisible"
+            or "Signature.Profile.OwnSignatureDisabled" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"

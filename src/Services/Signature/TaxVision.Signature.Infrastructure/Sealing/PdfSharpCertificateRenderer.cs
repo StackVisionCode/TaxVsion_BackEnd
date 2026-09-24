@@ -61,6 +61,7 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
             WriteSummary(ctx, model);
             WriteIntegrity(ctx, model);
             WriteSigners(ctx, model.Signers);
+            WritePreparer(ctx, model.Preparer);
             WriteLegalFooter(ctx, model);
 
             using var output = new MemoryStream();
@@ -194,6 +195,23 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
             DrawSignerCard(ctx, signer);
             ctx.CursorY += 10;
         }
+    }
+
+    /// <summary>
+    /// Sección del preparador (ERO, Form 8879): nombre + identificador ENMASCARADO + cuándo firmó. Es una
+    /// referencia de auditoría; la firma visual va en el documento sellado, no aquí.
+    /// </summary>
+    private static void WritePreparer(RenderContext ctx, CertificatePreparerEntry? preparer)
+    {
+        if (preparer is null)
+            return;
+
+        WriteSectionHeader(ctx, "Preparer (ERO)");
+        WriteRow(ctx, "Name", preparer.DisplayName);
+        // El PTIN/EFIN solo se muestra si hay identidad 8879 (con My Signature "a secas" no la hay).
+        if (!string.IsNullOrEmpty(preparer.MaskedIdentifier))
+            WriteRow(ctx, "PTIN/EFIN", preparer.MaskedIdentifier);
+        WriteRow(ctx, "Signed (UTC)", preparer.SignedAtUtc is { } at ? FormatUtc(at) : "—");
     }
 
     private static void DrawSignerCard(RenderContext ctx, CertificateSignerEntry signer)

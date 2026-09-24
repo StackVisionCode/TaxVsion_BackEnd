@@ -35,6 +35,7 @@ public sealed class SignatureTemplate : TenantEntity
 
     private readonly List<TemplateSignerSlot> _slots = [];
     private readonly List<TemplateField> _fields = [];
+    private readonly List<TemplatePreparerField> _preparerFields = [];
 
     private SignatureTemplate() { }
 
@@ -80,6 +81,7 @@ public sealed class SignatureTemplate : TenantEntity
 
     public IReadOnlyList<TemplateSignerSlot> Slots => _slots.AsReadOnly();
     public IReadOnlyList<TemplateField> Fields => _fields.AsReadOnly();
+    public IReadOnlyList<TemplatePreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
     // ------------------------------------------------------------------
     // Factory
@@ -422,6 +424,39 @@ public sealed class SignatureTemplate : TenantEntity
             return Result.Failure(new Error("Signature.Template.FieldMissing", "Field not found in this template."));
 
         _fields.Remove(field);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Predefine un campo de firma del preparador (sin slot). Solo en Draft.</summary>
+    public Result<TemplatePreparerField> PlacePreparerField(
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label
+    )
+    {
+        EnsureDraft();
+
+        var fieldResult = TemplatePreparerField.Create(Id, kind, position, label);
+        if (fieldResult.IsFailure)
+            return fieldResult;
+
+        _preparerFields.Add(fieldResult.Value);
+        Touch();
+        return fieldResult;
+    }
+
+    public Result RemovePreparerField(Guid fieldId)
+    {
+        EnsureDraft();
+
+        var field = _preparerFields.Find(f => f.Id == fieldId);
+        if (field is null)
+            return Result.Failure(
+                new Error("Signature.Template.PreparerFieldMissing", "Preparer field not found in this template.")
+            );
+
+        _preparerFields.Remove(field);
         Touch();
         return Result.Success();
     }

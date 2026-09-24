@@ -18,6 +18,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.Challenges)
             .Include(request => request.Signers)
                 .ThenInclude(signer => signer.FieldValues)
+            .Include(request => request.PreparerFields)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetBySealedFileIdAsync(

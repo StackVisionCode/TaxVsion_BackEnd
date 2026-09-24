@@ -79,14 +79,16 @@ public interface INotificationLogRepository
     );
 
     /// <summary>Chequeo de idempotencia para <c>IEmailDispatchGateway.QueueEmailAsync</c> — busca un
-    /// log ya creado para el mismo evento de origen y plantilla, para que un reintento de Wolverine
-    /// (misma entrega, el handler se re-ejecuta desde cero) no cree un segundo
-    /// <see cref="NotificationLog"/> ni dispare un segundo envío real. Ver comentario en
-    /// <c>EventBasedEmailDispatchGateway.QueueEmailAsync</c>.</summary>
+    /// log ya creado para el mismo evento de origen, plantilla Y destinatario, para que un reintento de
+    /// Wolverine (misma entrega, el handler se re-ejecuta desde cero) no cree un segundo
+    /// <see cref="NotificationLog"/> ni dispare un segundo envío real. El destinatario ES parte de la
+    /// clave: un evento que hace fan-out a varios firmantes (mismo evento+plantilla, distinto correo) NO
+    /// es un reintento y no debe deduparse. Ver comentario en <c>EventBasedEmailDispatchGateway.QueueEmailAsync</c>.</summary>
     Task<NotificationLog?> GetByRelatedEventIdAsync(
         Guid tenantId,
         Guid relatedEventId,
         string templateKey,
+        string recipient,
         CancellationToken ct = default
     );
 }

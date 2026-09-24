@@ -18,6 +18,13 @@ public sealed record CertificateSignerEntry(
 );
 
 /// <summary>
+/// Preparador (ERO, Form 8879) referenciado en el acta: nombre + identificador ENMASCARADO + cuándo
+/// firmó. Nunca la imagen de la firma (eso vive en el documento sellado, no en el acta) — igual que la
+/// industria (DocuSign Certificate of Completion referencia el evento, no incrusta la firma).
+/// </summary>
+public sealed record CertificatePreparerEntry(string DisplayName, string MaskedIdentifier, DateTime? SignedAtUtc);
+
+/// <summary>
 /// Modelo puro para renderizar el Certificate of Completion. No expone entities de EF ni del dominio
 /// directamente — el consumer lo arma desde el aggregate para desacoplar.
 ///
@@ -37,7 +44,8 @@ public sealed record CertificateOfCompletionModel(
     IReadOnlyList<CertificateSignerEntry> Signers,
     string? IssuerName = null,
     byte[]? PlatformLogo = null,
-    byte[]? TenantLogo = null
+    byte[]? TenantLogo = null,
+    CertificatePreparerEntry? Preparer = null
 );
 
 public sealed record CertificateResult(byte[] CertificatePdfBytes, string ChecksumSha256);

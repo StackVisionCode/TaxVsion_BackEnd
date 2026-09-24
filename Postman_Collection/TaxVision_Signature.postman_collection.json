@@ -7,6 +7,94 @@
   },
   "item": [
     {
+      "name": "Signature Profiles",
+      "description": "Firmas reutilizables del preparador/oficina (My Signature). Personal (OwnerUserId=usuario) u oficina (OwnerUserId=null, requiere admin). effective/list usan signature.request.read; crear/gestionar usa signature.request.create. La imagen PNG va en CloudStorage; aqui solo el metadato + FileId. Tope 10 activas por ambito. Gobernanza AllowEmployeeOwnSignature (en /signature/settings): con OFF el empleado solo ve/usa la firma de oficina (admins exentos); la respuesta de List trae canManageOwnSignature.",
+      "item": [
+        {
+          "name": "GetEffectiveSignature",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles/effective", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "effective" ] },
+            "description": "La firma que se estamparia por el usuario actual (su default si el tenant lo permite, o la de oficina). Requiere signature.request.read."
+          },
+          "response": []
+        },
+        {
+          "name": "ListSignatureProfiles",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles?includeArchived=false", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles" ], "query": [ { "key": "includeArchived", "value": "false" } ] },
+            "description": "Firmas visibles (personales + oficina). Respuesta { profiles, canManageOwnSignature }. Requiere signature.request.read."
+          },
+          "response": []
+        },
+        {
+          "name": "CreateSignatureProfile",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"label\": \"My signature\",\n  \"scope\": \"user\",\n  \"imageBase64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/profiles", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles" ] },
+            "description": "Crea una firma. scope=\"office\" (requiere admin) o \"user\"=personal. imageBase64 = PNG sin prefijo data-url. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "RenameSignatureProfile",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"label\": \"Updated name\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/profiles/{{signatureProfileId}}", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "{{signatureProfileId}}" ] },
+            "description": "Renombra. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "SetDefaultSignatureProfile",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles/{{signatureProfileId}}/default", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "{{signatureProfileId}}", "default" ] },
+            "description": "Marca la firma como la por defecto de su ambito. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "ArchiveSignatureProfile",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles/{{signatureProfileId}}/archive", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "{{signatureProfileId}}", "archive" ] },
+            "description": "Archiva (soft) la firma: la saca del picker y libera cupo. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "UnarchiveSignatureProfile",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles/{{signatureProfileId}}/unarchive", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "{{signatureProfileId}}", "unarchive" ] },
+            "description": "Restaura una firma archivada. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "DeleteSignatureProfile",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/profiles/{{signatureProfileId}}", "host": [ "{{UrlBase}}" ], "path": [ "signature", "profiles", "{{signatureProfileId}}" ] },
+            "description": "Borra la firma. Requiere signature.request.create."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Documents",
       "item": [
         {
@@ -861,6 +949,59 @@
             "description": "Publica PreparerSigned y dispara sealing (si todos los signers ya firmaron). Requiere signature.document.sign."
           },
           "response": []
+        },
+        {
+          "name": "PlacePreparerField",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer-fields", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer-fields" ] },
+            "description": "Coloca un campo del preparador (parte aparte, no firmante; el firmante NO lo ve). Coords normalizadas [0..1]. Requiere signature.document.prepare."
+          },
+          "response": []
+        },
+        {
+          "name": "RemovePreparerField",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer-fields/{{preparerFieldId}}", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer-fields", "{{preparerFieldId}}" ] },
+            "description": "Elimina un campo del preparador. Requiere signature.document.prepare."
+          },
+          "response": []
+        },
+        {
+          "name": "SetPreparerSignature",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"signatureFileId\": null\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer-signature", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer-signature" ] },
+            "description": "Congela que firma reutilizable se estampara (null = firma efectiva personal/oficina). Requiere signature.document.prepare."
+          },
+          "response": []
+        },
+        {
+          "name": "SetPreparerIdentity (Form 8879)",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"ptinOrEfin\": \"P12345678\",\n  \"displayName\": \"Jane Doe, EA\",\n  \"titleLabel\": \"Tax Preparer\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer" ] },
+            "description": "Fija la identidad 8879 del preparador (referenciada enmascarada en el certificado). Solo en Draft/Ready. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "DeletePreparerIdentity",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer" ] },
+            "description": "Limpia la identidad 8879 (PreparerInfo). Requiere signature.request.create."
+          },
+          "response": []
         }
       ]
     },
@@ -1301,6 +1442,27 @@
               ]
             },
             "description": "Crea una SignatureRequest a partir de la plantilla. Requiere signature.request.create."
+          },
+          "response": []
+        },
+        {
+          "name": "PlaceTemplatePreparerField",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/preparer-fields", "host": [ "{{UrlBase}}" ], "path": [ "signature", "templates", "{{signatureTemplateId}}", "preparer-fields" ] },
+            "description": "Coloca un placeholder del preparador en la plantilla (solo posicion; kind Signature/Initials/Date). La imagen se resuelve por-preparador al instanciar. Requiere signature.template.update."
+          },
+          "response": []
+        },
+        {
+          "name": "RemoveTemplatePreparerField",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": { "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/preparer-fields/{{templatePreparerFieldId}}", "host": [ "{{UrlBase}}" ], "path": [ "signature", "templates", "{{signatureTemplateId}}", "preparer-fields", "{{templatePreparerFieldId}}" ] },
+            "description": "Elimina un campo del preparador de la plantilla. Requiere signature.template.update."
           },
           "response": []
         }

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
@@ -31,6 +32,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         ISignatureRequestRepository requestRepository,
         ICustomerEmailProjectionRepository customerProjectionRepository,
         IFileMetadataRefRepository fileRepository,
+        IEffectiveSignatureResolver effectiveResolver,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -68,6 +70,10 @@ public static class CreateSignatureRequestFromTemplateHandler
         var populated = PopulateSignersAndFields(request, template, signerVOs.Value);
         if (populated.IsFailure)
             return Result.Failure<SignatureRequestResponse>(populated.Error);
+
+        var preparer = await InheritPreparerFieldsAsync(request, template, cmd, effectiveResolver, ct);
+        if (preparer.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(preparer.Error);
 
         // La plantilla puede traer un Practitioner PIN por defecto (hash ya calculado): se copia tal cual
         // a la solicitud (sin re-hashear). La request queda Draft aquí, así que SetPractitionerPin lo permite.
@@ -264,6 +270,36 @@ public static class CreateSignatureRequestFromTemplateHandler
             if (placeResult.IsFailure)
                 return Result.Failure(placeResult.Error);
         }
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Hereda los campos del preparador de la plantilla y fija la firma efectiva del usuario que instancia
+    /// (su default si el tenant lo permite, o la de oficina). Sin firma efectiva no falla: el campo queda y
+    /// el sellado cae al facsímil tipográfico del nombre del preparador.
+    /// </summary>
+    private static async Task<Result> InheritPreparerFieldsAsync(
+        SignatureRequest request,
+        SignatureTemplate template,
+        CreateSignatureRequestFromTemplateCommand cmd,
+        IEffectiveSignatureResolver effectiveResolver,
+        CancellationToken ct
+    )
+    {
+        if (template.PreparerFields.Count == 0)
+            return Result.Success();
+
+        foreach (var field in template.PreparerFields)
+        {
+            var placed = request.PlacePreparerField(field.Kind, field.Position, field.Label);
+            if (placed.IsFailure)
+                return placed;
+        }
+
+        var effective = await effectiveResolver.ResolveAsync(cmd.TenantId, cmd.CreatedByUserId, ct);
+        if (effective.IsSuccess)
+            request.SetPreparerSignature(effective.Value.FileId);
+
         return Result.Success();
     }
 

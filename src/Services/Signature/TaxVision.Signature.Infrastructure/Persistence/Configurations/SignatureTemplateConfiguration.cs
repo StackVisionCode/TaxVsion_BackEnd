@@ -53,5 +53,14 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder
             .Metadata.FindNavigation(nameof(SignatureTemplate.Fields))!
             .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(t => t.PreparerFields)
+            .WithOne()
+            .HasForeignKey(f => f.SignatureTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(SignatureTemplate.PreparerFields))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

@@ -267,6 +267,45 @@ public sealed class SignatureTemplateTests
 
     // ================== helpers ==================
 
+    // -------------------- Preparer fields (14.5 F7) --------------------
+
+    [Fact]
+    public void PlacePreparerField_adds_a_field_in_draft()
+    {
+        var template = NewDraft().Value;
+        var pos = FieldPosition.Create(1, 0.1, 0.8, 0.2, 0.05).Value;
+
+        var result = template.PlacePreparerField(SignatureFieldKind.Signature, pos, "Preparer");
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(template.PreparerFields);
+        Assert.Equal(SignatureFieldKind.Signature, template.PreparerFields[0].Kind);
+    }
+
+    [Fact]
+    public void RemovePreparerField_removes_the_field()
+    {
+        var template = NewDraft().Value;
+        var pos = FieldPosition.Create(1, 0.1, 0.8, 0.2, 0.05).Value;
+        var field = template.PlacePreparerField(SignatureFieldKind.Signature, pos, null).Value;
+
+        var result = template.RemovePreparerField(field.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(template.PreparerFields);
+    }
+
+    [Fact]
+    public void PlacePreparerField_throws_when_not_draft()
+    {
+        var template = NewPublishedTemplate();
+        var pos = FieldPosition.Create(1, 0.1, 0.8, 0.2, 0.05).Value;
+
+        Assert.Throws<InvalidOperationException>(() =>
+            template.PlacePreparerField(SignatureFieldKind.Signature, pos, null)
+        );
+    }
+
     private static BuildingBlocks.Results.Result<SignatureTemplate> NewDraft() =>
         SignatureTemplate.CreateDraft(
             tenantId: Guid.NewGuid(),

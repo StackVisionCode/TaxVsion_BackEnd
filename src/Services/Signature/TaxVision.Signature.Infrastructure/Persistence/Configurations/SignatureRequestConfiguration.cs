@@ -64,6 +64,17 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         );
         builder.Property(request => request.PreparerSignedByUserId);
         builder.Property(request => request.PreparerSignedAtUtc);
+        builder.Property(request => request.PreparerSignatureFileId);
+
+        builder
+            .HasMany(request => request.PreparerFields)
+            .WithOne()
+            .HasForeignKey(field => field.SignatureRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder
+            .Metadata.FindNavigation(nameof(SignatureRequest.PreparerFields))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
 
         // Fase 5: reminders schedule state.
         builder.Property(request => request.LastReminderSentAtUtc);
