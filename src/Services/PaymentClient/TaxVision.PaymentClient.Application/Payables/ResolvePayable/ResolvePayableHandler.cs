@@ -35,6 +35,12 @@ public static class ResolvePayableHandler
                 new Error("Payable.NotFound", "No payable exists for that reference.")
             );
 
+        // Factura anulada → payable revocado: no se acuñan links nuevos ni se redirige al checkout.
+        if (payable.IsRevoked)
+            return Result.Failure<ResolvePayableResponse>(
+                new Error("Payable.Revoked", "This invoice was voided and can no longer be paid.")
+            );
+
         // Subdominio del tenant (proyección local) para redirigir el checkout al host de la firma.
         var tenant = await tenants.GetByIdAsync(payable.TenantId, ct);
         var subDomain = tenant?.SubDomain;

@@ -49,6 +49,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
         Guid CategoryId,
         string? Unit,
         int TaxRateBasisPoints,
+        bool TrackInventory,
         string? ImageUrl,
         IReadOnlyList<AttributeRequest>? Attributes
     );
@@ -144,6 +145,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
                 request.CategoryId,
                 request.Unit,
                 request.TaxRateBasisPoints,
+                request.TrackInventory,
                 request.ImageUrl,
                 Map(request.Attributes)
             ),

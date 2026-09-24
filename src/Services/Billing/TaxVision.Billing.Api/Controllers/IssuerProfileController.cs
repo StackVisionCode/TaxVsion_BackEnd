@@ -43,7 +43,8 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
         string? Country,
         string? Phone,
         string? Email,
-        string? Website
+        string? Website,
+        string? DefaultCurrency
     );
 
     [HttpPut]
@@ -67,7 +68,8 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
                 request.Country,
                 request.Phone,
                 request.Email,
-                request.Website
+                request.Website,
+                request.DefaultCurrency
             ),
             ct
         );

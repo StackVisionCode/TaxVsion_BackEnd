@@ -29,13 +29,20 @@ public static class EnsureInvoicePaymentLinkHandler
         if (invoice is null || invoice.InvoiceNumber is null)
             return; // Borrador borrado o no emitido; nada que asegurar.
 
-        if (invoice.ActivePaymentLink is null && invoice.Status != InvoiceStatus.Paid)
+        // El cobro es SIEMPRE por el saldo pendiente (AmountDue), no por el total: si hubo un pago parcial
+        // (manual u online) el link debe cobrar lo que falta. EnsurePayableAsync es idempotente y del lado
+        // PaymentClient refresca el monto del payable existente (misma URL estable) — así re-invocar este
+        // paso tras un pago parcial re-sincroniza el importe del checkout. Nada por cobrar (pagada o saldo 0)
+        // ⇒ no se toca el link.
+        var outstandingCents = invoice.AmountDue.AmountCents;
+        if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && outstandingCents > 0)
         {
             var ensured = await paymentLinks.EnsurePayableAsync(
-                invoice.Total.AmountCents,
+                outstandingCents,
                 invoice.Currency,
                 invoice.Id,
                 command.TenantId,
+                invoice.InvoiceNumber,
                 ct
             );
             if (ensured.IsFailure)
@@ -43,6 +50,8 @@ public static class EnsureInvoicePaymentLinkHandler
                     $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
                 );
 
+            // Idempotente por ExternalPayableId: en un re-sync (link ya adjunto) es no-op — el monto lo
+            // actualizó PaymentClient, no cambia la URL.
             invoice.AttachPaymentLink(
                 ensured.Value.PayableId,
                 ensured.Value.CheckoutUrl,

@@ -52,6 +52,13 @@ public static class IssueInvoiceHandler
         if (issueResult.IsFailure)
             return Result.Failure<IssueInvoiceResult>(issueResult.Error);
 
+        // Reemisión (item 6.3): si este borrador es un reemplazo, arrastra el pago ya cobrado en la original
+        // → al emitir queda Paid (si cubre el total) o PartiallyPaid (si el total nuevo es mayor). No-op si no
+        // hay crédito. La transición la audita MarkPaid.
+        var credited = invoice.ApplyCarriedCredit(nowUtc);
+        if (credited.IsFailure)
+            return Result.Failure<IssueInvoiceResult>(credited.Error);
+
         await unitOfWork.SaveChangesAsync(ct);
 
         // Post-commit (outbox durable): asegurar el ancla de cobro y LUEGO generar el PDF, cada paso en

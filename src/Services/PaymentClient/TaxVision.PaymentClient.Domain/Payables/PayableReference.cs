@@ -17,12 +17,23 @@ public sealed class PayableReference : TenantEntity
 {
     public PaymentPurposeKind PurposeKind { get; private set; }
     public string ExternalReferenceId { get; private set; } = string.Empty;
+
+    /// <summary>Etiqueta legible del payable para el checkout (p. ej. el NÚMERO de factura "INV-2026-00010").
+    /// La aporta Billing al crear el payable; el checkout la muestra en vez del id crudo. null = sin etiqueta.</summary>
+    public string? Description { get; private set; }
     public Money Amount { get; private set; } = null!;
 
     /// <summary>Token opaco URL-safe que viaja en el path público (<c>/invoices/{Reference}</c>).
     /// No adivinable ni enumerable — 32 bytes de RNG criptográfico, base64url sin padding.</summary>
     public string Reference { get; private set; } = string.Empty;
     public DateTime CreatedAtUtc { get; private set; }
+
+    /// <summary>Fecha de revocación (p. ej. la factura se anuló). Una referencia revocada NO se puede
+    /// pagar: el resolver deja de emitir links de checkout nuevos. null = vigente.</summary>
+    public DateTime? RevokedAtUtc { get; private set; }
+
+    /// <summary>True si el payable fue revocado (factura anulada) → el checkout debe rechazarlo.</summary>
+    public bool IsRevoked => RevokedAtUtc is not null;
 
     private PayableReference() { }
 
@@ -31,7 +42,8 @@ public sealed class PayableReference : TenantEntity
         PaymentPurposeKind purposeKind,
         string externalReferenceId,
         Money amount,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? description = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -55,6 +67,7 @@ public sealed class PayableReference : TenantEntity
         {
             PurposeKind = purposeKind,
             ExternalReferenceId = externalReferenceId.Trim(),
+            Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
             Amount = amount,
             Reference = GenerateReference(),
             CreatedAtUtc = nowUtc,
@@ -72,6 +85,20 @@ public sealed class PayableReference : TenantEntity
             return Result.Failure(new Error("PayableReference.InvalidAmount", "Amount must be greater than zero."));
         Amount = amount;
         return Result.Success();
+    }
+
+    /// <summary>Fija/actualiza la etiqueta legible (número de factura) si viene una no vacía. Permite
+    /// backfillear payables creados antes de tener Description.</summary>
+    public void SetDescription(string? description)
+    {
+        if (!string.IsNullOrWhiteSpace(description))
+            Description = description.Trim();
+    }
+
+    /// <summary>Revoca el payable (factura anulada). Idempotente: revocar de nuevo no hace nada.</summary>
+    public void Revoke(DateTime nowUtc)
+    {
+        RevokedAtUtc ??= nowUtc;
     }
 
     private static string GenerateReference()

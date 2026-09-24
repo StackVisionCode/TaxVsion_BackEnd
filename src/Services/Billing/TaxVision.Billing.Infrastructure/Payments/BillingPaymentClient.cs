@@ -24,6 +24,7 @@ public sealed class BillingPaymentClient(
         string currency,
         Guid invoiceId,
         Guid tenantId,
+        string? invoiceNumber = null,
         CancellationToken ct = default
     )
     {
@@ -38,6 +39,7 @@ public sealed class BillingPaymentClient(
             amountCents,
             currency,
             invoiceId = invoiceId.ToString(),
+            description = invoiceNumber,
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/payables/invoices")

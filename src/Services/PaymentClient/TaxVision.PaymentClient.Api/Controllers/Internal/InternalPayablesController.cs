@@ -26,7 +26,12 @@ namespace TaxVision.PaymentClient.Api.Controllers.Internal;
 public sealed class InternalPayablesController(IMessageBus bus, IOptions<PaymentClientPublicOptions> publicOptions)
     : ControllerBase
 {
-    public sealed record EnsureInvoicePayableRequest(long AmountCents, string Currency, string InvoiceId);
+    public sealed record EnsureInvoicePayableRequest(
+        long AmountCents,
+        string Currency,
+        string InvoiceId,
+        string? Description = null
+    );
 
     public sealed record EnsureInvoicePayableApiResponse(Guid PayableId, string Reference, string CheckoutUrl);
 
@@ -42,7 +47,13 @@ public sealed class InternalPayablesController(IMessageBus bus, IOptions<Payment
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<EnsureInvoicePayableResponse>>(
-            new EnsureInvoicePayableCommand(tenantId, request.AmountCents, request.Currency, request.InvoiceId),
+            new EnsureInvoicePayableCommand(
+                tenantId,
+                request.AmountCents,
+                request.Currency,
+                request.InvoiceId,
+                request.Description
+            ),
             ct
         );
 

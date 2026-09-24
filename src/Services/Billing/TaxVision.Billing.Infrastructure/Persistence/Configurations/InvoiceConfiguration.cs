@@ -29,6 +29,11 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         // Anulación (void): fecha + motivo. Nullable — solo se rellenan al anular.
         b.Property(i => i.VoidedAtUtc);
         b.Property(i => i.VoidReason).HasMaxLength(512);
+
+        // Reemisión enlazada (item 6.3): enlaces débiles (sin FK) + crédito arrastrado.
+        b.Property(i => i.ReplacesInvoiceId);
+        b.Property(i => i.ReplacedByInvoiceId);
+        b.Property(i => i.CarriedCreditCents).HasDefaultValue(0L);
         b.Property(i => i.RowVersion).IsRowVersion();
 
         // Onboarding pago-primero: factura pre-tenant keyed por OnboardingId (re-hospedada al activar).
@@ -100,5 +105,33 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         // ExternalPayableId, transiciona estados e indexa. La colección se llena por campo (_paymentLinks).
         b.HasMany(i => i.PaymentLinks).WithOne().HasForeignKey(l => l.InvoiceId).OnDelete(DeleteBehavior.Cascade);
         b.Metadata.FindNavigation(nameof(Invoice.PaymentLinks))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        // Rastro de auditoría de estado (item 6.2): entidad NORMAL append-only en tabla propia. Se llena por
+        // campo (_statusChanges) desde los métodos de transición del agregado.
+        b.HasMany(i => i.StatusChanges).WithOne().HasForeignKey(s => s.InvoiceId).OnDelete(DeleteBehavior.Cascade);
+        b.Metadata.FindNavigation(nameof(Invoice.StatusChanges))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+/// <summary>Mapeo del rastro de auditoría de estado (item 6.2). Tabla propia, append-only.</summary>
+public sealed class InvoiceStatusChangeConfiguration : IEntityTypeConfiguration<InvoiceStatusChange>
+{
+    public void Configure(EntityTypeBuilder<InvoiceStatusChange> b)
+    {
+        b.ToTable("InvoiceStatusChanges");
+        b.HasKey(s => s.Id);
+        // Id lo asigna el dominio (BaseEntity, client-side). Sin ValueGeneratedNever, EF trata un Guid PK
+        // como ValueGeneratedOnAdd → al anexar una fila nueva a una factura YA rastreada (Issue/MarkPaid/
+        // Void/ChangeStatus/Reissue) la marca Modified en vez de Added → emite UPDATE (0 filas) → conflicto
+        // de concurrencia falso. Igual que InvoiceAdjustmentLine.
+        b.Property(s => s.Id).ValueGeneratedNever();
+        b.Property(s => s.InvoiceId).IsRequired();
+        b.Property(s => s.FromStatus).HasConversion<string>().HasMaxLength(32);
+        b.Property(s => s.ToStatus).HasConversion<string>().HasMaxLength(32).IsRequired();
+        b.Property(s => s.Trigger).HasMaxLength(32).IsRequired();
+        b.Property(s => s.Reason).HasMaxLength(512);
+        b.Property(s => s.ChangedByUserId);
+        b.Property(s => s.ChangedAtUtc).IsRequired();
+        b.HasIndex(s => new { s.InvoiceId, s.ChangedAtUtc });
     }
 }

@@ -104,6 +104,7 @@ public static class EditInvoiceHandler
                 invoice.Currency,
                 invoice.Id,
                 command.TenantId,
+                invoice.InvoiceNumber,
                 ct
             );
             await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));

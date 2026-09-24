@@ -1,6 +1,8 @@
+using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Billing.Application.Abstractions;
+using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.VoidInvoice;
@@ -16,6 +18,7 @@ public static class VoidInvoiceHandler
         IInvoiceRepository invoices,
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -33,6 +36,22 @@ public static class VoidInvoiceHandler
         var voided = invoice.Void(command.Reason, clock.GetUtcNow().UtcDateTime, command.ActorUserId);
         if (voided.IsFailure)
             return voided;
+
+        // Anunciar la anulación para que PaymentClient REVOQUE el payable/link de pago (una factura anulada
+        // no se debe poder pagar). Vía outbox durable: si PaymentClient está caído, se reintrega solo.
+        await bus.PublishAsync(
+            new InvoiceVoidedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                InvoiceId = invoice.Id,
+                InvoiceNumber = invoice.InvoiceNumber ?? string.Empty,
+                Reason = command.Reason,
+            }
+        );
+
+        // Regenerar el PDF para que salga con la marca de agua "Void" (el template ya la contempla por
+        // estado). Sin esto, el PDF de una factura anulada seguiría mostrándose como pendiente.
+        await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

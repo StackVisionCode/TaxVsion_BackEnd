@@ -22,6 +22,7 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
+            .Include(i => i.StatusChanges)
             .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
 
     // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId

@@ -18,6 +18,16 @@ public sealed record InvoiceDetailLine(
     Guid? CatalogItemId
 );
 
+/// <summary>Una fila del rastro de auditoría de estado (item 6.2).</summary>
+public sealed record InvoiceStatusHistoryEntry(
+    string? FromStatus,
+    string ToStatus,
+    string Trigger,
+    string? Reason,
+    Guid ChangedByUserId,
+    DateTime ChangedAtUtc
+);
+
 public sealed record InvoiceDetailResponse(
     Guid Id,
     string? InvoiceNumber,
@@ -32,7 +42,18 @@ public sealed record InvoiceDetailResponse(
     long AmountPaidCents,
     bool IsEditable,
     bool IsVoidable,
-    bool IsDeletable
+    bool IsDeletable,
+    /// <summary>Destinos legales de un cambio de estado MANUAL desde el estado actual (matriz del dominio).
+    /// El frontend ofrece solo estos en el menú "Cambiar estado".</summary>
+    IReadOnlyList<string> AllowedNextStatuses,
+    /// <summary>Historial de transiciones, más reciente primero.</summary>
+    IReadOnlyList<InvoiceStatusHistoryEntry> StatusHistory,
+    /// <summary>Reemisión (item 6.3): se puede reemitir (anular + reemplazo enlazado) si está emitida/pagada
+    /// y no fue reemplazada ya.</summary>
+    bool IsReissuable,
+    /// <summary>Si esta factura es un reemplazo, la original que sustituye; si fue reemplazada, su reemplazo.</summary>
+    Guid? ReplacesInvoiceId,
+    Guid? ReplacedByInvoiceId
 );
 
 public static class GetInvoiceDetailHandler
@@ -58,6 +79,31 @@ public static class GetInvoiceDetailHandler
                 or Domain.ValueObjects.InvoiceStatus.PartiallyPaid
                 or Domain.ValueObjects.InvoiceStatus.Paid;
         var deletable = invoice.Status == Domain.ValueObjects.InvoiceStatus.Draft;
+        // Reemisión (6.3): emitida/enviada/parcial/pagada y no reemplazada aún.
+        var reissuable =
+            invoice.ReplacedByInvoiceId is null
+            && invoice.Status
+                is Domain.ValueObjects.InvoiceStatus.Issued
+                    or Domain.ValueObjects.InvoiceStatus.Sent
+                    or Domain.ValueObjects.InvoiceStatus.PartiallyPaid
+                    or Domain.ValueObjects.InvoiceStatus.Paid;
+
+        var allowedNext = Domain
+            .Invoices.InvoiceStatusTransitions.AllowedTargets(invoice.Status)
+            .Select(s => s.ToString())
+            .ToList();
+
+        var history = invoice
+            .StatusChanges.OrderByDescending(s => s.ChangedAtUtc)
+            .Select(s => new InvoiceStatusHistoryEntry(
+                s.FromStatus?.ToString(),
+                s.ToStatus.ToString(),
+                s.Trigger,
+                s.Reason,
+                s.ChangedByUserId,
+                s.ChangedAtUtc
+            ))
+            .ToList();
 
         return Result.Success(
             new InvoiceDetailResponse(
@@ -88,7 +134,12 @@ public static class GetInvoiceDetailHandler
                 invoice.AmountPaid.AmountCents,
                 editable,
                 voidable,
-                deletable
+                deletable,
+                allowedNext,
+                history,
+                reissuable,
+                invoice.ReplacesInvoiceId,
+                invoice.ReplacedByInvoiceId
             )
         );
     }

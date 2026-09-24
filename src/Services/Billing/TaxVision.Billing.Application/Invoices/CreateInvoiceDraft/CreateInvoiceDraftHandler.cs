@@ -29,6 +29,10 @@ public static class CreateInvoiceDraftHandler
             ToAddress(command.Customer.Billing)
         );
 
+        // El perfil de empresa del tenant se carga una vez: da el emisor por defecto Y la moneda por
+        // defecto (6.1). Cada factura CONGELA su moneda; el histórico no cambia si la default cambia luego.
+        var profile = await issuerProfiles.GetByTenantAsync(command.TenantId, ct);
+
         // Emisor: si el caller manda uno explícito, se usa; si no, se estampa el PERFIL de empresa del
         // tenant guardado en el backend (así el PDF sale con los datos de la empresa sin reenviarlos).
         IssuerSnapshot? issuer;
@@ -46,9 +50,13 @@ public static class CreateInvoiceDraftHandler
         }
         else
         {
-            var profile = await issuerProfiles.GetByTenantAsync(command.TenantId, ct);
             issuer = profile is { IsUsable: true } ? profile.ToSnapshot() : null;
         }
+
+        // Moneda: la del request si viene; si no, la default del tenant; si no hay perfil, "USD" (platform fallback).
+        var currency = string.IsNullOrWhiteSpace(command.Currency)
+            ? profile?.DefaultCurrency ?? "USD"
+            : command.Currency;
 
         var lines = command
             .Lines.Select(l => new DraftInvoiceLine(
@@ -64,7 +72,7 @@ public static class CreateInvoiceDraftHandler
             command.TenantId,
             command.ActorUserId,
             customer,
-            command.Currency,
+            currency,
             lines,
             command.Notes,
             nowUtc,

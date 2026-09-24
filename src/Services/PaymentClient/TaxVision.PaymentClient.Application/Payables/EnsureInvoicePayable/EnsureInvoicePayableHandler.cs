@@ -41,11 +41,20 @@ public static class EnsureInvoicePayableHandler
         if (existing is not null)
         {
             // La factura pudo editarse y cambiar el total: refrescar el monto (misma URL estable).
+            var changed = false;
             if (existing.Amount.AmountCents != amountResult.Value.AmountCents)
             {
                 existing.UpdateAmount(amountResult.Value);
-                await unitOfWork.SaveChangesAsync(ct);
+                changed = true;
             }
+            // Backfill de la etiqueta (número de factura) si aún no la tenía.
+            if (existing.Description is null && !string.IsNullOrWhiteSpace(command.Description))
+            {
+                existing.SetDescription(command.Description);
+                changed = true;
+            }
+            if (changed)
+                await unitOfWork.SaveChangesAsync(ct);
             return Result.Success(new EnsureInvoicePayableResponse(existing.Id, existing.Reference, subDomain));
         }
 
@@ -54,7 +63,8 @@ public static class EnsureInvoicePayableHandler
             PaymentPurposeKind.InvoicePayment,
             command.InvoiceId,
             amountResult.Value,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.Description
         );
         if (created.IsFailure)
             return Result.Failure<EnsureInvoicePayableResponse>(created.Error);

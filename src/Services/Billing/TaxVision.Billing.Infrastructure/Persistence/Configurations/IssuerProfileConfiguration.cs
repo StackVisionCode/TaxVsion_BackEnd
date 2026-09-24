@@ -20,6 +20,7 @@ public sealed class IssuerProfileConfiguration : IEntityTypeConfiguration<Issuer
         b.Property(p => p.Phone).HasMaxLength(64);
         b.Property(p => p.Email).HasMaxLength(256);
         b.Property(p => p.Website).HasMaxLength(256);
+        b.Property(p => p.DefaultCurrency).HasMaxLength(3).IsRequired().HasDefaultValue("USD");
 
         b.Property(p => p.Address)
             .HasConversion(new JsonValueConverter<Domain.ValueObjects.Address>())

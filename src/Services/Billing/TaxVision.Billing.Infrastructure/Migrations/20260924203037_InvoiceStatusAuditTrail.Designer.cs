@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Billing.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Billing.Infrastructure.Persistence;
 namespace TaxVision.Billing.Infrastructure.Migrations
 {
     [DbContext(typeof(BillingDbContext))]
-    partial class BillingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924203037_InvoiceStatusAuditTrail")]
+    partial class InvoiceStatusAuditTrail
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -38,11 +41,6 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
-
-                    b.Property<long>("CarriedCreditCents")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasDefaultValue(0L);
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -120,12 +118,6 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<string>("ReceiptNumber")
                         .HasMaxLength(96)
                         .HasColumnType("nvarchar(96)");
-
-                    b.Property<Guid?>("ReplacedByInvoiceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ReplacesInvoiceId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()

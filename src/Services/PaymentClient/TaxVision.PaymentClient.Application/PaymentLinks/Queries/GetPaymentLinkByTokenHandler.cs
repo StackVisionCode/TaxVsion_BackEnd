@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
+using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Application.PaymentLinks.Queries;
 
@@ -16,6 +17,7 @@ public static class GetPaymentLinkByTokenHandler
     public static async Task<Result<PaymentLinkCheckoutResponse>> Handle(
         GetPaymentLinkByTokenQuery query,
         IPaymentLinkRepository links,
+        IPayableReferenceRepository payables,
         ITenantPaymentConfigRepository configs,
         IPaymentAdapterFactory adapters,
         ITenantRegistry tenants,
@@ -31,6 +33,23 @@ public static class GetPaymentLinkByTokenHandler
         var tenant = await tenants.GetByIdAsync(link.TenantId, ct);
         if (tenant is null)
             return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
+
+        // Etiqueta legible (número de factura) para el checkout: viene del PayableReference que respalda
+        // el link de factura. Un link suelto (no factura) no tiene payable → sin etiqueta (null).
+        string? purposeDescription = null;
+        if (link.Purpose.Kind == PaymentPurposeKind.InvoicePayment)
+        {
+            var payable = await payables.GetByExternalReferenceAsync(
+                link.TenantId,
+                PaymentPurposeKind.InvoicePayment,
+                link.Purpose.ExternalReferenceId,
+                ct
+            );
+            // Defensa en profundidad: si el payable está revocado (factura anulada), el link no debe pagar.
+            if (payable is { IsRevoked: true })
+                return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
+            purposeDescription = payable?.Description;
+        }
 
         var active = await configs.GetActiveByTenantAsync(link.TenantId, ct);
         var methods = active
@@ -51,7 +70,8 @@ public static class GetPaymentLinkByTokenHandler
                 link.Purpose.Kind.ToString(),
                 link.Purpose.ExternalReferenceId,
                 tenant.Name,
-                methods
+                methods,
+                purposeDescription
             )
         );
     }

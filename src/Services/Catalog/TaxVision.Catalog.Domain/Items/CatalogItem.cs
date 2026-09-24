@@ -106,6 +106,7 @@ public sealed class CatalogItem : TenantEntity
         string? unit,
         int taxRateBasisPoints,
         string? imageUrl,
+        bool trackInventory,
         DateTime nowUtc
     )
     {
@@ -124,6 +125,9 @@ public sealed class CatalogItem : TenantEntity
         // Un servicio es incontable: nunca conserva unidad, aunque el update la traiga.
         Unit = Kind == ItemKind.Service ? null : Normalize(unit);
         ImageUrl = Normalize(imageUrl);
+        // TrackInventory ahora es editable (un producto puede pasar a rastrearse o dejar de hacerlo);
+        // un servicio nunca rastrea, igual que en el alta.
+        TrackInventory = Kind == ItemKind.Service ? false : trackInventory;
         UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
