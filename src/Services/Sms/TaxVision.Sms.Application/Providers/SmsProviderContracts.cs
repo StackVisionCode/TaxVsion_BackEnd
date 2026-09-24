@@ -8,6 +8,12 @@ public sealed record SmsProviderCapabilities
     public required bool SupportsBulkSend { get; init; }
     public required int MaxBatchSize { get; init; }
 
+    /// <summary>El proveedor expone una API de CONSULTA de estado (pull) por id de mensaje — no solo el
+    /// push por webhook. Habilita la reconciliación proactiva (backstop de DLRs perdidos y único camino
+    /// cuando el proveedor no puede alcanzar el webhook, p. ej. en dev local). Default <c>false</c>:
+    /// un adapter sin pull no participa de la reconciliación (no rompe nada).</summary>
+    public bool SupportsStatusPull { get; init; }
+
     public required bool SupportsMedia { get; init; }
     public required bool SupportsMultipleMedia { get; init; }
     public required int MaxMediaItems { get; init; }

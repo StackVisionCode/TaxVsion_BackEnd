@@ -8,6 +8,13 @@ public sealed class SmsProvidersOptions
     public const string SectionName = "Sms";
 
     public Dictionary<string, SmsProviderConfig> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>URL PÚBLICA base a la que el proveedor debe empujar los DLR/estados e inbound (sin path de
+    /// proveedor: cada adapter le agrega <c>/sms/webhooks/{code}/status</c> o <c>/inbound</c>). Es la raíz
+    /// pública del Gateway/túnel (ej. <c>https://api.midominio.com</c>). Vacía ⇒ no se envía notifyUrl/
+    /// StatusCallback al proveedor (útil en dev local donde el proveedor no alcanza localhost: la
+    /// reconciliación por pull cubre ese caso). No es secreta.</summary>
+    public string? PublicWebhookBaseUrl { get; set; }
 }
 
 public sealed class SmsProviderConfig

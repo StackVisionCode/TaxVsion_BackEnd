@@ -18,4 +18,24 @@ public sealed class SmsOptions
 
     /// <summary>Tope de mensajes por request de lote.</summary>
     public int MaxBatchSize { get; set; } = 1000;
+
+    /// <summary>Reconciliación de estado por pull (backstop de los DLR por webhook).</summary>
+    public SmsReconciliationOptions Reconciliation { get; set; } = new();
+}
+
+/// <summary>Config del job de reconciliación de estado (sección `Sms:Reconciliation`).</summary>
+public sealed class SmsReconciliationOptions
+{
+    /// <summary>Enciende el job de fondo. El endpoint manual (<c>POST /sms/messages/reconcile</c>) funciona
+    /// aunque esté OFF.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Cada cuánto corre el job de fondo.</summary>
+    public int IntervalSeconds { get; set; } = 60;
+
+    /// <summary>Antigüedad mínima desde el último cambio para considerar un mensaje atascado.</summary>
+    public int MinAgeSeconds { get; set; } = 60;
+
+    /// <summary>Tope de mensajes por corrida del job.</summary>
+    public int BatchSize { get; set; } = 200;
 }

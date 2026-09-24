@@ -99,6 +99,10 @@ public static class DependencyInjection
 
         AddRateLimitTierQuotas(services, configuration);
 
+        // Job de fondo: reconciliación de estado por pull (backstop de los DLR por webhook). Se auto-desactiva
+        // en tiempo de ejecución si Sms:Reconciliation:Enabled=false; el endpoint manual funciona igual.
+        services.AddHostedService<Jobs.SmsStatusReconciliationService>();
+
         return services;
     }
 
