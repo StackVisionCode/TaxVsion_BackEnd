@@ -10,4 +10,10 @@ public static class ClaimNames
     public const string TenantId = "tenant_id";
     public const string CustomerId = "customer_id";
     public const string Permission = "perm";
+
+    /// <summary>Superficie del token (ver <see cref="AccessSurface"/>). Ausente en los tokens del CRM y del portal.</summary>
+    public const string Surface = "surface";
+
+    /// <summary>Epoch (segundos) de la última reautenticación (step-up). Solo en el access token que la emitió.</summary>
+    public const string ReauthenticatedAt = "reauth_at";
 }

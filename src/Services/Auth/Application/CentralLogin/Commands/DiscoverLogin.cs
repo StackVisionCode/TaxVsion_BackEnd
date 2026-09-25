@@ -70,9 +70,9 @@ public static class DiscoverLoginHandler
     )
     {
         // 1. Throttle por IP: una vez por intento, NO por oficina candidata.
-        if (await throttler.GetIpRetryAfterAsync(request.IpAddress, ct) is not null)
+        if (await throttler.GetIpRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
             return Result.Failure<DiscoverLoginResponse>(
-                new Error("Auth.LockedOut", "Too many attempts. Try again later.")
+                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter)
             );
 
         var email = command.Email.Trim().ToLowerInvariant();

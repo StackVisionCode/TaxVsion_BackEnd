@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOn;
 using TaxVision.Subscription.Application.AddOns.Commands.PurchaseAddOn;
-using TaxVision.Subscription.Application.AddOns.Commands.RenewAddOn;
 using TaxVision.Subscription.Application.AddOns.Queries;
 using Wolverine;
 
@@ -95,22 +94,6 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new CancelAddOnCommand(tenantId, id, request.Reason, userId), ct);
-
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    /// <summary>Renovación manual (mientras no exista Billing).</summary>
-    [HttpPost("{id:guid}/renew")]
-    [HasPermission(SubscriptionPermissions.AddOnsManage)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.addon_manage")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result>(new RenewAddOnCommand(tenantId, id, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

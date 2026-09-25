@@ -1,5 +1,4 @@
 namespace TaxVision.Subscription.Application.Seats.Commands.RenewSeat;
 
-/// <summary>Renovación manual de un seat disparada por un admin, mientras no exista
-/// integración con Billing.</summary>
+/// <summary>Extensión sin cobro del período de un seat. Solo soporte de plataforma.</summary>
 public sealed record RenewSeatCommand(Guid TenantId, Guid SeatId, Guid RequestedByUserId);

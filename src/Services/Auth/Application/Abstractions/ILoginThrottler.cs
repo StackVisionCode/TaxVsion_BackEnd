@@ -38,7 +38,7 @@ public interface ILoginThrottler
     Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default);
 
     /// <summary>Fail-closed: rechaza si el email o la IP superaron el umbral de creación de retos de
-    /// verificación de onboarding (5/email/hora, 10/IP/hora).</summary>
+    /// verificación de onboarding (5/email/hora, 30/IP/hora). El error trae la espera real.</summary>
     Task<Result> AuthorizeOnboardingChallengeCreationAsync(
         string email,
         string ipAddress,
@@ -46,6 +46,6 @@ public interface ILoginThrottler
     );
 
     /// <summary>Fail-closed: rechaza un reenvío de OTP de onboarding si el challenge ya envió uno en
-    /// los últimos 60s.</summary>
+    /// los últimos 60s. El error trae la espera real.</summary>
     Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default);
 }

@@ -1,3 +1,5 @@
+using TaxVision.Auth.Domain.RefreshTokens;
+
 namespace TaxVision.Auth.Application.Abstractions;
 
 /// <summary>
@@ -8,13 +10,15 @@ namespace TaxVision.Auth.Application.Abstractions;
 /// <see cref="MustEnrollMfa"/>: el login venía por la rama de "MFA requerido sin método", así que al
 /// confirmar el takeover la respuesta debe conservar el flag para que el frontend fuerce el setup.
 /// </para>
+/// <para><see cref="Surface"/>: dónde se pidió el login; al confirmar se crea la cadena de esa superficie.</para>
 /// </summary>
 public sealed record SessionTakeoverPayload(
     Guid TenantId,
     Guid UserId,
     string[] AuthMethods,
     string? DeviceName,
-    bool MustEnrollMfa = false
+    bool MustEnrollMfa = false,
+    SessionSurface Surface = SessionSurface.Workspace
 );
 
 /// <summary>

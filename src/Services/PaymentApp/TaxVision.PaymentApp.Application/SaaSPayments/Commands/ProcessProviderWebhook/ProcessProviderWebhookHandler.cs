@@ -5,9 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
-using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
-using TaxVision.PaymentApp.Application.SeatsCheckouts;
-using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -18,10 +16,10 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessProvider
 
 public static class ProcessProviderWebhookHandler
 {
-    /// <summary>Webhook throttleado por tenant: la API responde 429 para que el provider lo reintente.</summary>
+    /// <summary>Webhook throttleado: la API responde 429 para que el provider lo reintente.</summary>
     public const string WebhookThrottledCode = "PaymentApp.WebhookThrottled";
 
-    /// <summary>La ventana del throttle de webhooks por tenant (fija, de 1 minuto).</summary>
+    /// <summary>La ventana del throttle de webhooks (fija, de 1 minuto).</summary>
     public const int WebhookThrottleRetryAfterSeconds = 60;
 
     public static Task<Result> Handle(
@@ -206,24 +204,23 @@ public static class ProcessProviderWebhookHandler
             return Result.Success();
         }
 
-        if (await throttle.IsWebhookThrottledAsync(payment.TenantId, ct))
+        var throttleScope = WebhookThrottleScope(payment);
+        if (await throttle.IsWebhookThrottledAsync(throttleScope, ct))
         {
             logger.LogWarning(
-                "{Provider} webhook {ProviderEventId} throttled for tenant {TenantId}: too many webhook events in the last minute; the provider will retry it.",
+                "{Provider} webhook {ProviderEventId} throttled for scope {ThrottleScope}: too many webhook events in the last minute; the provider will retry it.",
                 provider,
                 verification.ProviderEventId,
-                payment.TenantId
+                throttleScope
             );
             // Failed (no terminal) + 429: la próxima entrega del provider lo re-procesa. Antes quedaba
             // Rejected con 200 y el provider nunca reintentaba: el pago confirmado se perdía.
-            webhookEvent.MarkFailed("Tenant webhook rate exceeded; waiting for the provider retry.", DateTime.UtcNow);
+            webhookEvent.MarkFailed("Webhook rate exceeded; waiting for the provider retry.", DateTime.UtcNow);
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure(
-                new Error(WebhookThrottledCode, "Too many webhook events for this tenant. Retry later.")
-            );
+            return Result.Failure(new Error(WebhookThrottledCode, "Too many webhook events. Retry later."));
         }
 
-        await throttle.RegisterWebhookAttemptAsync(payment.TenantId, ct);
+        await throttle.RegisterWebhookAttemptAsync(throttleScope, ct);
         ReconcileProviderReference(provider, verification.ProviderEventId, payload, payment, logger, nowUtc);
 
         var transitionResult = ApplyPayload(payment, payload, metrics);
@@ -266,12 +263,7 @@ public static class ProcessProviderWebhookHandler
             ct
         );
 
-        if (payment.Type == SaaSPaymentType.OnboardingInitial)
-            await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlation.CorrelationId, ct);
-        else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
-            await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
-        else if (payment.Type == SaaSPaymentType.SubscriptionRenewalCheckout)
-            await SubscriptionRenewalCheckoutResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -286,6 +278,11 @@ public static class ProcessProviderWebhookHandler
 
         return Result.Success();
     }
+
+    // El pago de onboarding todavía no tiene tenant (TenantId vacío): sin esto todos los onboardings
+    // compartían un único cupo y un pico de altas se throttleaba entre sí.
+    private static Guid WebhookThrottleScope(SaaSPayment payment) =>
+        payment.TenantId != Guid.Empty ? payment.TenantId : payment.OnboardingId ?? payment.Id;
 
     private static void ReconcileProviderReference(
         PaymentProviderCode provider,
@@ -343,12 +340,25 @@ public static class ProcessProviderWebhookHandler
                     return Result.Failure(amountMismatch);
                 return payment.MarkSucceeded(nowUtc, Guid.Empty);
 
+            case PaymentStatus.Failed when payment.Status == PaymentStatus.Failed:
+                // El cobro síncrono ya registró este fallo: reaplicarlo reprogramaría el dunning y
+                // publicaría el resultado dos veces.
+                return Result.Failure(
+                    new Error("SaaSPayment.AlreadyFailed", "The payment is already marked as failed.")
+                );
+
             case PaymentStatus.Failed:
+                // Una renovación que falla de forma asíncrona sigue el mismo dunning que la síncrona.
+                var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(
+                    payment,
+                    nowUtc,
+                    failedAttemptRecorded: true
+                );
                 return payment.MarkFailed(
                     payload.FailureCode ?? "Provider.Unknown",
                     payload.FailureMessage ?? "The provider declined the charge.",
-                    willRetry: false,
-                    nextRetryAtUtc: null,
+                    willRetry: nextRetryAtUtc is not null,
+                    nextRetryAtUtc,
                     Guid.Empty,
                     nowUtc
                 );

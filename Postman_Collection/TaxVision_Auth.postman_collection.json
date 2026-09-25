@@ -322,6 +322,337 @@
       "response": []
     },
     {
+      "name": "Reauthenticate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/reauthenticate",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "reauthenticate"
+          ]
+        },
+        "description": "Step-up: contraseña (+ código si hay TOTP). Devuelve un access token de la misma sesión y superficie con reauth_at (vale 10 min para [RequireRecentAuthentication]). Errores: 400 Auth.ReauthenticationFailed / Auth.MfaCodeRequired, 429 Auth.LockedOut.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"{{password}}\",\n  \"code\": null\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+              "  pm.environment.set(\"accessToken\", pm.response.json().accessToken);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Account (Landing)",
+      "description": "Sesión del Account del Landing. El refresh vive solo en la cookie __Host-tv-account-rt (HttpOnly, SameSite=Strict); los endpoints de sesión exigen Origin = {{LandingOrigin}} (dev http://localhost:4201). El access token del Account lleva surface=account y audiencia TaxVision.Account.",
+      "item": [
+        {
+          "name": "AccountHandoff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/handoff",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "handoff"
+              ]
+            },
+            "description": "CRM → vale de un solo uso (60 s) para abrir el Account con la MISMA sesión. Solo TenantAdmin con billing.view; un token del Account no puede pedirlo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().ticket) {",
+                  "  pm.environment.set(\"accountHandoffTicket\", pm.response.json().ticket);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionFromHandoff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/from-handoff",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "from-handoff"
+              ]
+            },
+            "description": "Landing canjea el vale del CRM: suma la cadena del Account al mismo sid y deja el refresh en la cookie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{accountHandoffTicket}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionFromLogin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/from-login",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "from-login"
+              ]
+            },
+            "description": "Entrada directa: canjea el vale del login central (discover-login/handoff). Si ya hay sesión abierta devuelve takeoverRequired + takeoverTicket.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{handoffTicket}}\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionTakeover",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/takeover",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "takeover"
+              ]
+            },
+            "description": "Confirma cerrar la otra sesión y abre el Account (solo vales pedidos desde el Account).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{takeoverTicket}}\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionRefresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/refresh",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "refresh"
+              ]
+            },
+            "description": "Rota el refresh de la cookie. 401 borra la cookie."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionLogout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/logout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "logout"
+              ]
+            },
+            "description": "Cierra el Account. Si se entró desde el CRM, el CRM sigue abierto; si era solo del Account, cierra la sesión entera."
+          },
+          "response": []
+        },
+        {
+          "name": "AccountGetMe",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accountAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "El único GET de Auth abierto al token del Account (además de reauthenticate)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Terms",
       "item": [
         {

@@ -12,7 +12,6 @@ using TaxVision.Subscription.Application.SeatAssignments.Commands.AssignSeatToUs
 using TaxVision.Subscription.Application.SeatAssignments.Commands.ReassignSeat;
 using TaxVision.Subscription.Application.SeatAssignments.Commands.ReleaseSeatFromUser;
 using TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
-using TaxVision.Subscription.Application.Seats.Commands.RenewSeat;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Queries;
 using Wolverine;
@@ -223,22 +222,6 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             new ReassignSeatCommand(tenantId, id, request.ToUserId, request.Reason, userId),
             ct
         );
-
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    /// <summary>Renovación manual (mientras no exista Billing).</summary>
-    [HttpPost("{id:guid}/renew")]
-    [HasPermission(SubscriptionPermissions.SeatsManage)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result>(new RenewSeatCommand(tenantId, id, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

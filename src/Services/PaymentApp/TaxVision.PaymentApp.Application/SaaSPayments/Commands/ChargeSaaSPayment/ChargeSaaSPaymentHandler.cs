@@ -74,7 +74,7 @@ public static class ChargeSaaSPaymentHandler
             ct
         );
 
-        await SaaSPaymentChargeOutcome.PublishResultAsync(payment, bus, correlation, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 

@@ -130,4 +130,13 @@ public static class AuthAuditAction
     // sin userId ni IP). TargetType="TenantSubscription". DetailsJson lleva el status y las sesiones revocadas.
     public const string SubscriptionAccessBlocked = "auth.subscription.access_blocked";
     public const string SubscriptionAccessRestored = "auth.subscription.access_restored";
+
+    // Account del Landing (TargetType="Session", TargetId=sid). DetailsJson lleva el método de entrada.
+    public const string AccountHandoffIssued = "auth.account.handoff_issued";
+    public const string AccountSessionStarted = "auth.account.session_started";
+    public const string AccountSessionEnded = "auth.account.session_ended";
+
+    // Step-up (reautenticación) antes de acciones sensibles del Account.
+    public const string Reauthenticated = "auth.reauth.succeeded";
+    public const string ReauthenticationFailed = "auth.reauth.failed";
 }

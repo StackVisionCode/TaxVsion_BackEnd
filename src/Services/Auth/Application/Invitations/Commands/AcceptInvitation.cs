@@ -50,8 +50,8 @@ public static class AcceptInvitationHandler
         CancellationToken ct
     )
     {
-        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is not null)
-            return Result.Failure<UserResponse>(InvitationAcceptThrottled);
+        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
+            return Result.Failure<UserResponse>(InvitationAcceptThrottled.WithRetryAfter(retryAfter));
         await throttler.RegisterInvitationAcceptAttemptAsync(request.IpAddress, ct);
 
         var tokenHash = tokens.Hash(command.InvitationToken);

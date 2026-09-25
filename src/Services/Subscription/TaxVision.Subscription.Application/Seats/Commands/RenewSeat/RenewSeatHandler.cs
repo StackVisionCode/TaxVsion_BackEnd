@@ -32,7 +32,7 @@ public static class RenewSeatHandler
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
-            "Seat {SeatId} manually renewed (requested by {UserId}).",
+            "Seat {SeatId} renewed without charge by platform support {UserId}.",
             seat.Id,
             command.RequestedByUserId
         );
@@ -52,7 +52,12 @@ public static class RenewSeatHandler
         if (renewal is null)
             return Result.Failure(new Error("Seat.RenewalNotFound", "Renewal was not scheduled."));
 
-        return seat.CompleteRenewal(renewal.Id, externalPaymentReference: "manual-admin-renewal", actorUserId, nowUtc);
+        return seat.CompleteRenewal(
+            renewal.Id,
+            externalPaymentReference: "platform-support-renewal",
+            actorUserId,
+            nowUtc
+        );
     }
 
     private static SubscriptionSeatRenewal? FindRenewalByKey(SubscriptionSeat seat, string idempotencyKey)

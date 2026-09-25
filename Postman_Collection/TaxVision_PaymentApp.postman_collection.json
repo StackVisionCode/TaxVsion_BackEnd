@@ -89,42 +89,6 @@
             "description": "Detalle de un SaaSPayment del tenant autenticado (scoped por TenantId). Requiere payment_app.saas_payment.read."
           },
           "response": []
-        },
-        {
-          "name": "RefundSaaSPayment",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refundAmountCents\": 500,\n  \"reason\": \"cliente solicito reembolso parcial\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/refund",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "payments-app",
-                "saas-payments",
-                "{{saaSPaymentId}}",
-                "refund"
-              ]
-            },
-            "description": "Reembolso administrativo, solo plataforma (un tenant nunca se reembolsa a si mismo). Requiere payment_app.saas_payment.refund. Falla si excede el invariante SumOfRefunds + newRefund <= Amount."
-          },
-          "response": []
         }
       ]
     },
@@ -415,6 +379,43 @@
               ]
             },
             "description": "Mismos filtros que SearchAllTenantsPayments, sin paginacion (capado a 5000 filas). Devuelve text/csv. Requiere payment_app.admin.cross_tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "RefundSaaSPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refundAmountCents\": 500,\n  \"reason\": \"cliente solicito reembolso parcial\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/admin/payments/{{saaSPaymentId}}/refund",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "admin",
+                "payments",
+                "{{saaSPaymentId}}",
+                "refund"
+              ]
+            },
+            "description": "Reembolso de soporte de un pago SaaS de cualquier tenant. Solo PlatformAdmin (payment_app.saas_payment.refund es PlatformOnly)."
           },
           "response": []
         }

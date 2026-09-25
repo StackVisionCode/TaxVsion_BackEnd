@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -116,7 +117,9 @@ public static class LoginHandler
         var retryAfter = await throttler.GetIpRetryAfterAsync(request.IpAddress, ct);
         if (retryAfter is not null)
         {
-            return Result.Failure<LoginResponse>(new Error("Auth.LockedOut", "Too many attempts. Try again later."));
+            return Result.Failure<LoginResponse>(
+                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter.Value)
+            );
         }
 
         // 2. Tenant. Respuesta genérica hacia el anónimo (anti-enumeración);
@@ -182,7 +185,9 @@ public static class LoginHandler
             );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.")
+                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.").WithRetryAfter(
+                    user.LockoutEndUtc!.Value - now
+                )
             );
         }
 
@@ -291,6 +296,7 @@ public static class LoginHandler
                     ["pwd"],
                     command.DeviceName,
                     mustEnrollMfa: true,
+                    SessionSurface.Workspace,
                     roles,
                     issuer,
                     sessions,
@@ -365,6 +371,7 @@ public static class LoginHandler
                         ["pwd"],
                         command.DeviceName,
                         mustEnrollMfa: false,
+                        SessionSurface.Workspace,
                         roles,
                         issuer,
                         sessions,
@@ -495,6 +502,7 @@ public static class LoginHandler
             ["pwd"],
             command.DeviceName,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             roles,
             issuer,
             sessions,

@@ -317,9 +317,8 @@ services:
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      # DEV: aceptar el tenantId del body en /auth/login (sin resolución por Host/subdominio).
-      # En prod queda true (appsettings.json). Development ya usa false.
-      TenantDomains__EnforceHostResolution: "false"
+      # Resolución por Host activa (appsettings.json): apex/www/app/client son hosts de sistema y /internal
+      # (M2M por la red interna) queda exento, así que ya no hace falta apagarla en prod.
       # RS256: unico servicio con la clave privada — firma los JWT y publica el
       # JWKS real en /auth/.well-known/jwks.json (con HS256 ese endpoint
       # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
@@ -363,6 +362,9 @@ services:
       # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:4200) y el
       # correo "Completa tu cuenta" salía con un link a localhost.
       Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # Orígenes del Landing que pueden usar la cookie del Account (chequeo de Origin anti-CSRF).
+      AccountSession__AllowedOrigins__0: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      AccountSession__AllowedOrigins__1: https://www.${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       Onboarding__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo

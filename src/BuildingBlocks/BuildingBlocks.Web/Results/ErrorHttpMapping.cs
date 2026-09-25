@@ -223,6 +223,8 @@ public static class ErrorHttpMapping
             or "Auth.HandoffInvalid"
             // El vale de takeover de sesión única es igual: portador, un solo uso; uno inválido es 401.
             or "Auth.TakeoverInvalid"
+            // Step-up vencido o ausente (RFC 9470): 401 para que el cliente pida la contraseña y reintente.
+            or "Auth.ReauthenticationRequired"
             or "Onboarding.SessionRequired"
             or "Onboarding.SessionInvalid"
             or "Onboarding.SessionExpired"
@@ -234,6 +236,11 @@ public static class ErrorHttpMapping
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
             or "Auth.StepUpRequired"
+            // Account del Landing: token de otra superficie, actor no admin, origen no permitido o MFA pendiente.
+            or "Auth.SurfaceNotAllowed"
+            or "Auth.AccountAdminOnly"
+            or "Auth.OriginNotAllowed"
+            or "Auth.AccountMfaSetupRequired"
             or "Subscription.Suspended"
             // Expiración/Dunning (Fase 2): acceso cortado porque la suscripción de la oficina cayó en
             // lapso. Es un bloqueo de autorización (como Tenant.Inactive/Subscription.Suspended), no un

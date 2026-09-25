@@ -4,9 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
-using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
-using TaxVision.PaymentApp.Application.SeatsCheckouts;
-using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
@@ -118,21 +116,26 @@ public sealed class PendingChargeReconciliationJob(
             case PaymentStatus.Succeeded:
                 var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
                 if (succeeded.IsSuccess)
-                    await PublishResultAsync(payment, bus, correlationId, ct);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct);
                 return succeeded.IsSuccess;
 
             case PaymentStatus.Failed
             or PaymentStatus.Cancelled:
+                var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(
+                    payment,
+                    nowUtc,
+                    failedAttemptRecorded: true
+                );
                 var failed = payment.MarkFailed(
                     outcome.FailureCode ?? "Provider.Unknown",
                     outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                    willRetry: false,
-                    nextRetryAtUtc: null,
+                    willRetry: nextRetryAtUtc is not null,
+                    nextRetryAtUtc,
                     Guid.Empty,
                     nowUtc
                 );
                 if (failed.IsSuccess)
-                    await PublishResultAsync(payment, bus, correlationId, ct);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct);
                 return failed.IsSuccess;
 
             default:
@@ -140,23 +143,5 @@ public sealed class PendingChargeReconciliationJob(
                 // se reintenta en la próxima corrida.
                 return false;
         }
-    }
-
-    // Despacha el resultado por tipo de pago — mismo criterio que el handler del webhook
-    // (ProcessProviderWebhookHandler): sin esto, un pago de asientos resuelto out-of-band contra
-    // el provider quedaba Succeeded pero nunca disparaba la provisión (SeatsCheckoutPaid).
-    private static async ValueTask PublishResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        string correlationId,
-        CancellationToken ct
-    )
-    {
-        if (payment.Type == SaaSPaymentType.OnboardingInitial)
-            await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
-        else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
-            await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
-        else if (payment.Type == SaaSPaymentType.SubscriptionRenewalCheckout)
-            await SubscriptionRenewalCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
     }
 }

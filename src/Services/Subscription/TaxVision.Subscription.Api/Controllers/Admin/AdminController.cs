@@ -3,14 +3,17 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.AddOns.Commands.RenewAddOn;
 using TaxVision.Subscription.Application.Admin.Queries;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForAllPlans;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
+using TaxVision.Subscription.Application.Seats.Commands.RenewSeat;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers.Admin;
@@ -84,6 +87,35 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> RecalculateEntitlements(Guid tenantId, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(tenantId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Extiende un período de seat sin cobro. Herramienta de soporte (compensación, error de
+    /// cobro ajeno al tenant); un tenant nunca se renueva gratis.</summary>
+    [HttpPost("tenants/{tenantId:guid}/seats/{seatId:guid}/renew")]
+    [HasPermission(SubscriptionPermissions.Renew)]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RenewSeat(Guid tenantId, Guid seatId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out _, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RenewSeatCommand(tenantId, seatId, userId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Extiende un período de add-on sin cobro. Mismo criterio que <see cref="RenewSeat"/>.</summary>
+    [HttpPost("tenants/{tenantId:guid}/addons/{tenantAddOnId:guid}/renew")]
+    [HasPermission(SubscriptionPermissions.Renew)]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RenewAddOn(Guid tenantId, Guid tenantAddOnId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out _, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RenewAddOnCommand(tenantId, tenantAddOnId, userId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

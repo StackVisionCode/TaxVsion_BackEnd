@@ -85,6 +85,11 @@ public static class ActorTypeAuthorizationExtensions
         // los 14 servicios ya llaman este método una vez desde su Program.cs, así PermissionPolicyProvider
         // (Layer 1) e IsOwnerOrHasManageHandler (Layer 3b, cuando aplica) lo resuelven sin wiring extra.
         builder.Services.AddSingleton<AuthorizationMetrics>();
-        return builder.AddMvcOptions(options => options.Filters.Add<ActorTypeAuthorizationFilter>());
+        return builder.AddMvcOptions(options =>
+        {
+            options.Filters.Add<ActorTypeAuthorizationFilter>();
+            // Un token con superficie (Account del Landing) solo entra donde se declara [AllowSurface].
+            options.Filters.Add<SurfaceAuthorizationFilter>();
+        });
     }
 }

@@ -1463,11 +1463,14 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Solo plataforma: un tenant nunca se reembolsa su propia suscripción.
             new Guid("a1000000-0000-0000-0000-000000000104"),
             PaymentAppSaaSPaymentRefund,
             "payment_app",
-            "Reembolsar un pago SaaS del propio tenant",
-            false
+            "Reembolsar un pago SaaS de cualquier tenant (soporte de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000105"),

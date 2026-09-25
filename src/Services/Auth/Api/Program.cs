@@ -92,6 +92,9 @@ builder.Services.AddScoped<IRateLimitAuditSink, AuthAuditLogRateLimitAuditSink>(
 builder.Services.Configure<BuildingBlocks.Web.Session.SessionDenylistOptions>(
     builder.Configuration.GetSection(BuildingBlocks.Web.Session.SessionDenylistOptions.SectionName)
 );
+
+// Orígenes del Landing que pueden leer/escribir la cookie del Account (chequeo de Origin, anti-CSRF).
+builder.Services.Configure<AccountSessionOptions>(builder.Configuration.GetSection(AccountSessionOptions.SectionName));
 builder.Services.Configure<PlatformBootstrapOptions>(
     builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName)
 );
@@ -175,6 +178,22 @@ builder.Services.AddRateLimiter(options =>
     // token es un secreto de alta entropía, así que esto solo frena floods, no fuerza bruta.
     options.AddPolicy(
         "auth-refresh",
+        context =>
+            TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // Sesión del Account del Landing (canjes de vale, refresh y logout por cookie): mismo perfil que el
+    // refresh del CRM; el secreto es de alta entropía, esto solo frena floods.
+    options.AddPolicy(
+        "auth-account-session",
         context =>
             TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 PartitionKey(context),
@@ -279,14 +298,12 @@ builder.Services.AddRateLimiter(options =>
             )
     );
 
-    // PayFlow (Fase 9) — endpoints anónimos que crean estado servidor pesado: POST /onboarding
-    // inserta un TenantOnboarding + emisión de OTP challenge, POST /onboarding/checkout dispara
-    // una llamada M2M a PaymentApp y una Stripe Checkout Session real (costo en el dashboard de
-    // Stripe). 5/min por IP corta la creación masiva sin bloquear a usuarios reales que reintentan
-    // por error. Los demás endpoints públicos ya tenían política, este era el gap real reportado
-    // por el audit F02.
+    // Endpoints anónimos que crean estado pesado, un cupo por acción: antes compartían 5/min por IP y un
+    // usuario que creaba, pagaba y reintentaba se quedaba sin cupo para cancelar. POST /onboarding inserta
+    // el onboarding (5/min corta la creación masiva); checkout y resume crean una Stripe Checkout Session
+    // real (10/min admite reintentos legítimos); cancelar no crea nada caro.
     options.AddPolicy(
-        "onboarding-checkout-create",
+        "onboarding-create",
         context =>
             TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 PartitionKey(context),
@@ -299,8 +316,36 @@ builder.Services.AddRateLimiter(options =>
             )
     );
 
+    options.AddPolicy(
+        "onboarding-checkout",
+        context =>
+            TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    options.AddPolicy(
+        "onboarding-cancel",
+        context =>
+            TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
     // El frontend POLLEA reconcile-payment cada pocos segundos al volver del hosted-checkout para
-    // detectar la confirmación del pago — NO puede compartir el bucket 5/min de checkout-create (lo
+    // detectar la confirmación del pago — NO puede compartir el bucket de checkout (lo
     // agota en ~20s y devuelve 429, rompiendo la confirmación y el reintento del pago). 60/min es
     // holgado para polling, mismo criterio que onboarding-status. Incidente prod 2026-09-16.
     options.AddPolicy(

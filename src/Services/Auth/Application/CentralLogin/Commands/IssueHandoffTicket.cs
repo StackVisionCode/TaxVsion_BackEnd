@@ -3,8 +3,8 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
-using TaxVision.Auth.Domain.Mfa;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
@@ -52,7 +52,8 @@ public static class IssueHandoffTicketHandler
 
         if (
             office.ChallengeRequired
-            && !await VerifyMfaAsync(office.UserId, command.MfaCode, mfa, totp, protector, tokens, ct)
+            && await MfaCodeVerifier.VerifyAsync(office.UserId, command.MfaCode, mfa, totp, protector, tokens, ct)
+                == MfaCodeCheck.Invalid
         )
         {
             await audit.AddAsync(
@@ -98,52 +99,5 @@ public static class IssueHandoffTicketHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(new HandoffTicketView(tenant.SubDomain, ticket));
-    }
-
-    /// <summary>
-    /// Verifica el segundo factor sin desafío: TOTP contra el secreto del método confirmado (stateless),
-    /// o un recovery code. Reusa las primitivas del verify de MFA existente; no cubre OTP por Email/SMS
-    /// (esos sí necesitan un desafío enviado en discover).
-    /// </summary>
-    private static async Task<bool> VerifyMfaAsync(
-        Guid userId,
-        string? code,
-        IMfaRepository mfa,
-        ITotpService totp,
-        ISecretProtector protector,
-        ISecureTokenService tokens,
-        CancellationToken ct
-    )
-    {
-        if (string.IsNullOrWhiteSpace(code))
-            return false;
-
-        var trimmed = code.Trim();
-        var now = DateTime.UtcNow;
-
-        var totpMethod = (await mfa.GetMethodsAsync(userId, ct)).FirstOrDefault(method =>
-            method.IsConfirmed && method.Type == MfaMethodType.Totp
-        );
-        if (
-            totpMethod?.SecretCiphertext is not null
-            && protector.TryUnprotect(totpMethod.SecretCiphertext, out var secret, out _)
-            && totp.ValidateCode(secret, trimmed, now)
-        )
-        {
-            totpMethod.MarkUsed();
-            return true;
-        }
-
-        var codeHash = tokens.Hash(trimmed);
-        var recovery = (await mfa.GetRecoveryCodesAsync(userId, ct)).FirstOrDefault(recoveryCode =>
-            recoveryCode.IsUsable && string.Equals(recoveryCode.CodeHash, codeHash, StringComparison.Ordinal)
-        );
-        if (recovery is not null)
-        {
-            recovery.MarkUsed();
-            return true;
-        }
-
-        return false;
     }
 }

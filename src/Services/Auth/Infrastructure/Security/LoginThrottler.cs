@@ -40,7 +40,9 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
     private const int MaxPasswordResetRequestsPerIp = 10;
     private const int MaxInvitationAcceptAttemptsPerIp = 20;
     private const int MaxOnboardingChallengesPerEmailPerHour = 5;
-    private const int MaxOnboardingChallengesPerIpPerHour = 10;
+
+    // Por IP de oficina (NAT): varias altas legítimas comparten IP. El abuso real lo frena el tope por email.
+    private const int MaxOnboardingChallengesPerIpPerHour = 30;
     private static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan OtpResendWindow = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan PasswordResetWindow = TimeSpan.FromHours(1);
@@ -54,8 +56,8 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         if (string.IsNullOrWhiteSpace(ipAddress))
             return null;
 
-        var count = await GetCountAsync(FailureKey(ipAddress));
-        return count >= MaxIpFailures ? FailureWindow : null;
+        var key = FailureKey(ipAddress);
+        return await GetCountAsync(key) >= MaxIpFailures ? await RemainingAsync(key, FailureWindow) : null;
     }
 
     public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default) =>
@@ -75,18 +77,19 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         CancellationToken ct = default
     )
     {
-        if (await GetCountAsync(PasswordResetCooldownKey(email)) > 0)
-            return PasswordResetCooldown;
+        var cooldownKey = PasswordResetCooldownKey(email);
+        if (await GetCountAsync(cooldownKey) > 0)
+            return await RemainingAsync(cooldownKey, PasswordResetCooldown);
 
-        var emailCount = await GetCountAsync(PasswordResetEmailKey(email));
-        if (emailCount >= MaxPasswordResetRequestsPerEmail)
-            return PasswordResetWindow;
+        var emailKey = PasswordResetEmailKey(email);
+        if (await GetCountAsync(emailKey) >= MaxPasswordResetRequestsPerEmail)
+            return await RemainingAsync(emailKey, PasswordResetWindow);
 
         if (!string.IsNullOrWhiteSpace(ipAddress))
         {
-            var ipCount = await GetCountAsync(PasswordResetIpKey(ipAddress));
-            if (ipCount >= MaxPasswordResetRequestsPerIp)
-                return PasswordResetWindow;
+            var ipKey = PasswordResetIpKey(ipAddress);
+            if (await GetCountAsync(ipKey) >= MaxPasswordResetRequestsPerIp)
+                return await RemainingAsync(ipKey, PasswordResetWindow);
         }
 
         return null;
@@ -108,8 +111,10 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         if (string.IsNullOrWhiteSpace(ipAddress))
             return null;
 
-        var count = await GetCountAsync(InvitationAcceptKey(ipAddress));
-        return count >= MaxInvitationAcceptAttemptsPerIp ? InvitationAcceptWindow : null;
+        var key = InvitationAcceptKey(ipAddress);
+        return await GetCountAsync(key) >= MaxInvitationAcceptAttemptsPerIp
+            ? await RemainingAsync(key, InvitationAcceptWindow)
+            : null;
     }
 
     public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
@@ -119,6 +124,10 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
 
     private async Task<long> GetCountAsync(RateCounterKey key) =>
         (long)await redis.GetDatabase().StringGetAsync(key.Value);
+
+    // La ventana es fija: lo que falta es el TTL de la clave, no la ventana completa.
+    private async Task<TimeSpan> RemainingAsync(RateCounterKey key, TimeSpan window) =>
+        await redis.GetDatabase().KeyTimeToLiveAsync(key.Value) ?? window;
 
     private static RateCounterKey FailureKey(string ipAddress) => RateCounterKey.From($"auth:failip:{ipAddress}");
 
@@ -142,30 +151,24 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         CancellationToken ct = default
     )
     {
-        var emailCount = await rateCounter.IncrementAndGetAsync(
-            OnboardingChallengeEmailKey(email),
-            OnboardingChallengeCreationWindow,
-            ct
-        );
+        var emailKey = OnboardingChallengeEmailKey(email);
+        var emailCount = await rateCounter.IncrementAndGetAsync(emailKey, OnboardingChallengeCreationWindow, ct);
         if (emailCount > MaxOnboardingChallengesPerEmailPerHour)
             return Result.Failure(
                 new Error(
                     "Onboarding.OtpRateLimited",
                     "Too many verification requests for this email. Try again later."
-                )
+                ).WithRetryAfter(await RemainingAsync(emailKey, OnboardingChallengeCreationWindow))
             );
 
-        var ipCount = await rateCounter.IncrementAndGetAsync(
-            OnboardingChallengeIpKey(ipAddress),
-            OnboardingChallengeCreationWindow,
-            ct
-        );
+        var ipKey = OnboardingChallengeIpKey(ipAddress);
+        var ipCount = await rateCounter.IncrementAndGetAsync(ipKey, OnboardingChallengeCreationWindow, ct);
         if (ipCount > MaxOnboardingChallengesPerIpPerHour)
             return Result.Failure(
                 new Error(
                     "Onboarding.OtpRateLimited",
                     "Too many verification requests from this address. Try again later."
-                )
+                ).WithRetryAfter(await RemainingAsync(ipKey, OnboardingChallengeCreationWindow))
             );
 
         return Result.Success();
@@ -174,10 +177,11 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
     public async Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default)
     {
         var key = OnboardingResendKey(challengeId);
-        var alreadySentRecently = await GetCountAsync(key) > 0;
-        if (alreadySentRecently)
+        if (await GetCountAsync(key) > 0)
             return Result.Failure(
-                new Error("Onboarding.ResendCooldown", "Please wait before requesting another code.")
+                new Error("Onboarding.ResendCooldown", "Please wait before requesting another code.").WithRetryAfter(
+                    await RemainingAsync(key, OnboardingResendCooldown)
+                )
             );
 
         await rateCounter.IncrementAndGetAsync(key, OnboardingResendCooldown, ct);

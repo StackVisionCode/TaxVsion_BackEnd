@@ -931,6 +931,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SessionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Surface")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2605,15 +2610,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000104"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "payment_app.saas_payment.refund",
-                            Description = "Reembolsar un pago SaaS del propio tenant",
-                            IsAssignableByTenant = true,
+                            Description = "Reembolsar un pago SaaS de cualquier tenant (soporte de plataforma)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {

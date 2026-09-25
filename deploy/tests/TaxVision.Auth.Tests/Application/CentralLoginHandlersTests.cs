@@ -116,12 +116,13 @@ public sealed class CentralLoginHandlersTests
     {
         var world = new World();
         world.AddOffice("acme", UserActorType.TenantEmployee);
-        world.Throttler.RetryAfter = TimeSpan.FromMinutes(1);
+        world.Throttler.RetryAfter = TimeSpan.FromSeconds(42.2);
 
         var result = await Discover(world, "user@example.com", GoodPassword);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Auth.LockedOut", result.Error.Code);
+        Assert.Equal(43, result.Error.RetryAfterSeconds);
     }
 
     // --- handoff ---
@@ -493,8 +494,19 @@ public sealed class CentralLoginHandlersTests
             IReadOnlyCollection<string> roles,
             IReadOnlyCollection<string> authMethods,
             string? deviceName,
+            SessionSurface surface,
             CancellationToken ct = default
         ) => Task.FromResult(new IssuedTokens("access", "refresh", 900, Guid.NewGuid()));
+
+        public Task<IssuedTokens> JoinSessionAsync(
+            UserSession session,
+            User user,
+            string effectiveTimeZoneId,
+            IReadOnlyCollection<string> roles,
+            IReadOnlyCollection<string> authMethods,
+            SessionSurface surface,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<IssuedTokens> RotateAsync(
             RefreshToken currentToken,

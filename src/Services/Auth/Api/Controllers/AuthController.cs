@@ -14,6 +14,7 @@ using TaxVision.Auth.Application.Sessions.Commands;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
+using TaxVision.Auth.Domain.RefreshTokens;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -179,6 +180,7 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("auth.f.me_read")]
     [ProducesResponseType<MeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Me(CancellationToken ct)
@@ -187,6 +189,39 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<MeResponse>>(new GetMeQuery(userId), ct);
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ReauthenticateRequest(string Password, string? Code = null);
+
+    /// <summary>
+    /// Step-up: confirma la contraseña (y el código si hay TOTP) y devuelve un access token de la misma
+    /// sesión y superficie con <c>reauth_at</c>. Lo exigen las acciones con <c>[RequireRecentAuthentication]</c>.
+    /// Contraseña o código incorrectos responden 400: la sesión sigue siendo válida.
+    /// </summary>
+    [HttpPost("reauthenticate")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("auth.b.reauthenticate")]
+    [ProducesResponseType<ReauthenticateResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Reauthenticate(ReauthenticateRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId) || !User.TryGetSessionId(out var sessionId))
+            return Unauthorized();
+
+        var surface = User.GetSurface() == AccessSurface.Account ? SessionSurface.Account : SessionSurface.Workspace;
+        var result = await bus.InvokeAsync<Result<ReauthenticateResponse>>(
+            new ReauthenticateCommand(userId, sessionId, surface, request.Password, request.Code),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

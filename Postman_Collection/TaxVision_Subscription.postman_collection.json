@@ -773,32 +773,6 @@
             "description": "Reasigna un seat directamente de un usuario a otro (permiso: seats.manage), sujeto a AllowSeatReassignment/cooldown."
           },
           "response": []
-        },
-        {
-          "name": "RenewSeat",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/seats/{{seatId}}/renew",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "seats",
-                "{{seatId}}",
-                "renew"
-              ]
-            },
-            "description": "Renovacion manual de un seat mientras no exista Billing (permiso: seats.manage)."
-          },
-          "response": []
         }
       ]
     },
@@ -947,32 +921,6 @@
               }
             },
             "description": "Cancela un add-on del tenant (permiso: addons.manage)."
-          },
-          "response": []
-        },
-        {
-          "name": "RenewAddOn",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/addons/{{addOnId}}/renew",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "addons",
-                "{{addOnId}}",
-                "renew"
-              ]
-            },
-            "description": "Renovacion manual de un add-on mientras no exista Billing (permiso: addons.manage)."
           },
           "response": []
         }
@@ -1462,6 +1410,66 @@
               ]
             },
             "description": "Recalculo masivo: encola el recalculo de entitlements de TODOS los tenants del plan y republica TenantEntitlementsChanged. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 202."
+          },
+          "response": []
+        },
+        {
+          "name": "RenewSeat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/seats/{{seatId}}/renew",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "tenants",
+                "{{tenantId}}",
+                "seats",
+                "{{seatId}}",
+                "renew"
+              ]
+            },
+            "description": "Extiende sin cobro el período de un seat. Solo PlatformAdmin (subscription.renew): un tenant nunca se renueva gratis."
+          },
+          "response": []
+        },
+        {
+          "name": "RenewAddOn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/addons/{{addOnId}}/renew",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "tenants",
+                "{{tenantId}}",
+                "addons",
+                "{{addOnId}}",
+                "renew"
+              ]
+            },
+            "description": "Extiende sin cobro el período de un add-on. Solo PlatformAdmin (subscription.renew)."
           },
           "response": []
         }

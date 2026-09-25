@@ -11,6 +11,40 @@ namespace TaxVision.Auth.Tests.Domain;
 /// </summary>
 public sealed class PermissionCatalogTests
 {
+    [Fact]
+    public void Saas_payment_refund_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PaymentAppSaaSPaymentRefund);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(
+            new[] { UserActorType.PlatformAdmin },
+            Permission.InferAllowedActorTypes(false, definition.PlatformOnly)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
+    // RolePermissionGuard solo lee IsAssignableByTenant: esta regla es la que impide que un TA meta
+    // una permission de plataforma o peligrosa en un custom role.
+    [Fact]
+    public void Platform_only_and_dangerous_permissions_are_never_assignable_by_a_tenant()
+    {
+        var violations = PermissionCatalog
+            .All.Where(d => (d.PlatformOnly || d.IsDangerous) && d.IsAssignableByTenant)
+            .Select(d => d.Code)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
     [Theory]
     [InlineData(PermissionCatalog.BillingView)]
     [InlineData(PermissionCatalog.BillingManage)]

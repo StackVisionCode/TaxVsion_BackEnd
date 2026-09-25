@@ -157,6 +157,46 @@ public sealed class TenantHostResolutionMiddlewareTests
         );
     }
 
+    [Theory]
+    [InlineData("taxproffice.com")]
+    [InlineData("www.taxproffice.com")]
+    [InlineData("app.taxproffice.com")]
+    [InlineData("client.taxproffice.com")]
+    public async Task Platform_system_hosts_pass_without_lookup_or_audit_even_when_enforced(string host)
+    {
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString(host);
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Null(resolver.LastRequestedHost);
+        Assert.Null(tenantContext.ResolvedTenantId);
+        Assert.Empty(audit.Logs);
+    }
+
+    [Fact]
+    public async Task Internal_m2m_calls_skip_host_resolution_even_when_enforced()
+    {
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("auth-api:8080");
+        context.Request.Path = $"/internal/tenants/{Guid.NewGuid()}/users/{Guid.NewGuid()}/permissions-snapshot";
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Null(resolver.LastRequestedHost);
+        Assert.Empty(audit.Logs);
+    }
+
     [Fact]
     public async Task Unknown_host_falls_through_when_enforcement_disabled_but_is_still_audited()
     {
