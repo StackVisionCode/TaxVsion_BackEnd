@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -60,6 +61,15 @@ public static class DependencyInjection
         services.AddDbContext<TasksDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<TasksDbContext>());
         services.AddScoped<ITaskRepository, TaskRepository>();
+
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre TasksDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<TasksDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.TasksPlatformTokenProvider>(configuration);
+        services
+            .AddOptions<TasksVisibilityOptions>()
+            .Bind(configuration.GetSection(TasksVisibilityOptions.SectionName));
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
         services.AddScoped<ITaskLabelRepository, TaskLabelRepository>();
         services.AddScoped<ITaskSeriesRepository, TaskSeriesRepository>();

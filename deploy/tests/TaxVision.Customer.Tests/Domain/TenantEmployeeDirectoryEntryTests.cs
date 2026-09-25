@@ -51,4 +51,25 @@ public sealed class TenantEmployeeDirectoryEntryTests
 
         Assert.True(entry.IsEligiblePreparer);
     }
+
+    [Fact]
+    public void Offboarded_TenantEmployee_is_not_an_eligible_preparer()
+    {
+        var entry = TenantEmployeeDirectoryEntry.Create(UserId, TenantId, "TenantEmployee", isActive: true);
+        entry.MarkOffboarded();
+
+        Assert.True(entry.IsOffboarded);
+        Assert.False(entry.IsActive);
+        Assert.False(entry.IsEligiblePreparer);
+    }
+
+    [Fact]
+    public void Offboard_is_terminal_a_reactivation_cannot_bring_the_employee_back()
+    {
+        var entry = TenantEmployeeDirectoryEntry.Create(UserId, TenantId, "TenantEmployee", isActive: true);
+        entry.MarkOffboarded();
+        entry.MarkActive();
+
+        Assert.False(entry.IsEligiblePreparer);
+    }
 }

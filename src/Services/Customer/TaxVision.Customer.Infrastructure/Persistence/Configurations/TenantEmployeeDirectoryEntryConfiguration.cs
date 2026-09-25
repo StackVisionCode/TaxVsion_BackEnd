@@ -16,6 +16,8 @@ internal sealed class TenantEmployeeDirectoryEntryConfiguration : IEntityTypeCon
         builder.Property(e => e.TenantId).IsRequired();
         builder.Property(e => e.ActorType).IsRequired().HasMaxLength(50);
         builder.Property(e => e.IsActive).IsRequired();
+        builder.Property(e => e.IsOffboarded).IsRequired();
+        builder.Property(e => e.OffboardedAtUtc);
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
 
         builder.HasIndex(e => new { e.TenantId, e.IsActive });

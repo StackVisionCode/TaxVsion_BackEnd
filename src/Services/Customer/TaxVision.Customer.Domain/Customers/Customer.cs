@@ -2,6 +2,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Customer.Domain.Addresses;
+using TaxVision.Customer.Domain.Assignments;
 using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using TaxVision.Customer.Domain.FiscalProfiles;
@@ -14,6 +15,7 @@ public sealed class Customer : TenantEntity
     private readonly List<CustomerAddress> _addresses = [];
     private readonly List<CustomerContactPoint> _contactPoints = [];
     private readonly List<CustomerRelation> _relations = [];
+    private readonly List<CustomerAssignment> _assignments = [];
 
     private Customer() { }
 
@@ -41,6 +43,7 @@ public sealed class Customer : TenantEntity
     public IReadOnlyCollection<CustomerAddress> Addresses => _addresses.AsReadOnly();
     public IReadOnlyCollection<CustomerContactPoint> ContactPoints => _contactPoints.AsReadOnly();
     public IReadOnlyCollection<CustomerRelation> Relations => _relations.AsReadOnly();
+    public IReadOnlyCollection<CustomerAssignment> Assignments => _assignments.AsReadOnly();
 
     public static Result<Customer> Register(
         Guid tenantId,
@@ -456,26 +459,95 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
-    // ============== Preparer asignado ==============
+    // ============== Asignación de staff (acceso por cliente, M:N) + preparador primary ==============
 
+    /// <summary>Fija el preparador PRIMARY (responsable): asegura su fila de asignación, degrada a cualquier
+    /// otro primary y denormaliza en <c>AssignedPreparerUserId</c> (para 8879/offboard/chat).</summary>
     public Result AssignPreparer(Guid preparerUserId, Guid byUserId)
     {
         EnsureActive();
         if (preparerUserId == Guid.Empty)
             return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
 
+        foreach (var other in _assignments.Where(a => a.IsPrimary && a.UserId != preparerUserId))
+            other.SetPrimary(false);
+
+        var existing = _assignments.FirstOrDefault(a => a.UserId == preparerUserId);
+        if (existing is null)
+            _assignments.Add(CustomerAssignment.Create(TenantId, Id, preparerUserId, isPrimary: true, byUserId));
+        else
+            existing.SetPrimary(true);
+
         AssignedPreparerUserId = preparerUserId;
         Touch(byUserId);
         return Result.Success();
     }
 
+    /// <summary>Traspasa el preparador PRIMARY de un empleado que se retira a otro: QUITA la fila del
+    /// saliente (no la deja degradada, no debe conservar acceso) y deja al nuevo como primary. Para el
+    /// offboard con sucesor.</summary>
+    public Result HandOverPreparer(Guid fromUserId, Guid toUserId, Guid byUserId)
+    {
+        EnsureActive();
+        if (toUserId == Guid.Empty)
+            return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
+
+        _assignments.RemoveAll(a => a.UserId == fromUserId);
+
+        foreach (var other in _assignments.Where(a => a.IsPrimary && a.UserId != toUserId))
+            other.SetPrimary(false);
+
+        var existing = _assignments.FirstOrDefault(a => a.UserId == toUserId);
+        if (existing is null)
+            _assignments.Add(CustomerAssignment.Create(TenantId, Id, toUserId, isPrimary: true, byUserId));
+        else
+            existing.SetPrimary(true);
+
+        AssignedPreparerUserId = toUserId;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    /// <summary>Quita al preparador PRIMARY: elimina su fila y limpia la denormalización. Los accesos
+    /// adicionales (no-primary) quedan intactos.</summary>
     public Result UnassignPreparer(Guid byUserId)
     {
         EnsureActive();
         if (AssignedPreparerUserId is null)
             return Result.Failure(new Error("Customer.NoPreparerAssigned", "Customer has no preparer assigned."));
 
+        _assignments.RemoveAll(a => a.UserId == AssignedPreparerUserId);
         AssignedPreparerUserId = null;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    /// <summary>Da acceso a un miembro del staff SIN hacerlo primary (asignación adicional). Idempotente.</summary>
+    public Result GrantAccess(Guid userId, Guid byUserId)
+    {
+        EnsureActive();
+        if (userId == Guid.Empty)
+            return Result.Failure(new Error("Customer.InvalidAssignee", "UserId is required."));
+
+        if (_assignments.All(a => a.UserId != userId))
+            _assignments.Add(CustomerAssignment.Create(TenantId, Id, userId, isPrimary: false, byUserId));
+
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    /// <summary>Revoca el acceso de un miembro del staff. Si era el primary, limpia la denormalización.</summary>
+    public Result RevokeAccess(Guid userId, Guid byUserId)
+    {
+        EnsureActive();
+        var existing = _assignments.FirstOrDefault(a => a.UserId == userId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.NotAssigned", "User is not assigned to this customer."));
+
+        var wasPrimary = existing.IsPrimary;
+        _assignments.Remove(existing);
+        if (wasPrimary)
+            AssignedPreparerUserId = null;
         Touch(byUserId);
         return Result.Success();
     }

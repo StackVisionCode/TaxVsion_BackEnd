@@ -48,8 +48,9 @@ public sealed class InternalCustomersController(IMessageBus bus) : ControllerBas
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        // M2M/interno: sin restricción por asignación (CanViewAll: true) — es una operación de sistema.
         var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(tenantId, term, status, page, size),
+            new SearchCustomersQuery(tenantId, term, status, page, size, Guid.Empty, CanViewAll: true),
             ct
         );
         return Ok(result);
@@ -83,6 +84,32 @@ public sealed class InternalCustomersController(IMessageBus bus) : ControllerBas
 
         var result = await bus.InvokeAsync<PagedResult<CustomerReconciliationResponse>>(
             new ReconciliationCustomersQuery(status, page, size),
+            ct
+        );
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Reconciliación CROSS-TENANT del set de asignados por cliente (P2): siembra las proyecciones de
+    /// visibilidad por-cliente de los otros microservicios contra la fuente autoritativa. Solo clientes CON
+    /// asignaciones; solo el token de la PlatformTenant. Nunca expuesto en el Gateway público.
+    /// </summary>
+    [HttpGet("assignments/reconciliation")]
+    [RateLimitExempt(
+        "M2M interno de reconciliación de asignaciones (actor_type=Service, solo PlatformTenant), nunca expuesto en el Gateway público."
+    )]
+    [ProducesResponseType<PagedResult<CustomerAssignmentsReconciliationResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ReconcileAssignments(
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 200,
+        CancellationToken ct = default
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var result = await bus.InvokeAsync<PagedResult<CustomerAssignmentsReconciliationResponse>>(
+            new ReconcileAssignmentsQuery(page, size),
             ct
         );
         return Ok(result);

@@ -22,6 +22,34 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.Domain.Backfill.TenantBackfillState", b =>
                 {
                     b.Property<Guid>("TenantId")

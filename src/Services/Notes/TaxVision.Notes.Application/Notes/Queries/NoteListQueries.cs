@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using Microsoft.Extensions.Options;
 using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 
@@ -19,7 +20,10 @@ public sealed record ListNotesByReferenceQuery(
     Guid ActorUserId,
     bool ActorHasViewAll,
     int Page,
-    int Size
+    int Size,
+    // Visibilidad por asignación (P2): si CanViewAllCustomers es false y el flag está encendido, las notas
+    // con target=Customer se acotan a los clientes asignados al actor. Ortogonal a ActorHasViewAll (notes.view_all).
+    bool CanViewAllCustomers = true
 );
 
 public static class ListNotesByReferenceHandler
@@ -27,9 +31,11 @@ public static class ListNotesByReferenceHandler
     public static async Task<PagedResult<NoteResponse>> Handle(
         ListNotesByReferenceQuery query,
         INoteRepository notes,
+        IOptions<NotesVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
+        var assignedTo = visibility.Value.Enabled && !query.CanViewAllCustomers ? query.ActorUserId : (Guid?)null;
         var result = await notes.ListByReferenceAsync(
             query.TenantId,
             query.TargetType,
@@ -38,6 +44,7 @@ public static class ListNotesByReferenceHandler
             query.ActorHasViewAll,
             query.Page,
             query.Size,
+            assignedTo,
             ct
         );
         return ToResponse(result);
@@ -69,7 +76,9 @@ public sealed record SearchNotesQuery(
     Guid ActorUserId,
     bool ActorHasViewAll,
     int Page,
-    int Size
+    int Size,
+    // Visibilidad por asignación (P2): ver ListNotesByReferenceQuery.
+    bool CanViewAllCustomers = true
 );
 
 /// <summary>Categoría H (03_Plan_De_Fases.md) — búsqueda simple sobre <c>ContentPreview</c>, sin full-text en v1.</summary>
@@ -78,9 +87,11 @@ public static class SearchNotesHandler
     public static async Task<PagedResult<NoteResponse>> Handle(
         SearchNotesQuery query,
         INoteRepository notes,
+        IOptions<NotesVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
+        var assignedTo = visibility.Value.Enabled && !query.CanViewAllCustomers ? query.ActorUserId : (Guid?)null;
         var result = await notes.SearchAsync(
             query.TenantId,
             query.Term,
@@ -88,6 +99,7 @@ public static class SearchNotesHandler
             query.ActorHasViewAll,
             query.Page,
             query.Size,
+            assignedTo,
             ct
         );
         return ListNotesByReferenceHandler.ToResponse(result);

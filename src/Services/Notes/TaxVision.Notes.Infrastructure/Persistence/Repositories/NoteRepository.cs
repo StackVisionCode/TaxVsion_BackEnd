@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Domain.Notes;
@@ -32,6 +33,7 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -41,7 +43,7 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
         // despachar localmente esta query (bug real encontrado en verificación E2E en vivo, Fase 10:
         // sin este fix, ListByReferenceAsync/ListForAuthorAsync/SearchAsync/ListClientVisibleAsync
         // devolvían siempre 0 filas porque el filtro fail-closed comparaba contra Guid.Empty).
-        var query = db
+        var baseQuery = db
             .Notes.IgnoreQueryFilters()
             .Where(n =>
                 n.TenantId == tenantId
@@ -49,7 +51,9 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
                 && n.Reference.TargetType == targetType
                 && n.Reference.TargetId == targetId
                 && (n.Visibility != NoteVisibility.Private || n.CreatedByUserId == actorUserId || actorHasViewAll)
-            )
+            );
+
+        var query = ApplyAssignmentFilter(baseQuery, tenantId, assignedToUserId)
             .OrderByDescending(n => n.IsPinned)
             .ThenByDescending(n => n.UpdatedAtUtc);
 
@@ -81,22 +85,50 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
         // IgnoreQueryFilters(): ver comentario en ListByReferenceAsync.
-        var query = db
+        var baseQuery = db
             .Notes.IgnoreQueryFilters()
             .Where(n =>
                 n.TenantId == tenantId
                 && n.Status != NoteStatus.Deleted
                 && n.Content.PlainTextPreview.Contains(term)
                 && (n.Visibility != NoteVisibility.Private || n.CreatedByUserId == actorUserId || actorHasViewAll)
-            )
-            .OrderByDescending(n => n.UpdatedAtUtc);
+            );
+
+        var query = ApplyAssignmentFilter(baseQuery, tenantId, assignedToUserId).OrderByDescending(n => n.UpdatedAtUtc);
 
         return await ToPagedResultAsync(query, page, size, ct);
     }
+
+    // Visibilidad por asignación (P2): una nota cuyo target es un Customer solo es visible si ese cliente
+    // está asignado al actor en la proyección local. Las notas de OTROS targets (Task/Appointment/None/…)
+    // no se restringen — el eje es cliente. IgnoreQueryFilters + tenant explícito en el subquery (scope de
+    // Wolverine sin tenant ambiental). null = sin restricción (customers.view_all / flag off).
+    private IQueryable<Note> ApplyAssignmentFilter(IQueryable<Note> query, Guid tenantId, Guid? assignedToUserId)
+    {
+        if (assignedToUserId is not { } assignee)
+            return query;
+        return query.Where(n =>
+            n.Reference.TargetType != NoteTargetType.Customer
+            || db.Set<CustomerAssignmentProjection>()
+                .IgnoreQueryFilters()
+                .Any(a => a.TenantId == tenantId && a.UserId == assignee && a.CustomerId == n.Reference.TargetId)
+        );
+    }
+
+    public Task<bool> IsCustomerAssignedAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid actorUserId,
+        CancellationToken ct = default
+    ) =>
+        db.Set<CustomerAssignmentProjection>()
+            .IgnoreQueryFilters()
+            .AnyAsync(a => a.TenantId == tenantId && a.UserId == actorUserId && a.CustomerId == customerId, ct);
 
     public async Task<PagedResult<Note>> ListClientVisibleAsync(
         Guid tenantId,

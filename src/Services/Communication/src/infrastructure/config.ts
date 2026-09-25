@@ -147,6 +147,18 @@ const rawEnv = z
       .default('true')
       .transform((value) => value === 'true'),
     COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
+
+    // Visibilidad por asignacion (P2) — flag GLOBAL de despliegue, espejo del
+    // `<Svc>:AssignmentVisibility:Enabled` de los servicios .NET: con ON, un staff
+    // que NO ve todo (customers.view_all / PlatformAdmin) solo ve en el picker y en
+    // el gate de chat los clientes que tiene ASIGNADOS, en TODOS los tenants. Default
+    // OFF para rollout seguro (deploy -> reconciliacion siembra -> encender). El
+    // setting por-tenant `restrictCustomerChatToAssignedPreparer` sigue vigente como
+    // control independiente (OR): un tenant puede restringir aunque el flag global este OFF.
+    COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .parse(process.env);
 
@@ -305,6 +317,9 @@ export const config = {
   customerReconcile: {
     enabled: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_ENABLED,
     intervalHours: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS,
+  },
+  assignmentVisibility: {
+    enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,
   },
 } as const;
 

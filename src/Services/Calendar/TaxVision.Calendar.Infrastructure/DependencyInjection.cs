@@ -1,4 +1,5 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -45,6 +46,15 @@ public static class DependencyInjection
         services.AddDbContext<CalendarDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CalendarDbContext>());
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre CalendarDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<CalendarDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.CalendarPlatformTokenProvider>(configuration);
+        services
+            .AddOptions<CalendarVisibilityOptions>()
+            .Bind(configuration.GetSection(CalendarVisibilityOptions.SectionName));
         services.AddScoped<ICalendarFeedTokenRepository, CalendarFeedTokenRepository>();
         services.AddScoped<ICalendarFeedCache, CalendarFeedCache>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();

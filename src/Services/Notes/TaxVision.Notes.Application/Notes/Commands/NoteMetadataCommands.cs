@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Notes.Application.Notes.Abstractions;
+using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Domain.ValueObjects;
 using Wolverine;
@@ -20,7 +21,8 @@ public sealed record ChangeNoteVisibilityCommand(
     Guid TenantId,
     Guid NoteId,
     Guid ActorUserId,
-    NoteVisibility NewVisibility
+    NoteVisibility NewVisibility,
+    bool ActorHasViewAll
 );
 
 public static class ChangeNoteVisibilityHandler
@@ -28,6 +30,7 @@ public static class ChangeNoteVisibilityHandler
     public static async Task<Result<NoteResponse>> Handle(
         ChangeNoteVisibilityCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -37,7 +40,15 @@ public static class ChangeNoteVisibilityHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var result = note.ChangeVisibility(command.NewVisibility, command.ActorUserId);
@@ -50,13 +61,14 @@ public static class ChangeNoteVisibilityHandler
     }
 }
 
-public sealed record PinNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId);
+public sealed record PinNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, bool ActorHasViewAll);
 
 public static class PinNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         PinNoteCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -66,7 +78,15 @@ public static class PinNoteHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var result = note.Pin(command.ActorUserId);
@@ -79,13 +99,14 @@ public static class PinNoteHandler
     }
 }
 
-public sealed record UnpinNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId);
+public sealed record UnpinNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, bool ActorHasViewAll);
 
 public static class UnpinNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         UnpinNoteCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -95,7 +116,15 @@ public static class UnpinNoteHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var result = note.Unpin(command.ActorUserId);
@@ -108,13 +137,20 @@ public static class UnpinNoteHandler
     }
 }
 
-public sealed record SetNoteColorCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, NoteColorKind? ColorKind);
+public sealed record SetNoteColorCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    NoteColorKind? ColorKind,
+    bool ActorHasViewAll
+);
 
 public static class SetNoteColorHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         SetNoteColorCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -124,7 +160,15 @@ public static class SetNoteColorHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         NoteColor? color = null;

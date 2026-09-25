@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -54,6 +55,10 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     // Marca de backfill ya corrido, una fila por tenant descubierto.
     public DbSet<TenantBackfillState> TenantBackfillStates => Set<TenantBackfillState>();
 
+    // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad de tareas.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     /// <summary>
     /// SQL Server devuelve <c>datetime2</c> con <see cref="DateTimeKind.Unspecified"/>, así que una
     /// fecha guardada en UTC vuelve sin serlo. El dominio sí lo exige —<c>RecurrenceRule.NextAfter</c>
@@ -79,6 +84,7 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

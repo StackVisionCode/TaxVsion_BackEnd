@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.NotesIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Notes.Application.Notes.Abstractions;
+using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using Wolverine;
 
@@ -22,7 +23,8 @@ public sealed record AttachFileToNoteCommand(
     Guid CloudStorageFileId,
     string DisplayName,
     string ContentType,
-    long SizeBytes
+    long SizeBytes,
+    bool ActorHasViewAll
 );
 
 public static class AttachFileToNoteHandler
@@ -30,6 +32,7 @@ public static class AttachFileToNoteHandler
     public static async Task<Result<NoteResponse>> Handle(
         AttachFileToNoteCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -37,7 +40,15 @@ public static class AttachFileToNoteHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var result = note.AttachFile(
@@ -54,13 +65,20 @@ public static class AttachFileToNoteHandler
     }
 }
 
-public sealed record DetachFileFromNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, Guid CloudStorageFileId);
+public sealed record DetachFileFromNoteCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    Guid CloudStorageFileId,
+    bool ActorHasViewAll
+);
 
 public static class DetachFileFromNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         DetachFileFromNoteCommand command,
         INoteRepository notes,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -70,7 +88,15 @@ public static class DetachFileFromNoteHandler
         var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var result = note.DetachFile(command.CloudStorageFileId);

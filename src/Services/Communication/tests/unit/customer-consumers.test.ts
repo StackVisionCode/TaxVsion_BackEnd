@@ -5,6 +5,7 @@ import type { IncomingEnvelope } from '../../src/application/ports/event-consume
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
 import type { CustomerDirectoryRepository } from '../../src/application/ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../../src/application/ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../../src/application/ports/customer-assignment-projection-repository.js';
 
 /**
  * F4 (backlog 5.1) — al aplicar cada customer.*.v1 el consumer emite `customer.changed` a todo el
@@ -39,9 +40,20 @@ function setup() {
     unassign: vi.fn(),
     findByCustomerId: vi.fn(),
   } as unknown as CustomerPreparerAssignmentRepository;
+  const customerAssignments = {
+    getVersion: vi.fn().mockResolvedValue(null),
+    replace: vi.fn(),
+    isAssigned: vi.fn(),
+  } as unknown as CustomerAssignmentProjectionRepository;
 
-  bindCustomerConsumers(register, { notifications, emitter, customerDirectory, customerPreparerAssignments });
-  return { handlers, emitter };
+  bindCustomerConsumers(register, {
+    notifications,
+    emitter,
+    customerDirectory,
+    customerPreparerAssignments,
+    customerAssignments,
+  });
+  return { handlers, emitter, customerAssignments };
 }
 
 function envelope(eventType: string, payload: Record<string, unknown>): IncomingEnvelope {
@@ -97,5 +109,52 @@ describe('bindCustomerConsumers — customer.changed realtime (F4)', () => {
     );
 
     expect(emitter.emitToTenant).not.toHaveBeenCalled();
+  });
+});
+
+describe('bindCustomerConsumers — customer.assignments_changed.v1 (P2.5, proyeccion M:N)', () => {
+  it('reemplaza el set de asignados cuando el snapshot es nuevo', async () => {
+    const { handlers, customerAssignments } = setup();
+    vi.mocked(customerAssignments.getVersion).mockResolvedValue(null);
+
+    await handlers.get('customer.assignments_changed.v1')!(
+      envelope('customer.assignments_changed.v1', {
+        customerId: 'c-1',
+        assigneeUserIds: ['u-1', 'u-2'],
+        version: '2026-09-24T10:00:00.000Z',
+      }),
+    );
+
+    expect(customerAssignments.replace).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(customerAssignments.replace).mock.calls[0]!;
+    expect(call[0]).toBe('tenant-1');
+    expect(call[1]).toBe('c-1');
+    expect(call[2]).toEqual(['u-1', 'u-2']);
+    expect(call[3]).toEqual(new Date('2026-09-24T10:00:00.000Z'));
+  });
+
+  it('ignora un snapshot igual o mas viejo que el ya aplicado (version guard)', async () => {
+    const { handlers, customerAssignments } = setup();
+    vi.mocked(customerAssignments.getVersion).mockResolvedValue(new Date('2026-09-24T12:00:00.000Z'));
+
+    await handlers.get('customer.assignments_changed.v1')!(
+      envelope('customer.assignments_changed.v1', {
+        customerId: 'c-1',
+        assigneeUserIds: ['u-1'],
+        version: '2026-09-24T10:00:00.000Z',
+      }),
+    );
+
+    expect(customerAssignments.replace).not.toHaveBeenCalled();
+  });
+
+  it('no hace nada si falta customerId o version', async () => {
+    const { handlers, customerAssignments } = setup();
+
+    await handlers.get('customer.assignments_changed.v1')!(
+      envelope('customer.assignments_changed.v1', { assigneeUserIds: ['u-1'] }),
+    );
+
+    expect(customerAssignments.replace).not.toHaveBeenCalled();
   });
 });

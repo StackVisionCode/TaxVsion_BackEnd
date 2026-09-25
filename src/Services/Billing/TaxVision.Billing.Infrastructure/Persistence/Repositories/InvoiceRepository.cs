@@ -18,11 +18,26 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
     // Include(PaymentLinks): ahora es entidad normal (no owned) → EF no la auto-incluye. Sin esto,
     // ActivePaymentLink siempre daría null y AttachPaymentLink duplicaría filas en cada reintento. Las
     // Lines son OwnsMany, así que sí se auto-incluyen.
-    public Task<Invoice?> GetByIdAsync(Guid tenantId, Guid invoiceId, CancellationToken ct = default) =>
+    public Task<Invoice?> GetByIdAsync(
+        Guid tenantId,
+        Guid invoiceId,
+        CancellationToken ct = default,
+        Guid? assignedToUserId = null
+    ) =>
         _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
-            .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
+            .Where(i => i.TenantId == tenantId && i.Id == invoiceId)
+            // Visibilidad por asignación: si está restringido y su cliente no está asignado → null (404).
+            .Where(i =>
+                assignedToUserId == null
+                || _dbContext
+                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .Any(a =>
+                        a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignedToUserId.Value
+                    )
+            )
+            .FirstOrDefaultAsync(ct);
 
     // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId
     // (índice único filtrado), no por tenant → IgnoreQueryFilters obligatorio.
@@ -35,15 +50,26 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
     public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
         int take,
-        CancellationToken ct = default
-    ) =>
-        await _dbContext
+        CancellationToken ct = default,
+        Guid? assignedToUserId = null
+    )
+    {
+        var query = _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
-            .Where(i => i.TenantId == tenantId && i.DeletedAtUtc == null)
-            .OrderByDescending(i => i.CreatedAtUtc)
-            .Take(take <= 0 ? 50 : take)
-            .ToListAsync(ct);
+            .Where(i => i.TenantId == tenantId && i.DeletedAtUtc == null);
+
+        // Visibilidad por asignación: solo facturas de clientes asignados a ese usuario. IgnoreQueryFilters
+        // + tenant explícito en el subquery (scope de Wolverine sin tenant ambiental). null = sin restricción.
+        if (assignedToUserId is { } assignee)
+            query = query.Where(i =>
+                _dbContext
+                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignee)
+            );
+
+        return await query.OrderByDescending(i => i.CreatedAtUtc).Take(take <= 0 ? 50 : take).ToListAsync(ct);
+    }
 
     public async Task AddAsync(Invoice invoice, CancellationToken ct = default) =>
         await _dbContext.Invoices.AddAsync(invoice, ct);

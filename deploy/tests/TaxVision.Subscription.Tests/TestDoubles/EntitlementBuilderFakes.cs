@@ -92,7 +92,10 @@ public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) 
         throw new NotSupportedException();
 
     public Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(_seats.FirstOrDefault(seat => seat.TenantId == t && seat.CurrentUserId == u));
+
+    public Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
+        Task.FromResult(_seats.FirstOrDefault(seat => seat.TenantId == t && seat.CurrentUserId == u));
 
     public Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) => throw new NotSupportedException();
 

@@ -26,6 +26,10 @@ public interface IUserRepository
     /// <summary>Admin/owner primario del tenant (TenantAdmin activo más antiguo) — destinatario de las
     /// notificaciones de facturación/ciclo de vida de la suscripción. <c>null</c> si no hay ninguno.</summary>
     Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Cuenta TenantAdmins ACTIVOS del tenant — para no dejarlo sin ningún admin al retirar uno.
+    /// Default permisivo para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(int.MaxValue);
     Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,

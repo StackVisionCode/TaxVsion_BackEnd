@@ -82,6 +82,10 @@ public interface ISubscriptionSeatRepository
     Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Como GetByCurrentUserIdAsync pero TRACKED — para liberar el asiento desde un consumer
+    /// (la variante AsNoTracking no persistiría la mutación).</summary>
+    Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>

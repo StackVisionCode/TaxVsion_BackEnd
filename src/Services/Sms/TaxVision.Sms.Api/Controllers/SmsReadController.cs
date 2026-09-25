@@ -2,8 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
-using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +21,7 @@ namespace TaxVision.Sms.Api.Controllers;
 [Authorize]
 [AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
 [HasPermission(SmsPermissions.Read)]
-public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : ControllerBase
+public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource permissionsSource) : ControllerBase
 {
     private const int DefaultStatsWindowDays = 30;
 
@@ -44,9 +44,13 @@ public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : 
         CancellationToken ct = default
     )
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<SmsMessageSummaryResponse>>(
             new SearchSmsMessagesQuery(
-                tenant.TenantId,
+                tenantId,
                 customerId,
                 status,
                 term,
@@ -54,7 +58,9 @@ public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : 
                 toUtc,
                 CrmSourceContext,
                 page,
-                size
+                size,
+                userId,
+                canViewAll
             ),
             ct
         );
@@ -70,10 +76,14 @@ public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : 
         CancellationToken ct = default
     )
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
         var to = toUtc ?? DateTime.UtcNow;
         var from = fromUtc ?? to.AddDays(-DefaultStatsWindowDays);
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<SmsStatsResponse>(
-            new GetSmsStatsQuery(tenant.TenantId, from, to, CrmSourceContext),
+            new GetSmsStatsQuery(tenantId, from, to, CrmSourceContext, userId, canViewAll),
             ct
         );
         return Ok(result);
@@ -85,8 +95,12 @@ public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : 
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetMessage(Guid id, CancellationToken ct)
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<SmsMessageDetailResponse>>(
-            new GetSmsMessageByIdQuery(tenant.TenantId, id),
+            new GetSmsMessageByIdQuery(tenantId, id, userId, canViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -103,8 +117,12 @@ public sealed class SmsReadController(IMessageBus bus, ITenantContext tenant) : 
         CancellationToken ct = default
     )
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<SmsOptOutSummaryResponse>>(
-            new SearchSmsOptOutsQuery(tenant.TenantId, status, term, page, size),
+            new SearchSmsOptOutsQuery(tenantId, status, term, page, size, userId, canViewAll),
             ct
         );
         return Ok(result);

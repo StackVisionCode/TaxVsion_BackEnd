@@ -51,4 +51,20 @@ public interface ITenantEmailAccountRepository
     /// Disconnected/Error no deberían sincronizar nada hasta que un reauth manual las reactive.
     /// </summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Buzones PERSONALES de <paramref name="ownerUserId"/> en el tenant (OwnerUserId == user) — para
+    /// desconectarlos y purgar sus secretos al retirar (offboard) a ese empleado. Los de oficina
+    /// (OwnerUserId null) no entran. Tracked (se mutan). Default vacío: los fakes no necesitan implementarlo.
+    /// </summary>
+    Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
+        Guid tenantId,
+        Guid ownerUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TenantEmailAccount>>([]);
+
+    /// <summary>Cuántos buzones PERSONALES tiene el empleado (mismo filtro que ListByOwnerUserAsync, sin
+    /// materializar) — pre-flight de impacto al retirarlo. Default 0; el repo real lo implementa con COUNT.</summary>
+    Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default) =>
+        Task.FromResult(0);
 }

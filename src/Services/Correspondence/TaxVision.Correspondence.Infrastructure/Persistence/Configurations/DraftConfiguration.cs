@@ -128,6 +128,16 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
                 d.Status,
             })
             .HasDatabaseName("IX_Drafts_TenantId_EmailThreadId_Status");
+
+        // Offboarding — borradores abiertos de un autor puntual, para reasignarlos/descartarlos al retirar al empleado.
+        builder
+            .HasIndex(d => new
+            {
+                d.TenantId,
+                d.CreatedByUserId,
+                d.Status,
+            })
+            .HasDatabaseName("IX_Drafts_TenantId_CreatedByUserId_Status");
     }
 
     private static List<AttachmentDto> ToDtos(List<DraftAttachmentRef> attachments) =>

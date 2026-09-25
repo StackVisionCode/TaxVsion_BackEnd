@@ -213,6 +213,21 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a => a.Status == TenantEmailAccountStatus.Active);
         return Task.FromResult(accounts);
     }
+
+    public Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
+        Guid tenantId,
+        Guid ownerUserId,
+        CancellationToken ct = default
+    )
+    {
+        IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a =>
+            a.TenantId == tenantId && a.OwnerUserId == ownerUserId
+        );
+        return Task.FromResult(accounts);
+    }
+
+    public Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default) =>
+        Task.FromResult(Accounts.Count(a => a.TenantId == tenantId && a.OwnerUserId == ownerUserId));
 }
 
 internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
@@ -250,6 +265,8 @@ internal sealed class FakeOAuthConnectionRepository : IOAuthConnectionRepository
             .ToList();
         return Task.FromResult(ids);
     }
+
+    public void Remove(OAuthConnection connection) => Connections.Remove(connection);
 }
 
 internal sealed class FakeOAuthProviderClient(ProviderCode providerCode) : IOAuthProviderClient

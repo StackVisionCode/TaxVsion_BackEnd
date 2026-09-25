@@ -308,6 +308,18 @@ public interface IShareLinkRepository
         DateTime nowUtc,
         CancellationToken ct
     );
+
+    /// <summary>
+    /// Links ACTIVOS que creó <paramref name="createdByUserId"/> — para revocarlos al retirar (offboard)
+    /// a ese empleado: un link público de alguien que ya no está no debe seguir vivo. Tracked (se revocan).
+    /// </summary>
+    Task<IReadOnlyList<ShareLink>> ListActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct);
+
+    /// <summary>Cuántos links ACTIVOS creó el empleado (mismo filtro que ListActiveByCreatorAsync, sin
+    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
+    /// real lo implementa con COUNT.</summary>
+    Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
+        Task.FromResult(0);
 }
 
 /// <summary>Fase C3 — hash de la contrasena opcional de un link publico. Mismo esquema PBKDF2 que Auth.IPasswordHasher.</summary>

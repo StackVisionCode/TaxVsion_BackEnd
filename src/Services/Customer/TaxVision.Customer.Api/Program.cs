@@ -47,6 +47,15 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddCustomerInfrastructure(builder.Configuration);
+
+// Flag de visibilidad por asignación (default false = todos ven todo hasta el backfill).
+builder
+    .Services.AddOptions<TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions.SectionName
+        )
+    );
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -157,6 +166,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPreparerAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPreparerUnassignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerAssignmentsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
     // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

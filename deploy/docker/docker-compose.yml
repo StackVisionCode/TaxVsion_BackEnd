@@ -1090,6 +1090,11 @@ services:
       # ServiceAuthClient__* más abajo — un acquirer por servicio, un HttpClient tipado por
       # destino real (mismo criterio confirmado en Correspondence).
       Notes__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Notes__AssignmentVisibility__Enabled: ${NOTES_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Fase 7 — CloudStorage Caso B (subida directa del navegador): Notes solo consume eventos
       # FileAvailable/FileInfectedDetected/FileBlockedByPolicy, sin MinIO ni M2M propio hacia
       # CloudStorage. BaseUrl se conserva solo por si algún endpoint de lectura lo necesita.
@@ -1139,6 +1144,11 @@ services:
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${SMS_SERVICE_CLIENT_ID:-sms-worker}
       ServiceAuthClient__ClientSecret: ${SMS_SERVICE_CLIENT_SECRET:-}
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Sms__AssignmentVisibility__Enabled: ${SMS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Proveedor SMS global (MVP). El adapter concreto y sus secretos se configuran por env
       # Sms__Providers__<code>__... ; por defecto arranca con el proveedor "fake" para dev/E2E.
@@ -1201,6 +1211,11 @@ services:
       ServiceAuthClient__ClientSecret: ${CAMPAIGNS_SERVICE_CLIENT_SECRET:-}
       # Directorio de clientes para resolver la audiencia de la campaña (M2M, ServiceOnly).
       CustomerService__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro de audiencia por asignación (tras sembrar).
+      Campaigns__AssignmentVisibility__Enabled: ${CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Tier-aware rate limiting: catálogo de PlanRateLimits desde Subscription (M2M, ServiceOnly).
       RateLimit__EnforceTierQuotas: "true"
       SubscriptionClient__BaseUrl: http://subscription-api:8080
@@ -1360,6 +1375,11 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Directorio local de customers: backfill reactivo + los dos jobs de reconciliacion.
       Calendar__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Calendar__AssignmentVisibility__Enabled: ${CALENDAR_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
@@ -1401,6 +1421,11 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Directorio local de customers: backfill reactivo + los dos jobs de reconciliacion.
       Tasks__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       Tasks__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
@@ -1529,6 +1554,11 @@ services:
       # el CustomerClientOptions caía al default de dev (localhost:5263), inalcanzable dentro de
       # la red de contenedores, y el barrido de 12h moría en silencio (el cliente nunca lanza).
       Signature__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con Signature__ServiceAuth).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Signature__AssignmentVisibility__Enabled: ${SIGNATURE_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Fase D1 — credenciales MinIO propias para subir PDFs sellados (IAM scoped a
       # taxvision-temp/signature/*, ver deploy/docker/minio/policies/signature-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -1773,6 +1803,11 @@ services:
       # Bases de los servicios destino (prod docker; en dev Documents corre en el host → override por .env).
       Billing__Documents__BaseUrl: ${BILLING_DOCUMENTS_BASE_URL:-http://documents-api:8080}
       Billing__PaymentClient__BaseUrl: ${BILLING_PAYMENTCLIENT_BASE_URL:-http://payment-client-api:8080}
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con Billing__ServiceClients).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Billing__AssignmentVisibility__Enabled: ${BILLING_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Billing → Inventory (M2M): descuento de stock al emitir la factura (Fase 3, cliente Platform).
       Billing__Inventory__BaseUrl: ${BILLING_INVENTORY_BASE_URL:-http://inventory-api:8080}
       # Cuotas por tier: HttpPlanRateLimitReader va contra este host. Sin esto caía al default
@@ -1919,6 +1954,12 @@ services:
       # en silencio (el cliente devuelve null en cualquier falla). RECONCILE_ENABLED/INTERVAL_HOURS
       # se dejan en sus defaults de config.ts (true / 12h).
       COMMUNICATION_CUSTOMER_BASE_URL: http://customer-api:8080
+      # Visibilidad por asignación (P2) — flag GLOBAL, espejo del <Svc>__AssignmentVisibility__Enabled
+      # de los servicios .NET. OFF por default: en el despliegue de P1 se deja en "false" (la
+      # reconciliación siembra la proyección sin cambiar comportamiento); para P2 se pone "true" y se
+      # redespliega → el picker de customers y el gate de chat pasan a filtrar por asignación en TODOS
+      # los tenants. El setting por-tenant restrictCustomerChatToAssignedPreparer sigue como opt-in aparte.
+      COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED: ${COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}

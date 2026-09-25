@@ -29,6 +29,16 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(seat => seat.TenantId == tenantId && seat.CurrentUserId == userId, ct);
 
+    // Tracked (sin AsNoTracking): el consumer de retiro/desactivación necesita persistir la liberación.
+    public Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        WithChildren(db.Seats)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(seat => seat.TenantId == tenantId && seat.CurrentUserId == userId, ct);
+
     public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) =>
         await db.Seats.AddAsync(seat, ct);
 

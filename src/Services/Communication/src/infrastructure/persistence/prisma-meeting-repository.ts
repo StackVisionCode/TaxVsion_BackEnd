@@ -118,6 +118,21 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return toDomainMeeting(row, participants);
   }
 
+  async listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: ['Scheduled', 'Live'] } },
+      include: { Participants: true },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants));
+  }
+
+  async countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number> {
+    return this.prisma.meeting.count({
+      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: ['Scheduled', 'Live'] } },
+    });
+  }
+
   async findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null> {
     const row = await this.prisma.meeting.findFirst({ where: { ShortCode: shortCode } });
     if (!row) return null;
@@ -159,7 +174,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
   }
 
   async findInvitationById(tenantId: string, invitationId: string): Promise<MeetingInvitation | null> {
-    const row = await this.prisma.meetingInvitation.findFirst({ where: { Id: invitationId, TenantId: tenantId } });
+    const row = await this.prisma.meetingInvitation.findFirst({
+      where: { Id: invitationId, TenantId: tenantId },
+    });
     return row ? toDomainMeetingInvitation(row) : null;
   }
 

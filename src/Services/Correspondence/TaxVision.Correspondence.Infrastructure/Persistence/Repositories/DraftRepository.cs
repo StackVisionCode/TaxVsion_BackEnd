@@ -45,6 +45,27 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         await db.Drafts.AddAsync(entity, ct);
     }
 
+    // Tracked (el consumer de offboard los reasigna o descarta). IgnoreQueryFilters: corre system-level
+    // (sin tenant en contexto); el WHERE acota por TenantId explícito. Usa IX_Drafts_TenantId_CreatedByUserId_Status.
+    public async Task<IReadOnlyList<Draft>> ListOpenByAuthorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Drafts.IgnoreQueryFilters()
+            .Where(d => d.TenantId == tenantId && d.CreatedByUserId == createdByUserId && d.Status == DraftStatus.Draft)
+            .ToListAsync(ct);
+
+    // Mismo filtro que ListOpenByAuthorAsync (abiertos del autor), solo cuenta — pre-flight de impacto.
+    public Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
+        db
+            .Drafts.IgnoreQueryFilters()
+            .CountAsync(
+                d => d.TenantId == tenantId && d.CreatedByUserId == createdByUserId && d.Status == DraftStatus.Draft,
+                ct
+            );
+
     // AsNoTracking: listado de solo lectura ("retomar autoguardado"), mismo criterio que
     // EmailThreadRepository.ListByCustomerAsync/IncomingEmailRepository.ListByThreadAsync. Usa
     // IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc.

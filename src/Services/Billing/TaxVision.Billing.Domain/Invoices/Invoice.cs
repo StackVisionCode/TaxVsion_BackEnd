@@ -40,7 +40,24 @@ public sealed class Invoice : AggregateRoot
     public DateTime? SentAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
 
-    public CustomerSnapshot Customer { get; private set; } = null!;
+    private CustomerSnapshot _customer = null!;
+
+    // El snapshot va como JSON opaco (no consultable). El setter mantiene en sync CustomerId (columna
+    // escalar denormalizada) para poder filtrar/indexar facturas por cliente — todas las factories y Edit
+    // pasan por acá, así que nunca queda desincronizado.
+    public CustomerSnapshot Customer
+    {
+        get => _customer;
+        private set
+        {
+            _customer = value;
+            CustomerId = value?.CustomerId ?? Guid.Empty;
+        }
+    }
+
+    /// <summary>Id del cliente maestro, denormalizado desde el snapshot para el filtro de visibilidad (P2).</summary>
+    public Guid CustomerId { get; private set; }
+
     public IssuerSnapshot? Issuer { get; private set; }
     public Discount? Discount { get; private set; }
 

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -54,6 +55,10 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     /// <summary>La mantiene el consumer con lo que publica Subscription.</summary>
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
+    // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     /// <summary>
     /// SQL Server devuelve <c>datetime2</c> con <see cref="DateTimeKind.Unspecified"/>, asi que una
     /// fecha guardada en UTC vuelve sin serlo. En un servicio de calendario eso es fatal: el
@@ -79,6 +84,7 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

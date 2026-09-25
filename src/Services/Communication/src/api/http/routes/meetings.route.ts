@@ -35,6 +35,7 @@ const HistoryQuery = z.object({
   // comportamiento previo para callers existentes.
   scope: z.enum(['upcoming', 'past']).default('upcoming'),
 });
+const UserIdParams = z.object({ userId: z.string().uuid() });
 
 export async function registerMeetingRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.post('/communication/meetings', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -126,6 +127,20 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     });
     return reply.send(stats);
   });
+
+  // Pre-flight de impacto (punto 3.2): cuántas reuniones activas tiene como host el empleado a retirar.
+  app.get(
+    '/communication/offboarding-impact/:userId',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const params = UserIdParams.parse(request.params);
+      const activeMeetings = await container.meetings.countActiveHostedBy(
+        request.principal!.tenantId,
+        params.userId,
+      );
+      return reply.send({ activeMeetings });
+    },
+  );
 
   app.post('/communication/meetings/:id/start', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;

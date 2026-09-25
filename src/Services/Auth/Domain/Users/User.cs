@@ -18,6 +18,13 @@ public sealed class User : TenantEntity
     public UserActorType ActorType { get; private set; }
     public Guid? CustomerId { get; private set; }
     public bool IsActive { get; private set; }
+
+    /// <summary>Estado del ciclo de vida. IsActive sigue siendo la compuerta de runtime; esto solo
+    /// añade la distinción terminal Offboarded (retirado, no reversible). Invariante: Offboarded ⇒ !IsActive.</summary>
+    public UserStatus Status { get; private set; }
+
+    /// <summary>Cuándo se retiró (offboard) al usuario del tenant. Null salvo estado Offboarded.</summary>
+    public DateTime? RemovedAtUtc { get; private set; }
     public IReadOnlyCollection<string> Roles => _roles.AsReadOnly();
 
     // Perfil y credenciales
@@ -213,11 +220,28 @@ public sealed class User : TenantEntity
     {
         IsActive = false;
         DeactivatedAtUtc = utcNow;
+        // No degradar un retiro terminal a "desactivado" (Offboarded ya implica inactivo).
+        if (Status != UserStatus.Offboarded)
+            Status = UserStatus.Deactivated;
     }
 
     public void Reactivate()
     {
         IsActive = true;
         DeactivatedAtUtc = null;
+        Status = UserStatus.Active;
+    }
+
+    /// <summary>Retira al usuario del tenant: estado TERMINAL, no reversible. Idempotente.</summary>
+    public Result Offboard(DateTime utcNow)
+    {
+        if (Status == UserStatus.Offboarded)
+            return Result.Success();
+
+        Status = UserStatus.Offboarded;
+        IsActive = false;
+        RemovedAtUtc = utcNow;
+        DeactivatedAtUtc ??= utcNow;
+        return Result.Success();
     }
 }

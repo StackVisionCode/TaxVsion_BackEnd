@@ -24,6 +24,9 @@ public sealed class CapturingSeatRepo : ISubscriptionSeatRepository
     public Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
         throw new NotSupportedException();
 
+    public Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
     public Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(
         DateTime n,
         int b,

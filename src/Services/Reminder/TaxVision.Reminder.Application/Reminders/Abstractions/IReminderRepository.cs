@@ -91,6 +91,18 @@ public interface IReminderRepository
     );
 
     /// <summary>
+    /// Recordatorios PRIVADOS (Category <c>General</c>, sin target — «recordame llamar a Pérez») del
+    /// usuario que aún están pendientes, para cancelarlos y desagendarlos al retirarlo (offboard). Los
+    /// atados a Calendar/Task/Note NO entran: los cierra el cascade de <c>reminder.target_closed.v1</c>
+    /// de su propio servicio. Tracked (se cancelan).
+    /// </summary>
+    Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// <b>Cross-tenant.</b> Carga para el job de Quartz, que corre fuera de un request y por lo
     /// tanto sin <c>TenantId</c> en contexto: <see cref="GetByIdAsync"/> devolvería
     /// <c>NotFound</c> siempre. El tenant llega explícito desde el <c>JobDataMap</c> del trigger y

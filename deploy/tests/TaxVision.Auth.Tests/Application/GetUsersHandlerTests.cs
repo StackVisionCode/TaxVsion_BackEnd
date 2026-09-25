@@ -34,6 +34,32 @@ public sealed class GetUsersHandlerTests
         Assert.Equal("TenantAdmin", row.ActorType); // el actor_type viaja en su propio campo
         Assert.Contains("Tenant Admin", row.Roles); // rol de sistema real
         Assert.DoesNotContain("TenantAdmin", row.Roles); // pseudo-rol ya NO se duplica en Roles
+        Assert.Equal("Active", row.Status); // ciclo de vida por defecto
+    }
+
+    // Un usuario retirado debe distinguirse de uno solo suspendido (ambos IsActive=false).
+    [Fact]
+    public async Task Status_reflects_offboarded_so_the_ui_can_distinguish_it_from_suspended()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = User.Register(
+            tenantId,
+            "Sofia",
+            "Martinez",
+            "sofia@acme.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        user.Offboard(DateTime.UtcNow);
+
+        var users = new FakeUserRepository { Page = [user] };
+        var roles = new FakeRoleRepository();
+
+        var result = await GetUsersHandler.Handle(new GetUsersQuery(tenantId), users, roles, CancellationToken.None);
+
+        var row = Assert.Single(result.Value.Items);
+        Assert.Equal("Offboarded", row.Status);
+        Assert.False(row.IsActive);
     }
 
     private sealed class FakeUserRepository : IUserRepository

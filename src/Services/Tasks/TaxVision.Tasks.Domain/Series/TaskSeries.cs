@@ -167,6 +167,26 @@ public sealed class TaskSeries : BaseEntity, ITenantOwned
         return true;
     }
 
+    /// <summary>
+    /// Reasigna el asignado por defecto del blueprint al RETIRAR (offboard) al actual — solo redirige
+    /// las ocurrencias FUTURAS (las ya materializadas son TaskItem aparte, se reasignan una a una). No
+    /// sobre series terminadas. Idempotente. No toca <see cref="CreatedByUserId"/> (procedencia).
+    /// </summary>
+    public Result ReassignBlueprintAssignee(Guid newAssigneeUserId)
+    {
+        if (newAssigneeUserId == Guid.Empty)
+            return Result.Failure(TaskErrors.AssigneeRequired);
+
+        if (Status == SeriesStatus.Ended)
+            return Result.Failure(TaskErrors.Series.AlreadyEnded);
+
+        if (Blueprint.AssigneeUserId == newAssigneeUserId)
+            return Result.Success();
+
+        Blueprint = Blueprint with { AssigneeUserId = newAssigneeUserId };
+        return Result.Success();
+    }
+
     public Result Pause()
     {
         if (Status == SeriesStatus.Ended)

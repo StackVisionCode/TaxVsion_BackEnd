@@ -48,12 +48,19 @@ import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/
 const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // Auth
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRegisteredIntegrationEvent': 'auth.user.registered.v1',
-  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent': 'auth.user.roles_changed.v1',
-  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent': 'auth.user.deactivated.v1',
-  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent': 'auth.user.reactivated.v1',
-  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent':
+    'auth.user.roles_changed.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent':
+    'auth.user.deactivated.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent':
+    'auth.user.reactivated.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent':
+    'auth.user.profile_updated.v1',
+  // Offboarding (retiro terminal) — reasigna/cancela reuniones del host que se va (ver offboarding-consumers.ts).
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent': 'auth.user.offboarded.v1',
   // Fase 2 del plan de notificaciones dinamicas — cambio de permisos a nivel de ROL.
-  'BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent': 'auth.role.permissions_changed.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent':
+    'auth.role.permissions_changed.v1',
   // Calendar — la cita virtual crea la sala, y moverla la mueve.
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentScheduledIntegrationEvent':
     'calendar.appointment_scheduled.v1',
@@ -64,24 +71,34 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent':
     'calendar.appointment_meeting_room_requested.v1',
   // Customer
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent': 'customer.bulk_imported.v1',
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent': 'customer.bulk_import_failed.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent':
+    'customer.bulk_imported.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent':
+    'customer.bulk_import_failed.v1',
   // Fase Backend 10 — alimentan CustomerDirectoryEntry (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent': 'customer.deactivated.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent':
+    'customer.deactivated.v1',
   // 2026-08-06 (auditoria de proyecciones de customer): un cliente archivado tambien debe salir
   // del directorio; sin esta entrada + su handler en customer-consumers.ts, un customer archivado
   // seguia con IsActive=true y aparecia en el autocomplete de invitaciones.
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerArchivedIntegrationEvent': 'customer.archived.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerArchivedIntegrationEvent':
+    'customer.archived.v1',
   // Fase B2 (chat tipado) — alimentan CustomerPreparerAssignment (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerAssignedIntegrationEvent':
     'customer.preparer_assigned.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerUnassignedIntegrationEvent':
     'customer.preparer_unassigned.v1',
+  // P2.5 — snapshot M:N del set completo de asignados; alimenta CustomerAssignmentProjection
+  // (fuente del gate restrictCustomerChatToAssignedPreparer, ver customer-consumers.ts).
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerAssignmentsChangedIntegrationEvent':
+    'customer.assignments_changed.v1',
   // Signature
-  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent': 'signature.signer.invited.v1',
-  'BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent': 'signature.document.signed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent':
+    'signature.signer.invited.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent':
+    'signature.document.signed.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCompletedIntegrationEvent':
     'signature.request.completed.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCanceledIntegrationEvent':
@@ -314,9 +331,12 @@ export class ConsumerRuntime {
     raw: Partial<IncomingEnvelope> & Record<string, unknown>,
     amqpTypeHeader?: string,
   ): IncomingEnvelope {
-    const eventId = typeof raw['eventId'] === 'string' ? (raw['eventId'] as string) : (raw['EventId'] as string);
+    const eventId =
+      typeof raw['eventId'] === 'string' ? (raw['eventId'] as string) : (raw['EventId'] as string);
     const bodyEventType =
-      typeof raw['eventType'] === 'string' ? (raw['eventType'] as string) : (raw['EventType'] as string | undefined);
+      typeof raw['eventType'] === 'string'
+        ? (raw['eventType'] as string)
+        : (raw['EventType'] as string | undefined);
     // Wolverine puede publicar el header AMQP `type` como nombre CLR (Auth/CloudStorage/…) o ya como
     // alias del evento (`correspondence.customer_email_received.v1`, Connectors/Correspondence/…). Los
     // handlers se registran por alias, así que: primero el eventType del body, luego el mapa CLR→alias,
@@ -324,7 +344,8 @@ export class ConsumerRuntime {
     // header alias caía en "unmapped; ack to skip" y el handler nunca corría.
     const eventType = (bodyEventType ??
       (amqpTypeHeader ? (CLR_TYPE_TO_EVENT_TYPE[amqpTypeHeader] ?? amqpTypeHeader) : undefined)) as string;
-    const tenantId = typeof raw['tenantId'] === 'string' ? (raw['tenantId'] as string) : (raw['TenantId'] as string);
+    const tenantId =
+      typeof raw['tenantId'] === 'string' ? (raw['tenantId'] as string) : (raw['TenantId'] as string);
     const occurredOnUtc =
       typeof raw['occurredOnUtc'] === 'string'
         ? (raw['occurredOnUtc'] as string)

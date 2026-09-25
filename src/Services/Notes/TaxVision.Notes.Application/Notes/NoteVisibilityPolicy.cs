@@ -1,3 +1,4 @@
+using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 
 namespace TaxVision.Notes.Application.Notes;
@@ -39,10 +40,36 @@ public static class NoteVisibilityPolicy
     }
 
     /// <summary>
-    /// Solo el autor toca la nota — ni siquiera <c>notes.view_all</c> lo habilita (governance: admin
-    /// ve y archiva, no edita ajena). Cubre contenido, visibilidad, pin/unpin, color y adjuntos.
+    /// El autor toca la nota; y desde el punto 3.2 (offboarding) TAMBIÉN un staff con
+    /// <c>notes.view_all</c> cuando el autor fue RETIRADO (offboarded) del tenant y ya no puede
+    /// hacerlo. Una desactivación temporal NO lo habilita (solo offboard, terminal), y la autoría
+    /// (<c>CreatedByUserId</c>) nunca se transfiere. Sin offboard el governance sigue siendo
+    /// "ve/archiva, no edita ajena". Cubre contenido, visibilidad, pin/unpin, color y adjuntos.
     /// </summary>
-    public static bool CanEditContent(Note note, Guid actorUserId) => note.CreatedByUserId == actorUserId;
+    public static bool CanEditContent(Note note, Guid actorUserId, bool authorOffboarded, bool actorHasViewAll) =>
+        note.CreatedByUserId == actorUserId || (authorOffboarded && actorHasViewAll);
+
+    /// <summary>
+    /// Resuelve <see cref="CanEditContent(Note, Guid, bool, bool)"/> consultando la proyección de
+    /// offboarded SOLO cuando hace falta (el actor no es el autor y trae el override), para no pegarle
+    /// a la tabla en el camino normal del propio autor.
+    /// </summary>
+    public static async Task<bool> CanEditContentAsync(
+        Note note,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        IOffboardedStaffRepository offboardedStaff,
+        CancellationToken ct
+    )
+    {
+        if (note.CreatedByUserId == actorUserId)
+            return true;
+        if (!actorHasViewAll)
+            return false;
+
+        var authorOffboarded = await offboardedStaff.IsOffboardedAsync(note.TenantId, note.CreatedByUserId, ct);
+        return CanEditContent(note, actorUserId, authorOffboarded, actorHasViewAll);
+    }
 
     /// <summary>Ciclo de vida (archivar/restaurar/borrar): autor, o staff con <c>notes.view_all</c> (governance).</summary>
     public static bool CanManage(Note note, Guid actorUserId, bool actorHasViewAll) =>

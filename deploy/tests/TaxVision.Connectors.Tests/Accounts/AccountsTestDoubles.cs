@@ -23,6 +23,8 @@ internal sealed class FakeSmtpCredentialsRepository : ISmtpCredentialsRepository
                 : Result.Success(found)
         );
     }
+
+    public void Remove(SmtpCredentials credentials) => Credentials.Remove(credentials);
 }
 
 /// <summary>Éxito por defecto — los tests que quieren ver un rechazo por credenciales malas setean ImapResult/SmtpResult.</summary>

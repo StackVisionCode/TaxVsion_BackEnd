@@ -79,6 +79,21 @@ public sealed class DraftsController(
     /// más reciente primero. Lean por diseño (<see cref="DraftListItem"/>) — para el composer
     /// completo de UNO, ver <see cref="GetById"/>.
     /// </summary>
+    // ---------- GET /correspondence/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántos borradores abiertos hay que reasignar antes de retirar a este empleado.
+    [HttpGet("/correspondence/offboarding-impact/{userId:guid}")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.draft_read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        return Ok(result);
+    }
+
     [HttpGet]
     [HasPermission(CorrespondencePermissions.Compose)]
     [RateLimit("correspondence.f.draft_read")]

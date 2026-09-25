@@ -34,6 +34,9 @@ public static class AudienceResolver
         IContactListRepository lists,
         bool includeCustomers = false,
         ICustomerAudienceClient? customerClient = null,
+        // Visibilidad por asignación (P2): si no es null, la fuente "Clients" se acota a estos ids (los
+        // clientes asignados al actor). null = sin restricción (customers.view_all / flag off / run agendado).
+        IReadOnlySet<Guid>? restrictCustomerIds = null,
         CancellationToken ct = default
     )
     {
@@ -75,6 +78,10 @@ public static class AudienceResolver
             var customers = await customerClient.GetActiveCustomersAsync(tenantId, ct);
             foreach (var customer in customers)
             {
+                // Visibilidad por asignación (P2): si hay restricción, solo clientes asignados al actor.
+                if (restrictCustomerIds is not null && !restrictCustomerIds.Contains(customer.CustomerId))
+                    continue;
+
                 // El directorio de Customer puede traer el teléfono en formato de presentación
                 // ("+1 (829) 592-4420") o el email con mayúsculas → normalizar para dedupe/entrega.
                 var custEmail = string.IsNullOrWhiteSpace(customer.Email)

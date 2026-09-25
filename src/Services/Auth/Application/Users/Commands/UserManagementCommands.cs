@@ -15,7 +15,8 @@ namespace TaxVision.Auth.Application.Users.Commands;
 // Desactivar usuario (libera asiento, corta sesiones)
 // ---------------------------------------------------------------------------
 
-/// <summary>Solicitud para desactivar un usuario: libera su asiento del plan y corta sus sesiones activas.</summary>
+/// <summary>Desactiva un usuario (baja reversible): corta sus sesiones y deja de contar para el cupo del
+/// plan. NO libera un asiento COMPRADO — eso lo hace Subscription al consumir el evento.</summary>
 public sealed record DeactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
 
 /// <summary>Desactiva al usuario objetivo, revoca sesiones y tokens, y publica el evento de integración correspondiente.</summary>
@@ -112,6 +113,12 @@ public static class ReactivateUserHandler
         if (target.IsActive)
             return Result.Success();
 
+        // Offboard es terminal: no se puede reactivar a un usuario retirado.
+        if (target.Status == UserStatus.Offboarded)
+            return Result.Failure(
+                new Error("User.Offboarded", "This user has been removed from the tenant and cannot be reactivated.")
+            );
+
         // Los usuarios de portal de cliente NO consumen asiento del plan (mismo criterio que el alta:
         // CreateInvitation salta el seat guard para CustomerPortal). Reactivar uno no debe fallar por
         // el cupo de asientos del staff — si no, un portal desactivado quedaría atrapado en tenants
@@ -147,6 +154,112 @@ public static class ReactivateUserHandler
                 command.TenantId,
                 command.RequestedByUserId,
                 AuthAuditAction.UserReactivated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "User",
+                targetId: target.Id
+            ),
+            ct
+        );
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Retirar usuario del tenant (offboard: estado terminal, corta acceso, dispara handover)
+// ---------------------------------------------------------------------------
+
+/// <summary>Retira (offboard) a un usuario: estado TERMINAL (no reversible). Corta sus sesiones y publica
+/// el evento para que cada módulo reasigne su trabajo activo al sucesor. La reasignación real vive en los
+/// consumidores de cada servicio (fases siguientes); aquí solo se fija el estado y se emite el evento.</summary>
+public sealed record OffboardUserCommand(
+    Guid TenantId,
+    Guid TargetUserId,
+    Guid RequestedByUserId,
+    Guid? SuccessorUserId
+);
+
+public static class OffboardUserHandler
+{
+    public static async Task<Result> Handle(
+        OffboardUserCommand command,
+        IUserRepository users,
+        ISessionRepository sessions,
+        IAccessTokenDenylist denylist,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        if (command.TargetUserId == command.RequestedByUserId)
+            return Result.Failure(new Error("User.SelfAction", "You cannot remove your own account."));
+
+        var target = await users.GetByIdAsync(command.TargetUserId, ct);
+        if (target is null || target.TenantId != command.TenantId)
+            return Result.Failure(new Error("User.NotFound", "User does not exist in this tenant."));
+
+        // Idempotente: ya retirado → no re-publica.
+        if (target.Status == UserStatus.Offboarded)
+            return Result.Success();
+
+        // No dejar al tenant sin ningún admin.
+        if (
+            target.ActorType == UserActorType.TenantAdmin
+            && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
+        )
+            return Result.Failure(new Error("User.LastAdmin", "You cannot remove the last active administrator."));
+
+        // Si viene sucesor, debe ser staff activo del mismo tenant.
+        if (command.SuccessorUserId is { } successorId)
+        {
+            var successor = await users.GetByIdAsync(successorId, ct);
+            var successorValid =
+                successorId != target.Id
+                && successor is not null
+                && successor.TenantId == command.TenantId
+                && successor.IsActive
+                && successor.ActorType is UserActorType.TenantEmployee or UserActorType.TenantAdmin;
+            if (!successorValid)
+                return Result.Failure(
+                    new Error("User.Successor", "The successor must be an active employee of this tenant.")
+                );
+        }
+
+        var offboard = target.Offboard(DateTime.UtcNow);
+        if (offboard.IsFailure)
+            return offboard;
+
+        // Corta el acceso al instante: mismo camino probado que Deactivate.
+        var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
+        foreach (var session in active)
+            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
+        await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
+
+        await bus.PublishAsync(
+            new UserOffboardedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                Email = target.Email,
+                ActorType = target.ActorType.ToString(),
+                OffboardedByUserId = command.RequestedByUserId,
+                SuccessorUserId = command.SuccessorUserId,
+                RemovedAtUtc = target.RemovedAtUtc ?? DateTime.UtcNow,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
+        await audit.AddAsync(
+            AuthAuditLog.Record(
+                command.TenantId,
+                command.RequestedByUserId,
+                AuthAuditAction.UserOffboarded,
                 true,
                 request.IpAddress,
                 request.UserAgent,

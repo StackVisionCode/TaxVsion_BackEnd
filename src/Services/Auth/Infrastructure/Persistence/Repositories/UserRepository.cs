@@ -70,6 +70,14 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
             .OrderBy(user => user.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
 
+    public Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .Users.IgnoreQueryFilters()
+            .CountAsync(
+                user => user.TenantId == tenantId && user.IsActive && user.ActorType == UserActorType.TenantAdmin,
+                ct
+            );
+
     public async Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,
