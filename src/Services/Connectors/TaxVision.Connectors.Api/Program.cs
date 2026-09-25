@@ -87,13 +87,13 @@ builder.Services.Configure<ConnectorsPortalOptions>(
 // Webhooks públicos (Fase 7) — 100 req/min por IP, ambos endpoints no tienen sesión/tenant que particionar.
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "connectors-webhook",
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: client,
                 factory: _ => new FixedWindowRateLimiterOptions
                 {

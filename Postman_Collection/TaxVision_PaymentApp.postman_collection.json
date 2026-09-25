@@ -461,7 +461,61 @@
             },
             "description": "Publico, sin JWT — Stripe autentica con HMAC en Stripe-Signature. Este body/firma son de ejemplo: con la firma dummy de arriba la respuesta esperada es 400 (Stripe.WebhookSignature.Invalid), NO 500 — eso confirma que la verificacion de firma esta activa. Para probar el flujo completo usa `stripe listen --forward-to {{UrlBase}}/payments-app/webhooks/stripe` y dispara un evento real con `stripe trigger payment_intent.succeeded`. Rate limitado a 1000 req/min/IP (§K.1)."
           },
-          "response": []
+          "response": [
+            {
+              "name": "Webhook throttleado por tenant (429 — Stripe reintenta)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Stripe-Signature",
+                    "value": "t=1700000000,v1=replace_with_a_real_signature",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"evt_test_postman\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_postman\"\n    }\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/payments-app/webhooks/stripe",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "payments-app",
+                    "webhooks",
+                    "stripe"
+                  ]
+                }
+              },
+              "status": "Too Many Requests",
+              "code": 429,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Retry-After",
+                  "value": "60"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 60 seconds.\",\n  \"retryAfterSeconds\": 60,\n  \"policy\": \"paymentapp.webhook_tenant\",\n  \"layer\": \"tenant\"\n}"
+            }
+          ]
         }
       ]
     },

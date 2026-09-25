@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../../infrastructure/config.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
+import { sendRateLimited } from '../../../infrastructure/http/rate-limit-rejection.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { createMeetingInvitations } from '../../../application/use-cases/create-meeting-invitations.js';
 import { listMeetingInvitations } from '../../../application/use-cases/list-meeting-invitations.js';
@@ -119,17 +120,14 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
     {
       preHandler: async (request, reply) => {
         const body = JoinByTokenBody.parse(request.body);
-        const allowed = await container.httpRateLimiter.allow({
+        const decision = await container.httpRateLimiter.allow({
           key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:${body.token}`,
           policy: CommunicationRateLimitPolicyNames.MeetingJoinByToken,
           maxPerWindow: config.rateLimit.meetingJoinByToken.maxPerWindow,
           windowSeconds: config.rateLimit.meetingJoinByToken.windowSeconds,
         });
-        if (!allowed) {
-          return reply
-            .code(429)
-            .header('Retry-After', String(config.rateLimit.meetingJoinByToken.windowSeconds))
-            .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+        if (!decision.allowed) {
+          return sendRateLimited(reply, decision.retryAfterSeconds, CommunicationRateLimitPolicyNames.MeetingJoinByToken);
         }
       },
     },
@@ -152,17 +150,14 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
     {
       preHandler: async (request, reply) => {
         const params = ShortCodeParams.parse(request.params);
-        const allowed = await container.httpRateLimiter.allow({
+        const decision = await container.httpRateLimiter.allow({
           key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByCode}:${params.shortCode}`,
           policy: CommunicationRateLimitPolicyNames.MeetingJoinByCode,
           maxPerWindow: config.rateLimit.meetingJoinByCode.maxPerWindow,
           windowSeconds: config.rateLimit.meetingJoinByCode.windowSeconds,
         });
-        if (!allowed) {
-          return reply
-            .code(429)
-            .header('Retry-After', String(config.rateLimit.meetingJoinByCode.windowSeconds))
-            .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+        if (!decision.allowed) {
+          return sendRateLimited(reply, decision.retryAfterSeconds, CommunicationRateLimitPolicyNames.MeetingJoinByCode);
         }
       },
     },

@@ -82,7 +82,7 @@ public class GetMessageAttachmentHandlerTests
         Assert.Equal(ProviderConnectionAuditAction.AttachmentFetch, auditRepository.Entries[0].Action);
         Assert.Equal("Success", auditRepository.Entries[0].ResultCode);
         Assert.Single(rateLimiter.Calls);
-        Assert.Equal(TenantId, rateLimiter.Calls[0]);
+        Assert.Equal((TenantId, account.Id), rateLimiter.Calls[0]); // por buzón, no por tenant entero
     }
 
     [Fact]

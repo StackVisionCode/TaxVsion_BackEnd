@@ -2163,17 +2163,21 @@ services:
       Cors__Origins__3: https://client.taxproffice.com
       Cors__Origins__4: http://localhost:5173
       Cors__Origins__5: http://localhost:4200
-      # GW-08 — las 8 claves escalares del load shedder (Capa 1) expuestas para poder
+      # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son
       # tuneables, no cambia el comportamiento. LoadShedding__Criticality es un diccionario
       # (25 rutas) y se queda en appsettings: cambiar la criticidad de una ruta es una
       # decision de diseno que debe pasar por code review, no por una variable de entorno.
+      # PassThroughPathPrefixes (Socket.IO) tambien vive en appsettings: es una lista.
       LoadShedding__Enabled: "true"
-      LoadShedding__P99LatencyThresholdMs: "2000"
+      LoadShedding__P99LatencyThresholdMs: "5000"
       LoadShedding__ErrorRate5xxThreshold: "0.5"
       LoadShedding__WindowSeconds: "60"
-      LoadShedding__MinSamples: "20"
+      LoadShedding__MinSamples: "200"
+      LoadShedding__ActivationSeconds: "10"
+      LoadShedding__RecoveryRatio: "0.8"
+      LoadShedding__UnmeasuredRequestBodyBytes: "1048576"
       LoadShedding__FairShareExcessFactor: "2.0"
       LoadShedding__DefaultCriticality: Standard
       LoadShedding__RetryAfterSeconds: "5"

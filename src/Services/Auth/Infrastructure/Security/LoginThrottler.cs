@@ -33,7 +33,9 @@ namespace TaxVision.Auth.Infrastructure.Security;
 /// </summary>
 public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter rateCounter) : ILoginThrottler
 {
-    private const int MaxIpFailures = 20;
+    // Por IP de oficina (NAT): con 20 bastaban unos pocos empleados equivocándose para bloquear el login
+    // de todos. El brute force de una cuenta lo frena el lockout por cuenta (10 fallos), no esto.
+    private const int MaxIpFailures = 50;
     private const int MaxPasswordResetRequestsPerEmail = 3;
     private const int MaxPasswordResetRequestsPerIp = 10;
     private const int MaxInvitationAcceptAttemptsPerIp = 20;

@@ -107,10 +107,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     // GET /tasks/{id}/graph — recorre el componente conexo por SQL recursivo, caro por definición.
@@ -119,10 +119,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     // POST /tasks/from-template — una llamada crea N tareas y M aristas, con validación de grafo.

@@ -317,8 +317,14 @@ public static class ErrorHttpMapping
             or "Task.Timer.NotRunning" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
+            or "Auth.InvitationAcceptThrottled"
             or "Invitation.ResendLimit"
+            or "Onboarding.OtpRateLimited"
+            or "Onboarding.ResendCooldown"
+            or "Signature.Signer.PinLocked"
+            or "Signature.Signer.ChallengeCooldown"
             or "PaymentApp.AdminActionThrottled"
+            or "PaymentApp.WebhookThrottled"
             or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
             "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
                 StatusCodes.Status413PayloadTooLarge,

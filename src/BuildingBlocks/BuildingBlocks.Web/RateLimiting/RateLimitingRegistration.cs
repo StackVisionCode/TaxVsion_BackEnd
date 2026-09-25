@@ -20,9 +20,11 @@ public static class RateLimitingRegistration
         IConfiguration configuration
     )
     {
+        var section = configuration.GetSection(GatewayRateLimitOptions.SectionName);
         services
             .AddOptions<GatewayRateLimitOptions>()
-            .Bind(configuration.GetSection(GatewayRateLimitOptions.SectionName))
+            .Bind(section)
+            .PostConfigure(options => ReplaceRulesWithConfigured(options, section))
             .Validate(
                 o => o.PreAuthByIp.PermitLimit > 0 && o.PreAuthByIp.WindowSeconds > 0,
                 "GatewayRateLimiting:PreAuthByIp needs a positive PermitLimit and WindowSeconds."
@@ -40,7 +42,7 @@ public static class RateLimitingRegistration
 
         services.AddRateLimiter(options =>
         {
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.UseTaxVisionRejectionResponse();
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
                 // Resolución por petición y no capturada en una closure: así un cambio en caliente
@@ -60,12 +62,14 @@ public static class RateLimitingRegistration
                         ?? context.Connection.RemoteIpAddress?.ToString()
                         ?? "unknown";
 
+                    context.Items[RateLimitRejection.PolicyItemKey] = "gateway.storage_upload_by_tenant";
                     return FixedWindow($"storage:{tenant}", settings.StorageUploadByTenant);
                 }
 
                 if (settings.PreAuthByIp.Rules.Any(r => r.Matches(path, method)))
                 {
                     var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                    context.Items[RateLimitRejection.PolicyItemKey] = "gateway.pre_auth_by_ip";
                     return FixedWindow($"{client}:{path.ToLowerInvariant()}", settings.PreAuthByIp);
                 }
 
@@ -77,8 +81,28 @@ public static class RateLimitingRegistration
         return services;
     }
 
+    // El binder de configuración AGREGA los elementos de una colección a los que ya trae la instancia (los
+    // defaults del código) en vez de reemplazarlos: una ruta quitada de appsettings seguía en el gate. Si
+    // la configuración declara reglas, son las únicas; si no declara nada, rigen los defaults.
+    private static void ReplaceRulesWithConfigured(GatewayRateLimitOptions options, IConfigurationSection section)
+    {
+        options.PreAuthByIp.Rules = ConfiguredRulesOr(
+            section.GetSection($"{nameof(options.PreAuthByIp)}:{nameof(GatewayRateLimitGroup.Rules)}"),
+            new GatewayRateLimitOptions().PreAuthByIp.Rules
+        );
+        options.StorageUploadByTenant.Rules = ConfiguredRulesOr(
+            section.GetSection($"{nameof(options.StorageUploadByTenant)}:{nameof(GatewayRateLimitGroup.Rules)}"),
+            new GatewayRateLimitOptions().StorageUploadByTenant.Rules
+        );
+    }
+
+    private static IReadOnlyList<GatewayRateLimitRule> ConfiguredRulesOr(
+        IConfigurationSection rules,
+        IReadOnlyList<GatewayRateLimitRule> defaults
+    ) => rules.Exists() ? rules.Get<List<GatewayRateLimitRule>>() ?? [] : defaults;
+
     private static RateLimitPartition<string> FixedWindow(string partitionKey, GatewayRateLimitGroup group) =>
-        RateLimitPartition.GetFixedWindowLimiter(
+        TaxVisionRateLimitPartition.GetFixedWindowLimiter(
             partitionKey,
             _ => new FixedWindowRateLimiterOptions
             {

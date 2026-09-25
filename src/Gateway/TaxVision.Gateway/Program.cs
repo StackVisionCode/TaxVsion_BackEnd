@@ -26,7 +26,22 @@ var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>
 builder.Services.AddCors(options =>
     options.AddPolicy(
         "spa",
-        policy => policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+        policy =>
+            policy
+                .WithOrigins(corsOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials()
+                // Sin esto el navegador oculta estos headers a la SPA en cross-origin y el front no puede
+                // decirle al usuario cuánto esperar tras un 429/503.
+                .WithExposedHeaders(
+                    "Retry-After",
+                    "X-RateLimit-Limit",
+                    "X-RateLimit-Remaining",
+                    "X-RateLimit-Reset",
+                    "X-RateLimit-Policy",
+                    "X-RateLimit-Layer"
+                )
     )
 );
 

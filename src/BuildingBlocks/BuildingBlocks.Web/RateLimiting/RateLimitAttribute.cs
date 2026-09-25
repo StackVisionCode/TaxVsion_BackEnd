@@ -170,23 +170,18 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
         var response = context.HttpContext.Response;
         var resetAtUnixSeconds = DateTimeOffset.UtcNow.AddSeconds(verdict.RetryAfterSeconds).ToUnixTimeSeconds();
 
-        response.Headers["Retry-After"] = verdict.RetryAfterSeconds.ToString();
         response.Headers["X-RateLimit-Policy"] = policy.Name.Value;
         response.Headers["X-RateLimit-Layer"] = verdict.Layer;
         response.Headers["X-RateLimit-Limit"] = verdict.Limit.ToString();
         response.Headers["X-RateLimit-Remaining"] = "0";
         response.Headers["X-RateLimit-Reset"] = resetAtUnixSeconds.ToString();
 
-        response.StatusCode = StatusCodes.Status429TooManyRequests;
-        await response
-            .WriteAsJsonAsync(
-                new
-                {
-                    Code = "RateLimit.Exceeded",
-                    Message = $"{verdict.Layer} rate limit exceeded. Retry after {verdict.RetryAfterSeconds} seconds.",
-                    Policy = policy.Name.Value,
-                    Layer = verdict.Layer,
-                },
+        await RateLimitRejection
+            .WriteAsync(
+                context.HttpContext,
+                verdict.RetryAfterSeconds,
+                policy.Name.Value,
+                verdict.Layer,
                 context.HttpContext.RequestAborted
             )
             .ConfigureAwait(false);

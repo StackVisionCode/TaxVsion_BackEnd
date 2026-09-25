@@ -76,13 +76,13 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // reintentos legítimos del provider sin abrir la puerta a un flood.
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "webhooks",
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: client,
                 factory: _ => new FixedWindowRateLimiterOptions
                 {

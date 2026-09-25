@@ -18,6 +18,12 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessProvider
 
 public static class ProcessProviderWebhookHandler
 {
+    /// <summary>Webhook throttleado por tenant: la API responde 429 para que el provider lo reintente.</summary>
+    public const string WebhookThrottledCode = "PaymentApp.WebhookThrottled";
+
+    /// <summary>La ventana del throttle de webhooks por tenant (fija, de 1 minuto).</summary>
+    public const int WebhookThrottleRetryAfterSeconds = 60;
+
     public static Task<Result> Handle(
         ProcessProviderWebhookCommand command,
         IPaymentAdapterFactory providerFactory,
@@ -203,12 +209,18 @@ public static class ProcessProviderWebhookHandler
         if (await throttle.IsWebhookThrottledAsync(payment.TenantId, ct))
         {
             logger.LogWarning(
-                "Webhook throttled for tenant {TenantId}: too many webhook events in the last minute.",
+                "{Provider} webhook {ProviderEventId} throttled for tenant {TenantId}: too many webhook events in the last minute; the provider will retry it.",
+                provider,
+                verification.ProviderEventId,
                 payment.TenantId
             );
-            webhookEvent.MarkRejected("Tenant webhook rate exceeded.", DateTime.UtcNow);
+            // Failed (no terminal) + 429: la próxima entrega del provider lo re-procesa. Antes quedaba
+            // Rejected con 200 y el provider nunca reintentaba: el pago confirmado se perdía.
+            webhookEvent.MarkFailed("Tenant webhook rate exceeded; waiting for the provider retry.", DateTime.UtcNow);
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Success();
+            return Result.Failure(
+                new Error(WebhookThrottledCode, "Too many webhook events for this tenant. Retry later.")
+            );
         }
 
         await throttle.RegisterWebhookAttemptAsync(payment.TenantId, ct);

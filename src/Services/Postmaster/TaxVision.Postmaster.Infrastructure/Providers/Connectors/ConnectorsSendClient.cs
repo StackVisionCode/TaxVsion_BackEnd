@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -25,6 +26,8 @@ public sealed class ConnectorsSendClient(
     ILogger<ConnectorsSendClient> logger
 ) : IOAuthEmailSender
 {
+    private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(60);
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -144,7 +147,25 @@ public sealed class ConnectorsSendClient(
             (int)response.StatusCode,
             reason
         );
-        return Failed(message, reason);
+        // El cupo por minuto de Connectors: el email no salió y el consumer lo difiere. El diario
+        // (SendMessageHandler.QuotaExceeded) también es 429, pero reintentar en minutos no lo arregla.
+        return IsPerMinuteThrottle(response, error)
+            ? Failed(message, reason, RetryAfterOf(response))
+            : Failed(message, reason);
+    }
+
+    private static bool IsPerMinuteThrottle(HttpResponseMessage response, ErrorDto? error) =>
+        response.StatusCode == HttpStatusCode.TooManyRequests
+        && error?.Code is null or "SendMessageHandler.RateLimited" or "RateLimit.Exceeded";
+
+    private static TimeSpan RetryAfterOf(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header?.Delta is { } delta)
+            return delta;
+        if (header?.Date is { } date && date > DateTimeOffset.UtcNow)
+            return date - DateTimeOffset.UtcNow;
+        return DefaultRetryAfter;
     }
 
     private static SendResult Succeeded(SentMessage message, string? providerMessageId) =>
@@ -157,14 +178,15 @@ public sealed class ConnectorsSendClient(
                 .ToList()
         );
 
-    private static SendResult Failed(SentMessage message, string reason) =>
+    private static SendResult Failed(SentMessage message, string reason, TimeSpan? retryAfter = null) =>
         new(
             false,
             null,
             reason,
             message
                 .Recipients.Select(r => new RecipientSendOutcome(r.Id, r.Address, RecipientSendStatus.Rejected, reason))
-                .ToList()
+                .ToList(),
+            retryAfter
         );
 
     private sealed record SendMessageRequestDto(

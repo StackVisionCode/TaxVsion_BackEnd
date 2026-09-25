@@ -92,8 +92,12 @@ const rawEnv = z
     // (join-by-token/by-code, publicos) tenian estos numeros literales inline pese a que
     // el docblock de la ruta ya afirmaba que salian de config.rateLimit. Mismos defaults
     // que los literales que reemplazan, sin cambio de comportamiento fuera de .env.
-    COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX: z.coerce.number().int().positive().default(300),
+    // Por IP: techo para trafico anonimo y para una oficina entera detras de un NAT (antes 300, que
+    // abrir el chat varias veces bastaba para agotar). Por usuario autenticado va aparte (HTTP_USER).
+    COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX: z.coerce.number().int().positive().default(1000),
     COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    COMMUNICATION_RATE_LIMIT_HTTP_USER_MAX: z.coerce.number().int().positive().default(600),
+    COMMUNICATION_RATE_LIMIT_HTTP_USER_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     // RateLimit Fase 7 — subido de 5 a 20/60s para igualar el valor ya sembrado
     // en el catalogo .NET (RateLimitPolicyCatalog.cs, communication.d.meeting_join_by_token) —
     // la discrepancia (Node ten a 5, .NET tenia 20) se detecto al espejar el
@@ -279,6 +283,10 @@ export const config = {
     httpGlobal: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS,
+    },
+    httpUser: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_USER_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_USER_WINDOW_SECONDS,
     },
     meetingJoinByToken: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX,

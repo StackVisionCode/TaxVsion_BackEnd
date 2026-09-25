@@ -12,17 +12,41 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 /// son atendidas por <c>IProviderRateLimiter</c>, nunca por <see cref="TieredRateLimitEvaluator"/> —
 /// mismo criterio "dormido" que <c>RateLimitPartitionDimension.AccountOrProvider</c>) — lanza en vez
 /// de fingir una implementación sin tráfico real que la audite.
+///
+/// <para>
+/// Cada script devuelve <c>{excedido, espera_ms}</c>. Un rechazo no consume cupo: antes la ventana fija
+/// y la deslizante registraban también los intentos rechazados, así que un cliente que reintentaba
+/// estando bloqueado se mantenía bloqueado hasta dejar de insistir una ventana entera. La espera es la
+/// real (TTL restante, vencimiento de la entrada más vieja o tiempo al próximo token), no la ventana.
+/// </para>
 /// </summary>
 public sealed class RedisRateLimitAlgorithmCounter(IConnectionMultiplexer redis) : IRateLimitAlgorithmCounter
 {
-    // INCR + PEXPIRE-solo-en-el-primer-incremento, igual criterio atómico que RedisRateCounter (F26).
+    // Cada script arranca descartando la clave si tiene otro tipo de Redis: si una política cambia de
+    // algoritmo (p.ej. ventana deslizante → token bucket) la clave vieja daría WRONGTYPE hasta vencer.
+    //
+    // Chequea antes de INCR; PEXPIRE solo en el primer incremento, igual criterio atómico que
+    // RedisRateCounter (F26). Una clave sin TTL (legacy) se re-expira en vez de bloquear para siempre.
     private const string FixedWindowScript =
         @"
+local kind = redis.call('TYPE', KEYS[1])['ok']
+if kind ~= 'none' and kind ~= 'string' then
+    redis.call('DEL', KEYS[1])
+end
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+if current >= tonumber(ARGV[2]) then
+    local ttl = redis.call('PTTL', KEYS[1])
+    if ttl < 0 then
+        redis.call('PEXPIRE', KEYS[1], ARGV[1])
+        ttl = tonumber(ARGV[1])
+    end
+    return {1, ttl}
+end
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
     redis.call('PEXPIRE', KEYS[1], ARGV[1])
 end
-return count > tonumber(ARGV[2]) and 1 or 0";
+return {0, 0}";
 
     // Log de timestamps en un sorted set: poda lo que cayó fuera de la ventana, agrega el hit
     // actual (member único generado en C# — Lua no tiene una fuente de aleatoriedad segura para
@@ -32,16 +56,29 @@ return count > tonumber(ARGV[2]) and 1 or 0";
     // segundos (descartando microsegundos) deja "now_ms" congelado durante ~1s enteros y saltando
     // 1000ms de golpe al cruzar el borde, con efectos correctos acá (ZCARD sigue siendo exacto) pero
     // catastróficos en TokenBucketScript (ver ahí) — se combinan los 2 componentes en ambos scripts
-    // por consistencia aunque acá el bug real no aplique.
+    // por consistencia aunque acá el bug real no aplique. El hit solo se agrega si hay cupo; la espera es
+    // lo que falta para que venza la entrada más vieja (la próxima en liberar un lugar).
     private const string SlidingWindowScript =
         @"
+local kind = redis.call('TYPE', KEYS[1])['ok']
+if kind ~= 'none' and kind ~= 'zset' then
+    redis.call('DEL', KEYS[1])
+end
 local time = redis.call('TIME')
 local now_ms = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_ms - tonumber(ARGV[1]))
+local window = tonumber(ARGV[1])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_ms - window)
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
+    local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+    local retry = window
+    if oldest[2] then
+        retry = math.max(1, tonumber(oldest[2]) + window - now_ms)
+    end
+    return {1, retry}
+end
 redis.call('ZADD', KEYS[1], now_ms, ARGV[2])
-redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[1]))
-local count = redis.call('ZCARD', KEYS[1])
-return count > tonumber(ARGV[3]) and 1 or 0";
+redis.call('PEXPIRE', KEYS[1], window)
+return {0, 0}";
 
     // Bucket clásico: capacidad = limit, refill continuo a limit/window tokens por ms. Estado en un
     // hash (tokens, ts_ms) — se relee y refilla en cada llamada antes de intentar consumir 1 token.
@@ -52,6 +89,10 @@ return count > tonumber(ARGV[3]) and 1 or 0";
     // de integración de 61 requests reales nunca disparaba el 429 esperado.
     private const string TokenBucketScript =
         @"
+local kind = redis.call('TYPE', KEYS[1])['ok']
+if kind ~= 'none' and kind ~= 'hash' then
+    redis.call('DEL', KEYS[1])
+end
 local capacity = tonumber(ARGV[1])
 local refill_per_ms = tonumber(ARGV[2])
 local ttl_ms = tonumber(ARGV[3])
@@ -70,17 +111,19 @@ local elapsed = math.max(0, now_ms - ts)
 tokens = math.min(capacity, tokens + elapsed * refill_per_ms)
 
 local exceeded = 0
+local retry_ms = 0
 if tokens >= 1 then
     tokens = tokens - 1
 else
     exceeded = 1
+    retry_ms = math.ceil((1 - tokens) / refill_per_ms)
 end
 
 redis.call('HMSET', KEYS[1], 'tokens', tokens, 'ts', now_ms)
 redis.call('PEXPIRE', KEYS[1], ttl_ms)
-return exceeded";
+return {exceeded, retry_ms}";
 
-    public async Task<bool> EvaluateAsync(
+    public async Task<RateLimitCounterResult> EvaluateAsync(
         RateCounterKey key,
         RateLimitAlgorithm algorithm,
         int limit,
@@ -130,6 +173,10 @@ return exceeded";
             ),
         };
 
-        return (long)result == 1;
+        var values = (RedisResult[])result!;
+        if ((long)values[0] != 1)
+            return RateLimitCounterResult.Allowed;
+
+        return RateLimitCounterResult.Rejected(TimeSpan.FromMilliseconds(Math.Max(1, (long)values[1])));
     }
 }

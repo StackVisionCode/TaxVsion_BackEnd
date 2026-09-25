@@ -5,6 +5,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
@@ -100,8 +101,9 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     [HttpPost("refresh")]
     [AllowAnonymous]
     [RateLimitExempt(
-        "Anónimo — el refresh token en sí ya es el secreto portador (unguessable, host-binding en Fase 18.3); sin JWT propio que particionar, agregar protección HTTP nueva queda fuera de alcance de esta migración."
+        "Anónimo — el refresh token en sí ya es el secreto portador (unguessable, host-binding en Fase 18.3); sin JWT propio que particionar. Lo acota el limiter nativo \"auth-refresh\" por IP."
     )]
+    [EnableRateLimiting("auth-refresh")]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Refresh(
         RefreshRequest request,

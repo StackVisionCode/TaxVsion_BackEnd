@@ -104,7 +104,11 @@ public static class ReconcileSmsStatusesHandler
         {
             SmsCanonicalStatus.Delivered => message.MarkDelivered(nowUtc),
             SmsCanonicalStatus.Failed => message.MarkFailed(nowUtc, update.FailureCode, update.FailureReason),
-            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(nowUtc, update.FailureCode, update.FailureReason),
+            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(
+                nowUtc,
+                update.FailureCode,
+                update.FailureReason
+            ),
             _ => Result.Success(), // Accepted/PENDING: nada que reconciliar todavía
         };
     }

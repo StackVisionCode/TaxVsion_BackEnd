@@ -168,30 +168,40 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 600
     );
 
-    // Compartida por InitiateUpload + CompleteUpload + InitiateMultipartUpload +
-    // CompleteMultipartUpload (FilesController) — todo el ciclo de vida de un upload.
+    // InitiateUpload + InitiateMultipartUpload (FilesController): un archivo = un permiso. Antes el
+    // Complete contaba también, así que cada archivo consumía dos (unos 12 archivos por 10 min).
     public static readonly RateLimitPolicyDefinition CloudStorageUpload = Define(
         "cloudstorage.i.upload",
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 25,
+        quota: 60,
         windowSeconds: 600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 100
+        overlayQuota: 240
     );
 
-    // Reemplaza 1:1 [EnableRateLimiting("zip-download")] — mismo cupo exacto (5/min) que ya
-    // estaba tuneado para este endpoint real, ahora particionado por User (antes era
-    // sub-claim-o-IP crudo de ASP.NET Core) en vez de Tenant|User — evita que dos usuarios
-    // distintos del mismo tenant compartan cupo de un endpoint que ya sabía ser costoso
-    // (streaming de ZIP completo).
+    // CompleteUpload + CompleteMultipartUpload: cierran un upload que ya pagó su permiso al iniciar;
+    // escritura liviana, sin la cuota de un upload nuevo.
+    public static readonly RateLimitPolicyDefinition CloudStorageUploadComplete = Define(
+        "cloudstorage.g.upload_complete",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
+    );
+
+    // Particionado por User (no Tenant|User): dos usuarios del mismo tenant no comparten cupo de un
+    // endpoint costoso (streaming de ZIP completo).
     public static readonly RateLimitPolicyDefinition CloudStorageZipDownload = Define(
         "cloudstorage.i.zip_download",
         RateLimitCategory.I,
         RateLimitPartitionDimension.User,
         [],
-        quota: 5,
+        quota: 10,
         windowSeconds: 60,
         RateLimitAlgorithm.FixedWindow
     );

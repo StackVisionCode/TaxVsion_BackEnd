@@ -85,7 +85,7 @@ builder.Services.AddOwnershipAuthorization<ShareLink>(CloudStoragePermissions.Sh
 // (varios accesos al mismo link compartido desde la misma red).
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "share-public",
         context =>
@@ -102,7 +102,7 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
@@ -123,7 +123,7 @@ builder.Services.AddRateLimiter(options =>
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:zip",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {

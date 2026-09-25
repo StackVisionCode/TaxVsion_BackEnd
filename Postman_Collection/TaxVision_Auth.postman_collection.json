@@ -158,7 +158,49 @@
         },
         "description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
       },
-      "response": [],
+      "response": [
+        {
+          "name": "RateLimit.Exceeded (429) — auth-refresh por IP",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/refresh",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Retry-After",
+              "value": "17"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 17 seconds.\",\n  \"retryAfterSeconds\": 17,\n  \"policy\": \"auth-refresh\"\n}"
+        }
+      ],
       "event": [
         {
           "listen": "test",

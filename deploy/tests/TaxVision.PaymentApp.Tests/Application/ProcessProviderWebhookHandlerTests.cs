@@ -186,6 +186,43 @@ public sealed class ProcessProviderWebhookHandlerTests
     }
 
     [Fact]
+    public async Task Throttled_webhook_asks_the_provider_to_retry_and_leaves_the_event_reprocessable()
+    {
+        // Antes: Rejected (terminal) + 200 → el provider no reintentaba y el pago confirmado se perdía.
+        var payment = CreateProcessingOnboardingPayment();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-throttled", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload("ORDER-123", PaymentStatus.Succeeded, null, null, null)
+        );
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            webhooks,
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(webhookThrottled: true),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ProcessProviderWebhookHandler.WebhookThrottledCode, result.Error.Code);
+        Assert.Equal(WebhookEventStatus.Failed, webhooks.Added!.Status);
+        Assert.False(webhooks.Added.IsTerminal); // la próxima entrega lo re-procesa
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
     public async Task Amount_mismatch_on_a_success_event_is_not_applied_and_the_event_is_marked_stale()
     {
         // F2: el pago espera 4900 USD; el provider reporta que se cobró solo 100. Aunque el evento
@@ -620,10 +657,10 @@ public sealed class ProcessProviderWebhookHandlerTests
         public void RecordProviderLatency(double milliseconds, string provider, string method) { }
     }
 
-    private sealed class FakePaymentAttemptThrottle : IPaymentAttemptThrottle
+    private sealed class FakePaymentAttemptThrottle(bool webhookThrottled = false) : IPaymentAttemptThrottle
     {
         public Task<bool> IsWebhookThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult(false);
+            Task.FromResult(webhookThrottled);
 
         public Task RegisterWebhookAttemptAsync(Guid tenantId, CancellationToken ct = default) => Task.CompletedTask;
 

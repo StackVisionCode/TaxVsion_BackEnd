@@ -71,7 +71,7 @@ public sealed class FilesController(
         // Ver InitiateUpload: Communication finaliza la subida mediada como Service.
         ActorType.Service
     )]
-    [RateLimit("cloudstorage.i.upload")]
+    [RateLimit("cloudstorage.g.upload_complete")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteUpload(Guid fileId, CancellationToken ct)
     {
@@ -124,7 +124,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
-    [RateLimit("cloudstorage.i.upload")]
+    [RateLimit("cloudstorage.g.upload_complete")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteMultipartUpload(
         Guid fileId,

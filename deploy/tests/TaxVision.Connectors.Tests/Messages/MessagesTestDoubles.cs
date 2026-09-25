@@ -40,11 +40,11 @@ internal sealed class FakeMessageBodyRateLimiter : IMessageBodyRateLimiter
 internal sealed class FakeAttachmentRateLimiter : IAttachmentRateLimiter
 {
     public bool AllowNext { get; set; } = true;
-    public List<Guid> Calls { get; } = [];
+    public List<(Guid TenantId, Guid AccountId)> Calls { get; } = [];
 
-    public Task<bool> TryAcquireAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<bool> TryAcquireAsync(Guid tenantId, Guid accountId, CancellationToken ct = default)
     {
-        Calls.Add(tenantId);
+        Calls.Add((tenantId, accountId));
         return Task.FromResult(AllowNext);
     }
 }

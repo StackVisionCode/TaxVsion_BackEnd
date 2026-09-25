@@ -205,8 +205,12 @@ public sealed class TwilioSmsProvider(
         var updates = new List<SmsDeliveryUpdate>(ids.Count);
         foreach (var sid in ids)
         {
-            var url = $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages/{Uri.EscapeDataString(sid)}.json";
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url) { Headers = { Authorization = basicAuth } };
+            var url =
+                $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages/{Uri.EscapeDataString(sid)}.json";
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url)
+            {
+                Headers = { Authorization = basicAuth },
+            };
             try
             {
                 using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
@@ -265,7 +269,11 @@ public sealed class TwilioSmsProvider(
         return $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages.json";
     }
 
-    private static FormUrlEncodedContent BuildForm(SmsProviderConfig config, SmsSendRequest request, string? statusCallback)
+    private static FormUrlEncodedContent BuildForm(
+        SmsProviderConfig config,
+        SmsSendRequest request,
+        string? statusCallback
+    )
     {
         var fields = new List<KeyValuePair<string, string>>
         {

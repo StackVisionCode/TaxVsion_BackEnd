@@ -724,21 +724,21 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000000"),
                             Category = "F",
-                            MultiplierOverride = 1.0m,
+                            MultiplierOverride = 2.0m,
                             PlanCode = "starter"
                         },
                         new
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000001"),
                             Category = "G",
-                            MultiplierOverride = 1.0m,
+                            MultiplierOverride = 2.0m,
                             PlanCode = "starter"
                         },
                         new
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000002"),
                             Category = "H",
-                            MultiplierOverride = 1.0m,
+                            MultiplierOverride = 2.0m,
                             PlanCode = "starter"
                         },
                         new
@@ -794,21 +794,21 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000010"),
                             Category = "F",
-                            MultiplierOverride = 3.0m,
+                            MultiplierOverride = 5.0m,
                             PlanCode = "pro"
                         },
                         new
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000011"),
                             Category = "G",
-                            MultiplierOverride = 3.0m,
+                            MultiplierOverride = 5.0m,
                             PlanCode = "pro"
                         },
                         new
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000012"),
                             Category = "H",
-                            MultiplierOverride = 3.0m,
+                            MultiplierOverride = 5.0m,
                             PlanCode = "pro"
                         },
                         new
@@ -878,7 +878,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("c3000000-0000-0000-0000-000000000022"),
                             Category = "H",
-                            MultiplierOverride = 15.0m,
+                            MultiplierOverride = 10.0m,
                             PlanCode = "enterprise"
                         },
                         new

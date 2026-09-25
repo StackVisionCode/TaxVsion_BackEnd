@@ -6,7 +6,7 @@ public interface ILoadShedder
 {
     /// <summary>
     /// Se llama una vez por request, despues de resolver el tenant (tenant_id del JWT o
-    /// <see cref="TenantConsumptionTracker.AnonymousKey"/>). Devuelve el motivo del descarte, o
+    /// <see cref="TenantConsumptionTracker.AnonymousKeyFor"/> por IP). Devuelve el motivo del descarte, o
     /// <see cref="SheddingVerdict.Allowed"/> para seguir adelante.
     /// </summary>
     SheddingVerdict Evaluate(string tenantKey, PathString path, bool clientDisconnected);

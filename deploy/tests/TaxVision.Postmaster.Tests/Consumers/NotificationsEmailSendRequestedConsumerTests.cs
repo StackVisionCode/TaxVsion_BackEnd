@@ -514,15 +514,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         Assert.IsType<PostmasterEmailDeliverySucceededIntegrationEvent>(published);
     }
 
+    /// <summary>
+    /// Antes un email por encima de 60/min por tenant quedaba Failed para siempre. Ahora nada sale, se
+    /// deshace el intento y la excepción hace que Wolverine lo reprograme tras la espera del limiter.
+    /// </summary>
     [Fact]
-    public async Task Handle_marks_message_failed_and_never_calls_sender_when_rate_limited()
+    public async Task Handle_defers_the_email_when_rate_limited_instead_of_failing_it()
     {
         var evt = CreateEvent();
         var idempotencyGuard = new FakeIdempotencyGuard();
-        var providerResolver = new FakeProviderResolver
-        {
-            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
-        };
         var rateLimiter = new FakeEmailProviderRateLimiter
         {
             DecisionReturnValue = new RateLimitDecision(false, TimeSpan.FromSeconds(30)),
@@ -531,10 +531,128 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var sentMessages = new FakeSentMessageRepository();
         var bus = new FakeMessageBus();
 
-        await NotificationsEmailSendRequestedConsumer.Handle(
+        var deferred = await Assert.ThrowsAsync<EmailRateLimitedException>(() =>
+            HandleSmtpAsync(evt, idempotencyGuard, rateLimiter, emailSender, sentMessages, bus, delivery: 1)
+        );
+
+        Assert.Equal(TimeSpan.FromSeconds(30), deferred.RetryAfter);
+        Assert.Null(emailSender.LastMessage);
+        Assert.Empty(sentMessages.Added); // el SentMessage del intento se deshizo
+        Assert.Single(sentMessages.Removed);
+        Assert.Single(idempotencyGuard.Released); // la reserva se liberó para la próxima entrega
+        Assert.Empty(idempotencyGuard.Completed);
+        Assert.Empty(bus.Published); // Notification no recibe un Failed por algo que se reintenta
+    }
+
+    [Fact]
+    public async Task Handle_fails_the_email_after_the_last_rate_limited_delivery()
+    {
+        var evt = CreateEvent();
+        var idempotencyGuard = new FakeIdempotencyGuard();
+        var rateLimiter = new FakeEmailProviderRateLimiter
+        {
+            DecisionReturnValue = new RateLimitDecision(false, TimeSpan.FromSeconds(30)),
+        };
+        var emailSender = new FakeEmailSender();
+        var sentMessages = new FakeSentMessageRepository();
+        var bus = new FakeMessageBus();
+
+        await HandleSmtpAsync(
             evt,
             idempotencyGuard,
-            providerResolver,
+            rateLimiter,
+            emailSender,
+            sentMessages,
+            bus,
+            delivery: NotificationsEmailSendRequestedConsumer.MaxRateLimitedDeliveries
+        );
+
+        Assert.Null(emailSender.LastMessage);
+        var message = Assert.Single(sentMessages.Added);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Failed, message.Status);
+        Assert.Contains("RateLimited", message.ErrorReason);
+        Assert.Single(idempotencyGuard.Completed);
+
+        var failed = Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Contains("RateLimited", failed.Reason);
+    }
+
+    [Fact]
+    public async Task Handle_defers_a_TenantOAuth_email_when_Connectors_answers_429()
+    {
+        var evt = CreateEvent() with { RequiredProviderScope = "TenantOAuth" };
+        var idempotencyGuard = new FakeIdempotencyGuard();
+        var oauthProviderResolver = new FakeOAuthProviderResolver
+        {
+            ResolveReturnValue = new OAuthResolveResult(
+                OAuthResolutionStatus.Resolved,
+                new ResolvedOAuthProvider(Guid.NewGuid(), "gmail", "sales@tenant.example", "Tenant Sales"),
+                null
+            ),
+        };
+        var oauthEmailSender = new FakeOAuthEmailSender
+        {
+            SendReturnValue = new SendResult(false, null, "RateLimit.Exceeded: too fast", [], TimeSpan.FromSeconds(20)),
+        };
+        var sentMessages = new FakeSentMessageRepository();
+        var bus = new FakeMessageBus();
+
+        var deferred = await Assert.ThrowsAsync<EmailRateLimitedException>(() =>
+            NotificationsEmailSendRequestedConsumer.Handle(
+                evt,
+                idempotencyGuard,
+                new FakeProviderResolver(),
+                oauthProviderResolver,
+                new FakeSuppressionListRepository(),
+                new FakeEmailProviderRateLimiter(),
+                new FakeEmailSender(),
+                oauthEmailSender,
+                new FakeInlineAssetFetcher(),
+                sentMessages,
+                new FakeUnitOfWork(),
+                new FakeCorrelationContext(),
+                bus,
+                NullLogger.Instance,
+                CancellationToken.None
+            )
+        );
+
+        Assert.Equal(TimeSpan.FromSeconds(20), deferred.RetryAfter);
+        Assert.Empty(sentMessages.Added);
+        Assert.Single(idempotencyGuard.Released);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public void Deferred_email_waits_the_limiter_window_plus_a_short_jitter()
+    {
+        var deferred = new EmailRateLimitedException("key", TimeSpan.FromSeconds(30));
+
+        var delay = deferred.NextAttemptDelay();
+
+        Assert.InRange(delay, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(45));
+    }
+
+    private static Task HandleSmtpAsync(
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        FakeIdempotencyGuard idempotencyGuard,
+        FakeEmailProviderRateLimiter rateLimiter,
+        FakeEmailSender emailSender,
+        FakeSentMessageRepository sentMessages,
+        FakeMessageBus bus,
+        int delivery
+    ) =>
+        NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            idempotencyGuard,
+            new FakeProviderResolver
+            {
+                ResolveReturnValue = new ResolveResult(
+                    ProviderResolutionStatus.Resolved,
+                    CreateResolvedProvider(),
+                    null
+                ),
+            },
             new FakeOAuthProviderResolver(),
             new FakeSuppressionListRepository(),
             rateLimiter,
@@ -546,19 +664,9 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             new FakeCorrelationContext(),
             bus,
             NullLogger.Instance,
-            CancellationToken.None
+            CancellationToken.None,
+            new Wolverine.Envelope { Attempts = delivery }
         );
-
-        Assert.Null(emailSender.LastMessage);
-        var message = Assert.Single(sentMessages.Added);
-        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Failed, message.Status);
-        Assert.Contains("RateLimited", message.ErrorReason);
-        Assert.Single(idempotencyGuard.Completed);
-
-        var published = Assert.Single(bus.Published);
-        var failed = Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(published);
-        Assert.Contains("RateLimited", failed.Reason);
-    }
 
     /// <summary>
     /// Aislamiento Bulk/Transactional: un envío Bulk con cupo configurado debe pedirle al rate

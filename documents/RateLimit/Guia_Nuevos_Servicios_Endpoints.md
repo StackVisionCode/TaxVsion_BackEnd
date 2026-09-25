@@ -171,20 +171,72 @@ public sealed class NotificationsEmailSendRequestedConsumer(
 
         if (count > effective.PermitCount)
         {
-            // Consecuencia según categoría — aquí K = marcar como RateLimited terminal
-            sentMessage.MarkAsFailed($"RateLimited: retry after {effective.WindowSeconds}s");
-            return;
+            // Por encima del cupo NO es un fallo: nada salió. Se deshace el intento (lo persistido en
+            // este handler) y se lanza para que Wolverine lo reprograme. Ver Postmaster
+            // NotificationsEmailSendRequestedConsumer.DeferOverQuotaAsync.
+            sentMessages.Remove(sentMessage);
+            await idempotencyGuard.ReleaseAsync(msg.TenantId, msg.IdempotencyKey, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+            throw new EmailRateLimitedException(msg.IdempotencyKey, retryAfter);
         }
 
         await sender.SendAsync(...);
     }
 }
+
+// Program.cs — ANTES de ApplyStandardFailurePolicies() (gana la primera regla que matchea):
+options.Policies.OnException<EmailRateLimitedException>().CustomAction(
+    (_, lifecycle, ex) => new ValueTask(lifecycle.ReScheduleAsync(
+        DateTimeOffset.UtcNow.Add(((EmailRateLimitedException)ex).NextAttemptDelay()))),
+    "Reschedule an email that is over the provider quota");
 ```
+
+Para no diferir para siempre, el handler recibe `Envelope? envelope = null` (lo inyecta Wolverine) y,
+cuando `envelope.Attempts` llega al tope, ahí sí marca el fallo y publica el callback.
 
 Reglas de oro:
 - **Nunca** `IDatabase.StringIncrementAsync` directo. Solo `IRateCounter`. NetArchTest lo bloquea.
 - **Nunca** `ICacheService.GetAsync` + `SetAsync` para contadores. Es el TOCTOU bug que F26 cerró.
 - **Nunca** construir keys con `$"..."`. Siempre `RateCounterKey.Build(...)`.
+- **Nunca** convertir un "por encima del cupo" en un fallo permanente ni en un éxito falso. Un consumer
+  difiere; un webhook responde `429` (§4.7).
+
+### 4.5 Limiter nativo de ASP.NET Core (solo pre-auth por IP y webhooks)
+
+Si el endpoint es anónimo (A/B/C/D/E) y usás `AddRateLimiter`, **siempre** con el contrato común:
+
+```csharp
+builder.Services.AddRateLimiter(options =>
+{
+    options.UseTaxVisionRejectionResponse(); // 429 + Retry-After real + body del contrato + métrica
+    options.AddFixedWindowLimiter("auth-refresh", o => { o.PermitLimit = 120; o.Window = TimeSpan.FromMinutes(1); });
+});
+```
+
+`UseTaxVisionRejectionResponse()` escribe el body de §6 (invariante 11) y cuenta el rechazo en
+`ratelimit.native_rejected_total{policy}`. La fitness function
+`Every_native_AddRateLimiter_uses_the_shared_rejection_contract` falla el build si falta.
+
+**No pongas por IP un endpoint que llama el navegador de un usuario ya logueado** (`/auth/refresh`,
+listados, polling): una oficina entera sale por una sola IP de NAT. Por eso `/auth/refresh` tiene su
+propia política de 120/min y ya no comparte los 30/min del login.
+
+### 4.6 Throttle de dominio de cara al usuario (OTP, PIN, cooldowns)
+
+Devolvé un `Error` con código propio y mapealo a **429** en `ErrorHttpMapping` (nunca 400/401: el
+front lo trataría como dato inválido o como sesión vencida):
+
+```csharp
+return Result.Failure(new Error("Onboarding.OtpRateLimited", "Too many codes requested. Try again in a few minutes."));
+// ErrorHttpMapping: "Onboarding.OtpRateLimited" or ... => StatusCodes.Status429TooManyRequests
+```
+
+### 4.7 Webhooks de terceros (Stripe, PayPal, Gmail, Graph…)
+
+El provider decide si reintenta mirando el status: **un 200 le dice "entregado"**. Si un webhook se
+throttlea:
+- Respondé **429** con `Retry-After` (`RateLimitRejection.WriteAsync(...)`, como `ProviderWebhookThrottle` de PaymentApp).
+- Dejá el evento en un estado **no terminal** (`Failed`, no `Rejected`), así la próxima entrega lo re-procesa en vez de descartarlo como duplicado.
 
 ---
 
@@ -226,6 +278,8 @@ socket.on('chat.send', async (data, ack) => {
 
 `socket-rate-limiter.ts` internamente usa el helper atómico `rate-counter.ts` (Lua EVAL) — **no** `INCR + EXPIRE` separados (bug arreglado en Fase 0.4 del plan).
 
+El código del ack **tiene que terminar en `.RateLimited`** (`Chat.RateLimited`, `Call.RateLimited`, `Meeting.Chat.RateLimited`): el CRM y el Portal detectan así el rechazo y muestran "You're sending messages too quickly…" en vez del `message` crudo. Para HTTP en Fastify, `sendRateLimited(reply, retryAfterSeconds, policy)` escribe el mismo contrato que .NET.
+
 ---
 
 ## 6. Invariantes (los que el fitness test verifica)
@@ -242,6 +296,8 @@ Si tu PR viola alguno de estos, CI falla. Léelos antes de escribir código.
 8. **Health y metrics siempre exentos**. Categoría P. Sin excepción.
 9. **`RateCounterKey` sigue el formato `<svc>:rl:<policy>:<parts>:<bucket>`**. Ningún key ad-hoc.
 10. **Tests**: cada endpoint nuevo debe tener al menos 1 test de integración que verifique 429 al exceder cuota (mock del clock o del contador para no depender de tiempo real).
+11. **Un solo contrato de rechazo**: `429 {"code":"RateLimit.Exceeded","message":"You're making requests too quickly. Please try again in N seconds.","retryAfterSeconds":N,"policy":"…","layer":"…"}` + header `Retry-After`. El load shedding del Gateway es `503 {"code":"LoadShedding.Active",…,"retryAfterSeconds":N}`. El CRM y el Portal leen `code` y `retryAfterSeconds` para mostrar el aviso con cuenta regresiva y para **no cerrar la sesión**: si inventás otro formato, el usuario ve texto técnico.
+12. **Un rechazo no consume cupo** y `Retry-After` es la espera real (lo que falta para el próximo permiso), no la ventana entera. Si escribís un contador propio, mismo criterio (ver `RedisRateLimitAlgorithmCounter`).
 
 ---
 
@@ -259,6 +315,10 @@ Si tu PR viola alguno de estos, CI falla. Léelos antes de escribir código.
 | Contar en SQL con `UPDATE ... SET count = count + 1` para rate limit | SQL no es cache. Explota el DB en burst. | Redis + `IRateCounter`. SQL solo para lockouts persistentes (User.FailedLoginCount, PaymentLink.FailedRedemptionAttempts). |
 | Devolver 429 sin `Retry-After` | El cliente/frontend/mobile no sabe cuándo reintentar → tormenta de reintentos. | Siempre `Retry-After` en segundos, calculado desde el TTL real de la clave. |
 | Silenciar el 429 (log warning + return 200 vacío) para "no romper al cliente" | El cliente cree que funcionó, el rate limit no funciona, el sistema se cae eventualmente. | 429 explícito con contrato de headers. El cliente decide UX. |
+| Webhook throttleado → marcar el evento `Rejected` y responder 200 | El provider no reintenta y, si reintentara, el evento terminal se descarta como duplicado: un pago confirmado se pierde (bug real de PaymentApp, 2026-09). | 429 + evento en estado no terminal (§4.7). |
+| Mensaje por encima del cupo → `MarkAsFailed("RateLimited")` | Un pico de 1 minuto se convierte en emails que nunca salen (bug real de Postmaster, 2026-09). | Rollback del intento + excepción + `ReScheduleAsync` con la espera del limiter (§4.4). |
+| Throttle de usuario que devuelve 400 o 401 | El front lo muestra como dato inválido o, peor, intenta un refresh y desloguea. | 429 con código propio en `ErrorHttpMapping` (§4.6). |
+| Listados que el front pide al navegar con `SlidingWindow` de 20/min | Un usuario cambiando de pestañas lo agota en segundos y la ventana deslizante lo mantiene bloqueado. | `TokenBucket` (absorbe ráfagas, recarga continua); categoría H hoy 60 base / 600 overlay. |
 
 ---
 
@@ -278,7 +338,9 @@ Copiá esto en la descripción del PR. Si algo no aplica, marcalo `N/A` con la r
 - [ ] No hay `ICacheService.GetAsync + SetAsync` para contadores
 - [ ] No hay keys construidas con string interpolation — solo RateCounterKey.Build(...)
 - [ ] Test de integración que verifica 429 con headers correctos
-- [ ] Métrica OTel `ratelimit.evaluated_total{policy}` emitida
+- [ ] Métrica OTel `ratelimit.evaluated_total{policy}` emitida (tiered) o `UseTaxVisionRejectionResponse()` (nativo)
+- [ ] El 429 usa el contrato único (invariante 11); throttles de dominio mapeados a 429 en ErrorHttpMapping
+- [ ] Webhook: throttle → 429 + estado no terminal. Consumer: por encima del cupo → diferir, no fallar
 - [ ] README/Postman actualizados con la política nueva y su respuesta 429 de ejemplo
 ```
 
