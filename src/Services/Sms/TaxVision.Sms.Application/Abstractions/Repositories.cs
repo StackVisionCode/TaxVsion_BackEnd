@@ -21,6 +21,18 @@ public interface ISmsMessageRepository
     /// reciente hacia él (cross-tenant, IgnoreQueryFilters). Null si nunca se le envió — no se inventa.</summary>
     Task<SmsMessage?> GetLatestByPhoneAsync(string phoneE164, CancellationToken ct = default);
 
+    /// <summary>Reconciliación por pull: mensajes en <see cref="SmsMessageStatus.Accepted"/> con
+    /// <c>ProviderMessageId</c> (i.e. el proveedor los aceptó pero aún no llegó un DLR final) más viejos que
+    /// <paramref name="olderThanUtc"/>. Cross-tenant por default (job de fondo, IgnoreQueryFilters); si se
+    /// pasa <paramref name="tenantId"/> se acota a ese tenant (endpoint manual). Orden estable (más viejos
+    /// primero) y tope <paramref name="limit"/>.</summary>
+    Task<IReadOnlyList<SmsMessage>> GetStuckForReconciliationAsync(
+        Guid? tenantId,
+        DateTime olderThanUtc,
+        int limit,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(SmsMessage message, CancellationToken ct = default);
 }
 

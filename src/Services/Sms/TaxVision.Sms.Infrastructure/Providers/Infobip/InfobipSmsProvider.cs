@@ -42,6 +42,8 @@ public sealed class InfobipSmsProvider(
 {
     public const string ProviderCode = "infobip";
     private const string DefaultSendPath = "/sms/2/text/advanced";
+    private const string LogsPath = "/sms/1/logs";
+    private const string StatusWebhookPath = "/sms/webhooks/infobip/status";
 
     // Encoder relajado: emite '+' del E.164 literal (no +) para un body limpio y legible.
     private static readonly JsonSerializerOptions BodyJson = new()
@@ -64,6 +66,7 @@ public sealed class InfobipSmsProvider(
             SupportsDeliveryReceipts = true,
             SupportsInbound = true,
             SupportsBulkSend = true,
+            SupportsStatusPull = true, // Infobip expone GET /sms/1/logs (consulta de estado por messageId).
             MaxBatchSize = 1000,
             SupportsMedia = false,
             SupportsMultipleMedia = false,
@@ -79,7 +82,7 @@ public sealed class InfobipSmsProvider(
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config))
         {
-            Content = BuildBody(config, request.To, request.Body),
+            Content = BuildBody(config, request.To, request.Body, NotifyUrl()),
         };
         ApplyInfobipAuth(httpRequest, config.Auth.Credential);
 
@@ -99,9 +102,8 @@ public sealed class InfobipSmsProvider(
             if (!parsed)
                 return Result.Success(new SmsSendResult(false, null, "providerRejected", payload));
 
-            var rejected =
-                string.Equals(groupName, "REJECTED", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(groupName, "UNDELIVERABLE", StringComparison.OrdinalIgnoreCase);
+            // Rechazo síncrono en la respuesta de envío (ej. REJECTED_NOT_ENOUGH_CREDITS → groupName REJECTED).
+            var rejected = MapGroupName(groupName) is SmsCanonicalStatus.Failed or SmsCanonicalStatus.Undeliverable;
             if (rejected)
                 return Result.Success(new SmsSendResult(false, messageId, "providerRejected", groupName));
 
@@ -169,27 +171,80 @@ public sealed class InfobipSmsProvider(
             if (!TryFirst(doc.RootElement, "results", out var r))
                 return Result.Failure<SmsDeliveryUpdate>(new Error("sms.webhook.malformed", "Malformed DLR payload."));
 
-            var messageId = GetString(r, "messageId");
-            var groupName = r.TryGetProperty("status", out var st) ? GetString(st, "groupName") : null;
-            if (string.IsNullOrWhiteSpace(messageId) || string.IsNullOrWhiteSpace(groupName))
-                return Result.Failure<SmsDeliveryUpdate>(new Error("sms.webhook.malformed", "Malformed DLR payload."));
-
-            var status = groupName!.ToUpperInvariant() switch
-            {
-                "DELIVERED" => SmsCanonicalStatus.Delivered,
-                "UNDELIVERABLE" => SmsCanonicalStatus.Undeliverable,
-                "REJECTED" or "EXPIRED" => SmsCanonicalStatus.Failed,
-                _ => SmsCanonicalStatus.Accepted, // PENDING / en tránsito
-            };
-            var eventType = (r.TryGetProperty("status", out var st2) ? GetString(st2, "name") : null) ?? groupName!;
-            var failureCode = status is SmsCanonicalStatus.Failed or SmsCanonicalStatus.Undeliverable
-                ? groupName
-                : null;
-            return Result.Success(new SmsDeliveryUpdate(messageId!, eventType, status, failureCode, null));
+            var parsed = ParseResultEntry(r);
+            return parsed is null
+                ? Result.Failure<SmsDeliveryUpdate>(new Error("sms.webhook.malformed", "Malformed DLR payload."))
+                : Result.Success(parsed);
         }
         catch (JsonException)
         {
             return Result.Failure<SmsDeliveryUpdate>(new Error("sms.webhook.malformed", "Unparseable DLR payload."));
+        }
+    }
+
+    /// <summary>PULL de estado: <c>GET {BaseUrl}/sms/1/logs?messageId=..&amp;messageId=..</c>. El endpoint de
+    /// logs es CONSULTABLE (a diferencia de <c>/sms/1/reports</c>, que consume los reportes al leerlos), así
+    /// que sirve para reconciliar el estado final (DELIVERED/REJECTED/…) de mensajes que quedaron en Accepted
+    /// por no haber recibido el DLR por webhook. Fail-open: cualquier error de red/parse ⇒ lista vacía (no
+    /// se toca ningún mensaje).</summary>
+    public async Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var ids = providerMessageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        if (ids.Count == 0)
+            return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
+
+        var config = Config;
+        var query = string.Join("&", ids.Select(id => "messageId=" + Uri.EscapeDataString(id)));
+        var url = config.BaseUrl.TrimEnd('/') + LogsPath + "?limit=" + ids.Count + "&" + query;
+        var http = httpClientFactory.CreateClient(nameof(InfobipSmsProvider));
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
+        ApplyInfobipAuth(httpRequest, config.Auth.Credential);
+
+        try
+        {
+            var breaker = resilience.GetOrCreate(nameof(InfobipSmsProvider));
+            using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+            var payload = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Infobip logs pull returned {StatusCode} for {Count} id(s).",
+                    (int)response.StatusCode,
+                    ids.Count
+                );
+                return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
+            }
+
+            using var doc = JsonDocument.Parse(payload);
+            if (
+                doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("results", out var results)
+                || results.ValueKind != JsonValueKind.Array
+            )
+                return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
+
+            var updates = new List<SmsDeliveryUpdate>(results.GetArrayLength());
+            foreach (var entry in results.EnumerateArray())
+            {
+                var parsed = ParseResultEntry(entry);
+                if (parsed is not null)
+                    updates.Add(parsed);
+            }
+            return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>(updates);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
+        {
+            logger.LogWarning(ex, "Infobip logs pull failed for {Count} id(s).", ids.Count);
+            return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Infobip logs pull returned unparseable payload.");
+            return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
         }
     }
 
@@ -235,21 +290,64 @@ public sealed class InfobipSmsProvider(
         return config.BaseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
     }
 
-    private static StringContent BuildBody(SmsProviderConfig config, string to, string text)
+    private static StringContent BuildBody(SmsProviderConfig config, string to, string text, string? notifyUrl)
     {
-        var body = new
-        {
-            messages = new[]
-            {
+        // notifyUrl/notifyContentType a nivel de mensaje: Infobip empuja el DLR a nuestra URL pública.
+        // Si no hay URL pública (dev local), se omite y la reconciliación por pull cubre el estado.
+        var message = notifyUrl is null
+            ? (object)
                 new
                 {
                     destinations = new[] { new { to } },
                     from = config.SenderId,
                     text,
-                },
-            },
-        };
+                }
+            : new
+            {
+                destinations = new[] { new { to } },
+                from = config.SenderId,
+                text,
+                notifyUrl,
+                notifyContentType = "application/json",
+                intermediateReport = true,
+            };
+        var body = new { messages = new[] { message } };
         return new StringContent(JsonSerializer.Serialize(body, BodyJson), Encoding.UTF8, "application/json");
+    }
+
+    /// <summary>URL pública del webhook de estado de Infobip, o null si no se configuró una base pública.</summary>
+    private string? NotifyUrl()
+    {
+        var baseUrl = options.Value.PublicWebhookBaseUrl;
+        return string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl.TrimEnd('/') + StatusWebhookPath;
+    }
+
+    /// <summary>Mapea el <c>status.groupName</c> de Infobip (envío, DLR o logs — mismo vocabulario) al estado
+    /// canónico. Fuente única de verdad para las tres rutas.</summary>
+    private static SmsCanonicalStatus MapGroupName(string? groupName) =>
+        (groupName ?? string.Empty).ToUpperInvariant() switch
+        {
+            "DELIVERED" => SmsCanonicalStatus.Delivered,
+            "UNDELIVERABLE" => SmsCanonicalStatus.Undeliverable,
+            "REJECTED" or "EXPIRED" => SmsCanonicalStatus.Failed,
+            _ => SmsCanonicalStatus.Accepted, // PENDING / en tránsito
+        };
+
+    /// <summary>Normaliza una entrada de <c>results[]</c> (DLR webhook) o de <c>/sms/1/logs</c> — misma forma
+    /// <c>{ messageId, status: { groupName, name } }</c> — al modelo canónico. Null si le falta lo esencial.</summary>
+    private static SmsDeliveryUpdate? ParseResultEntry(JsonElement entry)
+    {
+        var messageId = GetString(entry, "messageId");
+        var hasStatus = entry.TryGetProperty("status", out var st);
+        var groupName = hasStatus ? GetString(st, "groupName") : null;
+        if (string.IsNullOrWhiteSpace(messageId) || string.IsNullOrWhiteSpace(groupName))
+            return null;
+
+        var status = MapGroupName(groupName);
+        var eventType = (hasStatus ? GetString(st, "name") : null) ?? groupName!;
+        var failureReason = hasStatus ? GetString(st, "description") : null;
+        var failureCode = status is SmsCanonicalStatus.Failed or SmsCanonicalStatus.Undeliverable ? groupName : null;
+        return new SmsDeliveryUpdate(messageId!, eventType, status, failureCode, failureReason);
     }
 
     /// <summary>Infobip usa el esquema propio <c>Authorization: App {apiKey}</c>.</summary>

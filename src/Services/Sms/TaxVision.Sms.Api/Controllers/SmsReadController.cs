@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Sms.Application.Messages.Queries;
 using TaxVision.Sms.Application.OptOut.Queries;
+using TaxVision.Sms.Application.Webhooks.Commands;
 using Wolverine;
 
 namespace TaxVision.Sms.Api.Controllers;
@@ -101,6 +102,24 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<SmsMessageDetailResponse>>(
             new GetSmsMessageByIdQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Reconcilia AHORA el estado de los SMS atascados en Accepted de este tenant, consultando por
+    /// pull a cada proveedor (backstop del DLR por webhook). Idempotente. Acotado al tenant del JWT.</summary>
+    [HttpPost("messages/reconcile")]
+    [RateLimit("sms.h.read")]
+    [ProducesResponseType<ReconcileSmsStatusesResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Reconcile(
+        [FromQuery] int max = 200,
+        [FromQuery] int minAgeSeconds = 0,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<ReconcileSmsStatusesResponse>>(
+            new ReconcileSmsStatusesCommand(tenant.TenantId, max, minAgeSeconds),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
