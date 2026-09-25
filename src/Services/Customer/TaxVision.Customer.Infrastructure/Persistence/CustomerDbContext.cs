@@ -7,6 +7,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Domain.Addresses;
+using TaxVision.Customer.Domain.Assignments;
 using TaxVision.Customer.Domain.Audit;
 using TaxVision.Customer.Domain.Catalogs;
 using TaxVision.Customer.Domain.ContactPoints;
@@ -49,6 +50,9 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     /// <summary>Relaciones existentes entre clientes.</summary>
     public DbSet<CustomerRelation> CustomerRelations => Set<CustomerRelation>();
+
+    /// <summary>Asignaciones staff↔cliente (acceso por asignación, M:N). IsPrimary = preparador responsable.</summary>
+    public DbSet<CustomerAssignment> CustomerAssignments => Set<CustomerAssignment>();
 
     /// <summary>Perfiles fiscales asociados directamente a clientes.</summary>
     public DbSet<CustomerFiscalProfile> CustomerFiscalProfiles => Set<CustomerFiscalProfile>();

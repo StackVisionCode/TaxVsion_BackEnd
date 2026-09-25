@@ -168,6 +168,27 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>
+    /// Reasigna el organizador al RETIRAR (offboard) al actual — acción de SISTEMA, no del organizador,
+    /// por eso NO pasa por <see cref="EnsureOrganizer"/> (que exigiría que el actor fuera el propio
+    /// organizador que ya se fue). Solo sobre citas no canceladas. No resetea respuestas de asistentes:
+    /// no cambia el cuándo, solo quién la administra ahora. Idempotente.
+    /// </summary>
+    public Result ReassignOrganizer(Guid newOrganizerUserId)
+    {
+        if (newOrganizerUserId == Guid.Empty)
+            return Result.Failure(AppointmentErrors.OrganizerRequired);
+
+        if (Status == AppointmentStatus.Cancelled)
+            return Result.Failure(AppointmentErrors.CancelledIsFinal);
+
+        if (newOrganizerUserId == OrganizerUserId)
+            return Result.Success();
+
+        OrganizerUserId = newOrganizerUserId;
+        return Result.Success();
+    }
+
     public Result ChangeTitle(AppointmentTitle title, Guid actingUserId)
     {
         var allowed = EnsureOrganizer(actingUserId);

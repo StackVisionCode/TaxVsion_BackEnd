@@ -38,7 +38,13 @@ export async function registerDirectoryRoutes(app: FastifyInstance, container: A
     if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
     const query = SearchQuery.parse(request.query);
     const results = await searchCustomerDirectory(
-      { tenantId: principal.tenantId, query: query.q, ...(query.limit !== undefined ? { limit: query.limit } : {}) },
+      {
+        tenantId: principal.tenantId,
+        query: query.q,
+        actorUserId: principal.userId,
+        actorType: principal.actorType,
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      },
       container,
     );
     return reply.send(results);

@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -46,6 +47,15 @@ public static class DependencyInjection
         // Fase 5 — un solo HtmlSanitizer reusado (thread-safe, caro de reconstruir), ver comentario de la clase.
         services.AddSingleton<IHtmlSanitizer, GanssHtmlSanitizer>();
 
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre NotesDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<NotesDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.NotesPlatformTokenProvider>(configuration);
+        services
+            .AddOptions<Application.Notes.NotesVisibilityOptions>()
+            .Bind(configuration.GetSection(Application.Notes.NotesVisibilityOptions.SectionName));
+
         // RBAC Fase 7 — una sola instancia scoped resuelve el puerto local rico (consumers) y el
         // puerto angosto de BuildingBlocks (ProjectionPermissionsSource), ver comentario de la clase.
         services.AddScoped<UserPermissionsProjectionRepository>();
@@ -56,6 +66,11 @@ public static class DependencyInjection
             p.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        // Punto 3.2 — proyección de empleados retirados (offboarded), habilita el manage-override de
+        // edición de notas huérfanas. La escribe NotesUserOffboardedConsumer, la lee la política de
+        // autoría (NoteVisibilityPolicy) y el handler de ownership de la capa Fase 9.
+        services.AddScoped<IOffboardedStaffRepository, OffboardedStaffRepository>();
 
         AddRateLimitTierQuotas(services, configuration);
         AddCustomerDirectory(services, configuration);

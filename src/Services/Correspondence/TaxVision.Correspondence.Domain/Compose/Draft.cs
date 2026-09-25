@@ -240,6 +240,24 @@ public sealed class Draft : IHasOwner, ITenantOwned
         return Result.Success();
     }
 
+    /// <summary>
+    /// Reasigna el autor de un borrador ABIERTO al sucesor cuando el autor original se retira del
+    /// tenant (offboard). Solo válido en <see cref="DraftStatus.Draft"/> — lo enviado es historial
+    /// inmutable y su autoría no se reescribe.
+    /// </summary>
+    public Result ReassignAuthor(Guid newUserId)
+    {
+        if (Status != DraftStatus.Draft)
+            return Result.Failure(InvalidTransition(nameof(ReassignAuthor)));
+
+        if (newUserId == Guid.Empty)
+            return Result.Failure(new Error("Draft.CreatedByUserIdRequired", "CreatedByUserId is required."));
+
+        CreatedByUserId = newUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
     /// <summary>Draft → Sending. Arranca justo antes de la llamada HTTP síncrona a Postmaster (Fase 14) — el handler, no el aggregate, hace esa llamada.</summary>
     public Result MarkSending()
     {

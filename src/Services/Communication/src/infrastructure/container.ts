@@ -15,6 +15,7 @@ import { PrismaNotificationActionMappingRepository } from './persistence/prisma-
 import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
 import { PrismaCustomerDirectoryRepository } from './persistence/prisma-customer-directory-repository.js';
 import { PrismaCustomerPreparerAssignmentRepository } from './persistence/prisma-customer-preparer-assignment-repository.js';
+import { PrismaCustomerAssignmentProjectionRepository } from './persistence/prisma-customer-assignment-projection-repository.js';
 import { PrismaAttachmentTrackingRepository } from './persistence/prisma-attachment-tracking-repository.js';
 import { PrismaSupportTicketRepository } from './persistence/prisma-support-ticket-repository.js';
 import { PrismaLimitsRepository, PrismaSettingsRepository } from './persistence/prisma-settings-repository.js';
@@ -39,6 +40,7 @@ import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage
 import { HttpCloudStorageDownloadClient } from './cloudstorage/http-cloudstorage-download-client.js';
 import { HttpCloudStorageUploadClient } from './cloudstorage/http-cloudstorage-upload-client.js';
 import { HttpCustomerReconciliationClient } from './customer/http-customer-reconciliation-client.js';
+import { HttpCustomerAssignmentsReconciliationClient } from './customer/http-customer-assignments-reconciliation-client.js';
 import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
 import { CachedTenantModulesReader } from './rate-limit/cached-tenant-modules-reader.js';
 import { HttpPlanRateLimitReader } from './rate-limit/http-plan-rate-limit-reader.js';
@@ -63,6 +65,7 @@ import type { NotificationActionMappingRepository } from '../application/ports/n
 import type { UserDirectoryRepository } from '../application/ports/user-directory-repository.js';
 import type { CustomerDirectoryRepository } from '../application/ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../application/ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../application/ports/customer-assignment-projection-repository.js';
 import type { AttachmentTrackingRepository } from '../application/ports/attachment-tracking-repository.js';
 import type { SupportTicketRepository } from '../application/ports/support-ticket-repository.js';
 import type { PlatformTenantProvider } from '../application/ports/platform-tenant-provider.js';
@@ -111,6 +114,10 @@ export interface AppContainer {
   readonly userDirectory: UserDirectoryRepository;
   readonly customerDirectory: CustomerDirectoryRepository;
   readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
+  readonly customerAssignments: CustomerAssignmentProjectionRepository;
+  // Flag GLOBAL de visibilidad por asignacion (P2), leido de config. Los use-cases
+  // (picker de customers, gate de chat) lo combinan por OR con el setting por-tenant.
+  readonly assignmentVisibilityEnabled: boolean;
   readonly attachmentTracking: AttachmentTrackingRepository;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
@@ -124,6 +131,7 @@ export interface AppContainer {
   readonly cloudStorageDownload: CloudStorageDownloadClient;
   readonly cloudStorageUpload: CloudStorageUploadClient;
   readonly customerReconciliation: HttpCustomerReconciliationClient;
+  readonly customerAssignmentsReconciliation: HttpCustomerAssignmentsReconciliationClient;
   readonly tenantHostResolver: TenantHostResolver;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
@@ -171,6 +179,8 @@ export function buildContainer(): AppContainer {
     userDirectory: new PrismaUserDirectoryRepository(prisma),
     customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
     customerPreparerAssignments: new PrismaCustomerPreparerAssignmentRepository(prisma),
+    customerAssignments: new PrismaCustomerAssignmentProjectionRepository(prisma),
+    assignmentVisibilityEnabled: config.assignmentVisibility.enabled,
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
@@ -184,6 +194,7 @@ export function buildContainer(): AppContainer {
     cloudStorageDownload: new HttpCloudStorageDownloadClient(serviceTokens),
     cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
     customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
+    customerAssignmentsReconciliation: new HttpCustomerAssignmentsReconciliationClient(serviceTokens),
     tenantHostResolver: new HttpTenantHostResolver(serviceTokens),
   };
 }

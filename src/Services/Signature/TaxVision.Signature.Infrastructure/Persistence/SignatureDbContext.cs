@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -81,9 +82,14 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     // por TenantBrandingProjectionConsumer (TenantCreated + TenantLogoUpdated).
     public DbSet<TenantBrandingRef> TenantBrandingRefs => Set<TenantBrandingRef>();
 
+    // P2 — proyección compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el consumer compartido + la reconciliación. Alimenta el filtro de visibilidad de solicitudes.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyGlobalTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

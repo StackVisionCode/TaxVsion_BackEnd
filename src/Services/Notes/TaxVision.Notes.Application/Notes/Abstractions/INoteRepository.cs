@@ -37,6 +37,10 @@ public interface INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        // Visibilidad por asignación (P2): si no es null, las notas cuyo target es un Customer solo son
+        // visibles si ese cliente está asignado a este usuario (las de otros targets no se restringen).
+        // null = sin restricción (customers.view_all / flag off). Opcional para no romper callers/fakes.
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -57,8 +61,22 @@ public interface INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        // Visibilidad por asignación (P2): ver ListByReferenceAsync.
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// ¿El cliente <paramref name="customerId"/> está asignado a <paramref name="actorUserId"/> en la
+    /// proyección local de asignaciones (P2)? Gate del detalle de una nota cuyo target es un Customer.
+    /// Default true (sin restricción) para no romper fakes; el repo real consulta la proyección.
+    /// </summary>
+    Task<bool> IsCustomerAssignedAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid actorUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult(true);
 
     /// <summary>
     /// CustomerPortal (<c>ListClientVisibleNotesQuery</c>): solo <see cref="NoteVisibility.ClientVisible"/>,

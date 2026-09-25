@@ -9,14 +9,25 @@ namespace TaxVision.Signature.Tests.Persistence;
 /// <summary>
 /// La clave de caché del listado DEBE distinguir `editableOnly`: Draft (editableOnly=true) y All
 /// comparten Status=null, así que sin ese componente colisionaban y la pestaña Drafts devolvía
-/// el listado completo cacheado (bug reportado 2026-09-22).
+/// el listado completo cacheado (bug reportado 2026-09-22). Además, con visibilidad por asignación (P2)
+/// el resultado depende del actor, así que la clave DEBE variar por usuario cuando no ve todo (sin fuga
+/// de visibilidad entre empleados) y colapsar a una sola entrada para quien ve todo.
 /// </summary>
 public sealed class CachedSignatureRequestReadServiceTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
 
-    private static ListSignatureRequestsQuery Query(bool editableOnly) =>
-        new(Tenant, Status: null, Category: null, Page: 1, PageSize: 8, EditableOnly: editableOnly);
+    private static ListSignatureRequestsQuery Query(bool editableOnly, Guid? actor = null, bool canViewAll = true) =>
+        new(
+            Tenant,
+            Status: null,
+            Category: null,
+            Page: 1,
+            PageSize: 8,
+            ActorUserId: actor ?? Guid.Empty,
+            CanViewAll: canViewAll,
+            EditableOnly: editableOnly
+        );
 
     [Fact]
     public async Task Editable_y_no_editable_no_comparten_entrada_de_cache()
@@ -43,6 +54,33 @@ public sealed class CachedSignatureRequestReadServiceTests
         await service.ListAsync(Query(editableOnly: true));
         await service.ListAsync(Query(editableOnly: true));
 
+        Assert.Equal(1, inner.Calls);
+    }
+
+    [Fact]
+    public async Task Dos_actores_distintos_sin_view_all_no_comparten_cache()
+    {
+        var inner = new CountingReadService();
+        var service = new CachedSignatureRequestReadService(inner, new InMemoryDistributedCache());
+
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid(), canViewAll: false));
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid(), canViewAll: false));
+
+        // Distinto actor (sin view_all) → distinta clave → dos fetches: nunca se sirve a un empleado
+        // el listado cacheado de otro (fuga de visibilidad).
+        Assert.Equal(2, inner.Calls);
+    }
+
+    [Fact]
+    public async Task Actores_con_view_all_comparten_una_sola_entrada()
+    {
+        var inner = new CountingReadService();
+        var service = new CachedSignatureRequestReadService(inner, new InMemoryDistributedCache());
+
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid(), canViewAll: true));
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid(), canViewAll: true));
+
+        // view_all colapsa a u=Empty → misma clave → un solo fetch (todos ven lo mismo).
         Assert.Equal(1, inner.Calls);
     }
 

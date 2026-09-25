@@ -149,4 +149,78 @@ public sealed class AudienceResolverTests
         );
         Assert.Single(units); // solo Ana Email
     }
+
+    [Fact]
+    public async Task Restricts_customers_to_the_assigned_set_P2()
+    {
+        var h = new Harness();
+        var customers = new FakeCustomerAudienceClient();
+        customers.Seed("assigned@x.com", null); // asignado al actor
+        customers.Seed("other@x.com", null); // NO asignado
+        var assignedCustomerId = customers.Members[0].CustomerId;
+
+        var units = await AudienceResolver.ResolveAsync(
+            Tenant,
+            CampaignChannel.Email,
+            [],
+            [],
+            h.Contacts,
+            h.Lists,
+            includeCustomers: true,
+            customerClient: customers,
+            restrictCustomerIds: new HashSet<Guid> { assignedCustomerId }
+        );
+
+        // Solo el cliente asignado entra en la audiencia; el otro se excluye.
+        Assert.Single(units);
+        Assert.Equal("assigned@x.com", units[0].Email);
+    }
+
+    [Fact]
+    public async Task Empty_restrict_set_yields_no_customers_P2()
+    {
+        var h = new Harness();
+        var customers = new FakeCustomerAudienceClient();
+        customers.Seed("a@x.com", null);
+        customers.Seed("b@x.com", null);
+
+        var units = await AudienceResolver.ResolveAsync(
+            Tenant,
+            CampaignChannel.Email,
+            [],
+            [],
+            h.Contacts,
+            h.Lists,
+            includeCustomers: true,
+            customerClient: customers,
+            restrictCustomerIds: new HashSet<Guid>()
+        );
+
+        // Actor sin clientes asignados → ningún cliente en la audiencia.
+        Assert.Empty(units);
+    }
+
+    [Fact]
+    public async Task Null_restrict_set_includes_all_customers_P2()
+    {
+        var h = new Harness();
+        var customers = new FakeCustomerAudienceClient();
+        customers.Seed("a@x.com", null);
+        customers.Seed("b@x.com", null);
+
+        var units = await AudienceResolver.ResolveAsync(
+            Tenant,
+            CampaignChannel.Email,
+            [],
+            [],
+            h.Contacts,
+            h.Lists,
+            includeCustomers: true,
+            customerClient: customers,
+            restrictCustomerIds: null
+        );
+
+        // Sin restricción (flag off / view_all / agendado) → todos los clientes activos.
+        Assert.Equal(2, units.Count);
+    }
 }

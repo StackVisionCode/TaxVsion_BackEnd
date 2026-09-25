@@ -119,6 +119,10 @@ builder.Host.UseWolverine(options =>
     // mismo motivo que los de arriba (static class + Handle estático).
     options.Discovery.IncludeType(typeof(TaxVision.Sms.Application.Messages.Consumers.SmsSendRequestedConsumer));
 
+    // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
+    // snapshot CustomerAssignmentsChanged de Customer. Registro explícito por el mismo motivo (static class).
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

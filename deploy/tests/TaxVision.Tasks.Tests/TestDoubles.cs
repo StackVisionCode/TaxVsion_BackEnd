@@ -192,6 +192,7 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         Guid parentTaskId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -204,15 +205,24 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         TaskQueryFilter filter,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
+
+    // P2 — captura el assignedToUserId que le pasa el handler (para verificar el mapeo del flag).
+    public Guid? LastBoardAssignee { get; private set; }
 
     public Task<IReadOnlyList<TaskItem>> ListForBoardAsync(
         Guid tenantId,
         TaskQueryFilter filter,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
-    ) => throw new NotImplementedException();
+    )
+    {
+        LastBoardAssignee = assignedToUserId;
+        return Task.FromResult<IReadOnlyList<TaskItem>>([.. _tasks.Where(t => t.TenantId == tenantId)]);
+    }
 
     public Task<IReadOnlyList<TaskItem>> ListForCalendarAsync(
         Guid tenantId,
@@ -220,6 +230,7 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         DateTime toUtc,
         Guid? assigneeUserId,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -242,7 +253,46 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         int page,
         int size,
         CancellationToken ct = default
-    ) => throw new NotImplementedException();
+    )
+    {
+        var matched = _tasks
+            .Where(t =>
+                t.TenantId == tenantId
+                && t.AssigneeUserId == assigneeUserId
+                && (
+                    status is { } wanted
+                        ? t.Status == wanted
+                        : t.Status
+                            is TaskItemStatus.NotStarted
+                                or TaskItemStatus.InProgress
+                                or TaskItemStatus.WaitingOnClient
+                )
+            )
+            .ToList();
+        var pageItems = matched.Skip((page - 1) * size).Take(size).ToList();
+        return Task.FromResult(new PagedResult<TaskItem>(pageItems, page, size, matched.Count));
+    }
+
+    public Task<int> CountForAssigneeAsync(
+        Guid tenantId,
+        Guid assigneeUserId,
+        TaskItemStatus? status,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _tasks.Count(t =>
+                t.TenantId == tenantId
+                && t.AssigneeUserId == assigneeUserId
+                && (
+                    status is { } wanted
+                        ? t.Status == wanted
+                        : t.Status
+                            is TaskItemStatus.NotStarted
+                                or TaskItemStatus.InProgress
+                                or TaskItemStatus.WaitingOnClient
+                )
+            )
+        );
 
     public Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
@@ -250,6 +300,7 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         int? taxYear,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -257,6 +308,7 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         Guid tenantId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 

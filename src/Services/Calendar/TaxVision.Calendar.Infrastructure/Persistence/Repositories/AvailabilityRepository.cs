@@ -28,7 +28,20 @@ public sealed class AvailabilityRepository(CalendarDbContext context) : IAvailab
             .Where(b => b.TenantId == tenantId && b.UserId == userId && b.StartUtc < toUtc && b.EndUtc > fromUtc)
             .ToListAsync(ct);
 
+    // Tracked (el consumer de offboard los borra). Sin ventana: se limpian TODOS los del usuario.
+    public async Task<IReadOnlyList<BlockedTime>> ListAllBlocksForUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .BlockedTimes.IgnoreQueryFilters()
+            .Where(b => b.TenantId == tenantId && b.UserId == userId)
+            .ToListAsync(ct);
+
     public void AddRule(AvailabilityRule rule) => context.AvailabilityRules.Add(rule);
 
     public void AddBlock(BlockedTime block) => context.BlockedTimes.Add(block);
+
+    public void RemoveBlock(BlockedTime block) => context.BlockedTimes.Remove(block);
 }

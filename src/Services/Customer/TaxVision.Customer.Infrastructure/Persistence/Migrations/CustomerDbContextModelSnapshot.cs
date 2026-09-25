@@ -54,6 +54,42 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAddresses", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Customer.Domain.Assignments.CustomerAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("AssignedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignments", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Customer.Domain.Audit.CustomerAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7658,6 +7694,12 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsOffboarded")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("OffboardedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -8140,6 +8182,15 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Customer.Domain.Assignments.CustomerAssignment", b =>
+                {
+                    b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
+                        .WithMany("Assignments")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Customer.Domain.ContactPoints.CustomerContactPoint", b =>
                 {
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
@@ -8465,6 +8516,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Customer.Domain.Customers.Customer", b =>
                 {
                     b.Navigation("Addresses");
+
+                    b.Navigation("Assignments");
 
                     b.Navigation("ContactPoints");
 

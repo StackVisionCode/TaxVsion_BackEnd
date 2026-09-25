@@ -13,6 +13,9 @@ public static class ReminderCancellationReasons
     /// <summary>Se cerró el objetivo al que apuntaba (lo pone el consumer, nunca el usuario).</summary>
     public const string TargetClosed = "target_closed";
 
+    /// <summary>El dueño del recordatorio fue retirado del tenant (offboard); lo pone el consumer.</summary>
+    public const string OwnerOffboarded = "owner_offboarded";
+
     /// <summary>Cualquier razón libre escrita por el usuario, colapsada para la métrica.</summary>
     public const string Other = "other";
 
@@ -28,6 +31,7 @@ public static class ReminderCancellationReasons
         {
             UserRequest => UserRequest,
             TargetClosed => TargetClosed,
+            OwnerOffboarded => OwnerOffboarded,
             _ => Other,
         };
 }

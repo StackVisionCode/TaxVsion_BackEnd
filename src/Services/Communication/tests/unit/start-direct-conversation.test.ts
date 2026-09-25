@@ -18,6 +18,7 @@ import type {
   CustomerPreparerAssignmentRepository,
   CustomerPreparerAssignmentSnapshot,
 } from '../../src/application/ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../../src/application/ports/customer-assignment-projection-repository.js';
 
 /**
  * Fase B6 (auditoria del plan de chat tipado) — el propio MD marca el test de
@@ -27,6 +28,10 @@ import type {
  * existente. Antes de esta fase, `start-direct-conversation.ts` (el archivo
  * mas modificado de todo el track — isPrimaryPreparer + el gate viven ahi)
  * no tenia NINGUN archivo de test propio.
+ *
+ * P2.5 — el gate cambio de 1:1 (solo el primary) a M:N (CUALQUIER staff
+ * asignado, via CustomerAssignmentProjection). isPrimaryPreparer sigue siendo
+ * 1:1 (CustomerPreparerAssignment) solo para marcar al participante.
  */
 
 function u(): string {
@@ -118,6 +123,24 @@ function fakeAssignments(byCustomerId: Record<string, CustomerPreparerAssignment
   };
 }
 
+/** Proyeccion M:N (P2.5): customerId -> lista de userIds asignados (fuente del gate). */
+function fakeMnAssignments(byCustomerId: Record<string, string[]>): CustomerAssignmentProjectionRepository {
+  return {
+    async getVersion(): Promise<Date | null> {
+      return null;
+    },
+    async replace(): Promise<void> {},
+    async isAssigned(_tenantId: string, customerId: string, userId: string): Promise<boolean> {
+      return (byCustomerId[customerId] ?? []).includes(userId);
+    },
+    async getAssignedCustomerIds(_tenantId: string, userId: string): Promise<string[]> {
+      return Object.entries(byCustomerId)
+        .filter(([, users]) => users.includes(userId))
+        .map(([customerId]) => customerId);
+    },
+  };
+}
+
 function baseCommand(overrides: {
   tenantId: string;
   initiatorUserId: string;
@@ -135,7 +158,7 @@ function baseCommand(overrides: {
 }
 
 describe('startDirectConversation — regla dura B0/B5: gate en false no cambia el comportamiento actual', () => {
-  it('permite un chat cliente-empleado aunque el empleado NO sea el preparador asignado, con el setting en su default (false)', async () => {
+  it('permite un chat cliente-empleado aunque el empleado NO este asignado, con el setting en su default (false)', async () => {
     const tenantId = u();
     const customerId = u();
     const customerUserId = u();
@@ -151,11 +174,11 @@ describe('startDirectConversation — regla dura B0/B5: gate en false no cambia 
       customerPortalAccounts: fakePortalAccounts({
         [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
       }),
-      // El cliente SI tiene un preparador asignado, pero a otro empleado — el
-      // gate esta en false, asi que esto no debe importar en absoluto.
+      // El cliente SI tiene asignado a otro empleado, pero el gate esta en false: no debe importar.
       customerPreparerAssignments: fakeAssignments({
         [customerId]: { customerId, tenantId, preparerUserId: someOtherPreparerUserId, assignedAtUtc: new Date() },
       }),
+      customerAssignments: fakeMnAssignments({ [customerId]: [someOtherPreparerUserId] }),
     };
 
     const result = await startDirectConversation(
@@ -189,6 +212,7 @@ describe('startDirectConversation — regla dura B0/B5: gate en false no cambia 
         [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
       }),
       customerPreparerAssignments: fakeAssignments({}),
+      customerAssignments: fakeMnAssignments({}),
     };
 
     const result = await startDirectConversation(
@@ -206,8 +230,8 @@ describe('startDirectConversation — regla dura B0/B5: gate en false no cambia 
   });
 });
 
-describe('startDirectConversation — gate activo (restrictCustomerChatToAssignedPreparer=true)', () => {
-  it('rechaza el chat si el destinatario NO es el preparador asignado', async () => {
+describe('startDirectConversation — gate activo (restrictCustomerChatToAssignedPreparer=true), modelo M:N', () => {
+  it('rechaza el chat si el empleado NO esta asignado al cliente', async () => {
     const tenantId = u();
     const customerId = u();
     const customerUserId = u();
@@ -225,6 +249,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
       customerPreparerAssignments: fakeAssignments({
         [customerId]: { customerId, tenantId, preparerUserId: realPreparerUserId, assignedAtUtc: new Date() },
       }),
+      customerAssignments: fakeMnAssignments({ [customerId]: [realPreparerUserId] }),
     };
 
     const result = await startDirectConversation(
@@ -244,7 +269,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
     }
   });
 
-  it('rechaza el chat si el cliente no tiene ninguna asignacion (isPrimaryPreparer nunca puede ser true)', async () => {
+  it('rechaza el chat si el cliente no tiene ninguna asignacion', async () => {
     const tenantId = u();
     const customerId = u();
     const customerUserId = u();
@@ -259,6 +284,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
         [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
       }),
       customerPreparerAssignments: fakeAssignments({}),
+      customerAssignments: fakeMnAssignments({}),
     };
 
     const result = await startDirectConversation(
@@ -278,7 +304,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
     }
   });
 
-  it('permite el chat y marca isPrimaryPreparer=true cuando el destinatario SI es el preparador asignado', async () => {
+  it('permite el chat cuando el destinatario es el preparador primario (esta en el set M:N) y marca isPrimaryPreparer=true', async () => {
     const tenantId = u();
     const customerId = u();
     const customerUserId = u();
@@ -296,6 +322,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
       customerPreparerAssignments: fakeAssignments({
         [customerId]: { customerId, tenantId, preparerUserId, assignedAtUtc: new Date() },
       }),
+      customerAssignments: fakeMnAssignments({ [customerId]: [preparerUserId] }),
     };
 
     const result = await startDirectConversation(
@@ -314,6 +341,48 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
     const snapshot = conversations.saved[0]!.toSnapshot();
     const recipientParticipant = snapshot.participants.find((p) => p.userId === preparerUserId);
     expect(recipientParticipant?.isPrimaryPreparer).toBe(true);
+  });
+
+  it('permite el chat a un staff asignado que NO es el primary (comportamiento M:N nuevo), con isPrimaryPreparer=false', async () => {
+    const tenantId = u();
+    const customerId = u();
+    const customerUserId = u();
+    const primaryPreparerUserId = u();
+    const assignedNonPrimaryUserId = u();
+
+    const conversations = new FakeConversationRepository();
+    const deps = {
+      conversations,
+      idempotency: new FakeIdempotencyStore(),
+      publisher: new FakeIntegrationEventPublisher(),
+      settings: fakeSettings({ restrictCustomerChatToAssignedPreparer: true }),
+      customerPortalAccounts: fakePortalAccounts({
+        [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
+      }),
+      // El primary (1:1) es otro; el destinatario es un asignado adicional del set M:N.
+      customerPreparerAssignments: fakeAssignments({
+        [customerId]: { customerId, tenantId, preparerUserId: primaryPreparerUserId, assignedAtUtc: new Date() },
+      }),
+      customerAssignments: fakeMnAssignments({
+        [customerId]: [primaryPreparerUserId, assignedNonPrimaryUserId],
+      }),
+    };
+
+    const result = await startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: customerUserId,
+        initiatorActorType: 'CustomerPortal',
+        recipientUserId: assignedNonPrimaryUserId,
+        recipientActorType: 'TenantEmployee',
+      }),
+      deps,
+    );
+
+    expect(result.isSuccess).toBe(true);
+    const snapshot = conversations.saved[0]!.toSnapshot();
+    const recipientParticipant = snapshot.participants.find((p) => p.userId === assignedNonPrimaryUserId);
+    expect(recipientParticipant?.isPrimaryPreparer).toBe(false);
   });
 });
 
@@ -336,6 +405,7 @@ describe('startDirectConversation — isPrimaryPreparer end-to-end (independient
       customerPreparerAssignments: fakeAssignments({
         [customerId]: { customerId, tenantId, preparerUserId, assignedAtUtc: new Date() },
       }),
+      customerAssignments: fakeMnAssignments({}),
     };
 
     const result = await startDirectConversation(
@@ -368,6 +438,7 @@ describe('startDirectConversation — isPrimaryPreparer end-to-end (independient
       settings: fakeSettings({ restrictCustomerChatToAssignedPreparer: false, employeeToEmployeeChatEnabled: true }),
       customerPortalAccounts: fakePortalAccounts({}),
       customerPreparerAssignments: fakeAssignments({}),
+      customerAssignments: fakeMnAssignments({}),
     };
 
     const result = await startDirectConversation(
@@ -385,5 +456,47 @@ describe('startDirectConversation — isPrimaryPreparer end-to-end (independient
     const snapshot = conversations.saved[0]!.toSnapshot();
     const recipientParticipant = snapshot.participants.find((p) => p.userId === employeeBUserId);
     expect(recipientParticipant?.isPrimaryPreparer).toBe(false);
+  });
+});
+
+describe('startDirectConversation — flag GLOBAL de despliegue (assignmentVisibilityEnabled=true, tenant setting OFF)', () => {
+  it('rechaza el chat cliente↔staff no asignado aunque el tenant NO tenga restrictCustomerChatToAssignedPreparer', async () => {
+    const tenantId = u();
+    const customerId = u();
+    const customerUserId = u();
+    const wrongEmployeeUserId = u();
+    const realPreparerUserId = u();
+
+    const deps = {
+      conversations: new FakeConversationRepository(),
+      idempotency: new FakeIdempotencyStore(),
+      publisher: new FakeIntegrationEventPublisher(),
+      // Setting por-tenant OFF, pero el flag global ON → el gate igual aplica.
+      settings: fakeSettings({ restrictCustomerChatToAssignedPreparer: false }),
+      customerPortalAccounts: fakePortalAccounts({
+        [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
+      }),
+      customerPreparerAssignments: fakeAssignments({
+        [customerId]: { customerId, tenantId, preparerUserId: realPreparerUserId, assignedAtUtc: new Date() },
+      }),
+      customerAssignments: fakeMnAssignments({ [customerId]: [realPreparerUserId] }),
+      assignmentVisibilityEnabled: true,
+    };
+
+    const result = await startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: customerUserId,
+        initiatorActorType: 'CustomerPortal',
+        recipientUserId: wrongEmployeeUserId,
+        recipientActorType: 'TenantEmployee',
+      }),
+      deps,
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) {
+      expect(result.error.code).toBe('Chat.NotAssignedPreparer');
+    }
   });
 });

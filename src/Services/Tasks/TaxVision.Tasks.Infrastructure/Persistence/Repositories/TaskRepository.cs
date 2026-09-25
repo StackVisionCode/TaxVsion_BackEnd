@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Common;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
@@ -45,6 +46,42 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
             .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == taskId, ct);
 
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
+    }
+
+    // Read del detalle con visibilidad por asignación (NO el path de mutación, que usa GetByIdAsync sin filtrar).
+    public async Task<Result<TaskItem>> GetByIdForReadAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var task = await ApplyVisibility(
+                context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId && t.Id == taskId),
+                tenantId,
+                assignedToUserId
+            )
+            .FirstOrDefaultAsync(ct);
+
+        return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
+    }
+
+    // Visibilidad por asignación (P2): una tarea es visible para el actor si NO tiene cliente (interna), la
+    // tiene asignada, la creó, o su cliente está asignado a él en la proyección local. IgnoreQueryFilters +
+    // tenant explícito en el subquery (scope de Wolverine sin tenant ambiental). null = sin restricción.
+    private IQueryable<TaskItem> ApplyVisibility(IQueryable<TaskItem> query, Guid tenantId, Guid? assignedToUserId)
+    {
+        if (assignedToUserId is not { } assignee)
+            return query;
+        return query.Where(t =>
+            t.Reference.CustomerId == null
+            || t.AssigneeUserId == assignee
+            || t.CreatedByUserId == assignee
+            || context
+                .Set<CustomerAssignmentProjection>()
+                .IgnoreQueryFilters()
+                .Any(a => a.TenantId == tenantId && a.UserId == assignee && a.CustomerId == t.Reference.CustomerId)
+        );
     }
 
     public async Task<Result<TaskItem>> GetByIdWithTimersAsync(
@@ -97,12 +134,15 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid parentTaskId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
-        var ordered = context
+        var scoped = context
             .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.ParentTaskId == parentTaskId)
+            .Where(t => t.TenantId == tenantId && t.ParentTaskId == parentTaskId);
+
+        var ordered = ApplyVisibility(scoped, tenantId, assignedToUserId)
             .OrderBy(t => t.Due == null)
             .ThenBy(t => t.Due!.DueAtUtc)
             .ThenBy(t => t.Id);
@@ -115,10 +155,13 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         TaskQueryFilter filter,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
-        var ordered = Filtered(tenantId, filter).OrderByDescending(t => t.CreatedAtUtc).ThenBy(t => t.Id);
+        var ordered = Filtered(tenantId, filter, assignedToUserId)
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .ThenBy(t => t.Id);
         return await PageAsync(ordered, page, size, ct);
     }
 
@@ -130,9 +173,10 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid tenantId,
         TaskQueryFilter filter,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) =>
-        await Filtered(tenantId, filter)
+        await Filtered(tenantId, filter, assignedToUserId)
             .OrderBy(t => t.Due == null)
             .ThenBy(t => t.Due!.DueAtUtc)
             .ThenBy(t => t.Id)
@@ -145,6 +189,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         DateTime toUtc,
         Guid? assigneeUserId,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -155,10 +200,12 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (assigneeUserId is { } assignee)
             query = query.Where(t => t.AssigneeUserId == assignee);
 
+        query = ApplyVisibility(query, tenantId, assignedToUserId);
+
         return await query.OrderBy(t => t.Due!.DueAtUtc).ThenBy(t => t.Id).Take(take).ToListAsync(ct);
     }
 
-    private IQueryable<TaskItem> Filtered(Guid tenantId, TaskQueryFilter filter)
+    private IQueryable<TaskItem> Filtered(Guid tenantId, TaskQueryFilter filter, Guid? assignedToUserId = null)
     {
         var query = context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId);
 
@@ -182,7 +229,7 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (filter.TaxYear is { } taxYear)
             query = query.Where(t => t.Reference.TaxYear == taxYear);
 
-        return query;
+        return ApplyVisibility(query, tenantId, assignedToUserId);
     }
 
     public async Task<PagedResult<TaskItem>> ListForAssigneeAsync(
@@ -209,12 +256,32 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         return await PageAsync(ordered, page, size, ct);
     }
 
+    // Mismo filtro que ListForAssigneeAsync (status null → abiertas), solo cuenta — pre-flight de impacto.
+    public Task<int> CountForAssigneeAsync(
+        Guid tenantId,
+        Guid assigneeUserId,
+        TaskItemStatus? status,
+        CancellationToken ct = default
+    )
+    {
+        var query = context
+            .Tasks.IgnoreQueryFilters()
+            .Where(t => t.TenantId == tenantId && t.AssigneeUserId == assigneeUserId);
+
+        query = status is { } wanted
+            ? query.Where(t => t.Status == wanted)
+            : query.Where(t => OpenStatuses.Contains(t.Status));
+
+        return query.CountAsync(ct);
+    }
+
     public async Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
         Guid customerId,
         int? taxYear,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -225,6 +292,9 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (taxYear is { } year)
             query = query.Where(t => t.Reference.TaxYear == year);
 
+        // Si el actor no está asignado a ESTE cliente (y no es assignee/creator), ApplyVisibility lo deja en 0.
+        query = ApplyVisibility(query, tenantId, assignedToUserId);
+
         var ordered = query.OrderByDescending(t => t.CreatedAtUtc).ThenBy(t => t.Id);
         return await PageAsync(ordered, page, size, ct);
     }
@@ -233,12 +303,15 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         Guid tenantId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
-        var ordered = context
+        var scoped = context
             .Tasks.IgnoreQueryFilters()
-            .Where(t => t.TenantId == tenantId && t.Status == TaskItemStatus.WaitingOnClient)
+            .Where(t => t.TenantId == tenantId && t.Status == TaskItemStatus.WaitingOnClient);
+
+        var ordered = ApplyVisibility(scoped, tenantId, assignedToUserId)
             .OrderBy(t => t.ClientDueAtUtc == null)
             .ThenBy(t => t.ClientDueAtUtc)
             .ThenBy(t => t.Id);

@@ -177,6 +177,13 @@ public sealed class CalendarFeedTokenTests
 
     private sealed class BrokenAppointments : IAppointmentRepository
     {
+        public Task<IReadOnlyList<Appointment>> ListFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("la base no responde");
+
         public Task<BuildingBlocks.Results.Result<Appointment>> GetByIdAsync(
             Guid tenantId,
             Guid appointmentId,
@@ -247,6 +254,13 @@ public sealed class CalendarFeedTokenTests
 
     private sealed class EmptyAppointments : IAppointmentRepository
     {
+        public Task<IReadOnlyList<Appointment>> ListFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+
         public Task<BuildingBlocks.Results.Result<Appointment>> GetByIdAsync(
             Guid tenantId,
             Guid appointmentId,

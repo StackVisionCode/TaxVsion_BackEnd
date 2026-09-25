@@ -66,13 +66,117 @@ public sealed class NoteVisibilityPolicyTests
     }
 
     [Fact]
-    public void CanEditContent_is_true_only_for_the_author_even_with_view_all()
+    public void CanEditContent_is_true_for_the_author()
     {
         var authorId = Guid.NewGuid();
         var note = MakeNote(NoteVisibility.Team, authorId);
 
-        Assert.True(NoteVisibilityPolicy.CanEditContent(note, authorId));
-        Assert.False(NoteVisibilityPolicy.CanEditContent(note, Guid.NewGuid()));
+        Assert.True(
+            NoteVisibilityPolicy.CanEditContent(note, authorId, authorOffboarded: false, actorHasViewAll: false)
+        );
+    }
+
+    [Fact]
+    public void CanEditContent_denies_a_non_author_with_view_all_when_the_author_is_not_offboarded()
+    {
+        var note = MakeNote(NoteVisibility.Team, Guid.NewGuid());
+
+        Assert.False(
+            NoteVisibilityPolicy.CanEditContent(note, Guid.NewGuid(), authorOffboarded: false, actorHasViewAll: true)
+        );
+    }
+
+    [Fact]
+    public void CanEditContent_allows_a_view_all_staff_when_the_author_was_offboarded()
+    {
+        var note = MakeNote(NoteVisibility.Team, Guid.NewGuid());
+
+        Assert.True(
+            NoteVisibilityPolicy.CanEditContent(note, Guid.NewGuid(), authorOffboarded: true, actorHasViewAll: true)
+        );
+    }
+
+    [Fact]
+    public void CanEditContent_denies_the_offboarded_override_without_view_all()
+    {
+        var note = MakeNote(NoteVisibility.Team, Guid.NewGuid());
+
+        Assert.False(
+            NoteVisibilityPolicy.CanEditContent(note, Guid.NewGuid(), authorOffboarded: true, actorHasViewAll: false)
+        );
+    }
+
+    [Fact]
+    public async Task CanEditContentAsync_short_circuits_for_the_author()
+    {
+        var authorId = Guid.NewGuid();
+        var note = MakeNote(NoteVisibility.Team, authorId);
+        var offboarded = new FakeOffboardedStaffRepository();
+
+        Assert.True(
+            await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                authorId,
+                actorHasViewAll: false,
+                offboarded,
+                CancellationToken.None
+            )
+        );
+    }
+
+    [Fact]
+    public async Task CanEditContentAsync_allows_view_all_staff_when_the_author_was_offboarded()
+    {
+        var authorId = Guid.NewGuid();
+        var note = MakeNote(NoteVisibility.Team, authorId);
+        var offboarded = new FakeOffboardedStaffRepository();
+        offboarded.MarkOffboarded(note.TenantId, authorId);
+
+        Assert.True(
+            await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                Guid.NewGuid(),
+                actorHasViewAll: true,
+                offboarded,
+                CancellationToken.None
+            )
+        );
+    }
+
+    [Fact]
+    public async Task CanEditContentAsync_denies_a_non_author_when_the_author_is_not_offboarded()
+    {
+        var note = MakeNote(NoteVisibility.Team, Guid.NewGuid());
+        var offboarded = new FakeOffboardedStaffRepository();
+
+        Assert.False(
+            await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                Guid.NewGuid(),
+                actorHasViewAll: true,
+                offboarded,
+                CancellationToken.None
+            )
+        );
+    }
+
+    [Fact]
+    public async Task CanEditContentAsync_denies_a_non_author_without_view_all_even_if_the_author_was_offboarded()
+    {
+        var authorId = Guid.NewGuid();
+        var note = MakeNote(NoteVisibility.Team, authorId);
+        var offboarded = new FakeOffboardedStaffRepository();
+        offboarded.MarkOffboarded(note.TenantId, authorId);
+
+        Assert.False(
+            await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                Guid.NewGuid(),
+                actorHasViewAll: false,
+                offboarded,
+                CancellationToken.None
+            )
+        );
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Messages.Queries;
@@ -16,6 +17,24 @@ namespace TaxVision.Sms.Infrastructure.Persistence;
 /// </summary>
 public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
 {
+    // Visibilidad por asignación (P2): el SMS es visible si su CustomerId está asignado al actor en la
+    // proyección local. IgnoreQueryFilters + tenant explícito en el subquery (scope de Wolverine sin tenant
+    // ambiental). Aplica solo cuando assignedToUserId no es null (view_all / flag off ⇒ sin restricción).
+    private IQueryable<SmsMessage> ApplyAssignmentFilter(
+        IQueryable<SmsMessage> query,
+        Guid tenantId,
+        Guid? assignedToUserId
+    )
+    {
+        if (assignedToUserId is not { } assignee)
+            return query;
+        return query.Where(m =>
+            db.Set<CustomerAssignmentProjection>()
+                .IgnoreQueryFilters()
+                .Any(a => a.TenantId == tenantId && a.UserId == assignee && a.CustomerId == m.CustomerId)
+        );
+    }
+
     public async Task<PagedResult<SmsMessageSummaryResponse>> SearchMessagesAsync(
         Guid tenantId,
         Guid? customerId,
@@ -26,6 +45,7 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         string? sourceContext,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -33,6 +53,7 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         size = size is < 1 or > 100 ? 20 : size;
 
         var query = db.SmsMessages.AsNoTracking().IgnoreQueryFilters().Where(m => m.TenantId == tenantId);
+        query = ApplyAssignmentFilter(query, tenantId, assignedToUserId);
 
         // Alcance del módulo del CRM: solo los SMS que el preparador envió DESDE aquí (crm-sms). Excluye
         // los mensajes de sistema que otros módulos enrutan por el servicio SMS (OTP de firma,
@@ -83,12 +104,16 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
     public async Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
         Guid tenantId,
         Guid messageId,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) =>
-        await db
-            .SmsMessages.AsNoTracking()
-            .IgnoreQueryFilters()
-            .Where(m => m.TenantId == tenantId && m.Id == messageId)
+        await ApplyAssignmentFilter(
+                db.SmsMessages.AsNoTracking()
+                    .IgnoreQueryFilters()
+                    .Where(m => m.TenantId == tenantId && m.Id == messageId),
+                tenantId,
+                assignedToUserId
+            )
             .Select(m => new SmsMessageDetailResponse(
                 m.Id,
                 m.CustomerId,
@@ -111,6 +136,7 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         DateTime fromUtc,
         DateTime toUtc,
         string? sourceContext,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -123,6 +149,9 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         if (!string.IsNullOrWhiteSpace(sourceContext))
             scoped = scoped.Where(m => m.SourceContext == sourceContext);
 
+        // Mismo criterio de visibilidad por asignación que el listado.
+        scoped = ApplyAssignmentFilter(scoped, tenantId, assignedToUserId);
+
         var byStatus = await scoped
             .GroupBy(m => m.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -130,10 +159,17 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
 
         int CountOf(SmsMessageStatus s) => byStatus.FirstOrDefault(x => x.Status == s)?.Count ?? 0;
 
-        var optedOut = await db
+        var optedOutQuery = db
             .SmsOptOuts.AsNoTracking()
             .IgnoreQueryFilters()
-            .CountAsync(o => o.TenantId == tenantId && o.Status == SmsOptOutStatus.OptedOut, ct);
+            .Where(o => o.TenantId == tenantId && o.Status == SmsOptOutStatus.OptedOut);
+        if (assignedToUserId is { } statsAssignee)
+            optedOutQuery = optedOutQuery.Where(o =>
+                db.Set<CustomerAssignmentProjection>()
+                    .IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.UserId == statsAssignee && a.CustomerId == o.CustomerId)
+            );
+        var optedOut = await optedOutQuery.CountAsync(ct);
 
         return new SmsStatsResponse(
             Total: byStatus.Sum(x => x.Count),
@@ -153,6 +189,7 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         string? term,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -160,6 +197,14 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         size = size is < 1 or > 100 ? 20 : size;
 
         var query = db.SmsOptOuts.AsNoTracking().IgnoreQueryFilters().Where(o => o.TenantId == tenantId);
+
+        // Visibilidad por asignación: solo las bajas de clientes asignados al actor (mismo criterio que el log).
+        if (assignedToUserId is { } assignee)
+            query = query.Where(o =>
+                db.Set<CustomerAssignmentProjection>()
+                    .IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.UserId == assignee && a.CustomerId == o.CustomerId)
+            );
 
         query = status switch
         {

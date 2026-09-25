@@ -131,6 +131,8 @@ public sealed class ShareLinkConfiguration : IEntityTypeConfiguration<ShareLink>
         // Fase C4 (completitud) — listar por estado dentro de un tenant (ej. "todos
         // los links Active del tenant") sin escanear la tabla completa.
         builder.HasIndex(link => new { link.TenantId, link.Status });
+        // Offboarding — revocar los links que creó un empleado que se retira.
+        builder.HasIndex(link => new { link.TenantId, link.CreatedByUserId });
 
         builder
             .HasMany(link => link.Recipients)

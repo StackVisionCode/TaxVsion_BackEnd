@@ -1,20 +1,24 @@
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.GetInvoice;
 
 namespace TaxVision.Billing.Application.Invoices.ListInvoices;
 
-public sealed record ListInvoicesQuery(Guid TenantId, int Take = 50);
+public sealed record ListInvoicesQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, int Take = 50);
 
 public static class ListInvoicesHandler
 {
     public static async Task<Result<IReadOnlyList<InvoiceSummaryResponse>>> Handle(
         ListInvoicesQuery query,
         IInvoiceRepository invoices,
+        IOptions<BillingVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
-        var list = await invoices.ListByTenantAsync(query.TenantId, query.Take, ct);
+        // Filtro por asignación solo si el flag está ON y el actor no ve todo (view_all/admin).
+        var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
+        var list = await invoices.ListByTenantAsync(query.TenantId, query.Take, ct, assignedTo);
 
         IReadOnlyList<InvoiceSummaryResponse> response = list.Select(invoice => new InvoiceSummaryResponse(
                 invoice.Id,

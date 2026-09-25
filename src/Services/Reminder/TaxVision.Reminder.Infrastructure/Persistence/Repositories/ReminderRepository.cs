@@ -132,6 +132,21 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
             )
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .Reminders.IgnoreQueryFilters()
+            .Where(r =>
+                r.TenantId == tenantId
+                && r.UserId == userId
+                && r.Target.Category == ReminderCategory.General
+                && PendingStatuses.Contains(r.Status)
+            )
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<ReminderAggregate>> ListScheduledWithinHorizonAsync(
         DateTime horizonUtc,
         CancellationToken ct = default

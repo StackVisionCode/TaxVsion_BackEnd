@@ -38,7 +38,7 @@ public static class ListTaskAttachmentsHandler
         CancellationToken ct
     )
     {
-        var subtasks = await tasks.ListSubtasksAsync(query.TenantId, query.TaskId, 1, 200, ct);
+        var subtasks = await tasks.ListSubtasksAsync(query.TenantId, query.TaskId, 1, 200, ct: ct);
         var ids = subtasks.Items.Select(t => t.Id).ToList();
 
         if (ids.Count == 0)

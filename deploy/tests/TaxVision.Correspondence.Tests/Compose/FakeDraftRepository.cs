@@ -131,5 +131,25 @@ internal sealed class FakeDraftRepository : IDraftRepository
         );
     }
 
+    public Task<IReadOnlyList<Draft>> ListOpenByAuthorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Draft>>(
+            _store
+                .Where(x =>
+                    x.TenantId == tenantId && x.CreatedByUserId == createdByUserId && x.Status == DraftStatus.Draft
+                )
+                .ToList()
+        );
+
+    public Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
+        Task.FromResult(
+            _store.Count(x =>
+                x.TenantId == tenantId && x.CreatedByUserId == createdByUserId && x.Status == DraftStatus.Draft
+            )
+        );
+
     public void Remove(Draft entity) => _store.Remove(entity);
 }

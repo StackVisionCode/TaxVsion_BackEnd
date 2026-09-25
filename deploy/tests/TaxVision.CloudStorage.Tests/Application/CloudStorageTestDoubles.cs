@@ -464,6 +464,30 @@ internal sealed class FakeShareLinkRepository : IShareLinkRepository
                 .ToList()
         );
 
+    public Task<IReadOnlyList<ShareLink>> ListActiveByCreatorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<ShareLink>>(
+            _byId
+                .Values.Where(link =>
+                    link.TenantId == tenantId
+                    && link.CreatedByUserId == createdByUserId
+                    && link.Status == ShareStatus.Active
+                )
+                .ToList()
+        );
+
+    public Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
+        Task.FromResult(
+            _byId.Values.Count(link =>
+                link.TenantId == tenantId
+                && link.CreatedByUserId == createdByUserId
+                && link.Status == ShareStatus.Active
+            )
+        );
+
     public Task<IReadOnlyList<ShareLink>> ListSharedWithUserAsync(
         Guid tenantId,
         Guid userId,

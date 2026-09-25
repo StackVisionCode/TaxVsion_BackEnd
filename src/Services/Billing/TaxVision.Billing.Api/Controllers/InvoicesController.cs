@@ -31,7 +31,7 @@ namespace TaxVision.Billing.Api.Controllers;
 [Authorize]
 // Los mismos actores que declara el catálogo de Auth para invoicing.* (Permission.InferAllowedActorTypes).
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class InvoicesController(IMessageBus bus) : ControllerBase
+public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     public sealed record CreateInvoiceDraftRequest(
         InvoiceCustomerInput Customer,
@@ -89,11 +89,13 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int take, CancellationToken ct)
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
+        // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las facturas.
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<InvoiceSummaryResponse>>>(
-            new ListInvoicesQuery(tenantId, take),
+            new ListInvoicesQuery(tenantId, userId, canViewAll, take),
             ct
         );
 
@@ -137,11 +139,12 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<InvoiceSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid invoiceId, CancellationToken ct)
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<InvoiceSummaryResponse>>(
-            new GetInvoiceQuery(tenantId, invoiceId),
+            new GetInvoiceQuery(tenantId, invoiceId, userId, canViewAll),
             ct
         );
 
@@ -155,11 +158,12 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<InvoiceDetailResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetDetail(Guid invoiceId, CancellationToken ct)
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<InvoiceDetailResponse>>(
-            new GetInvoiceDetailQuery(tenantId, invoiceId),
+            new GetInvoiceDetailQuery(tenantId, invoiceId, userId, canViewAll),
             ct
         );
 

@@ -37,5 +37,7 @@ public sealed record CustomerDetailResponse(
     IReadOnlyList<AddressResponse> Addresses,
     IReadOnlyList<ContactPointResponse> ContactPoints,
     IReadOnlyList<RelationResponse> Relations,
-    CustomerFiscalProfileResponse? FiscalProfile
+    CustomerFiscalProfileResponse? FiscalProfile,
+    // Staff asignado (M:N) con su rol (IsPrimary = responsable) — para el diálogo de asignación.
+    IReadOnlyList<CustomerAssigneeResponse> Assignees
 );

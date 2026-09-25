@@ -28,6 +28,12 @@ function u(): string {
 }
 
 class FakeMeetingRepository implements MeetingRepository {
+  async listActiveHostedBy(): Promise<Meeting[]> {
+    return [];
+  }
+  async countActiveHostedBy(): Promise<number> {
+    return 0;
+  }
   private readonly meetings = new Map<string, Meeting>();
   private readonly invitations = new Map<string, MeetingInvitation>();
 

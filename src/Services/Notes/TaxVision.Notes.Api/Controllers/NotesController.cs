@@ -144,6 +144,7 @@ public sealed class NotesController(
             return Unauthorized();
 
         var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<NoteResponse>>(
             new SearchNotesQuery(
                 tenantId,
@@ -151,7 +152,8 @@ public sealed class NotesController(
                 userId,
                 hasViewAll,
                 NormalizePage(page),
-                NormalizeSize(size)
+                NormalizeSize(size),
+                canViewAllCustomers
             ),
             ct
         );
@@ -174,6 +176,7 @@ public sealed class NotesController(
             return Unauthorized();
 
         var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<NoteResponse>>(
             new ListNotesByReferenceQuery(
                 tenantId,
@@ -182,7 +185,8 @@ public sealed class NotesController(
                 userId,
                 hasViewAll,
                 NormalizePage(page),
-                NormalizeSize(size)
+                NormalizeSize(size),
+                canViewAllCustomers
             ),
             ct
         );
@@ -199,8 +203,9 @@ public sealed class NotesController(
             return Unauthorized();
 
         var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new GetNoteQuery(tenantId, id, userId, hasViewAll),
+            new GetNoteQuery(tenantId, id, userId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -219,8 +224,9 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new UpdateNoteContentCommand(tenantId, id, userId, request.Html),
+            new UpdateNoteContentCommand(tenantId, id, userId, request.Html, hasViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -243,8 +249,9 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new ChangeNoteVisibilityCommand(tenantId, id, userId, request.Visibility),
+            new ChangeNoteVisibilityCommand(tenantId, id, userId, request.Visibility, hasViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -263,7 +270,11 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
-        var result = await bus.InvokeAsync<Result<NoteResponse>>(new PinNoteCommand(tenantId, id, userId), ct);
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<NoteResponse>>(
+            new PinNoteCommand(tenantId, id, userId, hasViewAll),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -280,7 +291,11 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
-        var result = await bus.InvokeAsync<Result<NoteResponse>>(new UnpinNoteCommand(tenantId, id, userId), ct);
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<NoteResponse>>(
+            new UnpinNoteCommand(tenantId, id, userId, hasViewAll),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -297,8 +312,9 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new SetNoteColorCommand(tenantId, id, userId, request.ColorKind),
+            new SetNoteColorCommand(tenantId, id, userId, request.ColorKind, hasViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -365,6 +381,7 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
             new AttachFileToNoteCommand(
                 tenantId,
@@ -373,7 +390,8 @@ public sealed class NotesController(
                 request.CloudStorageFileId,
                 request.DisplayName,
                 request.ContentType,
-                request.SizeBytes
+                request.SizeBytes,
+                hasViewAll
             ),
             ct
         );
@@ -393,8 +411,9 @@ public sealed class NotesController(
         if (forbidden is not null)
             return forbidden;
 
+        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new DetachFileFromNoteCommand(tenantId, id, userId, fileId),
+            new DetachFileFromNoteCommand(tenantId, id, userId, fileId, hasViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

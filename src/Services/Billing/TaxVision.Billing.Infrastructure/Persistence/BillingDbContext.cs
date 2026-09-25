@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -41,10 +42,16 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
         Set<AuthzRolePermissionsProjection>();
 
+    // P2 — proyección local compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el consumer compartido CustomerAssignmentsProjectionConsumer. Filtra la visibilidad de facturas.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(BillingSchemas.Billing);
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        // Schema null → usa el default (billing); misma tabla/índices que la config inline anterior.
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

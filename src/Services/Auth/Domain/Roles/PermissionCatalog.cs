@@ -34,6 +34,7 @@ public static class PermissionCatalog
 
     // Módulos operativos
     public const string CustomersView = CustomersPermissions.View;
+    public const string CustomersViewAll = CustomersPermissions.ViewAll;
     public const string CustomersManage = CustomersPermissions.Manage;
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
@@ -447,6 +448,13 @@ public static class PermissionCatalog
             false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000000c9"),
+            CustomersViewAll,
+            "customers",
+            "Ver TODOS los clientes del tenant (no solo los asignados)",
+            false
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000011"),
             CustomersManage,

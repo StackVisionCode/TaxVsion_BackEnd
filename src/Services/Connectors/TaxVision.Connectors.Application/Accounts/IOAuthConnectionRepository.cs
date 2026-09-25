@@ -19,4 +19,7 @@ public interface IOAuthConnectionRepository
         DateTime thresholdUtc,
         CancellationToken ct = default
     );
+
+    /// <summary>Purga la connection (y su token hijo) al retirar al dueño del buzón. Default no-op para los fakes.</summary>
+    void Remove(OAuthConnection connection) { }
 }

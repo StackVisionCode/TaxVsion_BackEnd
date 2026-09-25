@@ -88,6 +88,7 @@ public static class AuthAuditAction
     public const string InvitationResent = "auth.invitation.resent";
     public const string UserDeactivated = "auth.user.deactivated";
     public const string UserReactivated = "auth.user.reactivated";
+    public const string UserOffboarded = "auth.user.offboarded";
     public const string UserProfileUpdated = "auth.user.profile_updated";
     public const string UserRolesChanged = "auth.user.roles_changed";
     public const string UserPermissionOverridesChanged = "auth.user.permission_overrides_changed";

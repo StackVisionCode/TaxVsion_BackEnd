@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Notes.Api.Authorization;
 using TaxVision.Notes.Application;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Infrastructure;
@@ -67,16 +68,15 @@ builder.Services.AddScoped<
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
-// Notes Fase 9 (03_Plan_De_Fases.md) — resource ownership sobre Note, apagado por default
-// (Authorization:ResourceOwnership:Enabled), mismo criterio que Correspondence/Draft. Sin permiso
-// "manage" de override: los endpoints de edición de contenido (Update/Visibility/Pin/Color/
-// Attach/Detach) son estrictamente del autor (NoteVisibilityPolicy.CanEditContent, Fase 5) — el OR
-// "autor o notes.view_all" de Archive/Restore/Delete es un permiso DISTINTO por acción y por eso
-// NO puede expresarse con este mismo handler genérico (una sola instancia = un solo "manage
-// permission" para TODAS las operaciones de Note); ese OR ya vive, y se queda, en el chequeo
-// explícito de NoteVisibilityPolicy.CanManage dentro del handler de Application (Fase 5/6).
+// Notes Fase 9 (03_Plan_De_Fases.md) — resource ownership sobre Note. El handler genérico se
+// registra sin permiso "manage": edición de contenido (Update/Visibility/Pin/Color/Attach/Detach) =
+// solo autor. El OR "autor o notes.view_all" de Archive/Restore/Delete vive aparte, en
+// NoteVisibilityPolicy.CanManage (Application). Punto 3.2 agrega un handler aditivo: además del
+// autor, deja EDITAR una nota cuyo autor fue RETIRADO a un staff con notes.view_all (ASP.NET evalúa
+// authz como OR; solo hace Succeed en ese caso, no relaja el resto).
 builder.Services.AddResourceOwnershipOptions(builder.Configuration);
 builder.Services.AddOwnershipAuthorization<Note>();
+builder.Services.AddScoped<IAuthorizationHandler, OffboardedAuthorNoteEditHandler>();
 
 // Rate limiting por tenant/usuario — mismo [RateLimit]/IRateCounter tiered que corre en el resto
 // del monorepo desde Fase 3/4.2 del plan RateLimit. Piloto de tier-aware quotas real: Fase 4B/4
@@ -118,6 +118,11 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+
+    // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
+    // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

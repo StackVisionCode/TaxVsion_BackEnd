@@ -246,6 +246,22 @@ public sealed class ShareLinksController(
         return Ok(result);
     }
 
+    // ---------- GET /storage/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántos share links activos hay que revocar antes de retirar a este empleado.
+    [HttpGet("offboarding-impact/{userId:guid}")]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.f.share_read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGet(out var tenantId, out _, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        return Ok(result);
+    }
+
     [HttpDelete("shares/{shareLinkId:guid}")]
     [HasPermission(CloudStoragePermissions.ShareRevoke)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]

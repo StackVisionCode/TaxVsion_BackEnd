@@ -19,4 +19,6 @@ public sealed class SmtpCredentialsRepository(ConnectorsDbContext dbContext) : I
             )
             : Result.Success(credentials);
     }
+
+    public void Remove(SmtpCredentials credentials) => dbContext.SmtpCredentials.Remove(credentials);
 }

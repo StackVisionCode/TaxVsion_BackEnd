@@ -6,6 +6,13 @@ export interface MeetingRepository {
   findById(tenantId: string, meetingId: string): Promise<Meeting | null>;
   findByShortCode(tenantId: string, shortCode: string): Promise<Meeting | null>;
   /**
+   * Reuniones activas (Scheduled|Live) cuyo host es `hostUserId` — para el handover al retirar
+   * a ese empleado (offboarding). Devuelve el aggregate completo porque se van a mutar y guardar.
+   */
+  listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]>;
+  /** Cuántas reuniones activas (Scheduled|Live) tiene como host — pre-flight de impacto al retirarlo. */
+  countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number>;
+  /**
    * Cross-tenant lookup por diseno — Fase Backend 5, usado por el endpoint
    * publico GET /communication/meetings/by-code/:shortCode (sin JWT, sin
    * contexto de tenant resuelto). ShortCode solo es unico POR tenant

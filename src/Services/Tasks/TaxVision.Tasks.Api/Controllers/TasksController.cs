@@ -102,11 +102,30 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<TaskResponse>>(
+            new GetTaskByIdQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /tasks/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántas tareas abiertas hay que reasignar antes de retirar a este empleado.
+    [HttpGet("offboarding-impact/{userId:guid}")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TaskResponse>>(new GetTaskByIdQuery(tenantId, id), ct);
-        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}/subtasks")]
@@ -120,11 +139,12 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new ListSubtasksQuery(tenantId, id, NormalizePage(page), NormalizeSize(size)),
+            new ListSubtasksQuery(tenantId, id, NormalizePage(page), NormalizeSize(size), userId, canViewAll),
             ct
         );
         return Ok(result);
@@ -163,11 +183,20 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new ListTasksByCustomerQuery(tenantId, customerId, taxYear, NormalizePage(page), NormalizeSize(size)),
+            new ListTasksByCustomerQuery(
+                tenantId,
+                customerId,
+                taxYear,
+                NormalizePage(page),
+                NormalizeSize(size),
+                userId,
+                canViewAll
+            ),
             ct
         );
         return Ok(result);
@@ -179,11 +208,12 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [ProducesResponseType<PagedResult<TaskResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> WaitingOnClient([FromQuery] int page, [FromQuery] int size, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new ListWaitingOnClientTasksQuery(tenantId, NormalizePage(page), NormalizeSize(size)),
+            new ListWaitingOnClientTasksQuery(tenantId, NormalizePage(page), NormalizeSize(size), userId, canViewAll),
             ct
         );
         return Ok(result);
@@ -204,12 +234,13 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var filter = new TaskQueryFilter(q, status, assigneeUserId, customerId, taxYear);
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new SearchTasksQuery(tenantId, filter, NormalizePage(page), NormalizeSize(size)),
+            new SearchTasksQuery(tenantId, filter, NormalizePage(page), NormalizeSize(size), userId, canViewAll),
             ct
         );
         return Ok(result);
@@ -227,11 +258,15 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var filter = new TaskQueryFilter(null, null, assigneeUserId, customerId, taxYear, OnlyOpen: true);
-        var result = await bus.InvokeAsync<TaskBoardResponse>(new GetTaskBoardQuery(tenantId, filter, BoardTake), ct);
+        var result = await bus.InvokeAsync<TaskBoardResponse>(
+            new GetTaskBoardQuery(tenantId, filter, BoardTake, userId, canViewAll),
+            ct
+        );
         return Ok(result);
     }
 
@@ -246,11 +281,12 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<IReadOnlyList<TaskCalendarEntry>>(
-            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, assigneeUserId, CalendarTake),
+            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, assigneeUserId, CalendarTake, userId, canViewAll),
             ct
         );
         return Ok(result);

@@ -547,6 +547,34 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
             .Include(link => link.Recipients)
             .SingleOrDefaultAsync(link => link.TokenHash == tokenHash, ct);
 
+    // Tracked (sin AsNoTracking): el consumer de offboard los revoca y persiste. IgnoreQueryFilters
+    // porque corre system-level (sin tenant en contexto); el WHERE acota por TenantId explícito.
+    public async Task<IReadOnlyList<ShareLink>> ListActiveByCreatorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct
+    ) =>
+        await db
+            .ShareLinks.IgnoreQueryFilters()
+            .Where(link =>
+                link.TenantId == tenantId
+                && link.CreatedByUserId == createdByUserId
+                && link.Status == ShareStatus.Active
+            )
+            .ToListAsync(ct);
+
+    // Mismo filtro que ListActiveByCreatorAsync (activos del creador), solo cuenta — pre-flight de impacto.
+    public Task<int> CountActiveByCreatorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct) =>
+        db
+            .ShareLinks.IgnoreQueryFilters()
+            .CountAsync(
+                link =>
+                    link.TenantId == tenantId
+                    && link.CreatedByUserId == createdByUserId
+                    && link.Status == ShareStatus.Active,
+                ct
+            );
+
     public async Task<IReadOnlyList<ShareLink>> ListForResourceAsync(
         Guid tenantId,
         Guid resourceId,

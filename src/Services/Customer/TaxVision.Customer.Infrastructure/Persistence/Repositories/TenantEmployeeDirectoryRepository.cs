@@ -45,4 +45,10 @@ public sealed class TenantEmployeeDirectoryRepository(CustomerDbContext db) : IT
         var existing = await db.TenantEmployeeDirectoryEntries.FirstOrDefaultAsync(e => e.UserId == userId, ct);
         existing?.MarkInactive();
     }
+
+    public async Task MarkOffboardedAsync(Guid userId, CancellationToken ct = default)
+    {
+        var existing = await db.TenantEmployeeDirectoryEntries.FirstOrDefaultAsync(e => e.UserId == userId, ct);
+        existing?.MarkOffboarded();
+    }
 }

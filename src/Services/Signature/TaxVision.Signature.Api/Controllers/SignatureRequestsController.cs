@@ -146,11 +146,13 @@ public sealed class SignatureRequestsController(
         CancellationToken ct = default
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las solicitudes.
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
-            new ListSignatureRequestsQuery(tenantId, status, category, page, size, editableOnly),
+            new ListSignatureRequestsQuery(tenantId, status, category, page, size, userId, canViewAll, editableOnly),
             ct
         );
         return Ok(result);
@@ -164,11 +166,12 @@ public sealed class SignatureRequestsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<SignatureRequestResponse?>(
-            new GetSignatureRequestByIdQuery(tenantId, id),
+            new GetSignatureRequestByIdQuery(tenantId, id, userId, canViewAll),
             ct
         );
         return result is null ? NotFound() : Ok(result);

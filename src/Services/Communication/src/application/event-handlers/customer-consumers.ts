@@ -5,6 +5,7 @@ import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
 import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 import {
   CustomerSocketEvents,
@@ -44,6 +45,7 @@ export function bindCustomerConsumers(
     emitter: RealtimeEmitter;
     customerDirectory: CustomerDirectoryRepository;
     customerPreparerAssignments: CustomerPreparerAssignmentRepository;
+    customerAssignments: CustomerAssignmentProjectionRepository;
   },
 ): void {
   register('customer.bulk_imported.v1', async (env) => {
@@ -218,6 +220,31 @@ export function bindCustomerConsumers(
     if (!customerId) return;
     await deps.customerPreparerAssignments.unassign(customerId);
   });
+
+  // P2.5 — snapshot M:N del set COMPLETO de asignados (event-carried state transfer). Reemplaza el set
+  // local del customer, version-guarded (solo aplica snapshots mas nuevos): descarta reordenados/duplicados.
+  // Es la fuente del gate restrictCustomerChatToAssignedPreparer, que con M:N permite a CUALQUIER staff
+  // asignado (no solo al primary) chatear con el customer. Coexiste con la proyeccion 1:1 (isPrimaryPreparer).
+  register('customer.assignments_changed.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    const versionRaw = getString(env.payload, 'version') ?? getString(env.payload, 'Version');
+    if (!customerId || !versionRaw) return;
+    const version = new Date(versionRaw);
+    if (Number.isNaN(version.getTime())) return;
+
+    const applied = await deps.customerAssignments.getVersion(env.tenantId, customerId);
+    if (applied && version <= applied) return; // snapshot igual o mas viejo ya aplicado -> ignorar
+
+    const assigneeUserIds =
+      getStringArray(env.payload, 'assigneeUserIds') ?? getStringArray(env.payload, 'AssigneeUserIds') ?? [];
+    await deps.customerAssignments.replace(env.tenantId, customerId, assigneeUserIds, version);
+  });
+}
+
+function getStringArray(source: Record<string, unknown>, key: string): string[] | undefined {
+  const value = source[key];
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

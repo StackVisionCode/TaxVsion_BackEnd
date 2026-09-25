@@ -6,6 +6,14 @@ public static class CustomersPermissions
     public const string Manage = "customers.manage";
 
     /// <summary>
+    /// Ver TODOS los clientes del tenant, no solo los asignados (governance). Con el modelo de acceso por
+    /// asignación, <see cref="View"/> pasa a significar "ver los asignados"; este permiso levanta esa
+    /// restricción. TenantAdmin lo trae por defecto; puede otorgarse a un supervisor sin volverlo admin.
+    /// La restricción por asignación solo se aplica con el feature-flag de visibilidad encendido.
+    /// </summary>
+    public const string ViewAll = "customers.view_all";
+
+    /// <summary>
     /// Revela el SSN/ITIN/EIN en claro de un customer. Separado de <see cref="Manage"/> a
     /// propósito — editar un fiscal profile no implica poder ver el identificador completo,
     /// y viceversa. TenantAdmin/PlatformAdmin siempre pasan (ver ClaimsPrincipalExtensions.HasPermission),

@@ -121,6 +121,11 @@ builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Billing.Application"));
+
+    // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
+    // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConnection =

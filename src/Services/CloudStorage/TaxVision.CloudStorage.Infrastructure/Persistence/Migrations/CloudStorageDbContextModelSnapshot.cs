@@ -583,6 +583,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedByUserId");
+
                     b.HasIndex("TenantId", "Status");
 
                     b.HasIndex("TenantId", "ResourceId", "ResourceType");

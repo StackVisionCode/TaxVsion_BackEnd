@@ -199,6 +199,8 @@ builder.Host.UseWolverine(options =>
 {
     // Descubre consumers y handlers en el assembly Application.
     options.Discovery.IncludeAssembly(typeof(TenantCreatedConsumer).Assembly);
+    // P2 — consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

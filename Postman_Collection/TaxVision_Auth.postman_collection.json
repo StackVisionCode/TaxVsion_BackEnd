@@ -1282,6 +1282,47 @@
           "response": []
         },
         {
+          "name": "OffboardUser",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"successorUserId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/offboard",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "offboard"
+              ]
+            },
+            "description": "Retiro terminal del tenant (punto 3.2). Mas estricto que deactivate: solo TenantAdmin/PlatformAdmin, permiso users.manage. successorUserId (opcional): a quien se reasigna el trabajo activo del que se va (preparer, tasks, appointments, meetings-host, drafts). null = se desasigna/oficina. Idempotente. 204 No Content."
+          },
+          "response": []
+        },
+        {
           "name": "AssignUserRoles",
           "request": {
             "method": "PUT",

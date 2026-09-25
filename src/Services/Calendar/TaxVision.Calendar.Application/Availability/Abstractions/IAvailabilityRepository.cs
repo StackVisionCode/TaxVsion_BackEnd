@@ -15,7 +15,16 @@ public interface IAvailabilityRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Todos los bloqueos del usuario (sin ventana) — para limpiarlos al retirarlo (offboard). Tracked.</summary>
+    Task<IReadOnlyList<BlockedTime>> ListAllBlocksForUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    );
+
     void AddRule(AvailabilityRule rule);
 
     void AddBlock(BlockedTime block);
+
+    void RemoveBlock(BlockedTime block);
 }

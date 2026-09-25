@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
@@ -24,7 +25,10 @@ public sealed record StartCampaignRunFromAudienceCommand(
     IReadOnlyList<Guid> ContactListIds,
     IReadOnlyList<ManualAudienceEntry> Manual,
     string TriggerKind = "Manual",
-    bool IncludeCustomers = false
+    bool IncludeCustomers = false,
+    // Visibilidad por asignación (P2): default true = sin restricción. La ruta interactiva del controller
+    // pasa el valor real (customers.view_all); los runs agendados (actor de sistema) quedan en true.
+    bool CanViewAllCustomers = true
 );
 
 public static class StartCampaignRunFromAudienceHandler
@@ -36,6 +40,8 @@ public static class StartCampaignRunFromAudienceHandler
         IContactRepository contacts,
         IContactListRepository lists,
         ICustomerAudienceClient customerClient,
+        ICampaignCustomerAssignmentReader assignmentReader,
+        IOptions<CampaignsVisibilityOptions> visibility,
         ISenderProfileRepository senderProfiles,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -49,6 +55,19 @@ public static class StartCampaignRunFromAudienceHandler
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
+        // Visibilidad por asignación (P2): con audiencia "Clients" + flag ON + actor que NO ve todo, acota
+        // los clientes al set asignado al que dispara el run. null = sin restricción.
+        IReadOnlySet<Guid>? restrictCustomerIds = null;
+        if (command.IncludeCustomers && visibility.Value.Enabled && !command.CanViewAllCustomers)
+        {
+            var assigned = await assignmentReader.GetAssignedCustomerIdsAsync(
+                command.TenantId,
+                command.TriggeredByUserId,
+                ct
+            );
+            restrictCustomerIds = assigned.ToHashSet();
+        }
+
         var units = await AudienceResolver.ResolveAsync(
             command.TenantId,
             campaign.Channels,
@@ -58,6 +77,7 @@ public static class StartCampaignRunFromAudienceHandler
             lists,
             command.IncludeCustomers,
             customerClient,
+            restrictCustomerIds,
             ct
         );
 

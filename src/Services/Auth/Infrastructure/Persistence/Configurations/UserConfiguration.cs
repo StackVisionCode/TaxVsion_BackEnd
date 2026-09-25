@@ -20,6 +20,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
         builder.Property(user => user.ActorType).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
+        builder.Property(user => user.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(user => user.RemovedAtUtc);
         builder.Property(user => user.TimeZoneId).HasMaxLength(64);
         builder.Property(user => user.PhoneNumber).HasMaxLength(20);
         builder.Property(user => user.EmailVerified).IsRequired();

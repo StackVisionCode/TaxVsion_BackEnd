@@ -91,6 +91,9 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.HasMany(c => c.Relations).WithOne().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(c => c.Relations).UsePropertyAccessMode(PropertyAccessMode.Field);
 
+        b.HasMany(c => c.Assignments).WithOne().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(c => c.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
+
         b.HasOne(c => c.FiscalProfile)
             .WithOne()
             .HasForeignKey<TaxVision.Customer.Domain.FiscalProfiles.CustomerFiscalProfile>(fp => fp.CustomerId)

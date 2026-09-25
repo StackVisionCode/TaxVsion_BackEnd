@@ -11,6 +11,9 @@ public sealed record UserSummaryResponse(
     string Email,
     string ActorType,
     bool IsActive,
+    // Ciclo de vida: Active/Deactivated/Offboarded (viaja como string). Distingue un retiro terminal
+    // de una simple suspensión, que IsActive por sí solo no puede.
+    string Status,
     bool MfaEnabled,
     DateTime CreatedAtUtc,
     IReadOnlyList<string> Roles,
@@ -71,6 +74,7 @@ public static class GetUsersHandler
                     user.Email,
                     user.ActorType.ToString(),
                     user.IsActive,
+                    user.Status.ToString(),
                     user.MfaEnabled,
                     user.CreatedAtUtc,
                     roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
@@ -115,6 +119,7 @@ public static class GetUserByIdHandler
                 user.Email,
                 user.ActorType.ToString(),
                 user.IsActive,
+                user.Status.ToString(),
                 user.MfaEnabled,
                 user.CreatedAtUtc,
                 roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

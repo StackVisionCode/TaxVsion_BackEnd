@@ -16,6 +16,7 @@ public static class CreateCustomerHandler
         CreateCustomerCommand cmd,
         ICustomerRepository repository,
         ICustomerDuplicateDetector duplicates,
+        ITenantEmployeeDirectoryRepository employeeDirectory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -70,8 +71,22 @@ public static class CreateCustomerHandler
             return Result.Failure<CustomerResponse>(customerResult.Error);
 
         var customer = customerResult.Value;
+
+        // El alta auto-asigna al creador como preparador primary, salvo que sea admin (el admin ve todo
+        // por permiso, no necesita fila). Si el directorio aún no lo tiene, se asigna igual: mejor dejarlo
+        // con acceso a su propio cliente que perderlo. Va antes de persistir → mismo SaveChanges.
+        var creator = await employeeDirectory.GetByUserIdAsync(cmd.CreatedByUserId, ct);
+        var creatorIsAdmin = creator?.ActorType is "TenantAdmin" or "PlatformAdmin";
+        var autoAssigned =
+            !creatorIsAdmin && customer.AssignPreparer(cmd.CreatedByUserId, cmd.CreatedByUserId).IsSuccess;
+
         await PersistCustomerAsync(customer, repository, unitOfWork, ct);
         await PublishCreatedEventAsync(customer, correlation, bus);
+        if (autoAssigned)
+        {
+            await PublishPreparerAssignedEventAsync(customer, cmd.CreatedByUserId, correlation, bus);
+            await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
+        }
 
         return Result.Success(MapToResponse(customer));
     }
@@ -288,6 +303,26 @@ public static class CreateCustomerHandler
                     PreferredChannel = customer.PreferredChannel.ToString(),
                     OccupationId = customer.OccupationId,
                     CreatedByUserId = customer.CreatedByUserId,
+                }
+            )
+            .AsTask();
+
+    // Anuncia el preparador auto-asignado en el alta (mismo evento que el endpoint de asignar), para que
+    // chat y las proyecciones de visibilidad downstream conozcan al responsable del cliente nuevo.
+    private static Task PublishPreparerAssignedEventAsync(
+        CustomerEntity customer,
+        Guid preparerUserId,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    ) =>
+        bus.PublishAsync(
+                new CustomerPreparerAssignedIntegrationEvent
+                {
+                    TenantId = customer.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                    CustomerId = customer.Id,
+                    PreparerUserId = preparerUserId,
+                    AssignedByUserId = preparerUserId,
                 }
             )
             .AsTask();

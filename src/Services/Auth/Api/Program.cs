@@ -436,6 +436,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<InvitationCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserOffboardedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserRolesChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<RolePermissionsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PasswordResetRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

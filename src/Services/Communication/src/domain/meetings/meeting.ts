@@ -202,7 +202,12 @@ export class Meeting {
     return Result.okVoid();
   }
 
-  start(input: { hostUserId: string; audioDefault?: boolean; videoDefault?: boolean; now?: Date }): Result<void> {
+  start(input: {
+    hostUserId: string;
+    audioDefault?: boolean;
+    videoDefault?: boolean;
+    now?: Date;
+  }): Result<void> {
     if (this.state.status !== MeetingStatus.Scheduled) {
       return Result.fail(makeError('Meeting.InvalidTransition', `Cannot start from ${this.state.status}.`));
     }
@@ -245,19 +250,7 @@ export class Meeting {
     if (input.byUserId !== this.state.hostUserId && !this.isCohost(input.byUserId)) {
       return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can end the meeting.'));
     }
-    const now = input.now ?? new Date();
-    this.participants.forEach((p) => {
-      if (p.status === 'Joined' || p.status === 'Waiting') p.markLeft(now);
-    });
-    const startedAt = this.state.startedAtUtc;
-    this.state = {
-      ...this.state,
-      status: MeetingStatus.Ended,
-      endedAtUtc: now,
-      durationSeconds: startedAt ? Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 1000)) : 0,
-      updatedAtUtc: now,
-      participants: this.participants.map((p) => p.toSnapshot()),
-    };
+    this.applyEnded(input.now ?? new Date());
     return Result.okVoid();
   }
 
@@ -282,7 +275,9 @@ export class Meeting {
    */
   reschedule(input: { hostUserId: string; newScheduledForUtc: Date | null; now?: Date }): Result<void> {
     if (this.state.status !== MeetingStatus.Scheduled) {
-      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot reschedule from ${this.state.status}.`));
+      return Result.fail(
+        makeError('Meeting.InvalidTransition', `Cannot reschedule from ${this.state.status}.`),
+      );
     }
     if (input.hostUserId !== this.state.hostUserId && !this.isCohost(input.hostUserId)) {
       return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can reschedule.'));
@@ -338,7 +333,9 @@ export class Meeting {
     const guard = this.ensureCanHostAct(input.hostUserId);
     if (!guard.isSuccess) return guard;
     if (input.targetUserId === this.state.hostUserId) {
-      return Result.fail(makeError('Meeting.CannotRemoveHost', 'Host cannot be removed. Transfer host first.'));
+      return Result.fail(
+        makeError('Meeting.CannotRemoveHost', 'Host cannot be removed. Transfer host first.'),
+      );
     }
     const target = this.participants.find((p) => p.userId === input.targetUserId);
     if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target participant not found.'));
@@ -357,12 +354,90 @@ export class Meeting {
     }
     const current = this.participants.find((p) => p.userId === input.currentHostUserId);
     const next = this.participants.find((p) => p.userId === input.newHostUserId && p.isJoined);
-    if (!next) return Result.fail(makeError('Meeting.TargetNotJoined', 'Target must be a joined participant.'));
+    if (!next)
+      return Result.fail(makeError('Meeting.TargetNotJoined', 'Target must be a joined participant.'));
     if (current) current.demoteHostToCohost();
     next.transferHost();
     const now = input.now ?? new Date();
     this.state = { ...this.state, hostUserId: input.newHostUserId, updatedAtUtc: now };
     this.commit(now);
+    return Result.okVoid();
+  }
+
+  // ------------------------------------------------------------------
+  // Handover por SISTEMA (offboarding de un empleado). Sin chequeo de actor:
+  // el disparador es el consumer de `auth.user.offboarded.v1`, no una persona.
+  // A diferencia de transferHost/cancel/end (solo el host), estos existen para
+  // que una reunion cuyo host fue retirado no quede imposible de iniciar ni
+  // cancelar por nadie.
+  // ------------------------------------------------------------------
+
+  /**
+   * Pasa el host a `newHostUserId` sin exigir que este "joined" (una reunion
+   * Scheduled no tiene a nadie adentro). Reusa su participante si ya existe, o
+   * crea el placeholder de host igual que schedule(). El host saliente pierde
+   * el rol y queda como salido (historial). Idempotente si ya es el host.
+   */
+  reassignHostBySystem(input: {
+    newHostUserId: string;
+    newHostDisplayName?: string;
+    now?: Date;
+  }): Result<void> {
+    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+      return Result.fail(
+        makeError('Meeting.InvalidTransition', `Cannot reassign host from ${this.state.status}.`),
+      );
+    }
+    const now = input.now ?? new Date();
+    if (input.newHostUserId === this.state.hostUserId) return Result.okVoid();
+
+    const previousHostId = this.state.hostUserId;
+    const previous = this.participants.find((p) => p.userId === previousHostId);
+    const next = this.participants.find((p) => p.userId === input.newHostUserId);
+    if (next) {
+      next.transferHost(); // conserva su status (si estaba Joined en un Live, sigue Joined)
+    } else {
+      this.participants.push(
+        MeetingParticipant.create({
+          meetingId: this.state.id,
+          tenantId: this.state.tenantId,
+          userId: input.newHostUserId,
+          displayName: (input.newHostDisplayName ?? 'Host').trim() || 'Host',
+          role: MeetingRole.Host,
+          status: ParticipantStatus.Left, // entra al start()/join(), igual que el placeholder de schedule()
+          joinOrder: this.nextJoinOrder(),
+          audioDefault: true,
+          videoDefault: true,
+          now,
+        }),
+      );
+    }
+    if (previous) {
+      previous.demoteHostToCohost(); // quita el rol Host...
+      previous.demoteToAttendee(); // ...hasta Attendee (ya no es host ni cohost)
+      previous.markLeft(now); // y lo saca de la sala
+    }
+    this.state = { ...this.state, hostUserId: input.newHostUserId, updatedAtUtc: now };
+    this.commit(now);
+    return Result.okVoid();
+  }
+
+  /** Cancela por sistema una reunion Scheduled cuyo host se retiro y no hay sucesor. */
+  cancelBySystem(input: { now?: Date } = {}): Result<void> {
+    if (this.state.status !== MeetingStatus.Scheduled) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot cancel from ${this.state.status}.`));
+    }
+    const now = input.now ?? new Date();
+    this.state = { ...this.state, status: MeetingStatus.Cancelled, endedAtUtc: now, updatedAtUtc: now };
+    return Result.okVoid();
+  }
+
+  /** Termina por sistema una reunion Live cuyo host se retiro y no hay sucesor. */
+  endBySystem(input: { now?: Date } = {}): Result<void> {
+    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+      return Result.fail(makeError('Meeting.AlreadyEnded', `Meeting already ${this.state.status}.`));
+    }
+    this.applyEnded(input.now ?? new Date());
     return Result.okVoid();
   }
 
@@ -415,7 +490,10 @@ export class Meeting {
   attachRecording(fileId: string): Result<void> {
     if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
       return Result.fail(
-        makeError('Meeting.Recording.InvalidState', `Cannot attach recording in status ${this.state.status}.`),
+        makeError(
+          'Meeting.Recording.InvalidState',
+          `Cannot attach recording in status ${this.state.status}.`,
+        ),
       );
     }
     if (this.state.recordingFileId !== null) {
@@ -439,7 +517,10 @@ export class Meeting {
   attachTranscript(fileId: string): Result<void> {
     if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
       return Result.fail(
-        makeError('Meeting.Transcript.InvalidState', `Cannot attach transcript in status ${this.state.status}.`),
+        makeError(
+          'Meeting.Transcript.InvalidState',
+          `Cannot attach transcript in status ${this.state.status}.`,
+        ),
       );
     }
     if (this.state.transcriptFileId !== null) {
@@ -470,7 +551,10 @@ export class Meeting {
     if (!guard.isSuccess) return guard;
     if (input.existingSession !== null) {
       return Result.fail(
-        makeError('Meeting.Recording.AlreadyRequested', 'A recording session already exists for this meeting.'),
+        makeError(
+          'Meeting.Recording.AlreadyRequested',
+          'A recording session already exists for this meeting.',
+        ),
       );
     }
     const sessionResult = RecordingSession.request({
@@ -531,7 +615,11 @@ export class Meeting {
     return Result.ok(input.session);
   }
 
-  stopRecording(input: { actorUserId: string; session: RecordingSession; now?: Date }): Result<RecordingSession> {
+  stopRecording(input: {
+    actorUserId: string;
+    session: RecordingSession;
+    now?: Date;
+  }): Result<RecordingSession> {
     const guard = this.ensureCanHostAct(input.actorUserId);
     if (!guard.isSuccess) return guard;
     const belongs = this.ensureSessionBelongsHere(input.session);
@@ -632,6 +720,22 @@ export class Meeting {
 
   private nextJoinOrder(): number {
     return this.participants.reduce((max, p) => Math.max(max, p.joinOrder), 0) + 1;
+  }
+
+  /** Transicion a Ended compartida por end() (host/cohost) y endBySystem() (offboarding). */
+  private applyEnded(now: Date): void {
+    this.participants.forEach((p) => {
+      if (p.status === 'Joined' || p.status === 'Waiting') p.markLeft(now);
+    });
+    const startedAt = this.state.startedAtUtc;
+    this.state = {
+      ...this.state,
+      status: MeetingStatus.Ended,
+      endedAtUtc: now,
+      durationSeconds: startedAt ? Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 1000)) : 0,
+      updatedAtUtc: now,
+      participants: this.participants.map((p) => p.toSnapshot()),
+    };
   }
 
   private commit(now: Date): void {

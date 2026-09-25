@@ -150,6 +150,22 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // ---------- GET /connectors/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántos buzones personales hay que desconectar antes de retirar a este empleado.
+    [HttpGet("offboarding-impact/{userId:guid}")]
+    [HasPermission(ConnectorsPermissions.AccountsRead)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("connectors.f.accounts_read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
+        return Ok(result);
+    }
+
     /// <summary>
     /// Desconecta la cuenta (D3 §12.4/12.8). Para Graph esto es solo del lado de TaxVision — el
     /// consentimiento en Microsoft sigue vivo hasta que el usuario lo revoque él mismo desde

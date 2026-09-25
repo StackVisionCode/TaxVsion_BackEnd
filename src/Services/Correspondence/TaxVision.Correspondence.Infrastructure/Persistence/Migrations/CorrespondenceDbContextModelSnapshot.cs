@@ -152,6 +152,9 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status", "UpdatedAtUtc")
                         .HasDatabaseName("IX_Drafts_Status_UpdatedAtUtc");
 
+                    b.HasIndex("TenantId", "CreatedByUserId", "Status")
+                        .HasDatabaseName("IX_Drafts_TenantId_CreatedByUserId_Status");
+
                     b.HasIndex("TenantId", "EmailThreadId", "Status")
                         .HasDatabaseName("IX_Drafts_TenantId_EmailThreadId_Status");
 

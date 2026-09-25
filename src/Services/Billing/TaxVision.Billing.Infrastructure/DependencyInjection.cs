@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ using TaxVision.Billing.Infrastructure.Permissions;
 using TaxVision.Billing.Infrastructure.Persistence;
 using TaxVision.Billing.Infrastructure.Persistence.Repositories;
 using TaxVision.Billing.Infrastructure.RateLimiting;
+using TaxVision.Billing.Infrastructure.Reconciliation;
 using TaxVision.Billing.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Billing.Infrastructure;
@@ -48,6 +50,17 @@ public static class DependencyInjection
             sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
         );
         services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
+
+        // P2 — visibilidad por-cliente sobre el KIT compartido BuildingBlocks.CustomerVisibility (store de la
+        // proyección sobre BillingDbContext + reconciliación que siembra desde Customer con el token M2M de la
+        // PlatformTenant). El consumer del snapshot se engancha en Program.cs. Antes era una impl inline
+        // (entidad/config/repo/consumer/recon propios); consolidado al kit (misma tabla billing.CustomerAssignmentProjections).
+        services.AddCustomerVisibilityProjection<BillingDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.BillingPlatformTokenProvider>(configuration);
+        // Flag de visibilidad por asignación (default OFF hasta sembrar con la reconciliación).
+        services
+            .AddOptions<BillingVisibilityOptions>()
+            .Bind(configuration.GetSection(BillingVisibilityOptions.SectionName));
 
         // Opción B (recuperación pull bajo demanda) — sin estos dos, ProjectionPermissionsSource
         // trata el miss local como definitivo y Billing queda fail-closed permanente: su proyección
