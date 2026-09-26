@@ -76,7 +76,7 @@ frontend lo trata por el status.
 | `GET /auth/me/effective-access` | CRM y Portal | Permissions efectivas por módulo, con la marca de denegado, y `permissionsVersion` |
 | `GET /auth/users/{id}/effective-access` | CRM (admin) | Lo mismo, para otro usuario. Gateado por `roles.manage` |
 | `PUT /auth/users/{id}/permission-overrides` | CRM (admin) | Reemplaza el set completo de denies. Gateado por `roles.manage`. Acepta **dos formas** del cuerpo: `deniedPermissionIds` (ids planos, la forma que ya usa el CRM desplegado) o `denies` (`[{ permissionId, reason?, expiresAtUtc? }]`, con razón y vencimiento). Si viene `denies`, manda ese |
-| `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }` |
+| `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }`. Un permiso con `isReserved` **no se ofrece** en el picker: está declarado pero todavía no protege nada |
 | `GET /auth/me/access` | ambos | `[POR CREAR]` (A5). Bootstrap único: `effectivePermissions`, `modules`, `permissionsVersion`, `entitlementsRevision`, `subscription.state`, `canManageBilling`, con ETag. **Debe ser consciente de la superficie** y su forma para `CustomerPortal` **no lleva semántica comercial** |
 
 ## 4. Capas de autorización, en orden
@@ -105,26 +105,35 @@ el código.
 `users.view` · `users.invite` · `users.manage` · `roles.manage` · `billing.view` ·
 `customers.view` · `customers.view_all` · `customers.manage` · `customers.import` ·
 `customers.fiscalprofile.reveal` · `cloudstorage.file.view/upload/download` ·
-`campaigns.manage` · `notes.read` · `notes.manage` · `sms.read` · `sms.send` ·
+`campaigns.view` · `campaigns.manage` · `campaigns.send` · `campaigns.senders.manage` ·
+`notes.read` · `notes.manage` · `sms.read` · `sms.send` ·
 `signature.*` · `correspondence.*` · `tasks.*` · `calendar.*`
 
-### Portal del cliente — el bundle completo del rol "Customer Portal" (14)
-`portal.folders.view` · `tasks.portal.client_requests` · `notes.portal.read` ·
+### Portal del cliente — el bundle completo del rol "Customer Portal" (15)
+`portal.folders.view` · `portal.calls.use` · `tasks.portal.client_requests` · `notes.portal.read` ·
 `cloudstorage.file.view` · `cloudstorage.file.upload` · `cloudstorage.file.download` ·
 `communication.chat.start` · `communication.chat.reply` · `communication.support.open` ·
 `communication.call.start` · `communication.video_call.start` · `communication.meeting.join` ·
 `communication.screenshot.create` · `communication.notification.read`
 
-**Declarados en el catálogo para portal pero fuera del bundle:** `portal.calls.use` y
-`portal.miles.use`. Ver §R.6 del plan: hoy **no los tiene ningún cliente y no los exige ningún
-endpoint**. No se asuma que existen.
+`portal.calls.use` entró al bundle en A3: lo exigen las rutas de llamada de Communication **solo** al
+actor `CustomerPortal`, y detrás del flag `COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE` (apagado
+hasta que las proyecciones converjan). Es la palanca que el administrador ve en el cajón de accesos
+del cliente.
 
-### Cambios del catálogo en A0 (ninguno visible para los dos frontends)
+**Reservado, no se concede a nadie:** `portal.miles.use`. No existe el módulo ni ningún endpoint que
+lo exija; está marcado `IsReserved` y dejó de ser asignable. La UI **no debe ofrecerlo**.
 
-| Permission | Qué cambió |
-|---|---|
-| `cloudstorage.dmca.manage` | **Nueva**, PlatformOnly y no asignable: registrar y cerrar takedowns DMCA. Ningún rol de tenant la recibe |
-| `cloudstorage.legal.manage` | Ya no cubre el DMCA. Queda solo el legal hold sobre archivos del propio tenant (peligroso, no delegable, sigue en el rol raíz del admin) |
+### Cambios del catálogo en A0 y A3
+
+| Permission | Qué cambió | ¿Lo ve el CRM? |
+|---|---|---|
+| `cloudstorage.dmca.manage` | **Nueva** (A0), PlatformOnly y no asignable: registrar y cerrar takedowns DMCA. Ningún rol de tenant la recibe | No |
+| `cloudstorage.legal.manage` | Ya no cubre el DMCA (A0). Queda solo el legal hold sobre archivos del propio tenant | No |
+| `campaigns.view` · `campaigns.send` · `campaigns.senders.manage` | **Nuevas** (A3): `campaigns.manage` se partió en cuatro. Ver, editar, enviar y administrar remitentes | **Sí**: la sección de campañas tiene que preguntar por el código correcto por acción |
+| `campaigns.manage` | Ya no cubre ver ni enviar | **Sí** |
+| `invoicing.issuer.manage` | **Nueva** (A3): editar el emisor legal de las facturas. Sale de `invoicing.manage` | **Sí**: el formulario del emisor se gatea con este |
+| `portal.miles.use` | Reservado y no asignable (A3) | No lo ofrezcas |
 
 ## 6. Módulos y entitlements
 

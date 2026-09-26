@@ -190,3 +190,61 @@ plana de ids que el CRM desplegado ya usa.
 forma nueva es B9, que todavía no existe. Dos formas es fea pero es la única que no rompe nada.
 **Reversible:** sí; cuando B9 esté desplegado se puede retirar `deniedPermissionIds`.
 
+## 2026-09-26 — `POST billing/invoices/{id}/email` queda sin construir
+
+**Contexto:** A3.4 pide un endpoint dedicado para enviarle la factura al cliente, bajo
+`invoicing.manage`, en vez de que el CRM use el `notification.email.send` genérico (que el empleado
+no tiene, de ahí el 403 que reporta §22).
+**Opciones:** construirlo ahora · dejarlo documentado.
+**Elección:** dejarlo documentado; sí se hizo la otra mitad de A3.4 (el emisor legal).
+**Por qué:** no es un arreglo de autorización, es una función nueva: hace falta (1) una plantilla de
+correo para la factura, que no existe en Notification, y (2) registrar a Billing como cliente M2M de
+Notification en los **tres** sitios de configuración, incluido `deploy/docker/docker-compose.yml` de
+producción. Inventar la plantilla y el contrato del envío sin el humano es justo lo que el prompt
+prohíbe, y dejarlo a medio cablear rompería el botón en vez de arreglarlo.
+**Reversible:** n/a, no se cambió nada. Lo que hay que hacer, en orden: (1) plantilla de factura en
+Notification; (2) registrar el cliente M2M `Billing` con el scope de envío en user-secrets y en el
+compose de producción; (3) `POST billing/invoices/{invoiceId}/email` con
+`[HasPermission(InvoicingPermissions.Manage)]` que llame a Notification con esa plantilla.
+
+## 2026-09-26 — El emisor legal sale de `invoicing.manage` a su propio permiso
+
+**Contexto:** A3.4 pide que el PUT de `IssuerProfile` quede bajo un permiso administrativo
+(`billing.issuer.manage` o `settings.manage`).
+**Opciones:** reutilizar `settings.manage` · crear `invoicing.issuer.manage`.
+**Elección:** crear `invoicing.issuer.manage`.
+**Por qué:** `settings.manage` es "configuración de la oficina" en general; el emisor legal es una
+cosa concreta y auditable, y con su propio permiso el administrador puede delegarlo sin entregar
+toda la configuración. Least privilege real en vez de agrupar.
+**Reversible:** sí; el permiso es una fila del catálogo y un atributo. **Consecuencia deliberada:**
+un empleado con `invoicing.manage` ya no edita el emisor legal. Los roles custom que lo tenían
+conservan la capacidad: la migración les concede el permiso nuevo.
+
+## 2026-09-26 — `portal.calls.use` se aplica detrás de un flag apagado
+
+**Contexto:** §R.6 recomienda aplicarlo (opción a) con backfill, y advierte que sin backfill
+**todos** los clientes existentes pierden las llamadas.
+**Opciones:** aplicarlo directo en el mismo despliegue · aplicarlo detrás de un flag apagado.
+**Elección:** flag `COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE`, default `false`.
+**Por qué:** el backfill lo hace `SystemRolePermissionsSyncService` al arrancar Auth, y las
+proyecciones de los 24 servicios convergen por evento. Eso no es instantáneo ni está garantizado que
+ocurra antes de que Communication se despliegue. Con el flag apagado, el orden de despliegue deja de
+ser una condición de carrera: se enciende cuando el operador verificó las proyecciones. Es el mismo
+patrón que ya usa `COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED` en este servicio.
+**Reversible:** sí, es una variable de entorno.
+
+## 2026-09-26 — Los gates de actor se abren en vez de volver los permisos no delegables
+
+**Contexto:** A3.6 da dos salidas para `sms.manage`, `notification.log.view`, `users.invite` y el
+`audit.view` de Subscription: que el permiso deje de ser delegable, o que el endpoint admita
+`TenantEmployee`.
+**Opciones:** cerrar el permiso · abrir el gate de actor.
+**Elección:** abrir el gate de actor.
+**Por qué:** cerrar el permiso rompe los roles custom que ya lo tuvieran (el guard de actor type
+empezaría a rechazar esos roles al editarlos). Abrir el gate no concede nada: el permiso sigue
+siendo la barrera y ninguno de los cuatro está en el bundle por defecto del empleado, así que el
+único efecto es que una delegación deliberada por fin funcione.
+**Reversible:** sí, es un atributo por endpoint. Para `users.invite` hizo falta además extender
+`CreateInvitationHandler.CanInvite`: un empleado con el permiso da de alta empleados y clientes,
+nunca otro administrador (eso ya exige `roles.manage` efectiva por A2).
+

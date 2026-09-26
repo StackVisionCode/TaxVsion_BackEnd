@@ -10,7 +10,7 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | A0 — Hotfixes de seguridad | **C** | `claude/great-heisenberg-j7fnkh` | `7a85c03`, `4caa3fd` | 63 (.NET) + 20 (Node) | build Release · gate de CI 4835/4835 · `npm run typecheck` + 446/446 de Communication · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | Solo queda el **scope** M2M de `internal/stock/commit-sale`: preparado y documentado, sin activar (ver `DECISIONES.md`) |
 | A1 — Ownership de recurso | **NI** | — | — | — | — | Signature (14 sub-recursos), Tasks, Correspondence, Customer, CloudStorage, Campaigns |
 | A2 — Deny layer y propagación | **C** | `claude/great-heisenberg-j7fnkh` | `8004694` | 15 | build Release · gate de CI 4850/4850 · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | El fallback pre-RBAC de `UserAccessResolver` se dejó como está: ya exige `activeCustomRoles.Count == 0` (G2 cerrado) y quitarlo dejaría sin permisos a los usuarios creados antes del modelo. Ver `DECISIONES.md` |
-| A3 — Baseline y catálogo | **NI** | — | — | — | — | Employee (75 permissions) sigue sin Campaigns ni Notes |
+| A3 — Baseline y catálogo | **P** | `claude/great-heisenberg-j7fnkh` | `01a0859` | 21 (.NET) + 6 (Node) | build Release · gate de CI 4865/4865 · `npm test` 452/452 · migración aplicada a SQL Server 2022 real | Falta **A3.4 primera mitad**: el endpoint `POST billing/invoices/{id}/email` no se construyó (necesita una plantilla de correo y registrar a Billing como cliente M2M de Notification en la configuración de producción). Ver `DECISIONES.md`. A3.3 (`correspondence.organize`, COULD) tampoco |
 | A4 — Techo y API de roles | **NI** | — | — | — | — | `Grantable(...)` unificado, `GET /auth/roles/{id}/users`, reactivar rol |
 | A5 — Bootstrap, errores, realtime | **NI** | — | — | — | — | Sin `/auth/me/access`, sin `access.changed`, sin `IAuthorizationMiddlewareResultHandler`. **Debe nacer consciente de la superficie** (§R.4.1) |
 | A6 — Entitlement enforcement | **NI** | — | — | — | — | `Authorization:ModuleGate:Enforce` no existe en ninguna configuración. Va **al final** y solo con B7 y C5 desplegados |
@@ -49,6 +49,28 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | Jerarquía en la baja | `UserManagementCommands.cs` (`DeactivateUserCommand.CallerActorType`), `UsersController.cs` | `UserManagementCommandsTests` (5) |
 | Invitaciones | `CreateInvitation.cs`, `AcceptInvitation.cs` | `AcceptInvitationHandlerTests` (2) |
 | Denies con razón y vencimiento | `UserPermissionDeny.cs`, `RoleConfigurations.cs`, `RoleRepository.cs`, `SetUserPermissionOverridesCommand.cs`, `UsersController.cs`, `ExpiredPermissionDeniesService.cs` (nuevo), migración `AddUserPermissionDenyReasonAndExpiry` | `SetUserPermissionOverridesHandlerTests` (2) |
+
+### A3 — parcial, 2026-09-26
+
+| Sub | Estado | Qué se hizo |
+|---|---|---|
+| A3.1 baseline del empleado | **C** | Notes, `signature.request.cancel`, `communication.group.create`, y los GET de plantillas bajo `signature.request.create` |
+| A3.2 split de Campaigns | **C** | `campaigns.view/manage/send/senders.manage` + los 34 atributos + migración con backfill de roles custom |
+| A3.3 `correspondence.organize` | **NI** | COULD; no se abordó |
+| A3.4 factura por correo | **P** | Solo la mitad del emisor legal (`invoicing.issuer.manage`). El endpoint de enviar la factura queda pendiente |
+| A3.5 permisos sin uso | **C** | Flag `IsReserved` + `portal.miles.use` reservado + fitness test |
+| A3.6 alinear actor y permission | **C** | `sms.manage`, `notification.log.view`, `users.invite`, `audit.view` de Subscription |
+| §R.6 `portal.calls.use` | **C** | Al bundle del portal + exigido solo al actor CustomerPortal, detrás de un flag apagado |
+
+**Secuencia de despliegue obligatoria de A3** (si se invierte, los clientes pierden las llamadas):
+
+1. Aplicar la migración `SplitCampaignsAndAddReservedFlag`.
+2. Desplegar **Auth** y dejar que `SystemRolePermissionsSyncService` resincronice los roles de
+   sistema (publica `RolePermissionsChanged` + el fan-out por titular de A2).
+3. Verificar en un par de servicios que la proyección de un cliente de portal ya trae
+   `portal.calls.use`.
+4. Desplegar Communication y **solo entonces** poner
+   `COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE=true`.
 
 **Lo que NO se pudo verificar en A2:** el barrido de denies vencidos
 (`ExpiredPermissionDeniesService`) no tiene test propio — es un `BackgroundService` con
