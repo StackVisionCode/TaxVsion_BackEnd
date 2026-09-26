@@ -125,6 +125,7 @@ builder.Services.AddScoped<IRateLimitAuditSink, PaymentAuditLogRateLimitAuditSin
 
 // Resuelve pagos atascados en Processing tras una caída a mitad de cobro (§B.6).
 builder.Services.AddHostedService<PendingChargeReconciliationJob>();
+builder.Services.AddHostedService<MissingReceiptBackfillJob>();
 
 // Reintenta cobros Failed con backoff hasta agotar el retry (§C.1).
 builder.Services.AddHostedService<DunningJob>();
@@ -188,6 +189,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<OnboardingPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatsCheckoutPaidIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatsCheckoutFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Resultado del checkout de compra de un add-on.
+    options.PublishMessage<AddOnCheckoutPaidIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnCheckoutFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Expiración/Dunning (Fase 4) — resultado del checkout de renovación/reactivación self-service.
     options.PublishMessage<SubscriptionRenewalCheckoutPaidIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalCheckoutFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -195,6 +199,8 @@ builder.Host.UseWolverine(options =>
     // liquidar beneficios de referidos en Growth, pero nunca tuvo ruta registrada -- Wolverine
     // lo descartaba silenciosamente y los descuentos de referidos nunca se liquidaban.
     options.PublishMessage<PaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Pide a Documents el recibo de cualquier cobro confirmado del tenant.
+    options.PublishMessage<SaaSPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue

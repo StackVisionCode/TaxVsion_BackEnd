@@ -1,4 +1,4 @@
-using BuildingBlocks.Authorization;
+﻿using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
@@ -220,9 +220,9 @@ public static class PermissionCatalog
     public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
 
     // Portal del cliente final
-    public const string PortalCallsUse = "portal.calls.use";
-    public const string PortalMilesUse = "portal.miles.use";
-    public const string PortalFoldersView = "portal.folders.view";
+    public const string PortalCallsUse = PortalPermissions.CallsUse;
+    public const string PortalMilesUse = PortalPermissions.MilesUse;
+    public const string PortalFoldersView = PortalPermissions.FoldersView;
 
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla

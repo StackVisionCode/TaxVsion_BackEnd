@@ -15,6 +15,7 @@ using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
 using TaxVision.Auth.Domain.RefreshTokens;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -34,7 +35,8 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         string Password,
         string? DeviceName = null,
         string? DeviceToken = null,
-        Guid? TenantId = null
+        Guid? TenantId = null,
+        UserAccountKind? AccountKind = null
     );
 
     [HttpPost("login")]
@@ -64,7 +66,8 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
             request.Email,
             request.Password,
             request.DeviceName,
-            request.DeviceToken
+            request.DeviceToken,
+            request.AccountKind
         );
         var result = await bus.InvokeAsync<Result<LoginResponse>>(command, ct);
 

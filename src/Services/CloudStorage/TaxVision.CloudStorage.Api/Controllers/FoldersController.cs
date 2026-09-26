@@ -1,4 +1,4 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -36,6 +36,7 @@ public sealed class FoldersController(IMessageBus bus, ICorrelationContext corre
     /// </summary>
     [HttpGet]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
@@ -99,6 +100,7 @@ public sealed class FoldersController(IMessageBus bus, ICorrelationContext corre
     /// </summary>
     [HttpGet("tree")]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,

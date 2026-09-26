@@ -28,6 +28,10 @@ public static class StartSeatCheckoutHandler
         CancellationToken ct
     )
     {
+        var reused = await ReuseOpenCheckoutAsync(command, intents, ct);
+        if (reused is not null)
+            return reused;
+
         var prepared = await PrepareIntentAsync(command, subscriptions, seatPricing, ct);
         if (prepared.IsFailure)
             return Result.Failure<StartSeatCheckoutResponse>(prepared.Error);
@@ -47,14 +51,21 @@ public static class StartSeatCheckoutHandler
                 command.CancelUrl,
                 IdempotencyKeyFactory.SeatCheckout(intent.Id),
                 command.Provider,
-                command.Method
+                command.Method,
+                intent.Quantity,
+                ProratedUnit.Of(intent.ProratedTotalCents, intent.Quantity)
             ),
             ct
         );
         if (checkout.IsFailure)
             return Result.Failure<StartSeatCheckoutResponse>(checkout.Error);
 
-        intent.AttachCheckout(checkout.Value.PaymentId, checkout.Value.CheckoutUrl, DateTime.UtcNow);
+        intent.AttachCheckout(
+            checkout.Value.PaymentId,
+            checkout.Value.CheckoutUrl,
+            checkout.Value.ExpiresAtUtc,
+            DateTime.UtcNow
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
@@ -63,6 +74,43 @@ public static class StartSeatCheckoutHandler
                 checkout.Value.CheckoutUrl,
                 checkout.Value.PaymentId,
                 checkout.Value.ExpiresAtUtc
+            )
+        );
+    }
+
+    /// <summary>
+    /// Guard del doble cobro: mientras la sesión de checkout anterior siga viva, la misma compra devuelve esa
+    /// misma URL en vez de abrir un segundo cobro (doble clic, reintento tras un corte, volver atrás). Si lo que
+    /// se pide es distinto, se rechaza: dos sesiones pagables a la vez es justo lo que hay que evitar.
+    /// </summary>
+    private static async Task<Result<StartSeatCheckoutResponse>?> ReuseOpenCheckoutAsync(
+        StartSeatCheckoutCommand command,
+        ISeatPurchaseIntentRepository intents,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var open = await intents.GetOpenByTenantAsync(command.TenantId, nowUtc, ct);
+        if (open is null || !open.IsOpen(nowUtc))
+            return null;
+
+        var sameRequest =
+            Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType)
+            && open.Matches(seatType, command.Quantity, open.BillingCycle, command.AutoRenew);
+        if (!sameRequest)
+            return Result.Failure<StartSeatCheckoutResponse>(
+                new Error(
+                    "Seat.CheckoutInProgress",
+                    "There is already a seat purchase waiting for payment. Finish it or wait for it to expire."
+                )
+            );
+
+        return Result.Success(
+            new StartSeatCheckoutResponse(
+                open.Id,
+                open.CheckoutUrl!,
+                open.SaaSPaymentId!.Value,
+                open.CheckoutExpiresAtUtc!.Value
             )
         );
     }

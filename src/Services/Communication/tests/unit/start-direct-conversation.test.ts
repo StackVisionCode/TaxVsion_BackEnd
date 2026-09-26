@@ -19,6 +19,7 @@ import type {
   CustomerPreparerAssignmentSnapshot,
 } from '../../src/application/ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../../src/application/ports/customer-assignment-projection-repository.js';
+import type { UserPermissionsProjectionRepository } from '../../src/application/ports/user-permissions-projection-repository.js';
 
 /**
  * Fase B6 (auditoria del plan de chat tipado) — el propio MD marca el test de
@@ -141,6 +142,26 @@ function fakeMnAssignments(byCustomerId: Record<string, string[]>): CustomerAssi
   };
 }
 
+/** Permisos por usuario (proyeccion local); solo findByUserId lo usa el gate. */
+function fakeUserPermissions(byUserId: Record<string, string[]> = {}): UserPermissionsProjectionRepository {
+  return {
+    async findByUserId(userId: string) {
+      const permissions = byUserId[userId];
+      if (!permissions) return null;
+      return {
+        userId,
+        tenantId: 'tenant-1',
+        permissions,
+        permissionVersion: 1,
+        roleIds: [],
+        actorType: 'TenantAdmin',
+        isActive: true,
+        updatedAtUtc: new Date(),
+      };
+    },
+  } as unknown as UserPermissionsProjectionRepository;
+}
+
 function baseCommand(overrides: {
   tenantId: string;
   initiatorUserId: string;
@@ -179,6 +200,7 @@ describe('startDirectConversation — regla dura B0/B5: gate en false no cambia 
         [customerId]: { customerId, tenantId, preparerUserId: someOtherPreparerUserId, assignedAtUtc: new Date() },
       }),
       customerAssignments: fakeMnAssignments({ [customerId]: [someOtherPreparerUserId] }),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -213,6 +235,7 @@ describe('startDirectConversation — regla dura B0/B5: gate en false no cambia 
       }),
       customerPreparerAssignments: fakeAssignments({}),
       customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -250,6 +273,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
         [customerId]: { customerId, tenantId, preparerUserId: realPreparerUserId, assignedAtUtc: new Date() },
       }),
       customerAssignments: fakeMnAssignments({ [customerId]: [realPreparerUserId] }),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -285,6 +309,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
       }),
       customerPreparerAssignments: fakeAssignments({}),
       customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -323,6 +348,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
         [customerId]: { customerId, tenantId, preparerUserId, assignedAtUtc: new Date() },
       }),
       customerAssignments: fakeMnAssignments({ [customerId]: [preparerUserId] }),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -366,6 +392,7 @@ describe('startDirectConversation — gate activo (restrictCustomerChatToAssigne
       customerAssignments: fakeMnAssignments({
         [customerId]: [primaryPreparerUserId, assignedNonPrimaryUserId],
       }),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -406,6 +433,7 @@ describe('startDirectConversation — isPrimaryPreparer end-to-end (independient
         [customerId]: { customerId, tenantId, preparerUserId, assignedAtUtc: new Date() },
       }),
       customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -439,6 +467,7 @@ describe('startDirectConversation — isPrimaryPreparer end-to-end (independient
       customerPortalAccounts: fakePortalAccounts({}),
       customerPreparerAssignments: fakeAssignments({}),
       customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions(),
     };
 
     const result = await startDirectConversation(
@@ -480,6 +509,7 @@ describe('startDirectConversation — flag GLOBAL de despliegue (assignmentVisib
         [customerId]: { customerId, tenantId, preparerUserId: realPreparerUserId, assignedAtUtc: new Date() },
       }),
       customerAssignments: fakeMnAssignments({ [customerId]: [realPreparerUserId] }),
+      userPermissions: fakeUserPermissions(),
       assignmentVisibilityEnabled: true,
     };
 
@@ -493,6 +523,58 @@ describe('startDirectConversation — flag GLOBAL de despliegue (assignmentVisib
       }),
       deps,
     );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) {
+      expect(result.error.code).toBe('Chat.NotAssignedPreparer');
+    }
+  });
+});
+
+describe('startDirectConversation — quien ve a todos los clientes pasa el gate (flag global ON)', () => {
+  async function startWithUnassignedCustomer(staffUserId: string, staffActorType: string, permissions: string[]) {
+    const tenantId = u();
+    const customerId = u();
+    const customerUserId = u();
+    const deps = {
+      conversations: new FakeConversationRepository(),
+      idempotency: new FakeIdempotencyStore(),
+      publisher: new FakeIntegrationEventPublisher(),
+      settings: fakeSettings(),
+      customerPortalAccounts: fakePortalAccounts({
+        [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
+      }),
+      customerPreparerAssignments: fakeAssignments({}),
+      customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions({ [staffUserId]: permissions }),
+      assignmentVisibilityEnabled: true,
+    };
+    return startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: staffUserId,
+        initiatorActorType: staffActorType,
+        recipientUserId: customerUserId,
+        recipientActorType: 'CustomerPortal',
+      }),
+      deps,
+    );
+  }
+
+  it('permite al admin con customers.view_all escribirle a un cliente sin asignar', async () => {
+    const result = await startWithUnassignedCustomer(u(), 'TenantAdmin', ['customers.view_all']);
+
+    expect(result.isSuccess).toBe(true);
+  });
+
+  it('permite al PlatformAdmin aunque no tenga el permiso en la proyeccion', async () => {
+    const result = await startWithUnassignedCustomer(u(), 'PlatformAdmin', []);
+
+    expect(result.isSuccess).toBe(true);
+  });
+
+  it('sigue rechazando al empleado sin customers.view_all que no esta asignado', async () => {
+    const result = await startWithUnassignedCustomer(u(), 'TenantEmployee', ['communication.chat.start']);
 
     expect(result.isSuccess).toBe(false);
     if (!result.isSuccess) {

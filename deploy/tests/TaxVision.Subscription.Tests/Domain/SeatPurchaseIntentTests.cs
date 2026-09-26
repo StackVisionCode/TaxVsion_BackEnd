@@ -58,7 +58,12 @@ public sealed class SeatPurchaseIntentTests
         var intent = CreatePending();
         var paymentId = Guid.NewGuid();
 
-        var result = intent.AttachCheckout(paymentId, "https://checkout.example/abc", DateTime.UtcNow);
+        var result = intent.AttachCheckout(
+            paymentId,
+            "https://checkout.example/abc",
+            DateTime.UtcNow.AddHours(24),
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(paymentId, intent.SaaSPaymentId);

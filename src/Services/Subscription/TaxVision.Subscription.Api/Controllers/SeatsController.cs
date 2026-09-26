@@ -26,6 +26,7 @@ namespace TaxVision.Subscription.Api.Controllers;
 public sealed class SeatsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("subscription.f.seat_read")]
     [ProducesResponseType<PagedResult<SeatResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSeats(
@@ -64,6 +65,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     /// <summary>Cotización server-authoritative (precio unitario + prorrateo a hoy) para comprar asientos.
     /// Read: la usa el modal de compra para mostrar "Comprar N asientos (+$X, prorrateado)" antes de cobrar.</summary>
     [HttpGet("quote")]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("subscription.f.seat_read")]
     [ProducesResponseType<SeatQuoteResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetQuote(
@@ -88,7 +90,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("purchase")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
+    [RateLimit("subscription.l.seat_purchase")]
     [ProducesResponseType<IReadOnlyList<Guid>>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Purchase(PurchaseSeatsRequest request, CancellationToken ct)
     {
@@ -122,7 +124,8 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("checkout")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.l.seat_purchase")]
     [ProducesResponseType<StartSeatCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> StartCheckout(StartSeatCheckoutRequest request, CancellationToken ct)
     {
@@ -151,6 +154,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     /// <summary>Estado de una intención de checkout de asientos — lo consulta el front al volver del redirect
     /// hasta que el webhook la deja en <c>Provisioned</c> (o <c>Failed</c>).</summary>
     [HttpGet("checkout/{intentId:guid}")]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("subscription.f.seat_read")]
     [ProducesResponseType<SeatCheckoutStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetCheckoutStatus(Guid intentId, CancellationToken ct)

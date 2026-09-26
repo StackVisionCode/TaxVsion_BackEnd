@@ -79,6 +79,7 @@ public sealed class GatewayRateLimitRuleTests
             "/auth/mfa/verify",
             "/auth/password/forgot",
             "/auth/password/reset",
+            "/auth/password/reset/validate",
             "/auth/me/email/confirm",
             "/auth/invitations/accept",
             "/tenants",

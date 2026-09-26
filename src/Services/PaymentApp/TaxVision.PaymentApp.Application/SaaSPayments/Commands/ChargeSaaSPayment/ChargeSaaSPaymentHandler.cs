@@ -115,7 +115,8 @@ public static class ChargeSaaSPaymentHandler
             command.CodeReservationId,
             command.CodeReservationPaymentId,
             command.DiscountAmountCents,
-            command.PromotionSnapshotHash
+            command.PromotionSnapshotHash,
+            ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
         );
     }
 

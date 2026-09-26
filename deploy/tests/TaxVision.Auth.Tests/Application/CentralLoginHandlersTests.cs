@@ -535,19 +535,46 @@ public sealed class CentralLoginHandlersTests
 
         public User Get(Guid tenantId) => _byId.Values.First(u => u.TenantId == tenantId);
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) =>
             Task.FromResult<IReadOnlyList<Guid>>(
-                _byEmail.TryGetValue(email, out var offices) ? offices.Keys.ToList() : []
+                _byEmail.TryGetValue(email, out var offices)
+                    ? offices.Where(office => office.Value.AccountKind == kind).Select(office => office.Key).ToList()
+                    : []
             );
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            Task.FromResult(_byEmail.TryGetValue(email, out var offices) ? offices.GetValueOrDefault(tenantId) : null);
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                _byEmail.TryGetValue(email, out var offices)
+                && offices.GetValueOrDefault(tenantId) is { } user
+                && user.AccountKind == kind
+                    ? user
+                    : null
+            );
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(_byId.GetValueOrDefault(id));
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -567,6 +594,7 @@ public sealed class CentralLoginHandlersTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

@@ -20,9 +20,7 @@ public sealed class SaaSPaymentResultPublisherTests
 
         await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
 
-        var published = Assert.IsType<SubscriptionRenewalPaymentSucceededIntegrationEvent>(
-            Assert.Single(bus.Published)
-        );
+        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
         Assert.Equal(TenantId, published.TenantId);
         Assert.Equal(TargetId, published.TenantSubscriptionId);
         Assert.Equal("pi_test_1", published.ExternalPaymentReference);
@@ -39,7 +37,7 @@ public sealed class SaaSPaymentResultPublisherTests
 
         await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
 
-        var published = Assert.IsType<SeatRenewalPaymentFailedIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.Single(bus.Published.OfType<SeatRenewalPaymentFailedIntegrationEvent>());
         Assert.Equal(TargetId, published.SeatId);
         Assert.Equal("card_declined", published.FailureCode);
         Assert.True(published.WillRetry);
@@ -55,7 +53,7 @@ public sealed class SaaSPaymentResultPublisherTests
 
         await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
 
-        var published = Assert.IsType<AddOnRenewalPaymentFailedIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.Single(bus.Published.OfType<AddOnRenewalPaymentFailedIntegrationEvent>());
         Assert.Equal(TargetId, published.TenantAddOnId);
         Assert.False(published.WillRetry);
     }
@@ -69,9 +67,7 @@ public sealed class SaaSPaymentResultPublisherTests
 
         await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
 
-        var published = Assert.IsType<SubscriptionPlanChangePaymentSucceededIntegrationEvent>(
-            Assert.Single(bus.Published)
-        );
+        var published = Assert.Single(bus.Published.OfType<SubscriptionPlanChangePaymentSucceededIntegrationEvent>());
         Assert.Equal(TargetId, published.PlanChangeRequestId);
     }
 
@@ -81,6 +77,9 @@ public sealed class SaaSPaymentResultPublisherTests
     [InlineData(SaaSPaymentType.AddOnRenewal)]
     [InlineData(SaaSPaymentType.PlanChangeCharge)]
     [InlineData(SaaSPaymentType.SeatsPurchaseCharge)]
+    [InlineData(SaaSPaymentType.SubscriptionRenewalCheckout)]
+    [InlineData(SaaSPaymentType.AddOnPurchaseCharge)]
+    [InlineData(SaaSPaymentType.PlanChangeCheckout)]
     public async Task A_payment_that_is_still_processing_publishes_nothing(SaaSPaymentType type)
     {
         var payment = ProcessingPayment(type);
@@ -100,8 +99,51 @@ public sealed class SaaSPaymentResultPublisherTests
 
         await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
 
-        var published = Assert.IsType<SeatsCheckoutPaidIntegrationEvent>(Assert.Single(bus.Published));
+        var published = Assert.Single(bus.Published.OfType<SeatsCheckoutPaidIntegrationEvent>());
         Assert.Equal(TargetId, published.SeatPurchaseIntentId);
+    }
+
+    // La compra de un add-on por checkout tiene su propio evento: no se mezcla con la renovación del add-on.
+    [Fact]
+    public async Task Succeeded_add_on_checkout_is_routed_to_its_own_result_event()
+    {
+        var payment = ProcessingPayment(SaaSPaymentType.AddOnPurchaseCharge);
+        payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
+
+        var published = Assert.Single(bus.Published.OfType<AddOnCheckoutPaidIntegrationEvent>());
+        Assert.Equal(TargetId, published.AddOnPurchaseIntentId);
+        Assert.Equal("pi_test_1", published.ProviderPaymentReference);
+    }
+
+    [Fact]
+    public async Task Cancelled_add_on_checkout_is_published_as_a_failure()
+    {
+        var payment = ProcessingPayment(SaaSPaymentType.AddOnPurchaseCharge);
+        payment.CancelByAdmin("ProviderCancelled", Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
+
+        var published = Assert.Single(bus.Published.OfType<AddOnCheckoutFailedIntegrationEvent>());
+        Assert.Equal(TargetId, published.AddOnPurchaseIntentId);
+    }
+
+    // El checkout y el cobro off-session del upgrade cierran el MISMO PlanChangeRequest: un solo evento y
+    // un solo consumer para los dos caminos.
+    [Fact]
+    public async Task Succeeded_plan_change_checkout_publishes_the_same_event_as_the_off_session_charge()
+    {
+        var payment = ProcessingPayment(SaaSPaymentType.PlanChangeCheckout);
+        payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty);
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
+
+        var published = Assert.Single(bus.Published.OfType<SubscriptionPlanChangePaymentSucceededIntegrationEvent>());
+        Assert.Equal(TargetId, published.PlanChangeRequestId);
     }
 
     private static SaaSPayment ProcessingPayment(SaaSPaymentType type)

@@ -65,6 +65,36 @@ public sealed class TenantSubscriptionEmailConsumerTests
         Assert.Equal("Active", request.Status);
     }
 
+    // Cancelar al fin del período NO cambia el estado (sigue Active): el aviso se reconoce por el motivo, y
+    // arrastra la fecha hasta la que llega el acceso ya pagado.
+    [Fact]
+    public async Task A_scheduled_cancellation_publishes_the_email_with_the_access_end_date()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+        var accessEndsAtUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var evt = StatusEvent(tenantId, "Active", nameof(SubscriptionChangeReason.CancellationScheduled)) with
+        {
+            AccessEndsAtUtc = accessEndsAtUtc,
+        };
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            evt,
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal("Active", request.Status);
+        Assert.Equal(nameof(SubscriptionChangeReason.CancellationScheduled), request.Reason);
+        Assert.Equal(accessEndsAtUtc, request.AccessEndsAtUtc);
+    }
+
     [Theory]
     [InlineData("Active", nameof(SubscriptionChangeReason.TrialConverted))] // alta normal, no recuperación
     [InlineData("PastDue", nameof(SubscriptionChangeReason.RenewalPaymentFailed))] // transitorio, aún no notifica
@@ -139,17 +169,34 @@ public sealed class TenantSubscriptionEmailConsumerTests
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -163,6 +210,7 @@ public sealed class TenantSubscriptionEmailConsumerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

@@ -30,6 +30,7 @@ public static class ProcessStripeWebhookHandler
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
         IMessageBus bus,
+        ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
         CancellationToken ct
     ) =>
@@ -50,6 +51,7 @@ public static class ProcessStripeWebhookHandler
             throttle,
             correlation,
             bus,
+            tenants,
             logger,
             ct
         );

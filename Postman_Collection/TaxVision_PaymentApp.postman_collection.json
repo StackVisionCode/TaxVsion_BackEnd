@@ -89,6 +89,68 @@
             "description": "Detalle de un SaaSPayment del tenant autenticado (scoped por TenantId). Requiere payment_app.saas_payment.read."
           },
           "response": []
+        },
+        {
+          "name": "SearchMySaaSPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments?page=1&pageSize=25",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "saas-payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "Historial de pagos del tenant autenticado, el mas reciente primero. Lo consume la pantalla Billing history del Account en el Landing, por eso lleva [AllowSurface(Account)]. Solo TenantAdmin o PlatformAdmin, y requiere payment_app.saas_payment.read. page arranca en 1; pageSize se acota a 25 por defecto y 100 como maximo. Respuesta 200: MySaaSPaymentsPage(items, totalCount), donde cada item trae hasReceipt para saber si ya se puede descargar el recibo."
+          },
+          "response": []
+        },
+        {
+          "name": "GetSaaSPaymentReceipt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/receipt",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "saas-payments",
+                "{{saaSPaymentId}}",
+                "receipt"
+              ]
+            },
+            "description": "URL firmada para descargar el recibo en PDF de un cobro confirmado. El archivo no se sirve desde aca: PaymentApp valida que el pago pertenece al tenant autenticado y CloudStorage firma una URL de vida corta. Requiere payment_app.saas_payment.read y esta habilitado en la superficie Account. Respuesta 200: ReceiptDownloadUrlResponse(url, expiresAtUtc). Devuelve 404 si el pago no es del tenant, y 409 si el recibo todavia se esta generando."
+          },
+          "response": []
         }
       ]
     },

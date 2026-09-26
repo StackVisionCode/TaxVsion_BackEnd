@@ -208,6 +208,20 @@ public static class OffboardUserHandler
         if (target.Status == UserStatus.Offboarded)
             return Result.Success();
 
+        // El retiro es para quien TRABAJA en la oficina: reasigna su trabajo a un sucesor, transfiere sus
+        // archivos compartidos, suelta sus conectores y libera su asiento. Un cliente de portal no tiene nada
+        // de eso, y su acceso se quita desde su propio perfil. Se corta acá y no solo en la pantalla: la API
+        // no puede depender de que la UI no lo ofrezca.
+        if (target.ActorType == UserActorType.CustomerPortal)
+        {
+            return Result.Failure(
+                new Error(
+                    "User.PortalClient",
+                    "Portal clients aren't removed from the office. Manage their access from the client's profile."
+                )
+            );
+        }
+
         // No dejar al tenant sin ningún admin.
         if (
             target.ActorType == UserActorType.TenantAdmin

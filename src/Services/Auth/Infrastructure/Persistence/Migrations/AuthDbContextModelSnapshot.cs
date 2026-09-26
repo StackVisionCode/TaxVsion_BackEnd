@@ -186,6 +186,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(45)
                         .HasColumnType("nvarchar(45)");
 
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -3958,8 +3961,13 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CustomerId")
                         .HasFilter("[CustomerId] IS NOT NULL");
 
-                    b.HasIndex("TenantId", "Email")
-                        .IsUnique();
+                    b.HasIndex(new[] { "TenantId", "Email" }, "IX_Users_TenantId_Email_Portal")
+                        .IsUnique()
+                        .HasFilter("[ActorType] = N'CustomerPortal'");
+
+                    b.HasIndex(new[] { "TenantId", "Email" }, "IX_Users_TenantId_Email_Staff")
+                        .IsUnique()
+                        .HasFilter("[ActorType] <> N'CustomerPortal'");
 
                     b.ToTable("Users", (string)null);
                 });

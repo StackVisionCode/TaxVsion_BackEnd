@@ -215,6 +215,27 @@ public sealed class TenantHostResolutionMiddlewareTests
         Assert.Single(audit.Logs, log => log.Action == AuthAuditAction.TenantResolutionFailed);
     }
 
+    // El reset de contraseña se acota a la oficina del subdominio: necesita el Host resuelto.
+    [Fact]
+    public async Task Forgot_password_resolves_the_office_host()
+    {
+        var tenantId = Guid.NewGuid();
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+        resolver.ResolveFn = _ => HostResolutionResult.Resolved(tenantId);
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("coretaxpro.taxproffice.com");
+        context.Request.Path = "/auth/password/forgot";
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Equal("coretaxpro.taxproffice.com", resolver.LastRequestedHost);
+        Assert.Equal(tenantId, tenantContext.ResolvedTenantId);
+    }
+
     [Theory]
     [InlineData("/health/live")]
     [InlineData("/health/ready")]

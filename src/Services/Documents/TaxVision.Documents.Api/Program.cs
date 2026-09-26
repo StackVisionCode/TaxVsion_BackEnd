@@ -140,6 +140,7 @@ builder.Host.UseWolverine(options =>
     // Eventos que Documents publica al bus compartido (guardrail #13: routing explícito por tipo).
     options.PublishMessage<DocumentGenerationStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentGenerationCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SaaSReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentGenerationFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentStoredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Pedido de guardado a CloudStorage (sube al bucket temporal y publica esto para que lo almacene).

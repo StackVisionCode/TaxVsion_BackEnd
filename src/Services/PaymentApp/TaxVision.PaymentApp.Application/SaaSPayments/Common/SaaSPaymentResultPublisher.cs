@@ -1,5 +1,7 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentIntegrationEvents;
+using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Application.AddOnCheckouts;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
 using TaxVision.PaymentApp.Application.SeatsCheckouts;
 using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
@@ -16,7 +18,62 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 /// </summary>
 public static class SaaSPaymentResultPublisher
 {
-    public static ValueTask PublishAsync(
+    public static async ValueTask PublishAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        CancellationToken ct,
+        ITenantRegistry? tenants = null
+    )
+    {
+        await PublishByTypeAsync(payment, bus, correlationId, ct);
+        await PublishReceiptRequestAsync(payment, bus, correlationId, tenants, ct);
+    }
+
+    /// <summary>
+    /// Todo cobro confirmado de un tenant real pide su recibo. Va aparte del evento por tipo porque no le
+    /// dice a Subscription qué aprovisionar: solo dice que se cobró. El pago de un onboarding no entra —
+    /// nace sin tenant y su recibo lo pide Auth cuando la saga termina.
+    /// </summary>
+    public static async ValueTask PublishReceiptRequestAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        ITenantRegistry? tenants,
+        CancellationToken ct
+    )
+    {
+        if (payment.Status != PaymentStatus.Succeeded || payment.TenantId == Guid.Empty)
+            return;
+
+        // Sin registro de tenants el recibo igual sale: el importe y el emisor son lo que lo hacen válido.
+        var officeName = tenants is null ? null : (await tenants.GetByIdAsync(payment.TenantId, ct))?.Name;
+
+        await bus.PublishAsync(
+            new SaaSPaymentSucceededIntegrationEvent
+            {
+                TenantId = payment.TenantId,
+                SaaSPaymentId = payment.Id,
+                OfficeName = officeName ?? string.Empty,
+                PaymentType = payment.Type.ToString(),
+                AmountPaidCents = payment.Amount.AmountCents,
+                Currency = payment.Amount.Currency,
+                PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                ProviderReferenceMask = Mask(payment.ExternalChargeReference?.Value),
+                Quantity = payment.Breakdown?.Quantity,
+                UnitAmountCents = payment.Breakdown?.UnitAmountCents,
+                CorrelationId = correlationId,
+            }
+        );
+    }
+
+    /// <summary>Nunca la referencia completa: solo lo justo para reconocerla en el extracto.</summary>
+    private static string Mask(string? reference) =>
+        string.IsNullOrWhiteSpace(reference) ? string.Empty
+        : reference.Length <= 4 ? reference
+        : reference[^4..];
+
+    private static ValueTask PublishByTypeAsync(
         SaaSPayment payment,
         IMessageBus bus,
         string correlationId,
@@ -36,6 +93,12 @@ public static class SaaSPaymentResultPublisher
                 correlationId,
                 ct
             ),
+            SaaSPaymentType.AddOnPurchaseCharge => AddOnCheckoutResultPublisher.PublishAsync(
+                payment,
+                bus,
+                correlationId,
+                ct
+            ),
             SaaSPaymentType.SubscriptionRenewalCheckout => SubscriptionRenewalCheckoutResultPublisher.PublishAsync(
                 payment,
                 bus,
@@ -45,7 +108,13 @@ public static class SaaSPaymentResultPublisher
             SaaSPaymentType.SubscriptionRenewal => PublishSubscriptionRenewalResultAsync(payment, bus, correlationId),
             SaaSPaymentType.SeatRenewal => PublishSeatRenewalResultAsync(payment, bus, correlationId),
             SaaSPaymentType.AddOnRenewal => PublishAddOnRenewalResultAsync(payment, bus, correlationId),
-            SaaSPaymentType.PlanChangeCharge => PublishPlanChangeResultAsync(payment, bus, correlationId),
+            // El checkout y el cobro off-session del upgrade cierran el MISMO PlanChangeRequest: mismo evento,
+            // mismos consumers. Lo único que cambia es de dónde salió el dinero.
+            SaaSPaymentType.PlanChangeCharge or SaaSPaymentType.PlanChangeCheckout => PublishPlanChangeResultAsync(
+                payment,
+                bus,
+                correlationId
+            ),
             _ => ValueTask.CompletedTask,
         };
 

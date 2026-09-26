@@ -13,12 +13,17 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
 
+/// <summary>
+/// <see cref="AccountKind"/>: el CRM entra con la cuenta Staff y el portal con la Portal (la misma persona
+/// puede tener ambas con el mismo email). Sin indicarlo se usa Staff si existe y, si no, Portal.
+/// </summary>
 public sealed record LoginCommand(
     Guid TenantId,
     string Email,
     string Password,
     string? DeviceName = null,
-    string? DeviceToken = null
+    string? DeviceToken = null,
+    UserAccountKind? AccountKind = null
 );
 
 public sealed record AuthTokensResponse(
@@ -146,7 +151,10 @@ public static class LoginHandler
         }
 
         var email = command.Email.Trim().ToLowerInvariant();
-        var user = await users.GetByEmailAsync(command.TenantId, email, ct);
+        var user = command.AccountKind is { } accountKind
+            ? await users.GetByEmailAsync(command.TenantId, email, accountKind, ct)
+            : await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Staff, ct)
+                ?? await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Portal, ct);
 
         if (user is null)
         {

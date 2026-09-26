@@ -32,11 +32,21 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.Property(user => user.OnboardingId);
-        builder.HasIndex(user => new { user.TenantId, user.Email }).IsUnique();
+        // Email único por oficina dentro de cada tipo de cuenta: la misma persona puede ser empleado y
+        // cliente (cuentas Staff y Portal separadas). El filtro repite UserAccountKinds.Of.
+        builder
+            .HasIndex(user => new { user.TenantId, user.Email }, "IX_Users_TenantId_Email_Staff")
+            .IsUnique()
+            .HasFilter("[ActorType] <> N'CustomerPortal'");
+        builder
+            .HasIndex(user => new { user.TenantId, user.Email }, "IX_Users_TenantId_Email_Portal")
+            .IsUnique()
+            .HasFilter("[ActorType] = N'CustomerPortal'");
         builder.HasIndex(user => new { user.TenantId, user.ActorType });
         builder.HasIndex(user => new { user.TenantId, user.CustomerId }).HasFilter("[CustomerId] IS NOT NULL");
         builder.HasIndex(user => user.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
         builder.Ignore(user => user.Roles);
+        builder.Ignore(user => user.AccountKind);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

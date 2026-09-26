@@ -30,6 +30,10 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
         string SuccessUrl,
         string CancelUrl,
         string IdempotencyKey,
+        /// <summary>Unidades y precio unitario del cobro, para el recibo. Opcionales: solo los llevan
+        /// los cobros que tienen algo que contar, y PaymentApp los descarta si no cuadran.</summary>
+        int? Quantity = null,
+        long? UnitAmountCents = null,
         PaymentProviderCode? Provider = null,
         PaymentMethodKind? Method = null
     );
@@ -51,6 +55,8 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.IdempotencyKey,
+                request.Quantity,
+                request.UnitAmountCents,
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card
             ),

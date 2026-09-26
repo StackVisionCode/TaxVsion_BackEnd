@@ -10,7 +10,16 @@ using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
-public sealed record DiscoverLoginCommand(string Email, string Password, string? DeviceName = null);
+/// <summary>
+/// <see cref="AccountKind"/>: el login del portal pide solo cuentas Portal; sin indicarlo se autentican
+/// ambas y una persona que es empleado y cliente de la misma oficina ve las dos entradas.
+/// </summary>
+public sealed record DiscoverLoginCommand(
+    string Email,
+    string Password,
+    string? DeviceName = null,
+    UserAccountKind? AccountKind = null
+);
 
 /// <summary>
 /// Una oficina que el frontend puede ofrecer en el selector. <see cref="IsClientPortal"/> le dice al
@@ -79,6 +88,7 @@ public static class DiscoverLoginHandler
         var matches = await AuthenticateAcrossOfficesAsync(
             email,
             command.Password,
+            command.AccountKind,
             users,
             tenants,
             hasher,
@@ -109,7 +119,13 @@ public static class DiscoverLoginHandler
         var sessionRef = await sessions.StoreAsync(
             new DiscoverySession(
                 matches
-                    .Select(m => new DiscoveredOffice(m.TenantId, m.UserId, m.ChallengeRequired, m.MustEnroll))
+                    .Select(m => new DiscoveredOffice(
+                        m.TenantId,
+                        m.UserId,
+                        m.ChallengeRequired,
+                        m.MustEnroll,
+                        m.IsClientPortal ? UserAccountKind.Portal : UserAccountKind.Staff
+                    ))
                     .ToList()
             ),
             ct
@@ -145,6 +161,7 @@ public static class DiscoverLoginHandler
     private static async Task<List<Match>> AuthenticateAcrossOfficesAsync(
         string email,
         string password,
+        UserAccountKind? accountKind,
         IUserRepository users,
         ITenantRegistry tenants,
         IPasswordHasher hasher,
@@ -156,9 +173,11 @@ public static class DiscoverLoginHandler
         var now = DateTime.UtcNow;
         var matches = new List<Match>();
 
-        foreach (var tenantId in await users.GetActiveTenantIdsByEmailAsync(email, ct))
+        UserAccountKind[] kinds = accountKind is { } only ? [only] : [UserAccountKind.Staff, UserAccountKind.Portal];
+        foreach (var kind in kinds)
+        foreach (var tenantId in await users.GetActiveTenantIdsByEmailAsync(email, kind, ct))
         {
-            var user = await users.GetByEmailAsync(tenantId, email, ct);
+            var user = await users.GetByEmailAsync(tenantId, email, kind, ct);
             if (user is null || !user.IsActive || user.IsLockedOut(now))
                 continue;
             if (!hasher.Verify(password, user.PasswordHash))

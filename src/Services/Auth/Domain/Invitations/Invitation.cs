@@ -20,6 +20,9 @@ public sealed class Invitation : TenantEntity
 
     public string Email { get; private set; } = default!;
     public UserActorType ActorType { get; private set; }
+
+    /// <summary>Tipo de cuenta que crea esta invitación al aceptarse.</summary>
+    public UserAccountKind AccountKind => UserAccountKinds.Of(ActorType);
     public Guid? CustomerId { get; private set; }
     public Guid? InvitedByUserId { get; private set; }
     public string TokenHash { get; private set; } = default!;

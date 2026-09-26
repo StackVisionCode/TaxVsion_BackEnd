@@ -15,6 +15,7 @@ using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Permissions;
 using TaxVision.Customer.Infrastructure.Persistence;
 using TaxVision.Customer.Infrastructure.Persistence.Repositories;
+using TaxVision.Customer.Infrastructure.Portal;
 using TaxVision.Customer.Infrastructure.RateLimiting;
 using TaxVision.Customer.Infrastructure.Security;
 
@@ -146,6 +147,16 @@ public static class InfrastructureRegistration
     {
         services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
         services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
+        // Acceso al portal de un cliente: Auth crea/reenvía la invitación y devuelve el desenlace.
+        services.AddHttpClient<ICustomerPortalAccessClient, CustomerPortalAccessClient>(
             (sp, http) =>
             {
                 var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;

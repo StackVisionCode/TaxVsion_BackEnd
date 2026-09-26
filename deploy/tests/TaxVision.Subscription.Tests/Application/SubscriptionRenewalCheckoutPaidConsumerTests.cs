@@ -111,7 +111,7 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
         var intent = SubscriptionRenewalIntent
             .Create(tenantId, 4900, "USD", BillingCycle.Monthly, Guid.NewGuid(), DateTime.UtcNow)
             .Value;
-        intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow);
+        intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow.AddHours(24), DateTime.UtcNow);
         return intent;
     }
 

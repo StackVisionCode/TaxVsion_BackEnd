@@ -147,6 +147,12 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
             DateTime nowUtc,
             int batchSize,
@@ -168,6 +174,16 @@ public sealed class ReconcileOnboardingCheckoutHandlerTests
             SaaSPaymentType? type,
             DateTime? from,
             DateTime? to,
+            int page,
+            int pageSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
+            Guid tenantId,
             int page,
             int pageSize,
             CancellationToken ct = default

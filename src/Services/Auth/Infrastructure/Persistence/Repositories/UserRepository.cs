@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Users;
@@ -26,11 +27,39 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     // cualquier tenant. El tenantId de cada Where() ya viene validado por otra vía en cada
     // llamador (Host resolution en Login, el propio invitation token en otros flujos) — mismo
     // criterio que ya usan los background jobs de Fase 5 (ver AuthMaintenanceService).
-    public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(user => user.TenantId == tenantId && user.Email == email, ct);
+    public Task<User?> GetByEmailAsync(
+        Guid tenantId,
+        string email,
+        UserAccountKind kind,
+        CancellationToken ct = default
+    ) =>
+        db
+            .Users.IgnoreQueryFilters()
+            .Where(OfKind(kind))
+            .FirstOrDefaultAsync(user => user.TenantId == tenantId && user.Email == email, ct);
 
-    public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        db.Users.IgnoreQueryFilters().AnyAsync(user => user.TenantId == tenantId && user.Email == email, ct);
+    public Task<bool> EmailExistsAsync(
+        Guid tenantId,
+        string email,
+        UserAccountKind kind,
+        CancellationToken ct = default
+    ) =>
+        db
+            .Users.IgnoreQueryFilters()
+            .Where(OfKind(kind))
+            .AnyAsync(user => user.TenantId == tenantId && user.Email == email, ct);
+
+    // IgnoreQueryFilters(): lo invoca el endpoint M2M de invitación al portal, sin ITenantContext.
+    public Task<User?> GetPortalUserByCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>
+        db
+            .Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                user =>
+                    user.TenantId == tenantId
+                    && user.CustomerId == customerId
+                    && user.ActorType == UserActorType.CustomerPortal,
+                ct
+            );
 
     // IgnoreQueryFilters(): invocado desde el handler M2M de creación de TenantAdmin, mismo scope
     // de Wolverine sin ITenantContext poblado que GetByIdAsync (ver comentario de arriba).
@@ -39,10 +68,12 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
     public async Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
         string email,
+        UserAccountKind kind,
         CancellationToken ct = default
     ) =>
         await db
             .Users.IgnoreQueryFilters()
+            .Where(OfKind(kind))
             .Where(user => user.Email == email && user.IsActive)
             .Select(user => user.TenantId)
             .Distinct()
@@ -85,10 +116,17 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         string? search,
         bool? isActive,
         Guid? customerId = null,
+        UserAccountKind? accountKind = null,
         CancellationToken ct = default
     )
     {
         var query = db.Users.IgnoreQueryFilters().AsNoTracking().Where(user => user.TenantId == tenantId);
+
+        // Personal o clientes de portal. El CRM pide personal para "Team members" y portal (con customerId)
+        // para el acceso al portal del perfil del cliente; mezclarlos le ofrecía a un cliente acciones de
+        // empleado, incluida la de retirarlo de la oficina.
+        if (accountKind is not null)
+            query = query.Where(OfKind(accountKind.Value));
 
         if (isActive is not null)
             query = query.Where(user => user.IsActive == isActive);
@@ -115,4 +153,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
         return (items, total);
     }
+
+    /// <summary>Mismo criterio que <see cref="UserAccountKinds.Of"/>, traducible a SQL.</summary>
+    private static Expression<Func<User, bool>> OfKind(UserAccountKind kind) =>
+        kind == UserAccountKind.Portal
+            ? user => user.ActorType == UserActorType.CustomerPortal
+            : user => user.ActorType != UserActorType.CustomerPortal;
 }

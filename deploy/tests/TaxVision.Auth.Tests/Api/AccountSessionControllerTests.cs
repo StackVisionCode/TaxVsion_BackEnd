@@ -1,7 +1,9 @@
 using System.Reflection;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -109,23 +111,73 @@ public sealed class AccountSessionControllerTests
     [Fact]
     public void Only_the_expected_auth_actions_accept_account_tokens()
     {
-        var allowed = typeof(AuthController)
-            .Assembly.GetTypes()
-            .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
-            .SelectMany(type =>
-                type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-            )
-            .Where(method =>
-                method.GetCustomAttribute<AllowSurfaceAttribute>() is { } attribute
-                    && attribute.Surfaces.Contains(AccessSurface.Account)
-                || method.DeclaringType!.GetCustomAttribute<AllowSurfaceAttribute>() is not null
-            )
-            .Select(method => $"{method.DeclaringType!.Name}.{method.Name}")
-            .Order()
-            .ToArray();
+        var allowed = SurfaceActions().Select(method => $"{method.DeclaringType!.Name}.{method.Name}").ToArray();
 
-        Assert.Equal(new[] { "AuthController.Me", "AuthController.Reauthenticate" }, allowed);
+        Assert.Equal(
+            new[] { "AuthController.Me", "AuthController.Reauthenticate", "UsersController.GetTenantLimits" },
+            allowed
+        );
     }
+
+    /// <summary>
+    /// Confirmar la contraseña es un intento de credencial: va en la categoría de credenciales (B), no en la
+    /// de lectura. Un step-up con el límite de un GET sería un oráculo de contraseñas.
+    /// </summary>
+    [Fact]
+    public void Confirming_the_password_is_limited_like_a_credential_attempt()
+    {
+        var policy = typeof(AuthController)
+            .GetMethod(nameof(AuthController.Reauthenticate))!
+            .GetCustomAttribute<RateLimitAttribute>()!
+            .PolicyName;
+
+        Assert.Equal(RateLimitCategory.B, RateLimitPolicyCatalog.GetByName(policy).Category);
+    }
+
+    /// <summary>
+    /// El tenant sale siempre del token. Si un endpoint del Account empezara a aceptarlo por la ruta, la
+    /// query o el body, un admin podría pedir la oficina de otro con solo cambiar el identificador.
+    /// </summary>
+    [Fact]
+    public void No_account_endpoint_takes_the_tenant_from_the_caller()
+    {
+        foreach (var action in SurfaceActions())
+        {
+            var name = $"{action.DeclaringType!.Name}.{action.Name}";
+            foreach (var parameter in action.GetParameters())
+            {
+                Assert.False(
+                    parameter.Name!.Contains("tenant", StringComparison.OrdinalIgnoreCase),
+                    $"{name} recibe el tenant de quien llama: {parameter.Name}."
+                );
+
+                if (parameter.ParameterType.Namespace?.StartsWith("TaxVision", StringComparison.Ordinal) != true)
+                    continue;
+
+                var carried = parameter
+                    .ParameterType.GetProperties()
+                    .FirstOrDefault(property => property.Name.Contains("tenant", StringComparison.OrdinalIgnoreCase));
+                Assert.True(carried is null, $"{name} recibe el tenant dentro de {parameter.ParameterType.Name}.");
+            }
+        }
+    }
+
+    /// <summary>Acciones de Auth que aceptan un token del Account.</summary>
+    private static MethodInfo[] SurfaceActions() =>
+        [
+            .. typeof(AuthController)
+                .Assembly.GetTypes()
+                .Where(type => typeof(ControllerBase).IsAssignableFrom(type))
+                .SelectMany(type =>
+                    type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                )
+                .Where(method =>
+                    method.GetCustomAttribute<AllowSurfaceAttribute>() is { } attribute
+                        && attribute.Surfaces.Contains(AccessSurface.Account)
+                    || method.DeclaringType!.GetCustomAttribute<AllowSurfaceAttribute>() is not null
+                )
+                .OrderBy(method => $"{method.DeclaringType!.Name}.{method.Name}", StringComparer.Ordinal),
+        ];
 
     private static MethodInfo Action(string name) => typeof(AccountSessionController).GetMethod(name)!;
 

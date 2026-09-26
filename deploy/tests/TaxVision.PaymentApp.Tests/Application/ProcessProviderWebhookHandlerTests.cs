@@ -10,6 +10,7 @@ using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Domain.Webhooks;
+using TaxVision.PaymentApp.Tests.TestDoubles;
 using Wolverine;
 using Wolverine.Runtime;
 using Wolverine.Transports.Sending;
@@ -49,6 +50,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -93,6 +95,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -129,6 +132,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -173,6 +177,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -210,6 +215,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(webhookThrottled: true),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -257,6 +263,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -300,6 +307,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -336,6 +344,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -359,10 +368,10 @@ public sealed class ProcessProviderWebhookHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Succeeded, payment.Status);
-        var published = Assert.IsType<SubscriptionRenewalPaymentSucceededIntegrationEvent>(
-            Assert.Single(bus.Published)
-        );
+        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
         Assert.Equal(payment.TargetAggregateId, published.TenantSubscriptionId);
+        // Todo cobro confirmado de un tenant real pide además su recibo.
+        Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
     }
 
     [Fact]
@@ -437,6 +446,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             throttle,
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -473,6 +483,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -743,6 +754,12 @@ public sealed class ProcessProviderWebhookHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
             DateTime nowUtc,
             int batchSize,
@@ -764,6 +781,16 @@ public sealed class ProcessProviderWebhookHandlerTests
             SaaSPaymentType? type,
             DateTime? from,
             DateTime? to,
+            int page,
+            int pageSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
+            Guid tenantId,
             int page,
             int pageSize,
             CancellationToken ct = default

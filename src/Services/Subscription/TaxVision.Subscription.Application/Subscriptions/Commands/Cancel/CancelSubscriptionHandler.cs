@@ -32,7 +32,7 @@ public static class CancelSubscriptionHandler
         var nowUtc = DateTime.UtcNow;
         var previousStatus = subscription.Status;
 
-        var result = subscription.CancelImmediately(command.Reason, command.RequestedByUserId, nowUtc);
+        var result = subscription.ScheduleCancellation(command.Reason, command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
             return result;
 
@@ -43,28 +43,35 @@ public static class CancelSubscriptionHandler
             command.TenantId,
             "TenantSubscription",
             subscription.Id,
-            "TenantSubscription.Cancelled",
+            "TenantSubscription.CancellationScheduled",
             command.RequestedByUserId,
             correlation.CorrelationId,
-            before: new { Status = previousStatus.ToString() },
-            after: new { Status = subscription.Status.ToString() },
+            before: new { Status = previousStatus.ToString(), CancelAtPeriodEnd = false },
+            after: new
+            {
+                Status = subscription.Status.ToString(),
+                CancelAtPeriodEnd = true,
+                AccessEndsAtUtc = subscription.CurrentPeriodEndUtc,
+            },
             reason: command.Reason,
             nowUtc,
             ct
         );
 
-        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
+        // El acceso NO cambia acá: sigue activo y pagado hasta el fin del período, así que no hay
+        // entitlements que recalcular. El job de renovación expira y recalcula cuando llegue la fecha.
         await bus.PublishStatusChangedAsync(
             subscription,
             previousStatus,
-            SubscriptionChangeReason.CancellationRequested,
+            SubscriptionChangeReason.CancellationScheduled,
             command.RequestedByUserId,
             correlationId: correlation.CorrelationId
         );
 
         logger.LogInformation(
-            "Tenant {TenantId} cancelled its subscription (requested by {UserId}): {Reason}.",
+            "Tenant {TenantId} scheduled its cancellation for {AccessEndsAtUtc} (requested by {UserId}): {Reason}.",
             command.TenantId,
+            subscription.CurrentPeriodEndUtc,
             command.RequestedByUserId,
             command.Reason
         );

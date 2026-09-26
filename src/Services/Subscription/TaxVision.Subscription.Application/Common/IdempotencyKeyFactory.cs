@@ -30,6 +30,10 @@ public static class IdempotencyKeyFactory
     /// propia <c>SeatPurchaseIntent</c>) — el re-submit de la misma intención replaya su sesión.</summary>
     public static string SeatCheckout(Guid seatPurchaseIntentId) => $"seat-checkout-{seatPurchaseIntentId:N}";
 
+    /// <summary>Cargo por hosted-checkout de la compra de un add-on. Único por intención — el re-submit de la
+    /// misma intención replaya su sesión.</summary>
+    public static string AddOnCheckout(Guid addOnPurchaseIntentId) => $"addon-checkout-{addOnPurchaseIntentId:N}";
+
     /// <summary>Cargo por hosted-checkout de una renovación/reactivación self-service. Único por intención
     /// (cada intento crea su propia <c>SubscriptionRenewalIntent</c>) — el re-submit replaya su sesión.</summary>
     public static string RenewalCheckout(Guid renewalIntentId) => $"subscription-renewal-checkout-{renewalIntentId:N}";

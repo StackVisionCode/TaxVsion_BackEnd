@@ -8,6 +8,9 @@ public sealed class FakeSeatCheckoutPaymentClient(Result<SeatCheckoutClientResul
 {
     public SeatCheckoutClientRequest? LastRequest { get; private set; }
 
+    /// <summary>Cuántas sesiones se pidieron: una compra reutilizada no debe pedir otra.</summary>
+    public int CreateCalls { get; private set; }
+
     public SeatPaymentStatusResult? PaymentStatus { get; set; }
 
     public Task<Result<SeatCheckoutClientResult>> CreateCheckoutAsync(
@@ -16,6 +19,7 @@ public sealed class FakeSeatCheckoutPaymentClient(Result<SeatCheckoutClientResul
     )
     {
         LastRequest = request;
+        CreateCalls++;
         return Task.FromResult(result);
     }
 

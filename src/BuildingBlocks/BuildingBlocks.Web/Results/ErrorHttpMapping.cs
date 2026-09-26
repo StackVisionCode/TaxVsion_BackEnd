@@ -151,7 +151,12 @@ public static class ErrorHttpMapping
             or "Calendar.Exception.Duplicate"
             // El alta y la edicion de un cliente: ya hay uno igual en el tenant.
             or "Customer.DuplicateFound"
-            or "Customer.EmailAlreadyInUse" => StatusCodes.Status409Conflict,
+            or "Customer.EmailAlreadyInUse"
+            // Ya hay una compra de asientos esperando pago: abrir otra arriesga cobrar dos veces.
+            or "Seat.CheckoutInProgress"
+            // El plan ya trae ese add-on, o el tenant ya lo tiene activo.
+            or "AddOn.AlreadyIncludedInPlan"
+            or "AddOn.AlreadyActive" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"
@@ -202,7 +207,9 @@ public static class ErrorHttpMapping
             or "PostmasterClient.ServiceAuthUnavailable"
             or "PostmasterClient.RequestFailed"
             or "PaymentAppClient.RequestFailed"
-            or "Tenant.Logo.Storage.Auth" => StatusCodes.Status503ServiceUnavailable,
+            or "Tenant.Logo.Storage.Auth"
+            // Customer no pudo pedirle a Auth la invitación al portal: transitorio, se reintenta.
+            or "Customer.PortalAccessUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
             "GetMessageBodyHandler.RateLimited"
@@ -279,6 +286,10 @@ public static class ErrorHttpMapping
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
+            // Acceso al portal: el email ya es de la cuenta de portal de otro cliente, o el acceso de este
+            // cliente está desactivado (se reactiva, no se reinvita).
+            or "Auth.PortalEmailInUse"
+            or "Auth.PortalAccessDeactivated"
             or "Role.NameConflict"
             or "Plan.UserLimitReached"
             or "Plan.InvitationLimitReached"

@@ -82,6 +82,33 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 600
     );
 
+    // Iniciar el cobro de un add-on: mueve dinero, así que va en L como el de asientos. Comprar off-session
+    // (POST /addons) sigue en g.addon_manage junto con cancelar.
+    public static readonly RateLimitPolicyDefinition SubscriptionAddOnPurchase = Define(
+        "subscription.l.addon_purchase",
+        RateLimitCategory.L,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 10,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow,
+        overlayQuota: 60
+    );
+
+    // Iniciar un cobro de asientos (checkout hosteado o cargo con método en archivo): categoría L, el mismo
+    // perfil y cupo que payment_app.l.checkout_create. Antes compartía g.seat_manage con asignar/liberar,
+    // que no mueven dinero.
+    public static readonly RateLimitPolicyDefinition SubscriptionSeatPurchase = Define(
+        "subscription.l.seat_purchase",
+        RateLimitCategory.L,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 10,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow,
+        overlayQuota: 60
+    );
+
     public static readonly RateLimitPolicyDefinition SubscriptionSeatManage = Define(
         "subscription.g.seat_manage",
         RateLimitCategory.G,
@@ -91,6 +118,32 @@ public static partial class RateLimitPolicyCatalog
         windowSeconds: 60,
         RateLimitAlgorithm.TokenBucket,
         overlayQuota: 600
+    );
+
+    // Renovar a mano una suscripción vencida arranca un cobro: L, como el resto de las compras. Antes
+    // compartía la política de gestión, que es mucho más ancha.
+    public static readonly RateLimitPolicyDefinition SubscriptionRenewCheckout = Define(
+        "subscription.l.renew_checkout",
+        RateLimitCategory.L,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 10,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow,
+        overlayQuota: 60
+    );
+
+    // Pedir un cambio de plan: un upgrade arranca un cobro, así que va en L como asientos y add-ons.
+    // Consultar el cambio pendiente o cancelarlo no mueve dinero y se queda en g.plan_change.
+    public static readonly RateLimitPolicyDefinition SubscriptionPlanChangeRequest = Define(
+        "subscription.l.plan_change",
+        RateLimitCategory.L,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 10,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow,
+        overlayQuota: 60
     );
 
     public static readonly RateLimitPolicyDefinition SubscriptionPlanChange = Define(

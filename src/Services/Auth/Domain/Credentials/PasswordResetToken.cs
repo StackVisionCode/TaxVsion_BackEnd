@@ -16,7 +16,11 @@ public sealed class PasswordResetToken : TenantEntity
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? UsedAtUtc { get; private set; }
 
-    public bool IsUsable(DateTime utcNow) => UsedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
+    /// <summary>Anulado sin usarse porque la contraseña de la cuenta cambió después de emitirlo.</summary>
+    public DateTime? RevokedAtUtc { get; private set; }
+
+    public bool IsUsable(DateTime utcNow) =>
+        UsedAtUtc is null && RevokedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
 
     public static PasswordResetToken Create(
         Guid tenantId,
@@ -42,4 +46,11 @@ public sealed class PasswordResetToken : TenantEntity
     public void RegisterAttempt() => Attempts++;
 
     public void MarkUsed() => UsedAtUtc ??= DateTime.UtcNow;
+
+    /// <summary>Anula el enlace si sigue sin usarse; uno ya usado conserva ese estado.</summary>
+    public void Revoke(DateTime utcNow)
+    {
+        if (UsedAtUtc is null)
+            RevokedAtUtc ??= utcNow;
+    }
 }

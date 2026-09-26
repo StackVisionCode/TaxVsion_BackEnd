@@ -490,6 +490,10 @@ services:
       # falta Audience/Scopes acá — mismo estilo que los clientes 0-8.
       ServiceAuth__Clients__14__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
       ServiceAuth__Clients__14__Secret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
+      # El mismo acquirer firma la descarga del recibo de una compra: CloudStorage exige
+      # [HasPermission(cloudstorage.file.download)] ademas de actor Service, y el token se pide para el
+      # tenant del pago, asi que solo puede firmar archivos de esa oficina. Sin esto la descarga daba 403.
+      ServiceAuth__Clients__14__Permissions__0: cloudstorage.file.download
       # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos, uno por servicio que antes
       # solo RECIBIA llamadas M2M, solo para leer el catalogo de PlanRateLimits de
       # Subscription (HttpPlanRateLimitReader). Subscription's ServiceOnly policy solo exige

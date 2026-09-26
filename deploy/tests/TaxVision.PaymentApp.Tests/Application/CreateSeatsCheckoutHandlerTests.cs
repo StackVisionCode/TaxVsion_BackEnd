@@ -8,6 +8,7 @@ using TaxVision.PaymentApp.Application.SeatsCheckouts.Commands;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using TaxVision.PaymentApp.Tests.TestDoubles;
 
 namespace TaxVision.PaymentApp.Tests.Application;
 
@@ -62,6 +63,98 @@ public sealed class CreateSeatsCheckoutHandlerTests
         Assert.Equal(3000, provider.LastRequest!.Amount.AmountCents);
     }
 
+    // A diferencia del onboarding, una compra de asientos NO reintenta en sitio: el mismo key devuelve la
+    // sesión que ya tiene, sin volver a pedirle una al proveedor.
+    [Fact]
+    public async Task Replays_the_existing_session_without_calling_the_provider_again()
+    {
+        var intentId = Guid.NewGuid();
+        var existing = PaymentWithSession(Guid.NewGuid(), intentId);
+        var payments = new FakeSaaSPaymentRepository(existing);
+        var provider = new FakePaymentProvider();
+
+        var result = await CreateSeatsCheckoutHandler.Handle(
+            Command(existing.TenantId, intentId, amountCents: 3000),
+            payments,
+            new FakePaymentAdapterFactory(provider),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(existing.Id, result.Value.PaymentId);
+        Assert.Equal("https://checkout.example.com/existing", result.Value.CheckoutUrl);
+        Assert.Null(provider.LastRequest);
+        Assert.Null(payments.Added);
+    }
+
+    [Fact]
+    public async Task Rejects_a_previous_payment_that_never_got_a_session()
+    {
+        var tenantId = Guid.NewGuid();
+        var intentId = Guid.NewGuid();
+        var existing = SaaSPayment
+            .Create(
+                tenantId,
+                IdempotencyKey.Create($"seat-checkout-{intentId:N}").Value,
+                Money.Create(3000, "USD").Value,
+                SaaSPaymentType.SeatsPurchaseCharge,
+                intentId,
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SEATS").Value,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        var provider = new FakePaymentProvider();
+
+        var result = await CreateSeatsCheckoutHandler.Handle(
+            Command(tenantId, intentId, amountCents: 3000),
+            new FakeSaaSPaymentRepository(existing),
+            new FakePaymentAdapterFactory(provider),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Seats.Checkout.NotReplayable", result.Error.Code);
+        Assert.Null(provider.LastRequest);
+    }
+
+    private static SaaSPayment PaymentWithSession(Guid tenantId, Guid intentId)
+    {
+        var payment = SaaSPayment
+            .Create(
+                tenantId,
+                IdempotencyKey.Create($"seat-checkout-{intentId:N}").Value,
+                Money.Create(3000, "USD").Value,
+                SaaSPaymentType.SeatsPurchaseCharge,
+                intentId,
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SEATS").Value,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+
+        payment.RecordHostedCheckoutSession(
+            "cs_existing",
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_existing").Value,
+            "https://checkout.example.com/existing",
+            DateTime.UtcNow
+        );
+
+        return payment;
+    }
+
     [Fact]
     public async Task Fails_when_the_provider_does_not_support_hosted_checkout()
     {
@@ -94,229 +187,5 @@ public sealed class CreateSeatsCheckoutHandlerTests
         Assert.Equal("PaymentMethod.UnsupportedForCheckout", result.Error.Code);
         Assert.Null(payments.Added);
         Assert.Null(provider.LastRequest);
-    }
-
-    private sealed class FakeSaaSPaymentRepository : ISaaSPaymentRepository
-    {
-        public SaaSPayment? Added { get; private set; }
-
-        public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default) =>
-            Task.FromResult<SaaSPayment?>(null);
-
-        public Task AddAsync(SaaSPayment payment, CancellationToken ct = default)
-        {
-            Added = payment;
-            return Task.CompletedTask;
-        }
-
-        public Task<SaaSPayment?> GetByIdAsync(Guid id, Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<SaaSPayment?>(null);
-
-        public Task<SaaSPayment?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-            Task.FromResult<SaaSPayment?>(null);
-
-        public Task<SaaSPayment?> GetByExternalReferenceAsync(
-            PaymentProviderCode code,
-            string reference,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
-            DateTime cutoffUtc,
-            int batchSize,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
-            DateTime nowUtc,
-            int batchSize,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
-        public Task<int> CountDueForRetryAsync(DateTime nowUtc, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
-        public Task<long> SumSucceededAmountCentsAsync(
-            SaaSPaymentType type,
-            DateTime sinceUtc,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
-            Guid? tenantId,
-            PaymentStatus? status,
-            SaaSPaymentType? type,
-            DateTime? from,
-            DateTime? to,
-            int page,
-            int pageSize,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-    }
-
-    private sealed class FakePaymentAdapterFactory(IPaymentProvider provider) : IPaymentAdapterFactory
-    {
-        public IPaymentProvider Resolve(PaymentProviderCode code)
-        {
-            if (provider.Code != code)
-                throw new InvalidOperationException($"No provider for {code}.");
-
-            return provider;
-        }
-    }
-
-    private sealed class FakePaymentProvider(
-        PaymentProviderCode code = PaymentProviderCode.Stripe,
-        IReadOnlySet<PaymentMethodKind>? supportedMethods = null,
-        bool supportsHostedCheckout = true
-    ) : IPaymentProvider
-    {
-        public HostedCheckoutSessionRequest? LastRequest { get; private set; }
-
-        public PaymentProviderCode Code => code;
-
-        public ProviderCapabilities Capabilities { get; } =
-            new()
-            {
-                Code = code,
-                DisplayName = code.ToString(),
-                SupportsOneShotCharge = true,
-                SupportsRecurringCharge = false,
-                SupportsHostedCheckoutRedirect = supportsHostedCheckout,
-                SupportsInlineElements = false,
-                SupportsWebhookSignatureVerification = true,
-                SupportedMethods = supportedMethods ?? new HashSet<PaymentMethodKind> { PaymentMethodKind.Card },
-                SupportsPartialRefund = true,
-                Supports3DSecure = true,
-                SupportsSavedPaymentMethods = false,
-                SupportsMultiCurrency = true,
-                SupportsMarketplaceConnect = false,
-                SupportsIdempotencyKeys = true,
-                SupportsCardTokenization = false,
-                RequiresCustomerRegistrationBeforeCharge = false,
-                SupportedCurrencies = new HashSet<string> { "USD" },
-                SupportedCountries = new HashSet<string> { "US" },
-                TypicalAuthorizeLatency = TimeSpan.Zero,
-                SuggestedRetryCount = 0,
-            };
-
-        public Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
-            HostedCheckoutSessionRequest request,
-            CancellationToken ct
-        )
-        {
-            LastRequest = request;
-            return Task.FromResult(
-                Result.Success(
-                    new HostedCheckoutSessionResult("sess_123", "pi_123", "https://checkout.example.com/session")
-                )
-            );
-        }
-
-        public Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
-            Guid tenantId,
-            string email,
-            string? name,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
-            ChargeAuthorizationRequest request,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<CaptureResult>> CaptureAsync(
-            string providerChargeReference,
-            Money amount,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<RefundResult>> RefundAsync(
-            string providerChargeReference,
-            Money amount,
-            string reason,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-            ProviderWebhookVerificationRequest request,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
-            string rawPayload,
-            string eventType,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
-            string providerChargeReference,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
-            string providerChargeReference,
-            Money amount,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(
-            ProviderCustomerToken customer,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
-            ProviderCustomerToken customer,
-            string paymentMethodReference,
-            CancellationToken ct
-        ) => throw new NotSupportedException();
-
-        public Task<Result> DetachPaymentMethodAsync(string paymentMethodReference, CancellationToken ct) =>
-            throw new NotSupportedException();
-    }
-
-    private sealed class FakePaymentAuditLogWriter : IPaymentAuditLogWriter
-    {
-        public Task AppendAsync(PaymentAuditEntry entry, CancellationToken ct = default) => Task.CompletedTask;
-    }
-
-    private sealed class FakeUnitOfWork : IUnitOfWork
-    {
-        public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(1);
-    }
-
-    private sealed class FakePaymentAppMetrics : IPaymentAppMetrics
-    {
-        public void RecordAttempted(string provider, string type) { }
-
-        public void RecordSucceeded(string provider, string type) { }
-
-        public void RecordFailed(string provider, string type, string failureCode) { }
-
-        public void RecordRefunded(string provider) { }
-
-        public void RecordChargedBack(string provider) { }
-
-        public void RecordWebhookReceived(string provider) { }
-
-        public void RecordWebhookDuplicate(string provider) { }
-
-        public void RecordWebhookSignatureFailed(string provider) { }
-
-        public void RecordProviderLatency(double milliseconds, string provider, string method) { }
-    }
-
-    private sealed class FakeCorrelationContext : ICorrelationContext
-    {
-        public string CorrelationId => "test-correlation-id";
-
-        public void Set(string correlationId) { }
-
-        public IDisposable Push(string correlationId) => new NoopScope();
-
-        private sealed class NoopScope : IDisposable
-        {
-            public void Dispose() { }
-        }
     }
 }

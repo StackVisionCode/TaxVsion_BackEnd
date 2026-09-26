@@ -9,6 +9,8 @@ import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.j
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
+import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
+import { seesAllCustomers } from './customer-visibility.js';
 import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/events/chat-events.js';
 
 /**
@@ -25,8 +27,9 @@ import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/e
  *   5. Fase B5 / P2.5 — si el tenant tiene restrictCustomerChatToAssignedPreparer,
  *      un chat que involucra a un customer solo se permite si el lado staff esta
  *      asignado a ese customer en la proyeccion M:N (CustomerAssignmentProjection)
- *      — CUALQUIER staff asignado, no solo el primary. isPrimaryPreparer se sigue
- *      resolviendo aparte (1:1) solo para marcar al participante.
+ *      — CUALQUIER staff asignado, no solo el primary — o si ve a todos los clientes
+ *      (PlatformAdmin o customers.view_all), igual que el buscador. isPrimaryPreparer
+ *      se sigue resolviendo aparte (1:1) solo para marcar al participante.
  */
 
 export interface StartDirectConversationCommand {
@@ -50,6 +53,8 @@ export interface StartDirectConversationDeps {
   readonly customerPortalAccounts: CustomerPortalAccountRepository;
   readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
   readonly customerAssignments: CustomerAssignmentProjectionRepository;
+  // Para el bypass del gate: quien ve a todos los clientes (customers.view_all) puede chatear con cualquiera.
+  readonly userPermissions: UserPermissionsProjectionRepository;
   // Flag GLOBAL de visibilidad por asignacion (P2): con ON, el gate cliente<->staff
   // aplica en TODOS los tenants aunque el tenant no tenga restrictCustomerChatToAssignedPreparer.
   // Ausente = OFF (default seguro); el container siempre lo provee.
@@ -90,34 +95,32 @@ async function resolveIsPrimaryPreparer(
 
 /**
  * Gate de chat cliente↔staff (P2.5, modelo M:N). Un chat que involucra a un
- * customer solo se permite si el lado STAFF (el que NO es CustomerPortal) esta
- * asignado a ese customer en la proyeccion M:N — CUALQUIER asignado, no solo el
- * primary (el primary tambien esta en el set, asi que subsume el viejo check
- * 1:1). Devuelve { involvesCustomer, staffIsAssigned }: si no involucra a un
- * customer, el gate no aplica; si lo involucra pero el customer no tiene cuenta
- * de portal activa o el staff no esta asignado -> staffIsAssigned=false.
+ * customer solo se permite si el lado STAFF (el que NO es CustomerPortal) ve a
+ * todos los clientes o esta asignado a ese customer en la proyeccion M:N —
+ * CUALQUIER asignado, no solo el primary. Devuelve { involvesCustomer,
+ * staffHasAccess }: si no involucra a un customer, el gate no aplica; si lo
+ * involucra pero el customer no tiene cuenta de portal activa o el staff no tiene
+ * acceso -> staffHasAccess=false.
  */
 async function resolveCustomerChatAccess(
   command: StartDirectConversationCommand,
-  deps: Pick<StartDirectConversationDeps, 'customerPortalAccounts' | 'customerAssignments'>,
-): Promise<{ involvesCustomer: boolean; staffIsAssigned: boolean }> {
+  deps: Pick<StartDirectConversationDeps, 'customerPortalAccounts' | 'customerAssignments' | 'userPermissions'>,
+): Promise<{ involvesCustomer: boolean; staffHasAccess: boolean }> {
   const initiatorIsCustomer = command.initiator.actorType === 'CustomerPortal';
   const recipientIsCustomer = command.recipient.actorType === 'CustomerPortal';
   if (!initiatorIsCustomer && !recipientIsCustomer) {
-    return { involvesCustomer: false, staffIsAssigned: false };
+    return { involvesCustomer: false, staffHasAccess: false };
   }
   const customerSide = initiatorIsCustomer ? command.initiator : command.recipient;
   const staffSide = initiatorIsCustomer ? command.recipient : command.initiator;
 
   const portalAccount = await deps.customerPortalAccounts.findActiveByUserId(customerSide.userId);
-  if (!portalAccount) return { involvesCustomer: true, staffIsAssigned: false };
+  if (!portalAccount) return { involvesCustomer: true, staffHasAccess: false };
 
-  const staffIsAssigned = await deps.customerAssignments.isAssigned(
-    command.tenantId,
-    portalAccount.customerId,
-    staffSide.userId,
-  );
-  return { involvesCustomer: true, staffIsAssigned };
+  const staffHasAccess =
+    (await seesAllCustomers(staffSide, deps.userPermissions)) ||
+    (await deps.customerAssignments.isAssigned(command.tenantId, portalAccount.customerId, staffSide.userId));
+  return { involvesCustomer: true, staffHasAccess };
 }
 
 export async function startDirectConversation(
@@ -141,8 +144,8 @@ export async function startDirectConversation(
 
   const isPrimaryPreparer = await resolveIsPrimaryPreparer(command, deps);
   if (deps.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer) {
-    const { involvesCustomer, staffIsAssigned } = await resolveCustomerChatAccess(command, deps);
-    if (involvesCustomer && !staffIsAssigned) {
+    const { involvesCustomer, staffHasAccess } = await resolveCustomerChatAccess(command, deps);
+    if (involvesCustomer && !staffHasAccess) {
       return Result.fail(
         makeError(
           'Chat.NotAssignedPreparer',

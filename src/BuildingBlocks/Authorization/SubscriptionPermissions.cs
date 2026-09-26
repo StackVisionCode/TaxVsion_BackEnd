@@ -7,6 +7,7 @@ public static class SubscriptionPermissions
     // TaxVision.Auth.Domain (otro microservicio), así que necesita su propia constante local
     // con el mismo string exacto para que [HasPermission] compare contra la misma fila.
     public const string AuditView = "audit.view";
+    public const string BillingView = "billing.view";
     public const string PlanChange = "subscription.plan.change";
     public const string Suspend = "subscription.suspend";
     public const string Reactivate = "subscription.reactivate";

@@ -94,6 +94,50 @@
           ]
         },
         {
+          "name": "GetAccountSubscription (Manage subscription)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/account",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "account"
+              ]
+            },
+            "description": "Read model del Account del Landing: plan CONTRATADO (no el publicado), período, cambio de plan pendiente, asientos (incluidos/comprados) y catálogo de add-ons con su elegibilidad (Included/Active/Available) y precio. Solo TenantAdmin con billing.view, y acepta tokens de la superficie account. Los asientos USADOS no vienen acá: el front los toma de GET /auth/tenants/limits."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const s = pm.response.json();\r",
+                  "if (s && s.planCode) {\r",
+                  "    pm.environment.set('currentPlanCode', s.planCode);\r",
+                  "    pm.environment.set('subscriptionStatus', s.status);\r",
+                  "    console.log('Subscription:', s.planCode, s.status);\r",
+                  "}\r"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ]
+        },
+        {
           "name": "ActivateSubscription",
           "event": [
             {
@@ -142,6 +186,42 @@
           "response": []
         },
         {
+          "name": "PreviewPlanChange",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/change-plan/preview?planCode=starter&billingCycle=Monthly",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "change-plan",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "planCode",
+                  "value": "starter"
+                },
+                {
+                  "key": "billingCycle",
+                  "value": "Monthly"
+                }
+              ]
+            },
+            "description": "Que pasaria con el cambio, antes de confirmarlo. Devuelve direction (Upgrade/Downgrade/None), el precio COMPLETO del plan destino, si se cobra ahora (upgrade) o desde cuando aplica (downgrade, effectiveAtUtc = fin del periodo), los asientos que quedarian y cuantos estan ocupados. blocked=true con blockedReason=Subscription.DowngradeExceedsSeats cuando la oficina no entra en el plan destino: el mismo guard que aplica POST change-plan, para que la pantalla no prometa algo que el backend va a rechazar. Lectura: billing.view + TenantAdmin, acepta tokens de la superficie account."
+          },
+          "response": []
+        },
+        {
           "name": "ChangePlan",
           "request": {
             "method": "POST",
@@ -164,14 +244,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"planCode\": \"pro\",\n  \"billingCycle\": \"Yearly\"\n}",
+              "raw": "{\n  \"planCode\": \"pro\",\n  \"billingCycle\": \"Monthly\",\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4201/account/plan?checkout=success\",\n  \"cancelUrl\": \"http://localhost:4201/account/plan?checkout=cancelled\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Upgrade/downgrade de plan (permiso: subscription.plan.change). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo."
+            "description": "Upgrade/downgrade de plan (permiso: subscription.plan.change). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo. AHORA EXIGE STEP-UP (D5): sin un access token con reauth_at reciente responde 401 Auth.ReauthenticationRequired (WWW-Authenticate con max_age) y el cliente debe pasar por POST /auth/reauthenticate y reintentar. Un downgrade que dejaria a la oficina por encima del cupo del plan destino responde Subscription.DowngradeExceedsSeats. Rate limit ahora L (subscription.l.plan_change, 10/min): inicia un cobro. CHECKOUT HOSTEADO: si el body trae payerEmail + successUrl + cancelUrl, el upgrade se cobra por REDIRECT y la respuesta 202 incluye checkoutUrl (unico camino para un tenant sin metodo en archivo). Sin esas tres, se cobra off-session como siempre. Los dos caminos cierran el MISMO PlanChangeRequest y publican SubscriptionPlanChangePaymentSucceeded/Failed."
           },
           "response": []
         },
@@ -257,6 +337,31 @@
               }
             },
             "description": "Cancelacion inmediata (permiso: subscription.plan.change)."
+          },
+          "response": []
+        },
+        {
+          "name": "ResumeSubscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/resume",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "resume"
+              ]
+            },
+            "description": "Deshace una cancelacion programada: la suscripcion vuelve a renovar al final del periodo. Idempotente. Requiere subscription.plan.change, TenantAdmin, y esta habilitado en la superficie Account del Landing. A diferencia de cancelar, NO exige step-up: reanudar no quita nada."
           },
           "response": []
         },
@@ -534,7 +639,7 @@
                 }
               }
             },
-            "description": "Compra seats adicionales (permiso: seats.manage). Devuelve los ids creados."
+            "description": "Compra de asientos con el método de pago en archivo (off-session). Categoría de rate limit L (iniciar cobro), igual que el checkout hosteado."
           },
           "response": [],
           "event": [
@@ -622,7 +727,7 @@
                 }
               }
             },
-            "description": "Compra por HOSTED-CHECKOUT (tenant SIN método en archivo). Devuelve la checkoutUrl del provider; los asientos se aprovisionan al confirmarse el pago (webhook). Permiso: seats.manage."
+            "description": "Compra de asientos por checkout hosteado. GUARD de doble cobro: si ya hay una intención Pending con la sesión del proveedor todavía viva, la MISMA compra (tipo, cantidad, ciclo y auto-renovación) devuelve esa misma URL sin abrir otro cobro; una compra distinta responde 409 Seat.CheckoutInProgress. Categoría de rate limit L (iniciar cobro, 10/min por usuario+tenant). Acepta tokens de la superficie account."
           },
           "response": [],
           "event": [
@@ -868,7 +973,7 @@
                 }
               }
             },
-            "description": "Compra un add-on para el tenant (permiso: addons.manage)."
+            "description": "Compra de un add-on con el método en archivo. GUARDS (C6): 409 AddOn.AlreadyIncludedInPlan si el plan contratado ya habilita TODOS los módulos del add-on, y 409 AddOn.AlreadyActive si el tenant ya lo tiene vigente (salvo que el catálogo lo declare repetible con AllowMultipleInstances)."
           },
           "response": [],
           "event": [
@@ -888,6 +993,83 @@
               }
             }
           ]
+        },
+        {
+          "name": "StartAddOnCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/addons/checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "addons",
+                "checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addOnCode\": \"email.addon\",\n  \"quantity\": 1,\n  \"autoRenew\": true,\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4201/account/add-ons?checkout=success\",\n  \"cancelUrl\": \"http://localhost:4201/account/add-ons?checkout=cancelled\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Compra de un add-on por checkout hosteado. El TenantAddOn NO se crea aca: solo la intencion; lo activa el webhook del pago, asi nadie queda con un add-on sin haber pagado. Mismos guards que la compra off-session: 409 AddOn.AlreadyIncludedInPlan si el plan contratado ya habilita todos sus modulos, 409 AddOn.AlreadyActive si ya lo tiene y no es repetible, y 409 AddOn.CheckoutInProgress si ya hay una sesion viva de ESE add-on con otra cantidad/auto-renovacion (la MISMA compra devuelve la misma URL, sin abrir otro cobro). Categoria de rate limit L (iniciar cobro, 10/min por usuario+tenant). Acepta tokens de la superficie account."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {\r",
+                  "    const res = pm.response.json();\r",
+                  "    if (res.addOnPurchaseIntentId) {\r",
+                  "        pm.environment.set('addOnPurchaseIntentId', res.addOnPurchaseIntentId);\r",
+                  "        console.log('Checkout URL:', res.checkoutUrl);\r",
+                  "    }\r",
+                  "}\r"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetAddOnCheckoutStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/addons/checkout/{{addOnPurchaseIntentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "addons",
+                "checkout",
+                "{{addOnPurchaseIntentId}}"
+              ]
+            },
+            "description": "Estado de una intencion de compra de add-on (Pending/Paid/Provisioned/Failed). El Landing lo poll-ea al volver del redirect hasta Provisioned."
+          },
+          "response": []
         },
         {
           "name": "CancelAddOn",

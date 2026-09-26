@@ -34,6 +34,15 @@ public interface ISaaSPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Cobros confirmados de un tenant real que siguen sin recibo pasado
+    /// <paramref name="cutoffUtc"/> — batch job query, cross-tenant por diseño, solo la llama
+    /// <c>MissingReceiptBackfillJob</c>.</summary>
+    Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>Pagos Failed con un retry ya vencido — batch job query, cross-tenant por
     /// diseño, solo la llama <c>DunningJob</c>.</summary>
     Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
@@ -54,6 +63,20 @@ public interface ISaaSPaymentRepository
 
     /// <summary>Búsqueda cross-tenant paginada para el admin (§42.6/J.2) —
     /// <paramref name="tenantId"/> nulo trae todos los tenants.</summary>
+    /// <summary>El pago de un onboarding, buscado por su OnboardingId. Ignora el filtro de tenant: la fila
+    /// todavía vive con <c>TenantId = Guid.Empty</c> hasta que se re-hospeda.</summary>
+    Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
+
+    /// <summary>Historial de pagos del tenant, el más reciente primero. A diferencia de
+    /// <see cref="SearchAdminAsync"/>, el tenant NO es opcional y no se traen los intentos: el cuerpo crudo
+    /// del proveedor no sale de admin.</summary>
+    Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
+        Guid tenantId,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
         Guid? tenantId,
         PaymentStatus? status,

@@ -1620,7 +1620,8 @@
                 "{{customerId}}",
                 "portal-invitations"
               ]
-            }
+            },
+            "description": "Pide a Auth el acceso al portal del cliente con su email principal. 200 con status: Invited (correo enviado), Resent (había una invitación pendiente y se reenvió) o AlreadyActive (ya tiene portal; no se envía nada). 409 Auth.PortalEmailInUse (el email ya es del portal de otro cliente) o Auth.PortalAccessDeactivated (reactivar en vez de invitar); 429 Invitation.ResendLimit; 503 Customer.PortalAccessUnavailable. Un empleado de la oficina puede ser invitado como cliente con el mismo email."
           },
           "response": []
         },

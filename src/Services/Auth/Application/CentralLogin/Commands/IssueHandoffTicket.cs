@@ -5,10 +5,18 @@ using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
-public sealed record IssueHandoffTicketCommand(Guid DiscoverySessionRef, Guid ChosenTenantId, string? MfaCode = null);
+/// <summary><see cref="AccountKind"/> desambigua cuando la persona tiene cuenta Staff y Portal en la misma
+/// oficina; sin indicarlo se toma la Staff.</summary>
+public sealed record IssueHandoffTicketCommand(
+    Guid DiscoverySessionRef,
+    Guid ChosenTenantId,
+    string? MfaCode = null,
+    UserAccountKind? AccountKind = null
+);
 
 /// <summary>Subdominio destino + vale, para que el frontend arme la URL de <c>continue</c>.</summary>
 public sealed record HandoffTicketView(string Subdomain, Guid Ticket);
@@ -46,7 +54,13 @@ public static class IssueHandoffTicketHandler
             return Result.Failure<HandoffTicketView>(invalid);
 
         // La oficina elegida tiene que ser una de las que el password ya validó.
-        var office = session.Offices.FirstOrDefault(o => o.TenantId == command.ChosenTenantId);
+        var office = session
+            .Offices.Where(o =>
+                o.TenantId == command.ChosenTenantId
+                && (command.AccountKind is null || o.AccountKind == command.AccountKind)
+            )
+            .OrderBy(o => o.AccountKind)
+            .FirstOrDefault();
         if (office is null)
             return Result.Failure<HandoffTicketView>(invalid);
 

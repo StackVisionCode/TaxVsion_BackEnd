@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Queries;
 
@@ -28,7 +29,9 @@ public sealed record GetUsersQuery(
     int Size = 20,
     string? Search = null,
     bool? IsActive = null,
-    Guid? CustomerId = null
+    Guid? CustomerId = null,
+    /// <summary>Personal o clientes de portal. Sin valor, los dos — que es lo que nadie suele querer.</summary>
+    UserAccountKind? AccountKind = null
 );
 
 public static class GetUsersHandler
@@ -54,6 +57,7 @@ public static class GetUsersHandler
             query.Search,
             query.IsActive,
             query.CustomerId,
+            query.AccountKind,
             ct
         );
 

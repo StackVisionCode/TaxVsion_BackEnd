@@ -99,7 +99,7 @@ public static class AcceptInvitationHandler
             return Result.Failure<UserResponse>(passwordResult.Error);
         }
 
-        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
+        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, invitation.AccountKind, ct))
         {
             invitation.RegisterAcceptAttempt();
             await unitOfWork.SaveChangesAsync(ct);

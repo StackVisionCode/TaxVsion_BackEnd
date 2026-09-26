@@ -34,6 +34,7 @@ public static class ProcessProviderWebhookHandler
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
         IMessageBus bus,
+        ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
         CancellationToken ct
     ) =>
@@ -51,6 +52,7 @@ public static class ProcessProviderWebhookHandler
             throttle,
             correlation,
             bus,
+            tenants,
             logger,
             ct
         );
@@ -69,6 +71,7 @@ public static class ProcessProviderWebhookHandler
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
         IMessageBus bus,
+        ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
         CancellationToken ct
     )
@@ -263,7 +266,7 @@ public static class ProcessProviderWebhookHandler
             ct
         );
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct, tenants);
 
         await unitOfWork.SaveChangesAsync(ct);
 

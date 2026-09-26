@@ -29,5 +29,6 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
             invitation.Status,
         });
         builder.HasIndex(invitation => invitation.ExpiresAtUtc);
+        builder.Ignore(invitation => invitation.AccountKind);
     }
 }

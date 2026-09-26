@@ -840,9 +840,10 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("customer.g.write")]
-    [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<Error>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RequestPortalInvitation(Guid id, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
@@ -853,8 +854,9 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             ct
         );
 
+        // 200 con el desenlace (Invited / Resent / AlreadyActive); un rechazo de Auth llega con su motivo.
         if (result.IsSuccess)
-            return Accepted($"/customers/{id}/portal-invitations", result.Value);
+            return Ok(result.Value);
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);

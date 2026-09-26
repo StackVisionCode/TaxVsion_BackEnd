@@ -3,10 +3,7 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
-import { isPlatformAdmin } from '../../domain/shared/permissions.js';
-
-// Permiso (de Customer, no de Communication) que hace bypass del filtro por asignación: el admin ve todos.
-const CUSTOMERS_VIEW_ALL = 'customers.view_all';
+import { seesAllCustomers } from './customer-visibility.js';
 
 export interface SearchCustomerDirectoryQuery {
   readonly tenantId: string;
@@ -61,19 +58,17 @@ export async function searchCustomerDirectory(
   const settings = await deps.settings.get(query.tenantId);
   const restrictToAssigned =
     deps.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer;
-  if (restrictToAssigned && !isPlatformAdmin(query.actorType)) {
-    const snapshot = await deps.userPermissions.findByUserId(query.actorUserId);
-    const canViewAll = snapshot?.permissions.includes(CUSTOMERS_VIEW_ALL) ?? false;
-    if (!canViewAll) {
-      const assigned = await deps.customerAssignments.getAssignedCustomerIds(query.tenantId, query.actorUserId);
-      // Sin clientes asignados → el picker no ofrece ninguno.
-      if (assigned.length === 0) return [];
-      allowedCustomerIds = new Set(assigned);
-    }
+  const actor = { userId: query.actorUserId, actorType: query.actorType };
+  if (restrictToAssigned && !(await seesAllCustomers(actor, deps.userPermissions))) {
+    const assigned = await deps.customerAssignments.getAssignedCustomerIds(query.tenantId, query.actorUserId);
+    // Sin clientes asignados → el picker no ofrece ninguno.
+    if (assigned.length === 0) return [];
+    allowedCustomerIds = new Set(assigned);
   }
 
   const entries = await deps.customerDirectory.searchByDisplayNameOrEmail(query.tenantId, query.query, limit);
-  const visible = allowedCustomerIds ? entries.filter((e) => allowedCustomerIds!.has(e.customerId)) : entries;
+  const allowed = allowedCustomerIds;
+  const visible = allowed ? entries.filter((e) => allowed.has(e.customerId)) : entries;
   if (visible.length === 0) return [];
 
   const accounts = await deps.customerPortalAccounts.findActiveByCustomerIds(visible.map((e) => e.customerId));

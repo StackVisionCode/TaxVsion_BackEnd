@@ -13,7 +13,9 @@ public sealed class FakeAddOnDefinitionRepository : IAddOnDefinitionRepository
     public AddOnDefinition? Added { get; private set; }
 
     public Task<IReadOnlyList<AddOnDefinition>> GetPublishedAsync(CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult<IReadOnlyList<AddOnDefinition>>(
+            _stored.Where(d => d.Status == AddOnDefinitionStatus.Published).ToList()
+        );
 
     public Task<AddOnDefinition?> GetByCodeAsync(string code, CancellationToken ct = default) =>
         Task.FromResult(_stored.FirstOrDefault(d => d.Code.Value == code));

@@ -34,6 +34,7 @@ public sealed class GatewayRateLimitOptions
                 new GatewayRateLimitRule { Pattern = "/auth/mfa/verify" },
                 new GatewayRateLimitRule { Pattern = "/auth/password/forgot" },
                 new GatewayRateLimitRule { Pattern = "/auth/password/reset" },
+                new GatewayRateLimitRule { Pattern = "/auth/password/reset/validate" },
                 new GatewayRateLimitRule { Pattern = "/auth/me/email/confirm" },
                 new GatewayRateLimitRule { Pattern = "/auth/invitations/accept" },
                 new GatewayRateLimitRule { Pattern = "/tenants", Method = "POST" },
