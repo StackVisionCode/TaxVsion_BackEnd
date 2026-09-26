@@ -37,6 +37,7 @@ public static class DeactivateUserHandler
         IUserRepository users,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocations,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -75,10 +76,10 @@ public static class DeactivateUserHandler
 
         target.Deactivate(DateTime.UtcNow);
 
-        var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
-        foreach (var session in active)
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
+        // A5 (R12) — denylist + anuncio + revocación. Antes denylisteaba y revocaba pero NO anunciaba,
+        // así que la pestaña abierta del usuario dado de baja se quedaba con la sesión muerta hasta su
+        // siguiente request en vez de recibir el logout al instante.
+        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
 
         await bus.PublishAsync(
             new UserDeactivatedIntegrationEvent
@@ -217,6 +218,7 @@ public static class OffboardUserHandler
         IUserRepository users,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocations,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -277,11 +279,8 @@ public static class OffboardUserHandler
         if (offboard.IsFailure)
             return offboard;
 
-        // Corta el acceso al instante: mismo camino probado que Deactivate.
-        var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
-        foreach (var session in active)
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
+        // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
+        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
 
         await bus.PublishAsync(
             new UserOffboardedIntegrationEvent

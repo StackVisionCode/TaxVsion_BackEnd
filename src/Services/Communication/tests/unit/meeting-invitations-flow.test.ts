@@ -161,6 +161,7 @@ class FakeEmitter implements RealtimeEmitter {
   }
   emitToTenant(): void {}
   emitToTenantStaff(): void {}
+  emitToTenantMembers(): void {}
 }
 
 /** Resolver de host configurable: por defecto null (fuerza el fallback), o un host fijo. */

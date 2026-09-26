@@ -313,3 +313,86 @@ a quién se le avisa del cambio no pueden divergir. Un usuario dado de baja no e
 para quien está decidiendo si lo desactiva. Además evita un método nuevo de repositorio y sus ~15
 dobles de test.
 **Reversible:** sí; agregar los inactivos es un método más y un campo más en la respuesta.
+
+## 2026-09-26 — `GET subscriptions/me` redacta los datos comerciales en vez de responder 403
+
+**Contexto:** A6.4 pide "lecturas completas bajo `billing.view`". Ese endpoint no exigía ningún
+permiso, así que cualquier empleado veía el precio del plan, el nombre comercial, los límites, el
+motivo de suspensión y el último fallo de cobro de la oficina.
+**Opciones:** ponerlo entero detrás de `billing.view` · detrás del permiso pero con un flag de
+configuración para el rollout · dejar el endpoint abierto al staff y vaciar los campos comerciales.
+**Elección:** la tercera — misma forma de respuesta, campos comerciales vacíos sin el permiso, y un
+endpoint nuevo y limpio (`GET subscriptions/me/status`) para lo que el banner necesita.
+**Por qué:** lo verifiqué en `FRONTENDPERMISSIONS`, no lo supuse. El shell del CRM
+(`app-shell.component.ts` → `SubscriptionStatusStore.load()`) pide este endpoint **en cada sesión de
+cualquier empleado**, y de toda la respuesta solo lee tres campos: `status`, `billingAccessBlocked` y
+`gracePeriodEndsAtUtc`. Un 403 no daría un error visible: el store se lo come en silencio, así que el
+banner de ciclo de vida simplemente **dejaría de aparecer** para todos los empleados — una regresión
+peor que la fuga, porque nadie la notaría. `billing.view` además es `IsDangerous`, así que el bundle
+del rol de sistema Employee no lo tiene ni lo va a tener. §R.7: ningún chequeo nuevo puede quitar
+acceso que hoy funciona.
+**Reversible:** sí. Cuando el CRM migre a `me/status` (B7), poner el endpoint completo detrás del
+permiso es agregar un atributo.
+**Nota:** `GET subscriptions/plan-change` sí pasó a exigir `billing.view` — nombra el plan destino y su
+precio, y ningún frontend lo consume todavía (verificado con grep en los dos repos), así que cerrarlo
+no le quita acceso a nadie.
+
+## 2026-09-26 — El cuerpo del 403 es RFC 9457 pero conserva `code` y `message`
+
+**Contexto:** A5.3 pide `{code, reason, module?}` en formato RFC 9457. El 403 de las capas 1 y 2 salía
+con el **cuerpo vacío** (`ForbidResult`), y los frontends desplegados leen `{code, message}` (la forma
+de `Error`).
+**Opciones:** RFC 9457 puro (`type`, `title`, `status`, `detail` + extensiones) · el superconjunto con
+`code` y `message` además de `detail`.
+**Elección:** el superconjunto.
+**Por qué:** RFC 9457 llama `detail` a lo que este sistema viene llamando `message` en todas sus demás
+respuestas de error. Emitir solo `detail` obligaría a cambiar el parser de los dos frontends **en el
+mismo despliegue** que el backend, y el plan (B1) todavía no está hecho. Duplicar un string corto es
+barato; una ventana donde los errores no se pueden leer, no.
+**Reversible:** sí, es un campo más en las extensiones del ProblemDetails.
+
+## 2026-09-26 — `access.changed` va a un room nuevo de miembros, no al room del tenant
+
+**Contexto:** A6.2 dice "usuario y tenant autenticado" y §R.4.1 remata: el evento **nunca** a Guests.
+El room `t:{tenantId}` que ya existía tiene a todos: staff, clientes del portal **y** los invitados de
+meeting, que entran con un ticket de un solo uso.
+**Opciones:** emitir a `t:{tenantId}` · emitir solo a `:staff` · emitir N veces, una por usuario de
+portal activo · agregar un room de miembros autenticados.
+**Elección:** un room nuevo `t:{tenantId}:members`, al que se une todo principal que llegó con un
+token real.
+**Por qué:** `t:{tenantId}` incluiría a los invitados, que no tienen cuenta ni acceso que refrescar.
+Solo `:staff` dejaría afuera a los clientes del portal, cuyas áreas dependen de los módulos
+`documents`, `planner` y `comms` — un cambio de plan les cambia el portal. Emitir por usuario es O(n)
+consultas por cada cambio de plan. El room lo resuelve en un `emit`, y es el mismo patrón que ya usa
+`:staff`.
+**Reversible:** sí. El room se llena en el siguiente handshake de cada socket; hasta entonces el evento
+simplemente no llega a nadie, que es el comportamiento de hoy.
+
+## 2026-09-26 — El corte de acceso es denylist → anuncio → revocación, en ese orden
+
+**Contexto:** G10 del plan: la suspensión del tenant y el bloqueo por facturación revocaban **solo en
+la base**, así que el access token ya emitido seguía sirviendo hasta 15 minutos. R12: la baja y el
+offboard sí denylisteaban, pero no anunciaban nada, así que la pestaña abierta se quedaba con la
+sesión muerta.
+**Opciones:** repetir los tres pasos en los cuatro llamadores · un helper compartido.
+**Elección:** `SessionAccessCutoff`, un helper con dos métodos (por usuario y por tenant).
+**Por qué:** los cuatro sitios tienen que hacer lo mismo y el orden importa: primero se cierra la
+puerta, después se avisa. Al revés, un cliente avisado podría alcanzar a usar el token viejo antes de
+que la entrada de la denylist exista. Un helper con el orden y un test que lo fija evita que el quinto
+llamador lo haga al revés.
+**Reversible:** sí; el anuncio es best-effort por contrato (un Redis caído no impide revocar) y la
+denylist tiene TTL.
+
+## 2026-09-26 — El consumer de roles de Node deja de recomponer la unión (deuda de A2)
+
+**Contexto:** al tocar los consumers de Communication para `access.changed` encontré que
+`auth.role.permissions_changed.v1` **todavía recomponía la unión de permisos del usuario** a partir de
+los permisos cacheados de sus roles.
+**Por qué importa:** es G3, el mismo bug que se cerró en los 24 consumers equivalentes de .NET en A2.
+La capa de denies vive solo en Auth, así que una unión armada con los roles le devuelve al usuario
+justo el permiso que un administrador le quitó. En Node había quedado afuera del barrido.
+**Elección:** quitar el recompute. El handler cachea rol → permisos (que el gate de módulo y el
+diagnóstico usan) y avisa a los titulares conectados; los códigos efectivos los aplica el handler de
+`auth.user.roles_changed.v1`, que es el fan-out por titular que Auth publica desde A2.
+**Reversible:** sí, pero no debería revertirse: el test que afirmaba el comportamiento viejo se
+reescribió para afirmar el nuevo, con el deny en el set para que la regresión falle.

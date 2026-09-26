@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Subscriptions.Abstractions;
 using TaxVision.Auth.Domain.Audit;
 
@@ -29,6 +30,8 @@ public static class TenantSubscriptionAccessConsumer
         TenantSubscriptionStatusChangedIntegrationEvent evt,
         ITenantRegistry tenants,
         ISessionRepository sessions,
+        IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocations,
         IAuthAuditWriter audit,
         ISubscriptionAccessMetrics metrics,
         IUnitOfWork unitOfWork,
@@ -46,7 +49,16 @@ public static class TenantSubscriptionAccessConsumer
             if (AccessBlockingStatuses.Contains(evt.Status))
             {
                 await tenants.SetBillingBlockedAsync(evt.TenantId, blocked: true, reason: evt.Status, ct);
-                var revoked = await sessions.RevokeAllForTenantAsync(evt.TenantId, "subscription_lapsed", ct);
+                // A5 (G10) — igual que la suspensión administrativa: denylist + anuncio + revocación.
+                // Cortar solo en la base dejaba el access token vivo hasta 15 minutos.
+                var revoked = await SessionAccessCutoff.ForTenantAsync(
+                    evt.TenantId,
+                    "subscription_lapsed",
+                    sessions,
+                    denylist,
+                    revocations,
+                    ct
+                );
                 // Auditoría (sistema, sin userId/IP): quién no, pero sí qué/por qué/cuánto — TargetType corto.
                 await audit.AddAsync(
                     AuthAuditLog.Record(

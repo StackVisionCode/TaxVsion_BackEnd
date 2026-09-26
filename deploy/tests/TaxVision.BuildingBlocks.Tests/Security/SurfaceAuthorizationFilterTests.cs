@@ -38,7 +38,13 @@ public sealed class SurfaceAuthorizationFilterTests
 
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
-        Assert.Equal("Auth.SurfaceNotAllowed", Assert.IsType<Error>(result.Value).Code);
+
+        // A5 — el cuerpo pasa a RFC 9457 con `reason`, pero el `code` NO cambia: el CRM y el Portal
+        // desplegados ya lo leen, y `message` sigue ahí por la misma razón.
+        var problem = Assert.IsType<ProblemDetails>(result.Value);
+        Assert.Equal("Auth.SurfaceNotAllowed", problem.Extensions["code"]);
+        Assert.Equal(AuthorizationDenialReasons.Surface, problem.Extensions["reason"]);
+        Assert.Equal(problem.Detail, problem.Extensions["message"]);
     }
 
     [Fact]

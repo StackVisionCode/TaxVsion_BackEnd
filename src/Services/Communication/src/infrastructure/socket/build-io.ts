@@ -138,6 +138,10 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
       // Room de tenant + de usuario para broadcasts dirigidos.
       await socket.join(`t:${principal.tenantId}`);
       await socket.join(`t:${principal.tenantId}:u:${principal.userId}`);
+      // Room de miembros: todos los que llegaron con un token real. Un Guest entra con un ticket de
+      // un solo uso y no pasa por aca, asi que nunca recibe `access.changed` (no tiene acceso que
+      // refrescar).
+      await socket.join(`t:${principal.tenantId}:members`);
       // Room del personal: los broadcasts que nombran clientes, correos o firmas van solo ahi.
       // Un CustomerPortal (y un Guest, que ni llega hasta aca) nunca entra.
       if (isStaffActor(principal.actorType)) {

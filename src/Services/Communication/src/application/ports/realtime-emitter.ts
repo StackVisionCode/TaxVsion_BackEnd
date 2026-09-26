@@ -13,6 +13,8 @@ import type { SocketEnvelope } from '../../contracts/socket/socket-envelope.js';
  *   - `t:{tenantId}:u:{userId}` — todos los sockets del usuario.
  *   - `t:{tenantId}` — todos los sockets del tenant (broadcasts globales).
  *   - `t:{tenantId}:staff` — solo empleados/admins del tenant; nunca clientes ni invitados.
+ *   - `t:{tenantId}:members` — todos los autenticados del tenant (staff + clientes del portal),
+ *     nunca los invitados de meeting.
  */
 export interface RealtimeEmitter {
   emitToConversation<T>(input: {
@@ -46,4 +48,12 @@ export interface RealtimeEmitter {
    * tambien tiene a los clientes del portal y a los invitados de meeting.
    */
   emitToTenantStaff<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void;
+
+  /**
+   * Broadcast a todos los que se autenticaron con un token real: el personal y los clientes del
+   * portal. Excluye a los invitados de meeting, que entran con un ticket de un solo uso y no tienen
+   * cuenta ni acceso que refrescar. Es el destinatario de `access.changed` a nivel tenant: un cambio
+   * de plan afecta tanto al CRM como a las areas del portal.
+   */
+  emitToTenantMembers<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void;
 }

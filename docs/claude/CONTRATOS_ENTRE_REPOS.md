@@ -63,14 +63,41 @@ Forma plana de `BuildingBlocks.Results.Error`, serializada en camelCase:
 | `Role.AlreadyActive` | 400 | Se intentó reactivar un rol que ya está activo | No ofrecer la acción cuando `isActive` es true |
 | `Chat.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó abrir un chat con otro cliente | Portal: no ofrecer esa acción. Si llega, mensaje "solo puedes escribirle a tu oficina" |
 | `Call.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó llamar a otro cliente | Igual que el anterior, en la llamada |
-| *(sin código)* | 403 | Sin permiso | Pantalla "acceso restringido" |
+| `Authz.PermissionDenied` | 403 | Sin el permiso que el endpoint exige | Pantalla "acceso restringido". Trae `permission` cuando el endpoint lo declara |
+| `Authz.ActorTypeNotAllowed` | 403 | Ese tipo de cuenta no puede usar el endpoint | Pantalla "acceso restringido". No ofrecer la acción a ese actor |
+| `Authz.ActorTypeNotDeclared` | 403 | El endpoint no declara qué cuentas pueden usarlo | **Es un bug del backend**, no del usuario. Reportarlo; la UI muestra un error genérico |
+| *(sin código)* | 403 | Sin permiso, de un endpoint anterior a A5 | Pantalla "acceso restringido" |
 
 **Regla dura, en los dos frontends:** un **403 nunca cierra la sesión**. Solo un refresh rechazado
 cierra sesión.
 
-`[POR CREAR]` (fase A5): todo 403 de las capas 1 y 2 responderá RFC 9457 con
-`{ code, reason, module? }`. Hasta entonces el 403 de "sin permiso" llega con el cuerpo vacío y el
-frontend lo trata por el status.
+**Forma del 403 (hecho en A5).** Las cuatro capas de autorización responden `application/problem+json`
+(RFC 9457) con este cuerpo. Antes, el 403 de las capas 1 y 2 llegaba **vacío**:
+
+```json
+{
+  "type": "https://taxvision.dev/problems/authorization",
+  "title": "Forbidden",
+  "status": 403,
+  "detail": "Your plan does not include the 'campaigns' module required for this action.",
+  "code": "Authz.ModuleUnavailable",
+  "reason": "module",
+  "module": "campaigns",
+  "message": "Your plan does not include the 'campaigns' module required for this action.",
+  "correlationId": "..."
+}
+```
+
+| Campo | Para qué |
+|---|---|
+| `code` | El switch del frontend. **No cambió ninguno de los que ya existían** |
+| `reason` | Vocabulario cerrado: `permission`, `actor_type`, `not_declared`, `surface`, `module`. Es lo que decide **qué pantalla** mostrar |
+| `module` | Solo con `reason: "module"`. El código del módulo que falta, para poder nombrarlo sin mantener tu propia copia del mapa permiso → módulo |
+| `permission` | Solo con `reason: "permission"` y cuando el endpoint lo declara |
+| `message` | **Duplicado de `detail`, a propósito**: los frontends desplegados leen `{code, message}`. Podés seguir usándolo |
+
+**Regla:** decidí por `reason`, no por el texto. `reason: "module"` es una pantalla comercial ("tu plan
+no lo incluye"); `reason: "permission"` es acceso restringido ("pedile a tu administrador").
 
 ## 3. Endpoints de autorización que consumen los frontends
 
@@ -83,7 +110,7 @@ frontend lo trata por el status.
 | `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }` **más las banderas del techo** (A4): `isAssignableByTenant`, `platformOnly`, `isDangerous`, `isReserved`, `minPlanTier`, `gateModule`, `allowedActorTypes` y `grantable`. **`grantable` es la única que hay que mirar para habilitar una casilla**: ya resuelve la fórmula completa contra el plan del tenant del token. Las otras sirven para explicar el motivo ("no incluido en tu plan", "solo la plataforma"). Un permiso con `isReserved` **no se ofrece**: está declarado pero todavía no protege nada |
 | `GET /auth/roles/{id}/users` | CRM (admin) | **Nuevo** (A4). Titulares **activos** del rol: `[{ id, name, lastName, email, actorType, isActive }]`. Gateado por `roles.manage`. Úsalo antes de desactivar un rol, para decir a cuántos afecta |
 | `POST /auth/roles/{id}/reactivate` | CRM (admin) | **Nuevo** (A4). Vuelve a poner en servicio un rol desactivado. `204`, o `Role.AlreadyActive` / `Role.NotFound`. Gateado por `roles.manage` |
-| `GET /auth/me/access` | ambos | `[POR CREAR]` (A5). Bootstrap único: `effectivePermissions`, `modules`, `permissionsVersion`, `entitlementsRevision`, `subscription.state`, `canManageBilling`, con ETag. **Debe ser consciente de la superficie** y su forma para `CustomerPortal` **no lleva semántica comercial** |
+| `GET /auth/me/access` | ambos | **Hecho en A5.** El bootstrap único — ver el detalle abajo |
 
 ## 4. Capas de autorización, en orden
 
@@ -141,6 +168,54 @@ lo exija; está marcado `IsReserved` y dejó de ser asignable. La UI **no debe o
 | `invoicing.issuer.manage` | **Nueva** (A3): editar el emisor legal de las facturas. Sale de `invoicing.manage` | **Sí**: el formulario del emisor se gatea con este |
 | `portal.miles.use` | Reservado y no asignable (A3) | No lo ofrezcas |
 
+### Suscripción: qué pedir para el banner (A5)
+
+| Endpoint | Quién | Qué devuelve |
+|---|---|---|
+| `GET subscriptions/me/status` | **usalo para el banner** | `{ status, billingAccessBlocked, gracePeriodEndsAtUtc, nextRenewalAtUtc, canManageBilling }`. Cero datos comerciales: ni plan, ni precio, ni límites. Cualquier empleado lo puede pedir |
+| `GET subscriptions/me` | compatibilidad | La respuesta completa de siempre, pero **sin `billing.view` los campos comerciales vienen vacíos** (`planCode`/`planName` en `""`, precios y límites en `0`, `suspensionReason` y `lastPaymentFailure` en `null`). El estado, las fechas del lapso y `enabledModules` siguen llegando |
+| `GET subscriptions/plan-change` | admin | Ahora exige `billing.view` (nombra el plan destino y su precio) |
+
+**El CRM debe migrar el banner a `me/status`** (B7). Mientras siga usando `GET subscriptions/me` no se
+rompe nada, pero un empleado sin `billing.view` ya no ve el precio ni el nombre del plan.
+
+### `GET /auth/me/access` — el bootstrap único (A5)
+
+Con esto, y nada más, el CRM arma sidebar, guards y botones, y el Portal sus áreas. Reemplaza la
+combinación de `GET /auth/me` + `GET /auth/me/effective-access` + `GET /subscriptions/me`.
+
+```json
+{
+  "actorType": "TenantEmployee",
+  "effectivePermissions": ["customers.view", "documents.view"],
+  "modules": ["customers", "documents"],
+  "permissionsVersion": 7,
+  "entitlementsRevision": 42,
+  "subscription": { "state": "active", "canManageBilling": false },
+  "eTag": "W/\"a1b2...\""
+}
+```
+
+| Campo | Qué es |
+|---|---|
+| `effectivePermissions` | La unión de los roles activos **menos los denies vigentes**. Ya viene resuelto: no lo recompongas |
+| `modules` | Módulos que el plan de la oficina habilita |
+| `permissionsVersion` | El `perm_v` del usuario. Si tu token trae uno menor, el siguiente request da `401 Auth.TokenStale` |
+| `entitlementsRevision` | Revisión del snapshot de entitlements del tenant. **No viaja en el JWT** a propósito: un cambio de plan no invalida tokens |
+| `subscription` | `state` es `active`, `billing_blocked` o `suspended`, y coincide con el corte real de acceso (`Expired` sale como `billing_blocked`). `canManageBilling` sale de los **permisos**, nunca del actor type |
+
+**Tres reglas duras:**
+
+1. **`subscription` es `null` para `CustomerPortal`.** La forma del portal no lleva semántica comercial:
+   un cliente de la oficina no tiene por qué saber si la oficina está al día con su suscripción. No lo
+   pidas ni lo muestres.
+2. **Un token de la superficie Account (Landing) NO obtiene este endpoint.** Responde
+   `403 Auth.SurfaceNotAllowed`. Es deliberado (§R.4.1): el Account usa `GET /auth/me` y
+   `GET subscriptions/me/account`.
+3. **Usá el ETag.** Mandá `If-None-Match` y manejá el `304`: podés pedir el bootstrap en cada navegación
+   sin costo. El ETag cubre **todo** el contenido, no solo `permissionsVersion` — un deny que se vence o
+   un módulo que se habilita lo mueven igual.
+
 ### Forma de un rol en `GET /auth/roles` (cambios de A4)
 
 | Campo | Significa |
@@ -181,11 +256,33 @@ lo exija; está marcado `IsReserved` y dejó de ser asignable. La UI **no debe o
 |---|---|---|
 | `t:{tenant}` | todo el tenant, clientes del portal e invitados de meeting incluidos | `chat.presence.changed` |
 | `t:{tenant}:staff` | solo empleados y admins de la oficina | `mail.incoming`, `customer.changed`, `signature.request.changed` |
+| `t:{tenant}:members` | staff **y** clientes del portal, nunca invitados de meeting (A5) | `access.changed` de ámbito tenant |
 
   El portal **no** debe suscribirse a los tres del segundo grupo: nombran clientes, correos y
   solicitudes de firma de la oficina y ya no le llegan.
-- `access.changed` `[POR CREAR]` (A5): señal para que el frontend refresque su bootstrap.
-- `session.revoked` `[POR CREAR]` (A5): la sesión murió en otro sitio.
+
+**`access.changed` (hecho en A5).** Dice "tu acceso cambió, volvé a pedir `GET /auth/me/access`", y
+**nada más**: no lleva permisos ni datos del plan, para que no haya dos fuentes de verdad ni importe el
+orden de llegada.
+
+```json
+{ "scope": "user", "permissionsVersion": 7 }
+```
+
+| `scope` | Cuándo llega | A quién |
+|---|---|---|
+| `user` | Cambiaron los permisos de esa persona (le tocaron los roles, o cambió un rol que tiene) | Solo a sus sockets (`t:{tenant}:u:{userId}`) |
+| `tenant` | Cambiaron los módulos que el plan de la oficina habilita | A `t:{tenant}:members`. `permissionsVersion` es `null` |
+
+Qué hacer al recibirlo: **refetch de `GET /auth/me/access`**, nada más. Con `scope: "user"` podés además
+ignorar el evento si su `permissionsVersion` no es mayor que el que ya tenés. Un cliente del portal
+recibe los dos ámbitos; un invitado de meeting, ninguno.
+
+**`session.revoked` (ya existía; en A5 se completó quién lo dispara).** La sesión murió en otro sitio →
+limpiar y mandar a login. Desde A5 lo emiten **también** la baja de un usuario, el offboard, la
+suspensión administrativa del tenant y el bloqueo por facturación; antes solo el logout-all y el cambio
+de contraseña, así que una pestaña abierta se quedaba con la sesión muerta hasta su siguiente request.
+
 - Respaldo sin realtime, ya válido hoy: refetch en `focus` / `visibilitychange`, y tras un 403.
 
 ## 8. Reglas de cambio

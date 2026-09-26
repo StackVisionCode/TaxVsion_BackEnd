@@ -177,6 +177,18 @@ public sealed class UserManagementCommandsTests
             throw NotExpected();
     }
 
+    /// <summary>A5 — el anuncio de revocación no debería salir si el guard corta antes.</summary>
+    private sealed class ThrowingSessionRevocationPublisher : ISessionRevocationPublisher
+    {
+        public Task PublishRevokedAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            string reason,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("No debería anunciarse ninguna revocación — el guard corta antes.");
+    }
+
     private sealed class ThrowingDenylist : IAccessTokenDenylist
     {
         private static InvalidOperationException NotExpected() =>
@@ -242,6 +254,7 @@ public sealed class UserManagementCommandsTests
             new SingleUserRepository(client),
             new ThrowingSessionRepository(),
             new ThrowingDenylist(),
+            new ThrowingSessionRevocationPublisher(),
             new ThrowingAuthAuditWriter(),
             new ThrowingRequestContext(),
             new ThrowingCorrelationContext(),
@@ -288,6 +301,7 @@ public sealed class UserManagementCommandsTests
             users,
             new ThrowingSessionRepository(),
             new ThrowingDenylist(),
+            new ThrowingSessionRevocationPublisher(),
             new ThrowingAuthAuditWriter(),
             new ThrowingRequestContext(),
             new ThrowingCorrelationContext(),
@@ -349,6 +363,7 @@ public sealed class UserManagementCommandsTests
             new SingleUserRepository(target),
             new QuietSessionRepository(),
             new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
             new QuietAuthAuditWriter(),
             new QuietRequestContext(),
             new QuietCorrelationContext(),
@@ -401,6 +416,24 @@ public sealed class UserManagementCommandsTests
 
         public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
             Task.FromResult(0);
+    }
+
+    /// <summary>A5 — registra los anuncios de revocación para poder afirmar que salieron.</summary>
+    private sealed class RecordingSessionRevocationPublisher : ISessionRevocationPublisher
+    {
+        public List<(Guid TenantId, Guid UserId, Guid SessionId, string Reason)> Published { get; } = [];
+
+        public Task PublishRevokedAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            string reason,
+            CancellationToken ct = default
+        )
+        {
+            Published.Add((tenantId, userId, sessionId, reason));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class QuietDenylist : IAccessTokenDenylist

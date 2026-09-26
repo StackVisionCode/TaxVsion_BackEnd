@@ -12,7 +12,7 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | A2 — Deny layer y propagación | **C** | `claude/great-heisenberg-j7fnkh` | `8004694` | 15 | build Release · gate de CI 4850/4850 · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | El fallback pre-RBAC de `UserAccessResolver` se dejó como está: ya exige `activeCustomRoles.Count == 0` (G2 cerrado) y quitarlo dejaría sin permisos a los usuarios creados antes del modelo. Ver `DECISIONES.md` |
 | A3 — Baseline y catálogo | **P** | `claude/great-heisenberg-j7fnkh` | `01a0859` | 21 (.NET) + 6 (Node) | build Release · gate de CI 4865/4865 · `npm test` 452/452 · migración aplicada a SQL Server 2022 real | Falta **A3.4 primera mitad**: el endpoint `POST billing/invoices/{id}/email` no se construyó (necesita una plantilla de correo y registrar a Billing como cliente M2M de Notification en la configuración de producción). Ver `DECISIONES.md`. A3.3 (`correspondence.organize`, COULD) tampoco |
 | A4 — Techo y API de roles | **P** | `claude/great-heisenberg-j7fnkh` | `574e0e6` | 31 | build Debug · gate de CI 4896/4896 · `csharpier` de los archivos de la fase | La migración `AddRoleTargetActorType` está **generada, no aplicada** (el usuario pidió no aplicar migraciones ni usar Docker en esta sesión), así que **falta la integración de Auth**. Duplicar rol (COULD) no se hizo. La dirección inversa del fitness (todo código del catálogo se exige o es `IsReserved`) queda para A7 |
-| A5 — Bootstrap, errores, realtime | **NI** | — | — | — | — | Sin `/auth/me/access`, sin `access.changed`, sin `IAuthorizationMiddlewareResultHandler`. **Debe nacer consciente de la superficie** (§R.4.1) |
+| A5 — Bootstrap, errores, realtime | **C** | `claude/great-heisenberg-j7fnkh` | `PENDIENTE_A5` | 33 (.NET) + 6 (Node) | build Release · gate de CI 4929/4929 · `npm run typecheck` + 457/457 de Communication · `csharpier` de los archivos de la fase | Sin migración: la fase no toca el esquema. El CRM y el Portal tienen que **migrar** a `/auth/me/access` y a `subscriptions/me/status` (Track B y C); hasta entonces `GET subscriptions/me` sigue respondiendo, con los campos comerciales vacíos si el caller no tiene `billing.view` |
 | A6 — Entitlement enforcement | **NI** | — | — | — | — | `Authorization:ModuleGate:Enforce` no existe en ninguna configuración. Va **al final** y solo con B7 y C5 desplegados |
 | A7 — Tests y observabilidad | **P** | — | — | — | — | Ya hay fitness de catálogo, de superficie y (A4) de "todo código exigido existe en el catálogo". Falta la matriz actor × permission × deny × plan × **asignación** y la dirección inversa del fitness (~60 códigos del catálogo se exigen fuera de un atributo: Node y chequeos imperativos) |
 | A8 — Documentación | **NI** | — | — | — | — | — |
@@ -52,6 +52,33 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | Jerarquía en la baja | `UserManagementCommands.cs` (`DeactivateUserCommand.CallerActorType`), `UsersController.cs` | `UserManagementCommandsTests` (5) |
 | Invitaciones | `CreateInvitation.cs`, `AcceptInvitation.cs` | `AcceptInvitationHandlerTests` (2) |
 | Denies con razón y vencimiento | `UserPermissionDeny.cs`, `RoleConfigurations.cs`, `RoleRepository.cs`, `SetUserPermissionOverridesCommand.cs`, `UsersController.cs`, `ExpiredPermissionDeniesService.cs` (nuevo), migración `AddUserPermissionDenyReasonAndExpiry` | `SetUserPermissionOverridesHandlerTests` (2) |
+
+### A5 — completa, 2026-09-26
+
+| Sub | Estado | Qué se hizo |
+|---|---|---|
+| A5.3 403 RFC 9457 | **C** | `AuthorizationDenial` (nuevo) + `ProblemDetailsAuthorizationResultHandler` (nuevo, registrado en `AddActorTypeAuthorization` → los 14 servicios sin tocar su `Program.cs`). Las cuatro capas responden `{code, reason, module?, permission?}`, y el gate de módulo agrega `reason: "module"` en `ExceptionHandlingMiddleware` |
+| A6.1 `GET /auth/me/access` | **C** | Permisos efectivos, módulos, `permissionsVersion`, `entitlementsRevision`, bloque `subscription` (solo staff) y ETag con 304. **Sin `[AllowSurface]`** (§R.4.1), con un test que lo fija |
+| A6.2 `access.changed` | **C** | Evento de socket nuevo + room `t:{tenant}:members` (staff **y** clientes, nunca invitados). Se emite al usuario cuando cambian sus permisos y al tenant cuando cambian los módulos |
+| A6.3 denylist + `session.revoked` | **C** | `SessionAccessCutoff` (nuevo): denylist → anuncio → revocación, en ese orden. Aplicado en baja, offboard, suspensión administrativa y bloqueo por facturación |
+| A6.4 Subscription | **C** | `GET subscriptions/me/status` (nuevo, sin dato comercial alguno); `GET subscriptions/me` redacta plan, precio y límites sin `billing.view`; `GET subscriptions/plan-change` pasa a exigirlo |
+| A6.5 estado coherente | **C** | `state` = `active` / `billing_blocked` / `suspended`, derivado del mismo flag que corta el acceso de verdad (así `Expired` no aparece como activo) |
+| **Deuda de A2 cerrada** | **C** | El consumer `auth.role.permissions_changed.v1` de **Node** seguía recomponiendo la unión de permisos del usuario, o sea **resucitando los denies** (G3). Es el mismo bug que se cerró en los 24 consumers de .NET en A2; este había quedado afuera |
+
+**Lo que A5 NO hizo:** poner `GET subscriptions/me` entero detrás de `billing.view`. El shell del CRM
+desplegado lo pide en cada sesión para el banner de ciclo de vida y solo lee `status`,
+`billingAccessBlocked` y `gracePeriodEndsAtUtc` (verificado en `FRONTENDPERMISSIONS`), así que un 403 le
+apagaría el banner a todos los empleados en silencio. Los campos comerciales se redactan y el endpoint
+limpio (`me/status`) queda listo para que el CRM migre. Ver `DECISIONES.md`.
+
+**Secuencia de despliegue de A5** (todo aditivo, sin orden crítico):
+
+1. Desplegar los servicios .NET: el cuerpo del 403 cambia de vacío a RFC 9457, que es compatible
+   (`code` y `message` siguen ahí).
+2. Desplegar Auth, con `/auth/me/access` disponible.
+3. Desplegar Communication: el room `members` se llena en el siguiente handshake de cada socket, así
+   que `access.changed` a nivel tenant empieza a llegar a medida que los clientes reconectan.
+4. Los frontends migran cuando quieran (B7, B8, C5, C8). Nada los obliga.
 
 ### A4 — parcial, 2026-09-26
 

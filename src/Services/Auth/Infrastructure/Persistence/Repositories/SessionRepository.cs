@@ -150,4 +150,16 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
 
         return sessions.Count;
     }
+
+    /// <summary>Las sesiones vivas del tenant, para denylistearlas y anunciarlas antes de revocarlas
+    /// (A5/G10). IgnoreQueryFilters() por el mismo motivo que los métodos de arriba: el llamador es un
+    /// consumer de integración, sin tenant en el contexto.</summary>
+    public async Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .UserSessions.IgnoreQueryFilters()
+            .Where(session => session.TenantId == tenantId && session.RevokedAtUtc == null)
+            .ToListAsync(ct);
 }

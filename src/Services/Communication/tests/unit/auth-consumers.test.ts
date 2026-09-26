@@ -50,8 +50,24 @@ function setup() {
     findActiveByUserId: vi.fn(),
   };
 
-  bindAuthConsumers(register, { userPermissions, userDirectory, rolePermissions, customerPortalAccounts });
-  return { handlers, userPermissions, userDirectory, rolePermissions, customerPortalAccounts };
+  const emitter = {
+    emitToConversation: vi.fn(),
+    emitToCall: vi.fn(),
+    emitToMeeting: vi.fn(),
+    emitToUser: vi.fn(),
+    emitToTenant: vi.fn(),
+    emitToTenantStaff: vi.fn(),
+    emitToTenantMembers: vi.fn(),
+  };
+
+  bindAuthConsumers(register, {
+    userPermissions,
+    userDirectory,
+    rolePermissions,
+    customerPortalAccounts,
+    emitter,
+  });
+  return { handlers, userPermissions, userDirectory, rolePermissions, customerPortalAccounts, emitter };
 }
 
 function envelope(payload: Record<string, unknown>): IncomingEnvelope {
@@ -172,38 +188,29 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
 });
 
 describe('bindAuthConsumers — auth.role.permissions_changed.v1 (Fase 2)', () => {
-  it('cachea el rol y recomputa la union de permisos de un usuario con VARIOS roles', async () => {
+  /**
+   * A5 — contrato nuevo, el mismo que ya rige en los 24 consumers equivalentes de .NET desde A2: este
+   * handler cachea rol -> permisos y NO recompone la union del usuario.
+   *
+   * Recomponerla resucitaba los denies. La capa de denies vive solo en Auth, asi que una union armada
+   * con los permisos cacheados de los roles le devolvia al usuario justo el permiso que un
+   * administrador le habia quitado. Ahora Auth publica `UserRolesChangedIntegrationEvent` por cada
+   * titular con sus codigos ya efectivos.
+   */
+  it('cachea el rol y NO recompone la union del usuario (los denies viven en Auth)', async () => {
     const { handlers, userPermissions, rolePermissions } = setup();
 
-    // El usuario afectado tiene 2 roles — cambiar SOLO role-1 no debe pisarle
-    // los permisos que le llegan de role-2 (esa es la razon de RolePermissionsProjection).
     vi.mocked(userPermissions.findActiveByTenantAndRoleId).mockResolvedValue([
       {
         userId: 'user-multi-role',
         tenantId: 'tenant-1',
-        permissions: ['old.stale.permission'],
+        // Este set incluye un permiso denegado por un administrador. Si el handler recompusiera la
+        // union a partir de los roles, se lo devolveria.
+        permissions: ['cloudstorage.manage'],
         permissionVersion: 5,
         roleIds: ['role-1', 'role-2'],
         actorType: 'TenantEmployee',
         isActive: true,
-        updatedAtUtc: new Date(),
-      },
-    ]);
-    vi.mocked(rolePermissions.findByRoleIds).mockResolvedValue([
-      {
-        roleId: 'role-1',
-        tenantId: 'tenant-1',
-        roleName: 'Employee',
-        permissionCodes: ['cloudstorage.manage'],
-        permissionsVersion: 3,
-        updatedAtUtc: new Date(),
-      },
-      {
-        roleId: 'role-2',
-        tenantId: 'tenant-1',
-        roleName: 'Preparer',
-        permissionCodes: ['signature.request.create'],
-        permissionsVersion: 1,
         updatedAtUtc: new Date(),
       },
     ]);
@@ -212,7 +219,7 @@ describe('bindAuthConsumers — auth.role.permissions_changed.v1 (Fase 2)', () =
       envelope({
         RoleId: 'role-1',
         RoleName: 'Employee',
-        PermissionCodes: ['cloudstorage.manage'],
+        PermissionCodes: ['cloudstorage.manage', 'signature.request.create'],
         PermissionsVersion: 3,
       }),
     );
@@ -221,22 +228,40 @@ describe('bindAuthConsumers — auth.role.permissions_changed.v1 (Fase 2)', () =
       expect.objectContaining({
         roleId: 'role-1',
         roleName: 'Employee',
-        permissionCodes: ['cloudstorage.manage'],
+        permissionCodes: ['cloudstorage.manage', 'signature.request.create'],
         permissionsVersion: 3,
       }),
     );
-    expect(userPermissions.findActiveByTenantAndRoleId).toHaveBeenCalledWith('tenant-1', 'role-1');
-    expect(userPermissions.upsert).toHaveBeenCalledWith(
+    expect(userPermissions.upsert).not.toHaveBeenCalled();
+  });
+
+  it('avisa a cada titular conectado que su acceso cambio', async () => {
+    const { handlers, userPermissions, emitter } = setup();
+
+    vi.mocked(userPermissions.findActiveByTenantAndRoleId).mockResolvedValue([
+      {
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        permissions: [],
+        permissionVersion: 5,
+        roleIds: ['role-1'],
+        actorType: 'TenantEmployee',
+        isActive: true,
+        updatedAtUtc: new Date(),
+      },
+    ]);
+
+    await handlers.get('auth.role.permissions_changed.v1')!(
+      envelope({ RoleId: 'role-1', RoleName: 'Employee', PermissionCodes: [], PermissionsVersion: 3 }),
+    );
+
+    expect(emitter.emitToUser).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'user-multi-role',
-        // union de role-1 (cloudstorage.manage) + role-2 (signature.request.create) —
-        // 'old.stale.permission' no aparece porque no viene de ningun rol vigente.
-        permissions: expect.arrayContaining(['cloudstorage.manage', 'signature.request.create']),
-        roleIds: ['role-1', 'role-2'],
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        event: 'access.changed',
       }),
     );
-    const upsertCall = vi.mocked(userPermissions.upsert).mock.calls[0]?.[0];
-    expect(upsertCall?.permissions).toHaveLength(2);
   });
 
   it('no hace nada si no hay usuarios activos con ese RoleId', async () => {

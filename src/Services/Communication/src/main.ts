@@ -166,6 +166,7 @@ async function main(): Promise<void> {
     userDirectory: container.userDirectory,
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
+    emitter,
   });
   // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
   bindOffboardingConsumers(consumers.register.bind(consumers), {
@@ -180,6 +181,7 @@ async function main(): Promise<void> {
     limits: container.limits,
     planCodeCache: container.planCodeCache,
     modulesCache: container.tenantModulesCache,
+    emitter,
   });
 
   // Gate de modulo (Entitlements en runtime), modo LOG-ONLY — espejo del hook de

@@ -3,6 +3,11 @@ import type { UserDirectoryRepository } from '../ports/user-directory-repository
 import type { RolePermissionsProjectionRepository } from '../ports/role-permissions-projection-repository.js';
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import {
+  NotificationSocketEvents,
+  type AccessChangedDto,
+} from '../../contracts/socket/notification-socket-events.js';
 
 /**
  * Auth consumers — mantienen al dia cuatro proyecciones locales:
@@ -23,8 +28,30 @@ export function bindAuthConsumers(
     userDirectory: UserDirectoryRepository;
     rolePermissions: RolePermissionsProjectionRepository;
     customerPortalAccounts: CustomerPortalAccountRepository;
+    /** Opcional: sin emisor los consumers siguen proyectando, solo no avisan en vivo. */
+    emitter?: RealtimeEmitter;
   },
 ): void {
+  /**
+   * Avisa al usuario que su acceso cambio para que vuelva a pedir `GET /auth/me/access`. Sin esto, el
+   * CRM se queda con el sidebar y los botones de antes hasta que alguien recargue: el 403 llega
+   * despues, al hacer clic, que es justo la experiencia que A5 viene a arreglar.
+   */
+  function announceUserAccessChanged(tenantId: string, userId: string, permissionsVersion: number | null): void {
+    if (!deps.emitter) return;
+    const payload: AccessChangedDto = { scope: 'user', permissionsVersion };
+    deps.emitter.emitToUser({
+      tenantId,
+      userId,
+      event: NotificationSocketEvents.AccessChanged,
+      envelope: {
+        eventId: crypto.randomUUID(),
+        correlationId: '',
+        emittedAtUtc: new Date().toISOString(),
+        payload,
+      },
+    });
+  }
   register('auth.user.roles_changed.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
@@ -51,6 +78,7 @@ export function bindAuthConsumers(
       isActive: true,
       updatedAtUtc: new Date(),
     });
+    announceUserAccessChanged(env.tenantId, userId, permVersion);
   });
 
   register('auth.user.registered.v1', async (env) => {
@@ -143,10 +171,19 @@ export function bindAuthConsumers(
     await deps.customerPortalAccounts.markActiveByUserId(userId);
   });
 
-  // Fase 2 del plan de notificaciones dinamicas. Sin este consumer, editar los permisos de
-  // un rol con 50 empleados asignados nunca propaga a esta proyeccion — quedan con datos
-  // viejos hasta que a cada uno individualmente le vuelvan a tocar su rol (que puede no pasar
-  // nunca). PermissionCodes del evento es el set COMPLETO del rol post-cambio, no un diff.
+  /**
+   * Cachea rol -> permisos, y nada mas. **No** recompone la union de permisos de los usuarios del rol.
+   *
+   * Antes lo hacia, y eso RESUCITABA los denies por usuario: la capa de denies vive solo en Auth, asi
+   * que una union armada con los permisos cacheados de los roles le devolvia al usuario justo el
+   * permiso que un administrador le habia quitado. Es el mismo bug (G3 del plan) que se cerro en los
+   * 24 consumers equivalentes de .NET en la fase A2; este, en Node, habia quedado afuera.
+   *
+   * Hoy Auth publica `UserRolesChangedIntegrationEvent` por CADA titular del rol, con sus codigos ya
+   * efectivos (roles menos denies) y su `perm_v` subido — lo aplica el handler de
+   * `auth.user.roles_changed.v1` de mas arriba. La proyeccion de rol se conserva porque el gate de
+   * modulo y el diagnostico la usan.
+   */
   register('auth.role.permissions_changed.v1', async (env) => {
     const roleId = getString(env.payload, 'roleId') ?? getString(env.payload, 'RoleId');
     const roleName = getString(env.payload, 'roleName') ?? getString(env.payload, 'RoleName');
@@ -162,33 +199,11 @@ export function bindAuthConsumers(
       permissionsVersion,
     });
 
+    // Avisar si, ademas de cachear el rol, hay titulares conectados: el fan-out por titular de Auth
+    // llega por su propio evento, y este aviso solo les dice que vuelvan a pedir el bootstrap.
     const affectedUsers = await deps.userPermissions.findActiveByTenantAndRoleId(env.tenantId, roleId);
-    if (affectedUsers.length === 0) return;
-
-    // Union de permisos por-rol cacheados — un usuario con VARIOS roles no puede
-    // sobrescribirse solo con los codigos del rol que cambio, o perderia los permisos
-    // heredados de sus otros roles.
-    const allRoleIds = [...new Set(affectedUsers.flatMap((user) => user.roleIds))];
-    const rolesById = new Map(
-      (await deps.rolePermissions.findByRoleIds(allRoleIds)).map((role) => [role.roleId, role]),
-    );
-
     for (const user of affectedUsers) {
-      const union = new Set<string>();
-      for (const userRoleId of user.roleIds) {
-        const role = rolesById.get(userRoleId);
-        if (role) role.permissionCodes.forEach((code) => union.add(code));
-      }
-      await deps.userPermissions.upsert({
-        userId: user.userId,
-        tenantId: user.tenantId,
-        permissions: [...union],
-        permissionVersion: user.permissionVersion,
-        roleIds: user.roleIds,
-        actorType: user.actorType,
-        isActive: user.isActive,
-        updatedAtUtc: new Date(),
-      });
+      announceUserAccessChanged(user.tenantId, user.userId, null);
     }
   });
 }

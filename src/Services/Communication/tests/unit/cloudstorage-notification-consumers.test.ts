@@ -30,6 +30,7 @@ function setup() {
     emitToMeeting: vi.fn(),
     emitToTenant: vi.fn(),
     emitToTenantStaff: vi.fn(),
+    emitToTenantMembers: vi.fn(),
   } as unknown as RealtimeEmitter;
 
   bindCloudStorageNotificationConsumers(register, { notifications, emitter });

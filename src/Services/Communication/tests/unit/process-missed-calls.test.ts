@@ -112,6 +112,7 @@ class FakeEmitter implements RealtimeEmitter {
   }
   emitToTenant(): void {}
   emitToTenantStaff(): void {}
+  emitToTenantMembers(): void {}
 }
 
 function buildHarness() {

@@ -1,5 +1,4 @@
 using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -37,11 +36,12 @@ public sealed class SurfaceAuthorizationFilter : IAuthorizationFilter
         if (declared is not null && declared.Surfaces.Contains(surface, StringComparer.Ordinal))
             return;
 
-        context.Result = new ObjectResult(
-            new Error("Auth.SurfaceNotAllowed", "This session can't be used for this action.")
-        )
+        // A5 — mismo código de error que antes (el CRM y el Portal ya lo leen), ahora con `reason`
+        // para que las cuatro capas de autorización respondan el mismo contrato.
+        context.Result = new ObjectResult(AuthorizationDenial.SurfaceNotAllowed.ToProblemDetails(context.HttpContext))
         {
             StatusCode = StatusCodes.Status403Forbidden,
+            ContentTypes = { "application/problem+json" },
         };
     }
 

@@ -98,6 +98,7 @@ class FakeEmitter implements RealtimeEmitter {
   }
   emitToTenant(): void {}
   emitToTenantStaff(): void {}
+  emitToTenantMembers(): void {}
 }
 
 const TENANT = u();
