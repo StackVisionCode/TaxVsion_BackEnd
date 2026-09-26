@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace TaxVision.PaymentApp.Tests.Deploy;
 
@@ -34,6 +34,31 @@ public sealed class PaymentAppDeployConfigWiringTests
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");
 
         Assert.Contains($"{varName}=${{{{ secrets.{varName} }}}}", workflow);
+    }
+
+    /// <summary>
+    /// El recibo lo firma CloudStorage, y PaymentApp lo llama por HTTP. El cliente tiene un default
+    /// http://localhost:5330 que dentro del contenedor no es nadie: si el compose no define la URL,
+    /// la llamada muere en connection refused y la descarga responde 400 sin que nada falle al arrancar.
+    /// </summary>
+    [Fact]
+    public void PaymentApp_points_at_cloudstorage_in_compose()
+    {
+        var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
+        var service = ComposeServiceBlock(compose, "payment-app-api");
+
+        Assert.Contains("CloudStorageClient__BaseUrl: http://cloudstorage-api:8080", service);
+    }
+
+    /// <summary>El bloque de un servicio del compose: desde su clave hasta la del siguiente.</summary>
+    private static string ComposeServiceBlock(string compose, string serviceName)
+    {
+        var header = Regex.Match(compose, "^  " + Regex.Escape(serviceName) + ":$", RegexOptions.Multiline);
+        Assert.True(header.Success, "El compose no declara el servicio " + serviceName + ".");
+
+        var rest = compose[(header.Index + header.Length)..];
+        var next = Regex.Match(rest, "^  [a-z0-9-]+:$", RegexOptions.Multiline);
+        return next.Success ? compose.Substring(header.Index, header.Length + next.Index) : compose[header.Index..];
     }
 
     [Fact]
