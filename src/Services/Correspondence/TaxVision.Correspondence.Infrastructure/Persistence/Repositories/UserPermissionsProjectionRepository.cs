@@ -48,8 +48,11 @@ public sealed class UserPermissionsProjectionRepository(CorrespondenceDbContext 
         CancellationToken ct = default
     )
     {
+        // IgnoreQueryFilters igual que GetAsync: el tenantId de la firma ya viene del JWT. Sin esto,
+        // un scope sin TenantContext ambiente devuelve 0 filas y la autorización falla cerrada (403).
         var projection = await db
             .UserPermissionsProjections.AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId && p.IsActive, ct);
 
         return projection is null

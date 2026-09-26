@@ -48,8 +48,12 @@ public sealed class UserPermissionsProjectionRepository(CloudStorageDbContext db
         CancellationToken ct = default
     )
     {
+        // IgnoreQueryFilters por la misma razón que GetAsync: el tenantId de la firma ya viene del JWT
+        // y es confiable. Sin esto, cualquier scope sin TenantContext ambiente devuelve 0 filas y
+        // ProjectionPermissionsSource falla cerrado — un 403 sin permiso faltante.
         var projection = await db
             .UserPermissionsProjections.AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId && p.IsActive, ct);
 
         return projection is null

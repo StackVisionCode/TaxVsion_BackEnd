@@ -28,7 +28,10 @@ public sealed class CustomerAssignment : TenantEntity
     {
         var entity = new CustomerAssignment
         {
-            Id = Guid.NewGuid(),
+            // Id sin asignar (igual que el resto de las hijas del agregado): la clave está mapeada
+            // ValueGenerated.OnAdd, así que con un Guid ya puesto EF toma la fila por existente y
+            // emite UPDATE en vez de INSERT — 0 filas afectadas y DbUpdateConcurrencyException.
+            Id = Guid.Empty,
             CustomerId = customerId,
             UserId = userId,
             IsPrimary = isPrimary,
