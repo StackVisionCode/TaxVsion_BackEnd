@@ -249,9 +249,18 @@ public static class AcceptInvitationHandler
             if (
                 ActorTypeRoleGuard
                     .ValidatePermissionsForActorType(invitation.ActorType, permissionIds, catalog)
-                    .IsSuccess
+                    .IsFailure
             )
-                valid.Add(role.Id);
+                continue;
+
+            // A4 (§27, R8) — el techo duro se revalida al aceptar, no solo al invitar: entre las dos
+            // cosas pueden pasar días y el catálogo puede haber marcado un permiso como reservado a
+            // la plataforma. Acá se descarta el rol (no se falla el alta): la invitación es válida y
+            // el usuario cae al rol de sistema, el mismo criterio que el resto de este método.
+            if (PermissionCeiling.ValidateRolesNeverGrantable([role], catalog).IsFailure)
+                continue;
+
+            valid.Add(role.Id);
         }
         return valid;
     }

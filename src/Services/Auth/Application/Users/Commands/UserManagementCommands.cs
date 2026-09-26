@@ -442,6 +442,17 @@ public static class AssignUserRolesHandler
         if (actorTypeGuard.IsFailure)
             return actorTypeGuard;
 
+        // A4 (§27) — el techo también acá: hasta ahora asignar un rol no revalidaba nada del techo,
+        // así que un rol custom con un permiso que dejó de ser concedible (el catálogo lo marcó
+        // PlatformOnly, peligroso o reservado después de crearlo) seguía repartiéndolo a usuarios
+        // nuevos. Solo la mitad DURA: el tier y el módulo no se miden acá a propósito, porque una
+        // configuración anterior a un downgrade tiene que quedar dormida, no volver el rol
+        // inasignable (§27, opción híbrida). Los roles de sistema quedan fuera: los siembra la
+        // plataforma y el bundle raíz de Tenant Admin incluye permisos peligrosos por diseño.
+        var ceilingGuard = PermissionCeiling.ValidateRolesNeverGrantable(tenantRoles, catalog);
+        if (ceilingGuard.IsFailure)
+            return ceilingGuard;
+
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();
 

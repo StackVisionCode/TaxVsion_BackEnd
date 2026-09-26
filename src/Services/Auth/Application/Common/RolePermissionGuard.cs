@@ -1,4 +1,3 @@
-using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
@@ -6,18 +5,15 @@ using TaxVision.Auth.Domain.Tenants;
 namespace TaxVision.Auth.Application.Common;
 
 /// <summary>
-/// Guardarraíl anti-escalada de privilegios: valida que un conjunto de permisos pueda
-/// incluirse en un rol CUSTOM del tenant (creado por su Tenant Admin), nunca en los
-/// roles de sistema — esos se siembran vía <c>seeding: true</c> y no pasan por acá.
+/// Guardarraíl anti-escalada de privilegios al escribir la configuración de un rol CUSTOM del
+/// tenant (creado por su Tenant Admin), nunca de los roles de sistema — esos se siembran vía
+/// <c>seeding: true</c> y no pasan por acá.
 ///
-/// Regla de oro (Kubernetes RBAC / GitHub custom roles): un tenant nunca puede otorgar,
-/// a través de un rol que crea, un permiso que (a) está reservado a la plataforma
-/// (<see cref="Permission.IsAssignableByTenant"/> = false — billing, asientos, gestión
-/// de roles), (b) su plan contratado no expone todavía (<see cref="Permission.MinPlanTier"/>)
-/// o (c) todavía no protege nada (<see cref="Permission.IsReserved"/>).
-///
-/// Es una función pura (sin acceso a datos) para poder testearla sin mocks de
-/// infraestructura: recibe el catálogo y el tier ya resueltos.
+/// <para>
+/// Desde A4 esto es una fachada delgada sobre <see cref="PermissionCeiling"/>, el único techo del
+/// servicio (§27 del plan). Se conserva el tipo —y su firma— porque es el nombre que usan los
+/// handlers y los tests existentes; la regla vive en un solo lugar.
+/// </para>
 /// </summary>
 public static class RolePermissionGuard
 {
@@ -26,55 +22,5 @@ public static class RolePermissionGuard
         IReadOnlyCollection<Guid>? requestedPermissionIds,
         PlanTier tenantPlanTier,
         IReadOnlySet<string> enabledModules
-    )
-    {
-        if (requestedPermissionIds is null || requestedPermissionIds.Count == 0)
-            return Result.Success();
-
-        var byId = catalog.ToDictionary(permission => permission.Id);
-        var rejected = new List<string>();
-
-        foreach (var permissionId in requestedPermissionIds.Distinct())
-        {
-            // Ids inexistentes en el catálogo los rechaza por separado la validación de
-            // existencia (CreateRoleHandler.ValidatePermissionIdsAsync) — acá solo evaluamos
-            // los que sí existen, para no duplicar ese mensaje de error.
-            if (!byId.TryGetValue(permissionId, out var permission))
-                continue;
-
-            // Reservado = declarado pero sin ningún endpoint que lo exija todavía. Se rechaza
-            // explícito (no solo por IsAssignableByTenant) para que el motivo quede claro y para que
-            // marcar uno como reservado alcance, sin tener que acordarse de tocar el otro flag.
-            if (
-                permission.IsReserved
-                || !permission.IsAssignableByTenant
-                || (int)tenantPlanTier < permission.MinPlanTier
-            )
-            {
-                rejected.Add(permission.Code);
-                continue;
-            }
-
-            // Ceiling de entitlement: un permiso de un módulo que el plan del tenant no habilita no
-            // puede darse en un rol custom. Solo se aplica si conocemos los módulos (set no vacío);
-            // vacío = sin datos aún, no se bloquea (el gate en runtime es el enforcement real).
-            if (enabledModules.Count > 0)
-            {
-                var module = PermissionModuleMap.ModuleFor(permission.Code);
-                if (module is not null && !enabledModules.Contains(module))
-                    rejected.Add(permission.Code);
-            }
-        }
-
-        if (rejected.Count == 0)
-            return Result.Success();
-
-        return Result.Failure(
-            new Error(
-                "Role.PermissionNotAssignable",
-                "These permissions cannot be assigned by the tenant (reserved to the platform, "
-                    + $"or not included in the current plan): {string.Join(", ", rejected.OrderBy(code => code))}."
-            )
-        );
-    }
+    ) => PermissionCeiling.Validate(catalog, requestedPermissionIds, tenantPlanTier, enabledModules);
 }

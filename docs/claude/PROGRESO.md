@@ -11,10 +11,10 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | A1 — Ownership de recurso | **NI** | — | — | — | — | Signature (14 sub-recursos), Tasks, Correspondence, Customer, CloudStorage, Campaigns |
 | A2 — Deny layer y propagación | **C** | `claude/great-heisenberg-j7fnkh` | `8004694` | 15 | build Release · gate de CI 4850/4850 · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | El fallback pre-RBAC de `UserAccessResolver` se dejó como está: ya exige `activeCustomRoles.Count == 0` (G2 cerrado) y quitarlo dejaría sin permisos a los usuarios creados antes del modelo. Ver `DECISIONES.md` |
 | A3 — Baseline y catálogo | **P** | `claude/great-heisenberg-j7fnkh` | `01a0859` | 21 (.NET) + 6 (Node) | build Release · gate de CI 4865/4865 · `npm test` 452/452 · migración aplicada a SQL Server 2022 real | Falta **A3.4 primera mitad**: el endpoint `POST billing/invoices/{id}/email` no se construyó (necesita una plantilla de correo y registrar a Billing como cliente M2M de Notification en la configuración de producción). Ver `DECISIONES.md`. A3.3 (`correspondence.organize`, COULD) tampoco |
-| A4 — Techo y API de roles | **NI** | — | — | — | — | `Grantable(...)` unificado, `GET /auth/roles/{id}/users`, reactivar rol |
+| A4 — Techo y API de roles | **P** | `claude/great-heisenberg-j7fnkh` | `PENDIENTE_A4` | 31 | build Debug · gate de CI 4896/4896 · `csharpier` de los archivos de la fase | La migración `AddRoleTargetActorType` está **generada, no aplicada** (el usuario pidió no aplicar migraciones ni usar Docker en esta sesión), así que **falta la integración de Auth**. Duplicar rol (COULD) no se hizo. La dirección inversa del fitness (todo código del catálogo se exige o es `IsReserved`) queda para A7 |
 | A5 — Bootstrap, errores, realtime | **NI** | — | — | — | — | Sin `/auth/me/access`, sin `access.changed`, sin `IAuthorizationMiddlewareResultHandler`. **Debe nacer consciente de la superficie** (§R.4.1) |
 | A6 — Entitlement enforcement | **NI** | — | — | — | — | `Authorization:ModuleGate:Enforce` no existe en ninguna configuración. Va **al final** y solo con B7 y C5 desplegados |
-| A7 — Tests y observabilidad | **P** | — | — | — | — | Ya hay fitness de catálogo y de superficie. Falta la matriz actor × permission × deny × plan × **asignación** |
+| A7 — Tests y observabilidad | **P** | — | — | — | — | Ya hay fitness de catálogo, de superficie y (A4) de "todo código exigido existe en el catálogo". Falta la matriz actor × permission × deny × plan × **asignación** y la dirección inversa del fitness (~60 códigos del catálogo se exigen fuera de un atributo: Node y chequeos imperativos) |
 | A8 — Documentación | **NI** | — | — | — | — | — |
 
 ## Qué verificar antes de dar una fase por cerrada
@@ -23,7 +23,10 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 2. El gate **exacto** del CI en verde (ver `TESTING.md`), redirigido a un archivo — **nunca** a `tail`.
 3. `npm run typecheck && npm test` en `src/Services/Communication` si la fase lo tocó.
 4. `dotnet csharpier check` **de los archivos de la fase**.
-5. La migración de la fase **aplicada**, no solo creada.
+5. La migración de la fase **aplicada**, no solo creada. **Excepción vigente desde A4:** el usuario
+   pidió no aplicar migraciones ni levantar Docker en esta sesión por consumo de créditos, así que
+   desde A4 las migraciones se **generan y se revisan a mano**, y los tests de integración que
+   necesitan SQL Server quedan sin correr. Está anotado en la columna "Pendientes" de cada fase.
 6. El test de regresión que demuestra que ningún rol existente perdió accesos (§R.7 del PLAN).
 
 ## Mini plan por fase
@@ -49,6 +52,33 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | Jerarquía en la baja | `UserManagementCommands.cs` (`DeactivateUserCommand.CallerActorType`), `UsersController.cs` | `UserManagementCommandsTests` (5) |
 | Invitaciones | `CreateInvitation.cs`, `AcceptInvitation.cs` | `AcceptInvitationHandlerTests` (2) |
 | Denies con razón y vencimiento | `UserPermissionDeny.cs`, `RoleConfigurations.cs`, `RoleRepository.cs`, `SetUserPermissionOverridesCommand.cs`, `UsersController.cs`, `ExpiredPermissionDeniesService.cs` (nuevo), migración `AddUserPermissionDenyReasonAndExpiry` | `SetUserPermissionOverridesHandlerTests` (2) |
+
+### A4 — parcial, 2026-09-26
+
+| Sub | Estado | Qué se hizo |
+|---|---|---|
+| A4.1 techo formal (§27) | **C** | `PermissionCeiling.cs` (nuevo) es el único techo; `RolePermissionGuard` queda como fachada. `PlatformOnly`, `IsDangerous` e `IsReserved` se leen **explícito**. Aplicado además en **asignar rol**, **invitar con roles** y **aceptar la invitación**, que no lo revalidaban |
+| A4.1 validación por delta | **C** | Al editar un rol el techo mide solo el **delta añadido**: un rol con permisos dormidos por un downgrade vuelve a ser editable (§27 [D]) |
+| A4.2 `GET /auth/roles/{id}/users` | **C** | Titulares **activos** del rol (la misma lista que recibe el fan-out, para que la UI y los avisos no divergan) |
+| A4.2 reactivar rol | **C** | `POST /auth/roles/{id}/reactivate` + `Role.Reactivate()` + fan-out por titular + acción de auditoría propia `auth.role.reactivated` |
+| A4.2 unicidad en el handler | **C** | Renombrar a un nombre ocupado devuelve `Role.NameConflict`, no un 409 del índice |
+| A4.2 roles de portal editables (G8) | **C** | `Role.TargetActorType` (columna nueva, nullable) + backfill conservador en la migración |
+| A4.2 validar contra los titulares (G7) | **C** | El delta se valida contra el actor type de **cada titular activo** del rol |
+| A4.2 duplicar rol | **NI** | COULD; no se abordó |
+| A4.3 `GET /auth/permissions` con flags | **C** | `isAssignableByTenant`, `platformOnly`, `isDangerous`, `isReserved`, `minPlanTier`, `gateModule`, `allowedActorTypes` y `grantable` para el tenant del token |
+| A4.4 fitness | **P** | Nuevo: todo código exigido por `[HasPermission]`/`[HasPermissionForActor]` existe en el catálogo (0 violaciones hoy). Ya existía: PlatformOnly/IsDangerous ⇒ no asignable, y nombres de rol reservados (A0). La dirección inversa va a A7 |
+
+**Lo que A4 deliberadamente NO hizo:** la dimensión `∩ Effective(caller)` de §27 queda documentada y
+sin implementar. Exigirla hoy rompería la gestión de roles del portal: el bundle del rol de sistema
+Tenant Admin excluye los permisos `IsCustomerPortal`, así que un Tenant Admin no tiene —ni debe
+tener— los permisos que concede a un rol de clientes. Ver `DECISIONES.md`.
+
+**Secuencia de despliegue de A4** (sin orden crítico, todo es aditivo):
+
+1. Aplicar la migración `AddRoleTargetActorType` (columna nullable + backfill que solo marca roles
+   que ya eran de portal).
+2. Desplegar **Auth**. Los endpoints nuevos (`/users`, `/reactivate`) y los campos nuevos de
+   `GET /auth/permissions` son aditivos: el CRM desplegado sigue leyendo lo de siempre.
 
 ### A3 — parcial, 2026-09-26
 

@@ -57,6 +57,10 @@ Forma plana de `BuildingBlocks.Results.Error`, serializada en camelCase:
 | `User.Hierarchy` | 403 | Un empleado intentó dar de baja a un administrador | Mensaje "solo un administrador puede hacerlo". No ofrecer la acción |
 | `User.LastAdmin` | 400 | Es el último administrador activo de la oficina | Mensaje "la oficina necesita al menos un administrador" |
 | `Role.NameReserved` | 400 | El nombre del rol colisiona con uno reservado por la plataforma | Error en el campo del nombre, en el formulario de rol. No es un fallo de permisos |
+| `Role.NameConflict` | 409 | Ya existe otro rol con ese nombre en la oficina | Error en el campo del nombre. Antes salía como un 409 sin código desde el índice de la base |
+| `Role.PermissionNotAssignable` | 400 | Alguno de los permisos pedidos está fuera del techo del tenant (de plataforma, peligroso, reservado, o fuera del plan) | Error en el picker, nombrando los códigos que vienen en el mensaje. Con `grantable` de `GET /auth/permissions` no debería llegar a pasar |
+| `Role.NotAssignableToActorType` | 400 | El rol mezcla permisos de actor types incompatibles, o el permiso no es válido para los titulares del rol | Error en el picker. Filtrar por `allowedActorTypes` del catálogo |
+| `Role.AlreadyActive` | 400 | Se intentó reactivar un rol que ya está activo | No ofrecer la acción cuando `isActive` es true |
 | `Chat.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó abrir un chat con otro cliente | Portal: no ofrecer esa acción. Si llega, mensaje "solo puedes escribirle a tu oficina" |
 | `Call.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó llamar a otro cliente | Igual que el anterior, en la llamada |
 | *(sin código)* | 403 | Sin permiso | Pantalla "acceso restringido" |
@@ -76,7 +80,9 @@ frontend lo trata por el status.
 | `GET /auth/me/effective-access` | CRM y Portal | Permissions efectivas por módulo, con la marca de denegado, y `permissionsVersion` |
 | `GET /auth/users/{id}/effective-access` | CRM (admin) | Lo mismo, para otro usuario. Gateado por `roles.manage` |
 | `PUT /auth/users/{id}/permission-overrides` | CRM (admin) | Reemplaza el set completo de denies. Gateado por `roles.manage`. Acepta **dos formas** del cuerpo: `deniedPermissionIds` (ids planos, la forma que ya usa el CRM desplegado) o `denies` (`[{ permissionId, reason?, expiresAtUtc? }]`, con razón y vencimiento). Si viene `denies`, manda ese |
-| `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }`. Un permiso con `isReserved` **no se ofrece** en el picker: está declarado pero todavía no protege nada |
+| `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }` **más las banderas del techo** (A4): `isAssignableByTenant`, `platformOnly`, `isDangerous`, `isReserved`, `minPlanTier`, `gateModule`, `allowedActorTypes` y `grantable`. **`grantable` es la única que hay que mirar para habilitar una casilla**: ya resuelve la fórmula completa contra el plan del tenant del token. Las otras sirven para explicar el motivo ("no incluido en tu plan", "solo la plataforma"). Un permiso con `isReserved` **no se ofrece**: está declarado pero todavía no protege nada |
+| `GET /auth/roles/{id}/users` | CRM (admin) | **Nuevo** (A4). Titulares **activos** del rol: `[{ id, name, lastName, email, actorType, isActive }]`. Gateado por `roles.manage`. Úsalo antes de desactivar un rol, para decir a cuántos afecta |
+| `POST /auth/roles/{id}/reactivate` | CRM (admin) | **Nuevo** (A4). Vuelve a poner en servicio un rol desactivado. `204`, o `Role.AlreadyActive` / `Role.NotFound`. Gateado por `roles.manage` |
 | `GET /auth/me/access` | ambos | `[POR CREAR]` (A5). Bootstrap único: `effectivePermissions`, `modules`, `permissionsVersion`, `entitlementsRevision`, `subscription.state`, `canManageBilling`, con ETag. **Debe ser consciente de la superficie** y su forma para `CustomerPortal` **no lleva semántica comercial** |
 
 ## 4. Capas de autorización, en orden
@@ -134,6 +140,23 @@ lo exija; está marcado `IsReserved` y dejó de ser asignable. La UI **no debe o
 | `campaigns.manage` | Ya no cubre ver ni enviar | **Sí** |
 | `invoicing.issuer.manage` | **Nueva** (A3): editar el emisor legal de las facturas. Sale de `invoicing.manage` | **Sí**: el formulario del emisor se gatea con este |
 | `portal.miles.use` | Reservado y no asignable (A3) | No lo ofrezcas |
+
+### Forma de un rol en `GET /auth/roles` (cambios de A4)
+
+| Campo | Significa |
+|---|---|
+| `assignableActorTypes` | Actor types a los que el rol es asignable (todos sus permisos los permiten). Ya existía |
+| `targetActorType` | **Nuevo** (A4). Para qué actor type se creó el rol, o `null` si no se declaró. Un rol con `"CustomerPortal"` es un rol de **clientes**: al editarlo, ofrece solo permisos con `CustomerPortal` en `allowedActorTypes` |
+
+**Dos reglas del editor de roles que el CRM tiene que respetar (A4):**
+
+1. **Al editar, manda el set completo, no solo lo nuevo.** `PUT /auth/roles/{id}/permissions`
+   reemplaza el set entero, como siempre. El backend valida el techo solo sobre lo que **se agrega**,
+   así que un rol que quedó con permisos "dormidos" por una baja de plan **se puede volver a guardar**
+   sin quitarlos. No los filtres del cuerpo: si los quitas, los borras.
+2. **Un permiso dormido no es un error.** Es uno que el rol ya tenía y que hoy tiene `grantable:
+   false` por plan o módulo. Muéstralo como "Inactive — requires {gateModule}", no como inválido, y
+   déjalo marcado.
 
 ## 6. Módulos y entitlements
 

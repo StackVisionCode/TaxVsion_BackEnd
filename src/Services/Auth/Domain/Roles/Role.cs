@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Domain.Roles;
 
@@ -31,7 +32,26 @@ public sealed class Role : TenantEntity
     public int PermissionsVersion { get; private set; }
     public IReadOnlyCollection<RolePermission> Permissions => _permissions.AsReadOnly();
 
-    public static Result<Role> Create(Guid tenantId, string name, string? description, bool isSystem = false)
+    /// <summary>
+    /// Para qué actor type se creó este rol custom. Lo declara el Tenant Admin al crearlo y no se
+    /// vuelve a tocar: es lo que permite editar un rol de <c>CustomerPortal</c> sin que el guard de
+    /// actor type lo mida contra el staff (G8 del plan — hasta ahora un rol de portal quedaba
+    /// inmutable, porque al editarlo se validaba siempre contra TenantEmployee/TenantAdmin).
+    /// <para>
+    /// <c>null</c> = no declarado: los roles creados antes de esta columna y los de sistema. Ahí se
+    /// sigue cayendo al comportamiento anterior (staff), o a los actor types de los titulares del
+    /// rol si los tiene.
+    /// </para>
+    /// </summary>
+    public UserActorType? TargetActorType { get; private set; }
+
+    public static Result<Role> Create(
+        Guid tenantId,
+        string name,
+        string? description,
+        bool isSystem = false,
+        UserActorType? targetActorType = null
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<Role>(new Error("Role.Tenant", "Tenant is required."));
@@ -53,6 +73,7 @@ public sealed class Role : TenantEntity
             IsSystem = isSystem,
             IsActive = true,
             CreatedAtUtc = DateTime.UtcNow,
+            TargetActorType = isSystem ? null : targetActorType,
         };
         role.SetTenant(tenantId);
         return Result.Success(role);
@@ -95,6 +116,23 @@ public sealed class Role : TenantEntity
             return Result.Failure(new Error("Role.System", "System roles cannot be deactivated."));
 
         IsActive = false;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Vuelve a poner en servicio un rol desactivado. Desactivar es reversible a propósito (no se
+    /// borra nada), así que reactivar no revalida el techo: los permisos que el rol ya tenía siguen
+    /// siendo los mismos y el gate de módulo en runtime es el que decide si alguno quedó dormido.
+    /// </summary>
+    public Result Reactivate()
+    {
+        if (IsSystem)
+            return Result.Failure(new Error("Role.System", "System roles cannot be reactivated."));
+
+        if (IsActive)
+            return Result.Failure(new Error("Role.AlreadyActive", "Role is already active."));
+
+        IsActive = true;
         return Result.Success();
     }
 }

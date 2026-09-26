@@ -87,6 +87,10 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.Property(role => role.CreatedAtUtc).IsRequired();
         builder.Property(role => role.PermissionsVersion).IsRequired();
 
+        // Como string y nullable: mismo criterio que User.ActorType (ver el doc-comment de
+        // UserActorType sobre no transportar el ordinal). null = rol sin destino declarado.
+        builder.Property(role => role.TargetActorType).HasConversion<string>().HasMaxLength(32);
+
         builder.HasIndex(role => new { role.TenantId, role.Name }).IsUnique();
 
         builder

@@ -248,3 +248,68 @@ siendo la barrera y ninguno de los cuatro está en el bundle por defecto del emp
 `CreateInvitationHandler.CanInvite`: un empleado con el permiso da de alta empleados y clientes,
 nunca otro administrador (eso ya exige `roles.manage` efectiva por A2).
 
+
+## 2026-09-26 — El techo tiene dos mitades: la dura se exige siempre, la comercial solo al escribir
+
+**Contexto:** §27 pide aplicar `Grantable(...)` también al **asignar** un rol, al **invitar** con
+roles y al **aceptar** la invitación, caminos que hoy no revalidan nada del techo. Pero la misma §27
+manda que la configuración anterior a un downgrade quede **dormida**, no borrada: "No se borra de
+roles, asignaciones ni denies".
+**Opciones:** aplicar el techo completo en esos tres caminos · aplicar solo la parte que no depende
+del plan · no aplicar nada (dejarlo como está).
+**Elección:** dividirlo. `IsNeverGrantable` (no asignable por el tenant, `PlatformOnly`,
+`IsDangerous`, `IsReserved`) se exige en **todos** los caminos; el tier y el módulo habilitado se
+exigen solo al crear o editar los permisos de un rol.
+**Por qué:** las dos reglas de §27 se contradicen si se aplica el techo entero al asignar. Un tenant
+que baja de Pro a Starter tendría de golpe roles enteros **inasignables**, no dormidos — y eso es
+justo el bug que §27 describe. La mitad dura, en cambio, no depende de nada que el tenant pueda
+comprar: si un permiso pasó a ser de plataforma después de crear el rol, repartirlo a usuarios nuevos
+es escalada, no configuración dormida.
+**Reversible:** sí, son dos funciones separadas en `PermissionCeiling`; ampliar o reducir lo que se
+exige en cada camino es cambiar una llamada.
+**Detalle importante:** los roles de **sistema** quedan fuera del techo en esos tres caminos
+(`ValidateRolesNeverGrantable` filtra `IsSystem`). El bundle raíz de Tenant Admin incluye permisos
+`IsDangerous` por diseño; medirlo contra el techo del tenant dejaría el rol "Tenant Admin"
+inasignable, que es un lock-out del tenant entero.
+
+## 2026-09-26 — `∩ Effective(caller)` de §27 se documenta y no se implementa
+
+**Contexto:** la fórmula de §27 termina con `∩ Effective(caller)`, anotado como "solo relevante si
+`roles.manage` llegara a delegarse".
+**Opciones:** implementarlo ya · dejarlo documentado sin implementar.
+**Elección:** documentado y sin implementar, explícito en el doc-comment de `PermissionCeiling`.
+**Por qué:** exigirlo hoy rompe la gestión de roles del portal. El bundle del rol de sistema Tenant
+Admin excluye los permisos `IsCustomerPortal` (`SystemTenantAdminRootPermissions`), así que un Tenant
+Admin no tiene —ni debe tener— `portal.folders.view`. Con la intersección activa no podría crear ni
+editar un rol de clientes, que es exactamente lo que A4 viene a habilitar (G8). Hoy además no aporta
+nada: solo el rol raíz tiene `roles.manage` y ese rol ya está por encima de todo lo delegable.
+**Reversible:** sí, es un parámetro que no se pasa.
+
+## 2026-09-26 — El destino del rol se persiste en vez de adivinarse por sus permisos
+
+**Contexto:** G8 pide que un rol de portal se pueda editar. Hasta ahora `SetRolePermissionsHandler`
+validaba siempre contra "staff", así que al reguardar un rol de clientes sus propios permisos se
+rechazaban: quedaba inmutable.
+**Opciones:** inferir el destino de los permisos que el rol ya tiene · persistir el destino declarado
+al crearlo.
+**Elección:** persistirlo — `Role.TargetActorType`, columna nullable nueva.
+**Por qué:** inferirlo es ambiguo justo cuando importa. Un rol vacío o uno que mezcla permisos no
+tiene destino deducible, y "todos sus permisos son de portal ⇒ es de portal" convierte cada edición
+en una reinterpretación del rol: quitar el último permiso de portal lo volvería de staff en silencio.
+El destino es una decisión del administrador, así que se guarda cuando la toma. La creación ya
+recibía `TargetActorType`; solo faltaba no tirarlo.
+**Reversible:** sí. La columna es nullable y `null` conserva **exactamente** el comportamiento
+anterior. El backfill de la migración es conservador: solo marca roles custom que ya tenían al menos
+un permiso y **todos** de portal, que es precisamente el conjunto que hoy está roto.
+
+## 2026-09-26 — `GET /auth/roles/{id}/users` devuelve solo titulares activos
+
+**Contexto:** la UI necesita saber a quién afecta desactivar un rol. El repositorio ofrece
+`CountUsersInRoleAsync` (cuenta todos) y `GetActiveByRoleAsync` (los activos).
+**Opciones:** todos los titulares · solo los activos.
+**Elección:** solo los activos, reutilizando `GetActiveByRoleAsync`.
+**Por qué:** es la misma lista que recibe el fan-out de permisos (A2), así que lo que la UI muestra y
+a quién se le avisa del cambio no pueden divergir. Un usuario dado de baja no es "gente con este rol"
+para quien está decidiendo si lo desactiva. Además evita un método nuevo de repositorio y sus ~15
+dobles de test.
+**Reversible:** sí; agregar los inactivos es un método más y un campo más en la respuesta.

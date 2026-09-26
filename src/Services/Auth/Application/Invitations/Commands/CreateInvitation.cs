@@ -172,6 +172,13 @@ public static class CreateInvitationHandler
             if (actorTypeGuard.IsFailure)
                 return Result.Failure<CreateInvitationResponse>(actorTypeGuard.Error);
 
+            // A4 (§27) — mismo techo duro que al asignar roles: invitar era el otro camino que no lo
+            // revalidaba, y una invitación puede aceptarse días después. Solo la mitad dura (no el
+            // plan): la configuración dormida por un downgrade no debe bloquear el alta.
+            var ceilingGuard = PermissionCeiling.ValidateRolesNeverGrantable(tenantRoles, catalog);
+            if (ceilingGuard.IsFailure)
+                return Result.Failure<CreateInvitationResponse>(ceilingGuard.Error);
+
             roleIdsJson = JsonSerializer.Serialize(requestedIds);
         }
 

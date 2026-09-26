@@ -1,11 +1,14 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Roles.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
+using Wolverine;
 
 namespace TaxVision.Auth.Tests.Application;
 
@@ -19,9 +22,18 @@ namespace TaxVision.Auth.Tests.Application;
 /// </summary>
 public sealed class RoleCommandsTests
 {
-    /// <summary>Sin titulares: el fan-out por titular no tiene a quién avisarle en estos tests.</summary>
+    /// <summary>Sin titulares salvo que el test siembre alguno (A4: el techo y el guard de actor
+    /// type miran los actor types de los titulares del rol).</summary>
     private sealed class FakeUserRepository : IUserRepository
     {
+        public List<User> Holders { get; } = [];
+
+        public Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+            Guid tenantId,
+            Guid roleId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<User>>(Holders);
+
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(null);
 
         public Task<User?> GetByEmailAsync(
@@ -196,6 +208,25 @@ public sealed class RoleCommandsTests
 
     private static Permission StaffPermission() =>
         Permission.Seed(Guid.NewGuid(), "customers.view", "customers", "desc", isCustomerPortal: false);
+
+    /// <summary>Un permiso que el plan Starter del tenant de estos tests no incluye — el fake de
+    /// límites devuelve null, que resuelve a Starter.</summary>
+    private static Permission ProTierPermission() =>
+        Permission.Seed(Guid.NewGuid(), "campaigns.view", "campaigns", "desc", minPlanTier: (int)PlanTier.Pro);
+
+    private static User Holder(Guid tenantId, UserActorType actorType)
+    {
+        var user = User.Register(
+            tenantId,
+            "Ana",
+            "Ruiz",
+            actorType == UserActorType.CustomerPortal ? "cliente@example.com" : "staff@example.com",
+            "hash",
+            actorType,
+            actorType == UserActorType.CustomerPortal ? Guid.NewGuid() : null
+        ).Value;
+        return user;
+    }
 
     [Fact]
     public async Task CreateRoleHandler_rejects_customer_portal_only_permission_for_staff_role()
@@ -397,5 +428,259 @@ public sealed class RoleCommandsTests
         Assert.Contains(portalPermission.Code, result.Error.Message);
         // El rol no debe haber quedado modificado — el guardarraíl corre ANTES de SetPermissions.
         Assert.Empty(role.Permissions);
+    }
+
+    // -----------------------------------------------------------------------
+    // A4 — techo por delta, destino del rol, titulares, unicidad y reactivar
+    // -----------------------------------------------------------------------
+
+    private static async Task<Result> SetPermissionsAsync(
+        FakeRoleRepository roles,
+        FakeUserRepository users,
+        Guid tenantId,
+        Guid roleId,
+        IReadOnlyList<Guid> permissionIds,
+        IMessageBus? bus = null
+    ) =>
+        await SetRolePermissionsHandler.Handle(
+            new SetRolePermissionsCommand(tenantId, roleId, Guid.NewGuid(), permissionIds),
+            roles,
+            users,
+            new FakeTenantPlanLimitsStore(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus ?? new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+    /// <summary>
+    /// §27 [D] — el bug análogo al de GitLab: el techo validaba el set COMPLETO al reguardar, así que
+    /// un rol con un permiso dormido por un downgrade no se podía editar sin quitarlo primero. La
+    /// configuración anterior tiene que quedar dormida, no borrada.
+    /// </summary>
+    [Fact]
+    public async Task SetRolePermissionsHandler_lets_a_role_with_a_dormant_permission_be_edited()
+    {
+        var dormant = ProTierPermission();
+        var staff = StaffPermission();
+        var roles = new FakeRoleRepository { Catalog = [dormant, staff] };
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol con permiso dormido", null).Value;
+        role.SetPermissions([dormant.Id]);
+        roles.Seed(role);
+
+        var result = await SetPermissionsAsync(
+            roles,
+            new FakeUserRepository(),
+            tenantId,
+            role.Id,
+            [dormant.Id, staff.Id]
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal(2, role.Permissions.Count);
+    }
+
+    [Fact]
+    public async Task SetRolePermissionsHandler_still_rejects_a_permission_outside_the_plan_when_it_is_new()
+    {
+        var outsidePlan = ProTierPermission();
+        var roles = new FakeRoleRepository { Catalog = [outsidePlan] };
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol sin permisos", null).Value;
+        roles.Seed(role);
+
+        var result = await SetPermissionsAsync(roles, new FakeUserRepository(), tenantId, role.Id, [outsidePlan.Id]);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.PermissionNotAssignable", result.Error.Code);
+        Assert.Contains(outsidePlan.Code, result.Error.Message);
+    }
+
+    /// <summary>G8 — un rol creado para clientes del portal se mide contra CustomerPortal. Antes se
+    /// medía siempre contra el staff, así que quedaba inmutable.</summary>
+    [Fact]
+    public async Task SetRolePermissionsHandler_lets_a_portal_role_keep_its_portal_permissions()
+    {
+        var portal = PortalPermission();
+        var roles = new FakeRoleRepository { Catalog = [portal] };
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol de clientes", null, targetActorType: UserActorType.CustomerPortal).Value;
+        roles.Seed(role);
+
+        var result = await SetPermissionsAsync(roles, new FakeUserRepository(), tenantId, role.Id, [portal.Id]);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+    }
+
+    [Fact]
+    public async Task SetRolePermissionsHandler_rejects_a_staff_permission_in_a_portal_role()
+    {
+        var portal = PortalPermission();
+        var staff = StaffPermission();
+        var roles = new FakeRoleRepository { Catalog = [portal, staff] };
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol de clientes", null, targetActorType: UserActorType.CustomerPortal).Value;
+        roles.Seed(role);
+
+        var result = await SetPermissionsAsync(
+            roles,
+            new FakeUserRepository(),
+            tenantId,
+            role.Id,
+            [portal.Id, staff.Id]
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.NotAssignableToActorType", result.Error.Code);
+        Assert.Contains(staff.Code, result.Error.Message);
+    }
+
+    /// <summary>G7 — los titulares mandan: un rol sin destino declarado pero con titulares del portal
+    /// no puede recibir un permiso de staff, y sí puede recibir uno de portal.</summary>
+    [Fact]
+    public async Task SetRolePermissionsHandler_validates_the_delta_against_the_actor_types_of_its_holders()
+    {
+        var portal = PortalPermission();
+        var staff = StaffPermission();
+        var roles = new FakeRoleRepository { Catalog = [portal, staff] };
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol legado de clientes", null).Value;
+        roles.Seed(role);
+        var users = new FakeUserRepository();
+        users.Holders.Add(Holder(tenantId, UserActorType.CustomerPortal));
+
+        var rejected = await SetPermissionsAsync(roles, users, tenantId, role.Id, [staff.Id]);
+        Assert.True(rejected.IsFailure);
+        Assert.Equal("Role.NotAssignableToActorType", rejected.Error.Code);
+
+        var accepted = await SetPermissionsAsync(roles, users, tenantId, role.Id, [portal.Id]);
+        Assert.True(accepted.IsSuccess, accepted.IsFailure ? accepted.Error.Message : null);
+    }
+
+    [Fact]
+    public async Task UpdateRoleHandler_rejects_renaming_a_role_onto_another_existing_name()
+    {
+        var roles = new FakeRoleRepository();
+        var tenantId = Guid.NewGuid();
+        roles.Seed(Role.Create(tenantId, "Front desk", null).Value);
+        var role = Role.Create(tenantId, "Marketing", null).Value;
+        roles.Seed(role);
+
+        var result = await UpdateRoleHandler.Handle(
+            new UpdateRoleCommand(tenantId, role.Id, Guid.NewGuid(), "Front desk", null),
+            roles,
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.NameConflict", result.Error.Code);
+        Assert.Equal("Marketing", role.Name);
+    }
+
+    [Fact]
+    public async Task UpdateRoleHandler_lets_a_role_keep_its_own_name()
+    {
+        var roles = new FakeRoleRepository();
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Marketing", null).Value;
+        roles.Seed(role);
+
+        var result = await UpdateRoleHandler.Handle(
+            new UpdateRoleCommand(tenantId, role.Id, Guid.NewGuid(), "Marketing", "nueva descripción"),
+            roles,
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal("nueva descripción", role.Description);
+    }
+
+    [Fact]
+    public async Task ReactivateRoleHandler_puts_a_deactivated_role_back_in_service()
+    {
+        var roles = new FakeRoleRepository();
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol desactivado por error", null).Value;
+        role.Deactivate();
+        roles.Seed(role);
+
+        var result = await ReactivateRoleHandler.Handle(
+            new ReactivateRoleCommand(tenantId, role.Id, Guid.NewGuid()),
+            roles,
+            new FakeUserRepository(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.True(role.IsActive);
+    }
+
+    /// <summary>Reactivar devuelve el acceso a todos los titulares, así que tiene que avisarles.</summary>
+    [Fact]
+    public async Task ReactivateRoleHandler_publishes_the_fan_out_for_every_holder()
+    {
+        var roles = new FakeRoleRepository();
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol con titulares", null).Value;
+        role.Deactivate();
+        roles.Seed(role);
+        var users = new FakeUserRepository();
+        users.Holders.Add(Holder(tenantId, UserActorType.TenantEmployee));
+        var bus = new FakeMessageBus();
+
+        var result = await ReactivateRoleHandler.Handle(
+            new ReactivateRoleCommand(tenantId, role.Id, Guid.NewGuid()),
+            roles,
+            users,
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Single(bus.Published.OfType<UserRolesChangedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task ReactivateRoleHandler_rejects_a_role_that_is_already_active()
+    {
+        var roles = new FakeRoleRepository();
+        var tenantId = Guid.NewGuid();
+        var role = Role.Create(tenantId, "Rol activo", null).Value;
+        roles.Seed(role);
+
+        var result = await ReactivateRoleHandler.Handle(
+            new ReactivateRoleCommand(tenantId, role.Id, Guid.NewGuid()),
+            roles,
+            new FakeUserRepository(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.AlreadyActive", result.Error.Code);
     }
 }
