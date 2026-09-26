@@ -18,7 +18,7 @@ namespace TaxVision.Auth.Application.Permissions.Commands;
 public sealed record SetUserPermissionOverridesCommand(
     Guid TenantId,
     Guid TargetUserId,
-    IReadOnlyList<Guid> DeniedPermissionIds,
+    IReadOnlyList<PermissionDenyInput> Denies,
     Guid RequestedByUserId
 );
 
@@ -55,8 +55,18 @@ public static class SetUserPermissionOverridesHandler
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
         var validPermissionIds = catalog.Select(permission => permission.Id).ToHashSet();
 
-        // Keep only real catalog permissions — a deny on an unknown id is dropped, never stored.
-        var deniedIds = (command.DeniedPermissionIds ?? []).Distinct().Where(validPermissionIds.Contains).ToList();
+        // Keep only real catalog permissions — a deny on an unknown id is dropped, never stored. Y una
+        // expiración ya pasada se rechaza: guardar un deny que nace vencido solo confunde al que lo lee.
+        var denies = (command.Denies ?? [])
+            .Where(deny => validPermissionIds.Contains(deny.PermissionId))
+            .GroupBy(deny => deny.PermissionId)
+            .Select(group => group.First())
+            .ToList();
+        if (denies.Any(deny => deny.ExpiresAtUtc is { } expiry && expiry <= DateTime.UtcNow))
+        {
+            return Result.Failure(new Error("UserPermissionDeny.ExpiryInPast", "A deny expiry must be in the future."));
+        }
+        var deniedIds = denies.Select(deny => deny.PermissionId).ToList();
 
         // Actor-type coherence: a deny may only target a permission valid for this seat's actor type
         // (a staff seat can neither carry nor be denied a customer-portal-only permission, and vice versa).
@@ -73,7 +83,7 @@ public static class SetUserPermissionOverridesHandler
         var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
         var deniedCodes = deniedIds.Select(id => codeByPermissionId[id]).OrderBy(code => code).ToArray();
 
-        await roles.ReplaceUserDeniesAsync(target.Id, deniedIds, command.RequestedByUserId, ct);
+        await roles.ReplaceUserDeniesAsync(target.Id, denies, command.RequestedByUserId, ct);
         target.BumpPermissionsVersion();
 
         await bus.PublishAsync(
@@ -102,7 +112,22 @@ public static class SetUserPermissionOverridesHandler
                 targetType: "User",
                 targetId: target.Id,
                 detailsJson: System.Text.Json.JsonSerializer.Serialize(
-                    new { deniedPermissionCount = deniedCodes.Length, deniedPermissionCodes = deniedCodes }
+                    new
+                    {
+                        deniedPermissionCount = deniedCodes.Length,
+                        deniedPermissionCodes = deniedCodes,
+                        // Lo que el administrador escribió y hasta cuándo: sin esto la auditoría no
+                        // explica por qué se quitó el acceso.
+                        denies = denies
+                            .Select(deny => new
+                            {
+                                code = codeByPermissionId[deny.PermissionId],
+                                reason = deny.Reason,
+                                expiresAtUtc = deny.ExpiresAtUtc,
+                            })
+                            .OrderBy(entry => entry.code)
+                            .ToArray(),
+                    }
                 )
             ),
             ct

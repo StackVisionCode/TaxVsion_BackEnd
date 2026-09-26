@@ -19,6 +19,59 @@ namespace TaxVision.Auth.Tests.Application;
 /// </summary>
 public sealed class RoleCommandsTests
 {
+    /// <summary>Sin titulares: el fan-out por titular no tiene a quién avisarle en estos tests.</summary>
+    private sealed class FakeUserRepository : IUserRepository
+    {
+        public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(null);
+
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => Task.FromResult<User?>(null);
+
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => Task.FromResult(false);
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => Task.FromResult<User?>(null);
+
+        public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            Task.FromResult<User?>(null);
+
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        public Task AddAsync(User user, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(0);
+
+        public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<User?>(null);
+
+        public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
+            Guid tenantId,
+            int page,
+            int size,
+            string? search,
+            bool? isActive,
+            Guid? customerId = null,
+            UserAccountKind? accountKind = null,
+            CancellationToken ct = default
+        ) => Task.FromResult<(IReadOnlyList<User>, int)>(([], 0));
+    }
+
     private sealed class FakeRoleRepository : IRoleRepository
     {
         private readonly List<Role> _roles = [];
@@ -77,7 +130,7 @@ public sealed class RoleCommandsTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;
@@ -168,6 +221,7 @@ public sealed class RoleCommandsTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -200,6 +254,7 @@ public sealed class RoleCommandsTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -234,6 +289,7 @@ public sealed class RoleCommandsTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -272,6 +328,7 @@ public sealed class RoleCommandsTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -304,6 +361,7 @@ public sealed class RoleCommandsTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -324,6 +382,7 @@ public sealed class RoleCommandsTests
         var result = await SetRolePermissionsHandler.Handle(
             command,
             roles,
+            new FakeUserRepository(),
             new FakeTenantPlanLimitsStore(),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),

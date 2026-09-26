@@ -79,7 +79,12 @@ public sealed class AuthzPermissionsProjectionConsumersTests
     }
 
     [Fact]
-    public async Task Recompone_la_union_de_permisos_de_un_usuario_multi_rol()
+    /// <summary>
+    /// Contrato nuevo: este consumer solo cachea rol → permisos. La unión del usuario la manda Auth
+    /// por titular (<c>UserRolesChanged</c>) con los denies ya restados; recomponerla acá resucitaba
+    /// un permiso denegado.
+    /// </summary>
+    public async Task Deja_intacta_la_proyeccion_del_usuario()
     {
         var roleRepository = new FakeRoleRepository();
         var userRepository = new FakeUserRepository();
@@ -114,16 +119,17 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepository,
-            userRepository,
             new FakeUnitOfWork(),
             new CorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,
             CancellationToken.None
         );
 
+        var storedRole = await roleRepository.GetAsync(tenantId, evt.RoleId);
+        Assert.Equal(["billing.manage"], storedRole!.PermissionCodes());
+
         var storedUser = await userRepository.GetAsync(tenantId, userId);
-        Assert.Equal(new[] { "billing.manage", "billing.view" }, storedUser!.PermissionCodes().OrderBy(code => code));
-        // Cambió el rol, no la asignación de roles de ESTE usuario: su versión no se toca.
+        Assert.Equal(["viejo", "billing.view"], storedUser!.PermissionCodes());
         Assert.Equal(1, storedUser.PermissionsVersion);
     }
 
@@ -144,7 +150,6 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepository,
-            new FakeUserRepository(),
             new FakeUnitOfWork(),
             new CorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,

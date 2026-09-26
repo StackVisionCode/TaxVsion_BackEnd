@@ -39,6 +39,13 @@ public interface IUserRepository
     /// <summary>Cuenta TenantAdmins ACTIVOS del tenant — para no dejarlo sin ningún admin al retirar uno.
     /// Default permisivo para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
     Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(int.MaxValue);
+
+    /// <summary>Usuarios activos que tienen asignado este rol — los titulares a los que hay que
+    /// avisarles cuando cambian los permisos del rol. Default vacío para no forzar a los fakes de
+    /// tests; el repositorio real lo implementa con una query.</summary>
+    Task<IReadOnlyList<User>> GetActiveByRoleAsync(Guid tenantId, Guid roleId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<User>>([]);
+
     Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,

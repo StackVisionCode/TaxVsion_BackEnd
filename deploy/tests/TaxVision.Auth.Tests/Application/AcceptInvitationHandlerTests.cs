@@ -243,12 +243,18 @@ public sealed class AcceptInvitationHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public IReadOnlyList<Guid>? AppliedRoleIds { get; private set; }
+
         public Task ReplaceUserRolesAsync(
             Guid userId,
             IReadOnlyCollection<Guid> roleIds,
             Guid? assignedByUserId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        )
+        {
+            AppliedRoleIds = roleIds.ToList();
+            return Task.CompletedTask;
+        }
 
         public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -261,7 +267,7 @@ public sealed class AcceptInvitationHandlerTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;
@@ -374,6 +380,125 @@ public sealed class AcceptInvitationHandlerTests
 
         // El evento de alta ya existía antes del fix — confirma que no lo rompimos.
         Assert.Single(bus.Published.OfType<UserRegisteredIntegrationEvent>());
+    }
+
+    /// <summary>
+    /// Los roles de la invitación se revalidan al aceptarla, no se aplican tal cual: entre invitar y
+    /// aceptar el rol pudo desactivarse. Sin esto el usuario nacía con un rol muerto y sin ninguno
+    /// vivo, así que quedaba sin permisos y sin forma de recuperarlos salvo asignación manual.
+    /// </summary>
+    [Fact]
+    public async Task AcceptInvitation_falls_back_to_the_system_role_when_the_invited_role_was_deactivated()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Acme", "acme", TenantKind.Customer, "America/Santo_Domingo").Value;
+
+        var permission = StaffPermission();
+        var invitedRole = Role.Create(tenantId, "Staff", null).Value;
+        Assert.True(invitedRole.SetPermissions([permission.Id]).IsSuccess);
+        Assert.True(invitedRole.Deactivate().IsSuccess);
+
+        var systemRole = Role.Create(tenantId, Role.SystemEmployee, null, isSystem: true).Value;
+        Assert.True(systemRole.SetPermissions([permission.Id], seeding: true).IsSuccess);
+
+        var invitation = Invitation
+            .Create(
+                tenantId,
+                "newhire@example.com",
+                UserActorType.TenantEmployee,
+                customerId: null,
+                invitedByUserId: Guid.NewGuid(),
+                tokenHash: FixedTokenHash,
+                expiresAtUtc: DateTime.UtcNow.AddDays(1),
+                roleIdsJson: JsonSerializer.Serialize(new[] { invitedRole.Id })
+            )
+            .Value;
+
+        var roles = new FakeRoleRepository { Catalog = [permission] };
+        roles.Seed(invitedRole);
+        roles.Seed(systemRole);
+
+        var result = await AcceptInvitationHandler.Handle(
+            new AcceptInvitationCommand(RawToken, "Ana", "Gomez", "Str0ng-Passw0rd!"),
+            new FakeInvitationRepository(invitation),
+            new FakeInvitationTokenService(),
+            new FakeUserRepository(),
+            new FakeTenantRegistry(tenant),
+            new FakePasswordHasher(),
+            roles,
+            new FakeLoginThrottler(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal([systemRole.Id], roles.AppliedRoleIds);
+    }
+
+    /// <summary>
+    /// Un rol de portal no se le aplica a un empleado ni al revés: el actor type de la invitación
+    /// manda, aunque la invitación pida ese rol.
+    /// </summary>
+    [Fact]
+    public async Task AcceptInvitation_drops_an_invited_role_that_does_not_fit_the_actor_type()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Acme", "acme", TenantKind.Customer, "America/Santo_Domingo").Value;
+
+        var portalPermission = Permission.Seed(
+            Guid.NewGuid(),
+            "portal.folders.view",
+            "documents",
+            "desc",
+            isCustomerPortal: true
+        );
+        var staffPermission = StaffPermission();
+        var portalRole = Role.Create(tenantId, "Portal", null).Value;
+        Assert.True(portalRole.SetPermissions([portalPermission.Id]).IsSuccess);
+
+        var systemRole = Role.Create(tenantId, Role.SystemEmployee, null, isSystem: true).Value;
+        Assert.True(systemRole.SetPermissions([staffPermission.Id], seeding: true).IsSuccess);
+
+        var invitation = Invitation
+            .Create(
+                tenantId,
+                "newhire@example.com",
+                UserActorType.TenantEmployee,
+                customerId: null,
+                invitedByUserId: Guid.NewGuid(),
+                tokenHash: FixedTokenHash,
+                expiresAtUtc: DateTime.UtcNow.AddDays(1),
+                roleIdsJson: JsonSerializer.Serialize(new[] { portalRole.Id })
+            )
+            .Value;
+
+        var roles = new FakeRoleRepository { Catalog = [portalPermission, staffPermission] };
+        roles.Seed(portalRole);
+        roles.Seed(systemRole);
+
+        var result = await AcceptInvitationHandler.Handle(
+            new AcceptInvitationCommand(RawToken, "Ana", "Gomez", "Str0ng-Passw0rd!"),
+            new FakeInvitationRepository(invitation),
+            new FakeInvitationTokenService(),
+            new FakeUserRepository(),
+            new FakeTenantRegistry(tenant),
+            new FakePasswordHasher(),
+            roles,
+            new FakeLoginThrottler(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal([systemRole.Id], roles.AppliedRoleIds);
     }
 
     [Fact]

@@ -109,6 +109,24 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
                 ct
             );
 
+    // IgnoreQueryFilters(): el tenant viene por parámetro y se compara explícito. Este método lo
+    // llama el fan-out por titular, que corre tanto desde un request (set-permissions) como desde el
+    // arranque (resync de roles de sistema), donde no hay ITenantContext poblado.
+    public async Task<IReadOnlyList<User>> GetActiveByRoleAsync(
+        Guid tenantId,
+        Guid roleId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .UserRoles.Where(link => link.RoleId == roleId)
+            .Join(
+                db.Users.IgnoreQueryFilters().Where(user => user.TenantId == tenantId && user.IsActive),
+                link => link.UserId,
+                user => user.Id,
+                (link, user) => user
+            )
+            .ToListAsync(ct);
+
     public async Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,
         int page,

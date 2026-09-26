@@ -84,7 +84,12 @@ public sealed class AuthzPermissionsProjectionConsumersTests
     // -------------------- AuthzRolePermissionsChangedPermissionsProjectionConsumer --------------------
 
     [Fact]
-    public async Task Recomputes_the_permission_union_for_a_multi_role_user()
+    /// <summary>
+    /// Contrato nuevo: este consumer solo cachea rol → permisos. La unión del usuario la manda Auth
+    /// por titular (<c>UserRolesChanged</c>) con los denies ya restados; recomponerla acá resucitaba
+    /// un permiso denegado.
+    /// </summary>
+    public async Task Leaves_the_user_projection_untouched()
     {
         var roleRepository = new FakeRoleRepository();
         var userRepository = new FakeUserRepository();
@@ -119,17 +124,17 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepository,
-            userRepository,
             new FakeUnitOfWork(),
             new CorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,
             CancellationToken.None
         );
 
+        var storedRole = await roleRepository.GetAsync(tenantId, changedRoleId);
+        Assert.Equal(["new.permission"], storedRole!.PermissionCodes());
+
         var storedUser = await userRepository.GetAsync(tenantId, userId);
-        Assert.Equal(new[] { "new.permission", "other.permission" }, storedUser!.PermissionCodes().OrderBy(c => c));
-        // The user's own PermissionsVersion is untouched -- this change did not come from a
-        // role reassignment of THIS user.
+        Assert.Equal(["old.permission", "other.permission"], storedUser!.PermissionCodes());
         Assert.Equal(1, storedUser.PermissionsVersion);
     }
 
@@ -152,7 +157,6 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepository,
-            userRepository,
             new FakeUnitOfWork(),
             new CorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,

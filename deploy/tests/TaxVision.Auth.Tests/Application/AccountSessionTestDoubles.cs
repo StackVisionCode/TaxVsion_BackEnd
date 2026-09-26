@@ -229,7 +229,7 @@ internal sealed class NoRolesRepository : IRoleRepository
 
     public Task ReplaceUserDeniesAsync(
         Guid userId,
-        IReadOnlyCollection<Guid> permissionIds,
+        IReadOnlyCollection<PermissionDenyInput> denies,
         Guid? deniedByUserId,
         CancellationToken ct = default
     ) => throw new NotSupportedException();

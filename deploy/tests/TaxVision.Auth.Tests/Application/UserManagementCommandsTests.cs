@@ -56,6 +56,9 @@ public sealed class UserManagementCommandsTests
 
         public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) => throw NotExpected();
 
+        public virtual Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            throw NotExpected();
+
         public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) => throw NotExpected();
 
         public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
@@ -121,7 +124,7 @@ public sealed class UserManagementCommandsTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;
@@ -256,6 +259,188 @@ public sealed class UserManagementCommandsTests
     {
         public override Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult<User?>(user);
+    }
+
+    /// <summary>Como la anterior, pero además dice cuántos administradores activos hay.</summary>
+    private sealed class SingleUserWithAdminCountRepository(User user, int activeAdmins) : ThrowingUserRepository
+    {
+        public override Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+            Task.FromResult<User?>(user);
+
+        public override Task<int> CountActiveAdminsAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(activeAdmins);
+    }
+
+    private static User Admin(Guid tenantId) =>
+        User.Register(tenantId, "Tania", "Ruiz", "tania@example.com", "hash", UserActorType.TenantAdmin).Value;
+
+    private static User Employee(Guid tenantId) =>
+        User.Register(tenantId, "Elio", "Paz", "elio@example.com", "hash", UserActorType.TenantEmployee).Value;
+
+    private static Task<BuildingBlocks.Results.Result> DeactivateAsync(
+        Guid tenantId,
+        User target,
+        UserActorType? callerActorType,
+        IUserRepository users
+    ) =>
+        DeactivateUserHandler.Handle(
+            new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), callerActorType),
+            users,
+            new ThrowingSessionRepository(),
+            new ThrowingDenylist(),
+            new ThrowingAuthAuditWriter(),
+            new ThrowingRequestContext(),
+            new ThrowingCorrelationContext(),
+            new ThrowingUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+    /// <summary>
+    /// <c>users.manage</c> alcanza para dar de baja a un empleado, no a un administrador: un empleado
+    /// con el permiso delegado podía desactivar a su propio jefe.
+    /// </summary>
+    [Theory]
+    [InlineData(UserActorType.TenantEmployee)]
+    [InlineData(UserActorType.CustomerPortal)]
+    [InlineData(null)]
+    public async Task DeactivateUserHandler_refuses_a_non_admin_caller_against_an_admin_target(
+        UserActorType? callerActorType
+    )
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Admin(tenantId);
+
+        var result = await DeactivateAsync(tenantId, target, callerActorType, new SingleUserRepository(target));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("User.Hierarchy", result.Error.Code);
+        Assert.True(target.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateUserHandler_refuses_to_leave_the_tenant_without_an_active_admin()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Admin(tenantId);
+
+        var result = await DeactivateAsync(
+            tenantId,
+            target,
+            UserActorType.TenantAdmin,
+            new SingleUserWithAdminCountRepository(target, activeAdmins: 1)
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("User.LastAdmin", result.Error.Code);
+        Assert.True(target.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateUserHandler_lets_an_employee_caller_deactivate_another_employee()
+    {
+        // Regresión: la jerarquía nueva no toca el caso normal (dar de baja a un empleado con
+        // users.manage sigue funcionando para un empleado).
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+
+        var result = await DeactivateUserHandler.Handle(
+            new DeactivateUserCommand(tenantId, target.Id, Guid.NewGuid(), UserActorType.TenantEmployee),
+            new SingleUserRepository(target),
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.False(target.IsActive);
+    }
+
+    /// <summary>Dobles silenciosos para el camino feliz: acá el test mira el resultado, no los efectos.</summary>
+    private sealed class QuietSessionRepository : ISessionRepository
+    {
+        public Task AddSessionAsync(UserSession session, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<UserSession?> GetSessionByIdAsync(Guid sessionId, CancellationToken ct = default) =>
+            Task.FromResult<UserSession?>(null);
+
+        public Task<IReadOnlyList<UserSession>> GetActiveSessionsByUserAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserSession>>([]);
+
+        public Task AddTokenAsync(RefreshToken token, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<RefreshToken?> GetTokenByHashAsync(string tokenHash, CancellationToken ct = default) =>
+            Task.FromResult<RefreshToken?>(null);
+
+        public Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default) =>
+            Task.FromResult(0);
+
+        public Task<int> RevokeSurfaceTokensAsync(
+            Guid sessionId,
+            SessionSurface surface,
+            string reason,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
+            Task.FromResult(false);
+
+        public Task<int> RevokeAllForUserAsync(
+            Guid userId,
+            string reason,
+            Guid? exceptSessionId = null,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
+            Task.FromResult(0);
+    }
+
+    private sealed class QuietDenylist : IAccessTokenDenylist
+    {
+        public Task DenySessionAsync(Guid sessionId, TimeSpan ttl, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task<bool> IsSessionDeniedAsync(Guid sessionId, CancellationToken ct = default) =>
+            Task.FromResult(false);
+    }
+
+    private sealed class QuietAuthAuditWriter : IAuthAuditWriter
+    {
+        public Task AddAsync(TaxVision.Auth.Domain.Audit.AuthAuditLog log, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class QuietUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(1);
+    }
+
+    private sealed class QuietRequestContext : IRequestContext
+    {
+        public string? IpAddress => "203.0.113.10";
+        public string? UserAgent => "test-agent";
+    }
+
+    private sealed class QuietCorrelationContext : BuildingBlocks.Common.ICorrelationContext
+    {
+        public string CorrelationId => "test-correlation-id";
+
+        public void Set(string correlationId) { }
+
+        public IDisposable Push(string correlationId) => new NoopScope();
+
+        private sealed class NoopScope : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 
     [Fact]

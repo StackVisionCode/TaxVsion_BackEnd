@@ -56,6 +56,7 @@ public static class CreateRoleHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -113,6 +114,21 @@ public static class CreateRoleHandler
             return Result.Failure<RoleResponse>(setResult.Error);
 
         await roles.AddAsync(role, ct);
+
+        // También al crear: un consumidor que cachea rol → permisos no puede esperar al primer
+        // set-permissions para enterarse de que el rol existe.
+        await bus.PublishAsync(
+            new RolePermissionsChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                RoleId = role.Id,
+                RoleName = role.Name,
+                PermissionCodes = ResolvePermissionCodesFor(role, catalogForActorTypeCheck),
+                PermissionsVersion = role.PermissionsVersion,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -159,6 +175,17 @@ public static class CreateRoleHandler
         var modules = limits is null ? [] : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
         var enabledModules = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return RolePermissionGuard.Validate(catalog, permissionIds, tier, enabledModules);
+    }
+
+    /// <summary>Códigos de permiso del rol resueltos contra el catálogo, para el evento de integración.</summary>
+    internal static string[] ResolvePermissionCodesFor(Role role, IReadOnlyList<Permission> catalog)
+    {
+        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
+        return role
+            .Permissions.Select(link => link.PermissionId)
+            .Where(codeByPermissionId.ContainsKey)
+            .Select(id => codeByPermissionId[id])
+            .ToArray();
     }
 
     internal static async Task<RoleResponse> ToResponseAsync(Role role, IRoleRepository roles, CancellationToken ct)
@@ -238,6 +265,7 @@ public static class SetRolePermissionsHandler
     public static async Task<Result> Handle(
         SetRolePermissionsCommand command,
         IRoleRepository roles,
+        IUserRepository users,
         ITenantPlanLimitsStore planLimits,
         IAuthAuditWriter audit,
         IRequestContext request,
@@ -293,10 +321,23 @@ public static class SetRolePermissionsHandler
                 TenantId = command.TenantId,
                 RoleId = role.Id,
                 RoleName = role.Name,
-                PermissionCodes = ResolvePermissionCodes(role, catalog),
+                PermissionCodes = CreateRoleHandler.ResolvePermissionCodesFor(role, catalog),
                 PermissionsVersion = role.PermissionsVersion,
                 CorrelationId = correlation.CorrelationId,
             }
+        );
+
+        // Y por titular: el evento de arriba solo dice qué tiene el rol. Los denies por usuario
+        // viven solo acá, así que los códigos efectivos de cada titular los tiene que resolver Auth.
+        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+            command.TenantId,
+            role.Id,
+            catalog,
+            users,
+            roles,
+            bus,
+            correlation.CorrelationId,
+            ct
         );
 
         await audit.AddAsync(
@@ -317,16 +358,6 @@ public static class SetRolePermissionsHandler
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
-
-    private static string[] ResolvePermissionCodes(Role role, IReadOnlyList<Permission> catalog)
-    {
-        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
-        return role
-            .Permissions.Select(link => link.PermissionId)
-            .Where(codeByPermissionId.ContainsKey)
-            .Select(id => codeByPermissionId[id])
-            .ToArray();
-    }
 }
 
 public sealed record DeactivateRoleCommand(Guid TenantId, Guid RoleId, Guid RequestedByUserId);
@@ -336,10 +367,12 @@ public static class DeactivateRoleHandler
     public static async Task<Result> Handle(
         DeactivateRoleCommand command,
         IRoleRepository roles,
+        IUserRepository users,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -350,6 +383,20 @@ public static class DeactivateRoleHandler
         var result = role.Deactivate();
         if (result.IsFailure)
             return result;
+
+        // Desactivar un rol le retira permisos a todos sus titulares. Sin este fan-out la
+        // proyección de cada uno se quedaba con los permisos del rol desactivado.
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+        await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+            command.TenantId,
+            role.Id,
+            catalog,
+            users,
+            roles,
+            bus,
+            correlation.CorrelationId,
+            ct
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(

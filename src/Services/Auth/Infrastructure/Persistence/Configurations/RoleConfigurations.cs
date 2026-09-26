@@ -140,8 +140,12 @@ public sealed class UserPermissionDenyConfiguration : IEntityTypeConfiguration<U
         builder.ToTable("UserPermissionDenies");
         builder.HasKey(link => new { link.UserId, link.PermissionId });
         builder.Property(link => link.DeniedAtUtc).IsRequired();
+        builder.Property(link => link.Reason).HasMaxLength(UserPermissionDeny.ReasonMaxLength);
 
         builder.HasIndex(link => link.PermissionId);
+
+        // El job de expiración barre por fecha: sin este índice hace un scan de toda la tabla.
+        builder.HasIndex(link => link.ExpiresAtUtc);
 
         builder.HasOne<User>().WithMany().HasForeignKey(link => link.UserId).OnDelete(DeleteBehavior.Cascade);
 

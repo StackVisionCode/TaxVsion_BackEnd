@@ -10,6 +10,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -76,6 +77,23 @@ public static class CreateInvitationHandler
         {
             return Result.Failure<CreateInvitationResponse>(
                 new Error("Invitation.Forbidden", "This actor cannot create the requested invitation.")
+            );
+        }
+
+        // Invitar a otro administrador es delegar el control del tenant: exige roles.manage
+        // EFECTIVA (roles menos denies), no solo ser TenantAdmin. Sin esto, un admin al que le
+        // quitaron roles.manage se lo devolvía a sí mismo invitando una segunda cuenta de admin.
+        if (
+            command.ActorType == UserActorType.TenantAdmin
+            && inviter.ActorType != UserActorType.PlatformAdmin
+            && !(await roles.GetEffectivePermissionCodesAsync(inviter.Id, ct)).Contains(
+                PermissionCatalog.RolesManage,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
+        {
+            return Result.Failure<CreateInvitationResponse>(
+                new Error("Invitation.Forbidden", "Inviting an administrator requires the roles.manage permission.")
             );
         }
 

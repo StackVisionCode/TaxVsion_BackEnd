@@ -17,7 +17,17 @@ namespace TaxVision.Auth.Application.Users.Commands;
 
 /// <summary>Desactiva un usuario (baja reversible): corta sus sesiones y deja de contar para el cupo del
 /// plan. NO libera un asiento COMPRADO — eso lo hace Subscription al consumir el evento.</summary>
-public sealed record DeactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
+/// <param name="CallerActorType">
+/// Actor type real del caller, leído del JWT y nunca del cuerpo. Solo se usa para la jerarquía: un
+/// empleado con <c>users.manage</c> no da de baja a un administrador. <c>null</c> = desconocido, y
+/// entonces la jerarquía se aplica igual (fail-closed).
+/// </param>
+public sealed record DeactivateUserCommand(
+    Guid TenantId,
+    Guid TargetUserId,
+    Guid RequestedByUserId,
+    UserActorType? CallerActorType = null
+);
 
 /// <summary>Desactiva al usuario objetivo, revoca sesiones y tokens, y publica el evento de integración correspondiente.</summary>
 public static class DeactivateUserHandler
@@ -44,6 +54,24 @@ public static class DeactivateUserHandler
 
         if (!target.IsActive)
             return Result.Success();
+
+        // Jerarquía: users.manage alcanza para dar de baja a un empleado, no a un administrador.
+        // Un empleado con el permiso delegado podía desactivar a su propio jefe.
+        var callerIsAdmin = command.CallerActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin;
+        if (target.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin && !callerIsAdmin)
+        {
+            return Result.Failure(
+                new Error("User.Hierarchy", "Only an administrator can deactivate another administrator.")
+            );
+        }
+
+        // Y nunca se queda el tenant sin ningún administrador activo — el mismo guard que ya tenía
+        // el retiro definitivo (Offboard), que la baja reversible no tenía.
+        if (
+            target.ActorType == UserActorType.TenantAdmin
+            && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
+        )
+            return Result.Failure(new Error("User.LastAdmin", "You cannot deactivate the last active administrator."));
 
         target.Deactivate(DateTime.UtcNow);
 

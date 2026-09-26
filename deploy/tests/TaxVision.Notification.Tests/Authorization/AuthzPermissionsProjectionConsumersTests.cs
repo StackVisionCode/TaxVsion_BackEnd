@@ -125,7 +125,12 @@ public sealed class AuthzPermissionsProjectionConsumersTests
     }
 
     [Fact]
-    public async Task RolePermissionsChanged_recomputes_union_for_multi_role_affected_user()
+    /// <summary>
+    /// Contrato nuevo: este consumer solo cachea rol → permisos. La unión del usuario la manda Auth
+    /// por titular (<c>UserRolesChanged</c>) con los denies ya restados; recomponerla acá resucitaba
+    /// un permiso denegado.
+    /// </summary>
+    public async Task RolePermissionsChanged_leaves_the_user_projection_untouched()
     {
         var tenantId = Guid.NewGuid();
         var changedRoleId = Guid.NewGuid();
@@ -164,7 +169,6 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepo,
-            userRepo,
             uow,
             new NoOpCorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,
@@ -176,12 +180,11 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         Assert.NotNull(storedRole);
         Assert.Equal(["notification.template.edit"], storedRole!.PermissionCodes());
 
-        // ...y el usuario multi-rol conserva AMBOS conjuntos de permisos (unión), no solo el rol que cambió.
+        // ...y el usuario queda intacto: sus códigos efectivos los manda Auth por titular.
         var storedUser = await userRepo.GetAsync(tenantId, userId);
         Assert.NotNull(storedUser);
-        Assert.Contains("notification.template.edit", storedUser!.PermissionCodes());
-        Assert.Contains("notification.log.view", storedUser.PermissionCodes());
-        Assert.Equal(1, storedUser.PermissionsVersion); // no cambia con RolePermissionsChanged
+        Assert.Equal(["notification.log.view"], storedUser!.PermissionCodes());
+        Assert.Equal(1, storedUser.PermissionsVersion);
     }
 
     [Fact]
@@ -205,7 +208,6 @@ public sealed class AuthzPermissionsProjectionConsumersTests
         await AuthzRolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roleRepo,
-            userRepo,
             uow,
             new NoOpCorrelationContext(),
             NullLogger<AuthzRolePermissionsProjection>.Instance,

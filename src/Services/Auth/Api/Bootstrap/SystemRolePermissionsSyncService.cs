@@ -1,6 +1,8 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Infrastructure.Persistence;
 using Wolverine;
@@ -47,6 +49,8 @@ public sealed class SystemRolePermissionsSyncService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
 
         // RBAC Fase 5 — resync cross-tenant deliberado (recomputa el rol de sistema de CADA
         // tenant contra el catálogo actual), no un olvido de filtrar por tenant.
@@ -85,6 +89,7 @@ public sealed class SystemRolePermissionsSyncService(
         {
             await db.SaveChangesAsync(cancellationToken);
 
+            var catalog = await roles.GetPermissionsCatalogAsync(cancellationToken);
             foreach (var role in changedRoles)
             {
                 var permissionCodes = role
@@ -92,6 +97,7 @@ public sealed class SystemRolePermissionsSyncService(
                     .Where(codeById.ContainsKey)
                     .Select(id => codeById[id])
                     .ToArray();
+                var correlationId = Guid.NewGuid().ToString("N");
 
                 await bus.PublishAsync(
                     new RolePermissionsChangedIntegrationEvent
@@ -101,10 +107,26 @@ public sealed class SystemRolePermissionsSyncService(
                         RoleName = role.Name,
                         PermissionCodes = permissionCodes,
                         PermissionsVersion = role.PermissionsVersion,
-                        CorrelationId = Guid.NewGuid().ToString("N"),
+                        CorrelationId = correlationId,
                     }
                 );
+
+                // Y por titular, con sus códigos efectivos: los denies por usuario viven solo en
+                // Auth, así que ninguna proyección puede resolverlos por su cuenta.
+                await RolePermissionsFanOut.PublishForRoleHoldersAsync(
+                    role.TenantId,
+                    role.Id,
+                    catalog,
+                    users,
+                    roles,
+                    bus,
+                    correlationId,
+                    cancellationToken
+                );
             }
+
+            // El fan-out sube PermissionsVersion de cada titular; hay que persistirlo.
+            await db.SaveChangesAsync(cancellationToken);
 
             logger.LogInformation(
                 "SystemRolePermissionsSync: resynced {Updated} of {Total} system role(s) against the current PermissionCatalog.",

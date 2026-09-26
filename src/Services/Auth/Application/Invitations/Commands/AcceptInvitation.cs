@@ -131,8 +131,10 @@ public static class AcceptInvitationHandler
 
         await users.AddAsync(user, ct);
 
-        // Roles RBAC: los indicados en la invitación o el rol de sistema del actor.
-        var roleIds = ResolveInvitationRoleIds(invitation);
+        // Roles RBAC: los indicados en la invitación o el rol de sistema del actor. Los de la
+        // invitación se revalidan acá, no se aplican tal cual: entre invitar y aceptar el rol pudo
+        // desactivarse, borrarse o dejar de ser válido para este actor type.
+        var roleIds = await RevalidateInvitationRolesAsync(invitation, roles, ct);
         if (roleIds.Count == 0)
         {
             var systemRoleName = invitation.ActorType switch
@@ -221,6 +223,37 @@ public static class AcceptInvitationHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(ToResponse(user));
+    }
+
+    /// <summary>
+    /// Los roles que la invitación pedía, filtrados a los que siguen siendo asignables: del mismo
+    /// tenant, activos y coherentes con el actor type de la invitación. Si no sobrevive ninguno, el
+    /// caller cae al rol de sistema — nunca se deja al usuario sin ningún rol.
+    /// </summary>
+    private static async Task<List<Guid>> RevalidateInvitationRolesAsync(
+        Invitation invitation,
+        IRoleRepository roles,
+        CancellationToken ct
+    )
+    {
+        var requested = ResolveInvitationRoleIds(invitation);
+        if (requested.Count == 0)
+            return [];
+
+        var tenantRoles = await roles.GetByIdsAsync(invitation.TenantId, requested, ct);
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+        var valid = new List<Guid>();
+        foreach (var role in tenantRoles.Where(role => role.IsActive))
+        {
+            var permissionIds = role.Permissions.Select(link => link.PermissionId).ToList();
+            if (
+                ActorTypeRoleGuard
+                    .ValidatePermissionsForActorType(invitation.ActorType, permissionIds, catalog)
+                    .IsSuccess
+            )
+                valid.Add(role.Id);
+        }
+        return valid;
     }
 
     private static List<Guid> ResolveInvitationRoleIds(Invitation invitation)
