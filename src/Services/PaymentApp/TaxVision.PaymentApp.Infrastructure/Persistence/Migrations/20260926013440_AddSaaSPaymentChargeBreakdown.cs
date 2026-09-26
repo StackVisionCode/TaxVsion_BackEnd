@@ -14,25 +14,23 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                 name: "BreakdownQuantity",
                 table: "SaaSPayments",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "BreakdownUnitAmountCents",
                 table: "SaaSPayments",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "BreakdownQuantity",
-                table: "SaaSPayments");
+            migrationBuilder.DropColumn(name: "BreakdownQuantity", table: "SaaSPayments");
 
-            migrationBuilder.DropColumn(
-                name: "BreakdownUnitAmountCents",
-                table: "SaaSPayments");
+            migrationBuilder.DropColumn(name: "BreakdownUnitAmountCents", table: "SaaSPayments");
         }
     }
 }

@@ -56,8 +56,7 @@ public sealed class HasPermissionForActorAttributeTests
         Assert.False(source.WasAsked);
     }
 
-    private static HasPermissionForActorAttribute Attribute() =>
-        new(ActorType.CustomerPortal, Permission);
+    private static HasPermissionForActorAttribute Attribute() => new(ActorType.CustomerPortal, Permission);
 
     private static AuthorizationFilterContext BuildContext(ActorType actorType, bool hasPermission) =>
         BuildContext(actorType, new RecordingPermissionsSource(hasPermission));
