@@ -1640,6 +1640,10 @@ services:
       Intellipay__ApiKey: ${INTELLIPAY_API_KEY:-}
       # PayFlow (Fase 16) — M2M hacia Subscription para resolver el precio real del plan
       # (ISubscriptionPlanPricingClient), cierra el price-trust gap del checkout de onboarding.
+      # Firma la descarga del recibo contra CloudStorage. Sin esto el cliente cae a su default
+      # http://localhost:5330, que dentro del contenedor no es nadie: la llamada muere en
+      # connection refused y el recibo responde 400.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
       ServiceAuthClient__ClientSecret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
