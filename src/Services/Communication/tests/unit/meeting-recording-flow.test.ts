@@ -146,6 +146,7 @@ class FakeEmitter implements RealtimeEmitter {
   }
   emitToUser(): void {}
   emitToTenant(): void {}
+  emitToTenantStaff(): void {}
 }
 
 function liveMeetingWithTwoParticipants() {

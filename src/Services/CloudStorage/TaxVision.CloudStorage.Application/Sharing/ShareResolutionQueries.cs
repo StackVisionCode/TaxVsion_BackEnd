@@ -277,7 +277,8 @@ public static class ResolvePrivateShareHandler
             return ShareAccessResult.Denied();
         }
 
-        if (!IsAuthorized(link, query))
+        var authorization = Authorize(link, query);
+        if (authorization == ShareAuthorization.Denied)
         {
             AuditDenied(link, query, audit, clock);
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
@@ -290,6 +291,16 @@ public static class ResolvePrivateShareHandler
         {
             AuditDenied(link, query, audit, clock);
             await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "ResourceNotAvailable", ct);
+            await unitOfWork.SaveChangesAsync(ct);
+            return ShareAccessResult.Denied();
+        }
+
+        // Un link a los clientes del tenant sin destinatarios concretos solo llega al dueño del
+        // archivo: el scope del portal se resuelve recién acá, con el archivo en mano.
+        if (authorization == ShareAuthorization.RequiresResourceScope && !query.Scope.CanAccess(file))
+        {
+            AuditDenied(link, query, audit, clock);
+            await ShareLinkResolutionSignals.PublishAccessDeniedAsync(bus, link, "private", "NotAuthorized", ct);
             await unitOfWork.SaveChangesAsync(ct);
             return ShareAccessResult.Denied();
         }
@@ -322,18 +333,40 @@ public static class ResolvePrivateShareHandler
         return ShareAccessResult.Redirect(url.ToString());
     }
 
-    private static bool IsAuthorized(ShareLink link, ResolvePrivateShareQuery query) =>
+    private enum ShareAuthorization
+    {
+        Denied,
+        Allowed,
+
+        /// <summary>Falta comprobar que el recurso sea del propio cliente; necesita el archivo resuelto.</summary>
+        RequiresResourceScope,
+    }
+
+    private static ShareAuthorization Authorize(ShareLink link, ResolvePrivateShareQuery query) =>
         link.Visibility switch
         {
-            ShareVisibility.TenantOnly => true,
-            ShareVisibility.SpecificUsers => link.HasUserRecipient(query.JwtUserId),
-            ShareVisibility.TenantCustomers => IsAuthorizedCustomer(link, query.Scope),
-            _ => false,
+            // "Solo el tenant" es el personal de la oficina. Un cliente del portal es del mismo
+            // tenant y entraba acá con cualquier token válido, sin ser destinatario de nada.
+            ShareVisibility.TenantOnly => query.Scope.IsCustomerPortal
+                ? ShareAuthorization.Denied
+                : ShareAuthorization.Allowed,
+            ShareVisibility.SpecificUsers => link.HasUserRecipient(query.JwtUserId)
+                ? ShareAuthorization.Allowed
+                : ShareAuthorization.Denied,
+            ShareVisibility.TenantCustomers => AuthorizeCustomer(link, query.Scope),
+            _ => ShareAuthorization.Denied,
         };
 
-    private static bool IsAuthorizedCustomer(ShareLink link, StorageActorScope scope) =>
-        scope is { IsCustomerPortal: true, CustomerId: { } customerId }
-        && (!link.HasAnyRecipient || link.HasCustomerRecipient(customerId));
+    private static ShareAuthorization AuthorizeCustomer(ShareLink link, StorageActorScope scope)
+    {
+        if (scope is not { IsCustomerPortal: true, CustomerId: { } customerId })
+            return ShareAuthorization.Denied;
+        if (link.HasAnyRecipient)
+            return link.HasCustomerRecipient(customerId) ? ShareAuthorization.Allowed : ShareAuthorization.Denied;
+
+        // Sin destinatarios el link no dice a qué cliente va: se cae al scope del recurso.
+        return ShareAuthorization.RequiresResourceScope;
+    }
 
     private static void AuditDenied(
         ShareLink link,

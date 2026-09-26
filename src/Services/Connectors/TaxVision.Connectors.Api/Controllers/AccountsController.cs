@@ -153,7 +153,7 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
     // ---------- GET /connectors/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántos buzones personales hay que desconectar antes de retirar a este empleado.
     [HttpGet("offboarding-impact/{userId:guid}")]
-    [HasPermission(ConnectorsPermissions.AccountsRead)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("connectors.f.accounts_read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]

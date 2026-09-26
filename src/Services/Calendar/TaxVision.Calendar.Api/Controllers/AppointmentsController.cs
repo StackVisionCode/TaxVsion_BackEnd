@@ -80,7 +80,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
     // ---------- GET /calendar/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántas citas vigentes organiza este empleado antes de retirarlo.
     [HttpGet("/calendar/offboarding-impact/{userId:guid}")]
-    [HasPermission(CalendarPermissions.Read)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [RateLimit("calendar.f.read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)

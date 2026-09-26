@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { issueIceCredentials } from '../../../application/use-cases/issue-ice-credentials.js';
+import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
+import { isStaffActor } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const IceQuerySchema = z.object({
@@ -15,6 +17,11 @@ const HistoryQuerySchema = z.object({
 const CustomerCallsParamsSchema = z.object({
   customerId: z.string().uuid(),
 });
+
+const STAFF_ONLY = {
+  code: 'Auth.Forbidden',
+  message: 'Client call history is staff-only.',
+} as const;
 
 const CustomerCallsQuerySchema = z.object({
   // Historial por cliente: por defecto traemos hasta 100 (los volúmenes por cliente son bajos) para
@@ -79,10 +86,28 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
   // Puente: la Call no tiene CustomerId; sus participantes son UserIds de Auth. Resolvemos el UserId del
   // PORTAL del cliente (proyección CustomerPortalAccount) y listamos las llamadas donde ese usuario
   // participó = las llamadas del cliente con la oficina. Tenant-scoped por el principal.
+  //
+  // Solo staff: antes estaba solo `authenticate`, así que un cliente del portal podía pedir el
+  // customerId de OTRO cliente y leerle el historial completo de llamadas. Además, cuando la
+  // visibilidad por asignación está activa, un empleado que no ve a todos los clientes solo ve el
+  // historial de los que tiene asignados — mismo criterio que el picker de clientes.
   app.get('/communication/customers/:customerId/calls', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
+    if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
     const params = CustomerCallsParamsSchema.parse(request.params);
     const query = CustomerCallsQuerySchema.parse(request.query);
+
+    const settings = await container.settings.get(principal.tenantId);
+    const restrictToAssigned =
+      container.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer;
+    if (restrictToAssigned && !(await seesAllCustomers(principal, container.userPermissions))) {
+      const isAssigned = await container.customerAssignments.isAssigned(
+        principal.tenantId,
+        params.customerId,
+        principal.userId,
+      );
+      if (!isAssigned) return reply.code(403).send(STAFF_ONLY);
+    }
 
     const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(params.customerId);
     // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber llamadas.

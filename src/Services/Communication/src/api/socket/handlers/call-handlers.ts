@@ -9,6 +9,7 @@ import type {
 } from '../../../infrastructure/socket/build-io.js';
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
+import { resolveActorType } from './resolve-actor-type.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { initiateCall } from '../../../application/use-cases/initiate-call.js';
 import { respondToCall } from '../../../application/use-cases/respond-to-call.js';
@@ -129,9 +130,10 @@ function wireCallSocket(
       ack?.({ ok: false, code: 'Call.RateLimited', message: 'Too many call attempts, slow down.' });
       return;
     }
-    const [callerDisplayName, calleeDisplayName] = await Promise.all([
+    const [callerDisplayName, calleeDisplayName, calleeActorType] = await Promise.all([
       resolveDisplayName(container.userDirectory, userId),
       resolveDisplayName(container.userDirectory, parsed.data.calleeUserId),
+      resolveActorType(container.userDirectory, parsed.data.calleeUserId),
     ]);
     const result = await initiateCall(
       {
@@ -139,8 +141,8 @@ function wireCallSocket(
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         kind: parsed.data.kind,
-        caller: { userId, displayName: callerDisplayName },
-        callee: { userId: parsed.data.calleeUserId, displayName: calleeDisplayName },
+        caller: { userId, displayName: callerDisplayName, actorType: principal.actorType },
+        callee: { userId: parsed.data.calleeUserId, displayName: calleeDisplayName, actorType: calleeActorType },
         conversationId: parsed.data.conversationId ?? null,
         recordingRequested: parsed.data.recordingRequested ?? false,
       },

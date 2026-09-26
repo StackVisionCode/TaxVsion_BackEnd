@@ -296,6 +296,50 @@ public sealed class PermissionCatalogTests
     }
 
     [Fact]
+    public void DmcaManage_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CloudStorageDmcaManage);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(
+            new[] { UserActorType.PlatformAdmin },
+            Permission.InferAllowedActorTypes(false, definition.PlatformOnly)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
+    /// <summary>
+    /// Regresión de §R.7: separar el DMCA no le quita al admin raíz el legal hold que ya tenía
+    /// (retener evidencia de un litigio propio sigue siendo un caso de uso del tenant), ni le
+    /// devuelve el permiso al bundle de creación de roles custom.
+    /// </summary>
+    [Fact]
+    public void LegalManage_stays_with_the_tenant_root_admin_after_splitting_the_dmca()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CloudStorageLegalManage);
+
+        Assert.False(definition.PlatformOnly);
+        Assert.True(definition.IsDangerous);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Contains(
+            PermissionCatalog.CloudStorageLegalManage,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+    }
+
+    [Fact]
     public void DmcaCounterNotice_is_deliberately_not_dangerous_despite_looking_like_a_legal_permission()
     {
         // Desviación deliberada del plan original (ver comentario junto a la definición en

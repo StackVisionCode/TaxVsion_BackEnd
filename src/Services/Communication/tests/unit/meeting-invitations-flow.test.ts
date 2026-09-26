@@ -160,6 +160,7 @@ class FakeEmitter implements RealtimeEmitter {
     this.toUser.push({ userId: input.userId, event: input.event, payload: input.envelope.payload });
   }
   emitToTenant(): void {}
+  emitToTenantStaff(): void {}
 }
 
 /** Resolver de host configurable: por defecto null (fuerza el fallback), o un host fijo. */
@@ -509,5 +510,141 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     const resolved = await resolveInvitationToken({ token: 'a'.repeat(64) }, harness);
     expect(resolved.isSuccess).toBe(false);
     if (!resolved.isSuccess) expect(resolved.error.code).toBe('Meeting.Invitation.NotFound');
+  });
+});
+
+describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado', () => {
+  function liveMeetingIn(tenantId: string) {
+    const host = { userId: u(), displayName: 'Host' };
+    const scheduled = Meeting.schedule({ tenantId, title: 'Consulta', host });
+    if (!scheduled.isSuccess) throw new Error();
+    const meeting = scheduled.value;
+    meeting.start({ hostUserId: host.userId });
+    return { meeting, host };
+  }
+
+  async function invite(
+    harness: ReturnType<typeof buildHarness>,
+    meeting: Meeting,
+    hostUserId: string,
+    invitee: { kind: 'External'; email: string } | { kind: 'Customer'; customerId: string; email: string },
+  ) {
+    const created = await createMeetingInvitations(
+      {
+        tenantId: meeting.tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        actorUserId: hostUserId,
+        invitees: [invitee],
+      },
+      harness,
+    );
+    if (!created.isSuccess) throw new Error();
+    const joinUrl = created.value.invitations[0]!.joinUrl;
+    return {
+      token: new URL(joinUrl).searchParams.get('token')!,
+      invitationId: created.value.invitations[0]!.id,
+    };
+  }
+
+  it('un token emitido para un meeting no destraba otro meeting del mismo tenant', async () => {
+    const harness = buildHarness();
+    const tenantId = u();
+    const first = liveMeetingIn(tenantId);
+    const second = liveMeetingIn(tenantId);
+    await harness.meetings.save(first.meeting);
+    await harness.meetings.save(second.meeting);
+    second.meeting.setLocked({ hostUserId: second.host.userId, locked: true });
+    await harness.meetings.save(second.meeting);
+
+    const { token } = await invite(harness, first.meeting, first.host.userId, {
+      kind: 'External',
+      email: 'guest@example.com',
+    });
+
+    const result = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: second.meeting.id,
+        user: { userId: u(), displayName: 'Colado', actorType: 'TenantEmployee' },
+        invitationToken: token,
+      },
+      harness,
+    );
+
+    expect(result.isSuccess).toBe(false);
+  });
+
+  it('un ticket de guest emitido para un meeting no entra a otro', async () => {
+    const harness = buildHarness();
+    const tenantId = u();
+    const first = liveMeetingIn(tenantId);
+    const second = liveMeetingIn(tenantId);
+    await harness.meetings.save(first.meeting);
+    await harness.meetings.save(second.meeting);
+
+    const { token } = await invite(harness, first.meeting, first.host.userId, {
+      kind: 'External',
+      email: 'guest@example.com',
+    });
+    const resolved = await resolveInvitationToken({ token }, harness);
+    if (!resolved.isSuccess) throw new Error();
+
+    const result = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: second.meeting.id,
+        user: { userId: `guest:${resolved.value.invitationId}`, displayName: 'Invitado', actorType: 'Guest' },
+        guestInvitationId: resolved.value.invitationId,
+      },
+      harness,
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) expect(result.error.code).toBe('Meeting.Invitation.NotFound');
+  });
+
+  it('un token dirigido a un usuario concreto no lo usa otro usuario', async () => {
+    const harness = buildHarness();
+    const tenantId = u();
+    const { meeting, host } = liveMeetingIn(tenantId);
+    await harness.meetings.save(meeting);
+    meeting.setLocked({ hostUserId: host.userId, locked: true });
+    await harness.meetings.save(meeting);
+    const customerId = u();
+    const invitedUserId = u();
+    harness.customerPortalAccounts.link(customerId, tenantId, invitedUserId);
+
+    const { token } = await invite(harness, meeting, host.userId, {
+      kind: 'Customer',
+      customerId,
+      email: 'cliente@example.com',
+    });
+
+    const stranger = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        user: { userId: u(), displayName: 'Otro', actorType: 'CustomerPortal' },
+        invitationToken: token,
+      },
+      harness,
+    );
+    expect(stranger.isSuccess).toBe(false);
+
+    const invited = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        user: { userId: invitedUserId, displayName: 'Invitado', actorType: 'CustomerPortal' },
+        invitationToken: token,
+      },
+      harness,
+    );
+    expect(invited.isSuccess).toBe(true);
   });
 });

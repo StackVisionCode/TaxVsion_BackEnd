@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,10 @@ namespace TaxVision.Connectors.Api.Controllers;
 /// frontend (política "ServiceOnly", claim <c>actor_type=Service</c>). No debe exponerse en las
 /// rutas públicas del Gateway. Body-fetch bajo demanda (Fase 8): nunca se llama desde el pipeline
 /// de webhooks metadata-first (Fase 7).
+/// <para>
+/// El tenant del cuerpo tiene que ser el del token: los tokens de servicio se emiten por tenant,
+/// así que un cuerpo con otro tenant es un cruce, nunca un caso legítimo.
+/// </para>
 /// </summary>
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
@@ -37,8 +42,11 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
+        if (!this.TryResolveTenantId(body.TenantId, out var tenantId))
+            return Forbid();
+
         var result = await bus.InvokeAsync<Result<MessageBodyDto>>(
-            new GetMessageBodyQuery(body.TenantId, body.AccountId, providerMessageId),
+            new GetMessageBodyQuery(tenantId, body.AccountId, providerMessageId),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -53,9 +61,12 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
+        if (!this.TryResolveTenantId(body.TenantId, out var tenantId))
+            return Forbid();
+
         var result = await bus.InvokeAsync<Result<MessageAttachmentDownload>>(
             new GetMessageAttachmentQuery(
-                body.TenantId,
+                tenantId,
                 body.AccountId,
                 providerMessageId,
                 attachmentId,
@@ -81,6 +92,9 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     )]
     public async Task<IActionResult> Send(Guid accountId, [FromBody] SendMessageRequest body, CancellationToken ct)
     {
+        if (!this.TryResolveTenantId(body.TenantId, out var tenantId))
+            return Forbid();
+
         List<OutboundAttachment> attachments;
         try
         {
@@ -117,7 +131,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         );
 
         var result = await bus.InvokeAsync<Result<SendMessageResult>>(
-            new SendMessageCommand(body.TenantId, accountId, message),
+            new SendMessageCommand(tenantId, accountId, message),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

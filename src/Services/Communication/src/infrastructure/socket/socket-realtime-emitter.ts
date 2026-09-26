@@ -56,4 +56,8 @@ export class SocketRealtimeEmitter implements RealtimeEmitter {
   emitToTenant<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void {
     this.io.to(`t:${input.tenantId}`).emit(input.event, input.envelope);
   }
+
+  emitToTenantStaff<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void {
+    this.io.to(`t:${input.tenantId}:staff`).emit(input.event, input.envelope);
+  }
 }

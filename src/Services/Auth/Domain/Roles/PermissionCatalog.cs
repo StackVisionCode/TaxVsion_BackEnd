@@ -13,7 +13,7 @@ public static class PermissionCatalog
     // Usuarios y seguridad
     public const string UsersView = "users.view";
     public const string UsersInvite = "users.invite";
-    public const string UsersManage = "users.manage";
+    public const string UsersManage = UserManagementPermissions.UsersManage;
     public const string RolesManage = "roles.manage";
     public const string AuditView = "audit.view";
     public const string SettingsManage = "settings.manage";
@@ -61,6 +61,7 @@ public static class PermissionCatalog
     public const string CloudStorageShareRevoke = CloudStoragePermissions.ShareRevoke;
     public const string CloudStorageShareManage = CloudStoragePermissions.ShareManage;
     public const string CloudStorageLegalManage = CloudStoragePermissions.LegalManage;
+    public const string CloudStorageDmcaManage = CloudStoragePermissions.DmcaManage;
     public const string CloudStorageDmcaCounterNotice = CloudStoragePermissions.DmcaCounterNotice;
 
     // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
@@ -663,21 +664,30 @@ public static class PermissionCatalog
             IsAssignableByTenant: false
         ),
         new(
-            // Reservado: legal hold + DMCA (takedown/reinstate) es
-            // exclusivo del equipo legal de la plataforma, nunca de un tenant.
-            // RBAC Fase 2: IsDangerous — este es el bug real que motivó la fase.
-            // LegalController.RegisterTakedown solo exige [HasPermission(LegalManage)] (el
-            // AllowActorTypes de clase incluye TenantEmployee/TenantAdmin, no solo
-            // PlatformAdmin), así que sin IsDangerous cualquier TenantAdmin podía registrar un
-            // legal hold sobre archivos de SU PROPIO tenant pese a que el comentario de arriba
-            // ya decía "nunca de un tenant" — la intención nunca se aplicó en runtime.
+            // Legal hold sobre archivos del PROPIO tenant: el admin raíz sí tiene un caso de uso
+            // legítimo (retener evidencia de un litigio propio), así que sigue siendo del tenant.
+            // IsDangerous + no delegable: nunca llega a un rol de staff sin decisión explícita.
+            // El DMCA, que antes compartía este permiso, se separó en CloudStorageDmcaManage.
             new Guid("a1000000-0000-0000-0000-000000000070"),
             CloudStorageLegalManage,
             "cloudstorage",
-            "Gestionar legal hold y takedowns DMCA",
+            "Gestionar legal hold sobre archivos del propio tenant",
             false,
             IsAssignableByTenant: false,
             IsDangerous: true
+        ),
+        new(
+            // Solo plataforma: registrar un takedown DMCA y cerrarlo reinstalando el archivo es
+            // del equipo legal de TaxVision, que responde ante el reclamante. Un tenant nunca
+            // recibe la notificación ni tiene la obligación legal de tramitarla; lo que sí le
+            // corresponde es la contranotificación (CloudStorageDmcaCounterNotice).
+            new Guid("a1000000-0000-0000-0000-000000000182"),
+            CloudStorageDmcaManage,
+            "cloudstorage",
+            "Registrar y cerrar takedowns DMCA de cualquier tenant",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             // A diferencia de LegalManage, esto lo ejerce el propio tenant sobre

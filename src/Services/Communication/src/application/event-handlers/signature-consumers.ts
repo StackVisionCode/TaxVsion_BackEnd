@@ -503,13 +503,13 @@ async function push(
 }
 
 /**
- * Ping por-tenant de "una solicitud de firma cambió" para que el CRM refresque su lista sin recargar.
+ * Ping al personal del tenant de "una solicitud de firma cambió" para que el CRM refresque su lista sin recargar.
  * Payload mínimo (solo el id): el front pide los datos por HTTP como siempre. Puro relay realtime.
  */
 function emitSignatureListChanged(env: IncomingEnvelope, emitter: RealtimeEmitter): void {
   const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   if (!requestId) return;
-  emitter.emitToTenant({
+  emitter.emitToTenantStaff({
     tenantId: env.tenantId,
     event: SIGNATURE_REQUEST_CHANGED_EVENT,
     envelope: {

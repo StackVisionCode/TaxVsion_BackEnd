@@ -11,6 +11,7 @@ import {
 } from '../jwks/jwt-verifier.js';
 import { InvalidJoinTicketError, verifyGuestJoinTicket } from '../jwks/join-ticket.js';
 import { socketConnectionsActive } from '../telemetry/metrics.js';
+import { isStaffActor } from '../../domain/shared/permissions.js';
 
 /**
  * `SocketData` es el tercer generic de `Server<S2C, C2S, IE, SocketData>` en
@@ -137,6 +138,11 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
       // Room de tenant + de usuario para broadcasts dirigidos.
       await socket.join(`t:${principal.tenantId}`);
       await socket.join(`t:${principal.tenantId}:u:${principal.userId}`);
+      // Room del personal: los broadcasts que nombran clientes, correos o firmas van solo ahi.
+      // Un CustomerPortal (y un Guest, que ni llega hasta aca) nunca entra.
+      if (isStaffActor(principal.actorType)) {
+        await socket.join(`t:${principal.tenantId}:staff`);
+      }
       next();
     } catch (err) {
       if (err instanceof UnauthorizedError) {

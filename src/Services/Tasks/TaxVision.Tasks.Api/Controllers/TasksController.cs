@@ -116,7 +116,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     // ---------- GET /tasks/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántas tareas abiertas hay que reasignar antes de retirar a este empleado.
     [HttpGet("offboarding-impact/{userId:guid}")]
-    [HasPermission(TasksPermissions.Read)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [RateLimit("task.f.read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)

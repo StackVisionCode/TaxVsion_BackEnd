@@ -582,3 +582,102 @@ describe('startDirectConversation — quien ve a todos los clientes pasa el gate
     }
   });
 });
+
+describe('startDirectConversation — un cliente del portal solo habla con la oficina', () => {
+  function depsForTwoCustomers(
+    tenantId: string,
+    first: { userId: string; customerId: string },
+    second: { userId: string; customerId: string },
+    settingsOverrides: Partial<TenantCommunicationSettingsSnapshot> = {},
+  ) {
+    return {
+      conversations: new FakeConversationRepository(),
+      idempotency: new FakeIdempotencyStore(),
+      publisher: new FakeIntegrationEventPublisher(),
+      settings: fakeSettings(settingsOverrides),
+      customerPortalAccounts: fakePortalAccounts({
+        [first.userId]: { customerId: first.customerId, tenantId, userId: first.userId, isActive: true },
+        [second.userId]: { customerId: second.customerId, tenantId, userId: second.userId, isActive: true },
+      }),
+      customerPreparerAssignments: fakeAssignments({}),
+      customerAssignments: fakeMnAssignments({}),
+      userPermissions: fakeUserPermissions(),
+    };
+  }
+
+  it('rechaza el chat directo entre dos clientes del portal con el gate de asignacion apagado', async () => {
+    const tenantId = u();
+    const first = { userId: u(), customerId: u() };
+    const second = { userId: u(), customerId: u() };
+
+    const result = await startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: first.userId,
+        initiatorActorType: 'CustomerPortal',
+        recipientUserId: second.userId,
+        recipientActorType: 'CustomerPortal',
+      }),
+      depsForTwoCustomers(tenantId, first, second, { restrictCustomerChatToAssignedPreparer: false }),
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) {
+      expect(result.error.code).toBe('Chat.CustomerToCustomerNotAllowed');
+    }
+  });
+
+  it('lo rechaza tambien cuando el cliente se escribe a si mismo desde otra cuenta de portal', async () => {
+    const tenantId = u();
+    const customerId = u();
+    const first = { userId: u(), customerId };
+    const second = { userId: u(), customerId };
+
+    const result = await startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: first.userId,
+        initiatorActorType: 'CustomerPortal',
+        recipientUserId: second.userId,
+        recipientActorType: 'CustomerPortal',
+      }),
+      depsForTwoCustomers(tenantId, first, second),
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) {
+      expect(result.error.code).toBe('Chat.CustomerToCustomerNotAllowed');
+    }
+  });
+
+  it('sigue permitiendo el chat cliente-empleado (regresion: la regla no toca el caso legitimo)', async () => {
+    const tenantId = u();
+    const customerId = u();
+    const customerUserId = u();
+    const employeeUserId = u();
+
+    const result = await startDirectConversation(
+      baseCommand({
+        tenantId,
+        initiatorUserId: customerUserId,
+        initiatorActorType: 'CustomerPortal',
+        recipientUserId: employeeUserId,
+        recipientActorType: 'TenantEmployee',
+      }),
+      {
+        conversations: new FakeConversationRepository(),
+        idempotency: new FakeIdempotencyStore(),
+        publisher: new FakeIntegrationEventPublisher(),
+        settings: fakeSettings({ restrictCustomerChatToAssignedPreparer: false }),
+        customerPortalAccounts: fakePortalAccounts({
+          [customerUserId]: { customerId, tenantId, userId: customerUserId, isActive: true },
+        }),
+        customerPreparerAssignments: fakeAssignments({}),
+        customerAssignments: fakeMnAssignments({}),
+        userPermissions: fakeUserPermissions(),
+      },
+    );
+
+    expect(result.isSuccess).toBe(true);
+  });
+});

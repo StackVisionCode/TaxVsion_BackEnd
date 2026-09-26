@@ -161,7 +161,7 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     // ---------- GET /customers/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántos clientes activos hay que reasignar antes de retirar a este empleado.
     [HttpGet("offboarding-impact/{userId:guid}")]
-    [HasPermission(CustomersPermissions.View)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("customer.f.get")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]

@@ -82,7 +82,8 @@ public sealed class DraftsController(
     // ---------- GET /correspondence/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántos borradores abiertos hay que reasignar antes de retirar a este empleado.
     [HttpGet("/correspondence/offboarding-impact/{userId:guid}")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [RateLimit("correspondence.f.draft_read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
