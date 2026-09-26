@@ -89,12 +89,43 @@ public sealed class ControllerIdentityExtensionsTests
     public void TryResolveTenantId_allows_PlatformAdmin_to_bypass_tenant_mismatch()
     {
         var requestedTenantId = Guid.NewGuid();
-        var controller = BuildController(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+        var controller = BuildController(new Claim(ClaimNames.ActorType, nameof(ActorType.PlatformAdmin)));
 
         var result = controller.TryResolveTenantId(requestedTenantId, out var resolvedTenantId);
 
         Assert.True(result);
         Assert.Equal(requestedTenantId, resolvedTenantId);
+    }
+
+    [Fact]
+    public void TryResolveTenantId_denies_cross_tenant_access_to_a_custom_role_named_PlatformAdmin()
+    {
+        var tokenTenantId = Guid.NewGuid();
+        var requestedTenantId = Guid.NewGuid();
+        var controller = BuildController(
+            new Claim(ClaimNames.ActorType, nameof(ActorType.TenantAdmin)),
+            new Claim(ClaimNames.TenantId, tokenTenantId.ToString()),
+            new Claim(ClaimTypes.Role, "PlatformAdmin")
+        );
+
+        var result = controller.TryResolveTenantId(requestedTenantId, out var resolvedTenantId);
+
+        Assert.False(result);
+        Assert.Equal(Guid.Empty, resolvedTenantId);
+    }
+
+    [Fact]
+    public void TryResolveTenantId_nullable_overload_denies_a_custom_role_named_PlatformAdmin_without_a_tenant_claim()
+    {
+        var controller = BuildController(
+            new Claim(ClaimNames.ActorType, nameof(ActorType.TenantAdmin)),
+            new Claim(ClaimTypes.Role, "PlatformAdmin")
+        );
+
+        var result = controller.TryResolveTenantId((Guid?)null, out var resolvedTenantId);
+
+        Assert.False(result);
+        Assert.Equal(Guid.Empty, resolvedTenantId);
     }
 
     [Fact]

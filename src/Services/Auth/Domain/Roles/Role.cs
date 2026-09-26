@@ -10,6 +10,11 @@ public sealed class Role : TenantEntity
     public const string SystemEmployee = "Employee";
     public const string SystemCustomerPortal = "Customer Portal";
 
+    private static readonly Error ReservedNameError = new(
+        "Role.NameReserved",
+        "This role name is reserved by the platform."
+    );
+
     private readonly List<RolePermission> _permissions = [];
 
     private Role() { }
@@ -35,6 +40,11 @@ public sealed class Role : TenantEntity
         if (trimmed.Length is < 2 or > 60)
             return Result.Failure<Role>(new Error("Role.Name", "Role name must be 2-60 characters."));
 
+        // Los roles de sistema se siembran con estos mismos nombres, así que la reserva solo
+        // aplica a los custom.
+        if (!isSystem && ReservedRoleNames.IsReserved(trimmed))
+            return Result.Failure<Role>(ReservedNameError);
+
         var role = new Role
         {
             Id = Guid.NewGuid(),
@@ -56,6 +66,11 @@ public sealed class Role : TenantEntity
         var trimmed = name?.Trim() ?? string.Empty;
         if (trimmed.Length is < 2 or > 60)
             return Result.Failure(new Error("Role.Name", "Role name must be 2-60 characters."));
+
+        // Renombrar es el otro camino a la colisión: acá el rol ya existe y nunca es de sistema
+        // (el guard de arriba corta antes).
+        if (ReservedRoleNames.IsReserved(trimmed))
+            return Result.Failure(ReservedNameError);
 
         Name = trimmed;
         Description = description?.Trim();

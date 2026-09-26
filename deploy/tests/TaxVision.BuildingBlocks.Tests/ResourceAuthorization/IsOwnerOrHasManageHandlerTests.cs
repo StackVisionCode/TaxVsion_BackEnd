@@ -76,7 +76,7 @@ public sealed class IsOwnerOrHasManageHandlerTests
     public async Task PlatformAdmin_can_always_operate_regardless_of_ownership()
     {
         var resource = new TestResource { CreatedByUserId = Guid.NewGuid() };
-        var user = User(new Claim("sub", Guid.NewGuid().ToString()), new Claim(ClaimTypes.Role, "PlatformAdmin"));
+        var user = User(new Claim("sub", Guid.NewGuid().ToString()), new Claim("actor_type", "PlatformAdmin"));
 
         Assert.True(await AuthorizeAsync(user, resource));
     }

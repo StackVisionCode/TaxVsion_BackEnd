@@ -18,7 +18,13 @@ public static class ClaimsPrincipalExtensions
     public static bool TryGetTenantId(this ClaimsPrincipal principal, out Guid tenantId) =>
         Guid.TryParse(principal.FindFirst("tenant_id")?.Value, out tenantId);
 
-    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
+    /// <summary>
+    /// Delega en BuildingBlocks para que el criterio de PlatformAdmin (claim <c>actor_type</c>, no
+    /// el nombre del rol) viva en un solo lugar. Se llama con el nombre completo porque esta clase
+    /// se llama igual que la de BuildingBlocks y un <c>using</c> haría ambiguas sus otras firmas.
+    /// </summary>
+    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) =>
+        BuildingBlocks.ActorTypeAuthorization.ClaimsPrincipalExtensions.IsPlatformAdmin(principal);
 
     public static bool HasScope(this ClaimsPrincipal principal, string requiredScope) =>
         principal

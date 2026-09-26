@@ -152,7 +152,7 @@ public sealed class ProjectionPermissionsSourceTests
             new("perm_v", permVersion.ToString()),
         ];
         if (isPlatformAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+            claims.Add(new Claim(ClaimNames.ActorType, "PlatformAdmin"));
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Test"));
     }

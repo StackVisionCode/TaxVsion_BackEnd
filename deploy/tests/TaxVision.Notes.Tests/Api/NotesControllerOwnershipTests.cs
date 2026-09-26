@@ -110,7 +110,7 @@ public sealed class NotesControllerOwnershipTests
             new("sub", actingUserId.ToString()),
         };
         if (asPlatformAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+            claims.Add(new Claim("actor_type", "PlatformAdmin"));
 
         return new NotesController(
             new StubMessageBus(),
