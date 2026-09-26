@@ -1,5 +1,6 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
@@ -7,6 +8,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.CloudStorage.Api.Common;
+using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
@@ -21,8 +23,11 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [ApiController]
 [Route("storage/folders")]
 [Authorize]
-public sealed class FoldersController(IMessageBus bus) : ControllerBase
+public sealed class FoldersController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
 {
+    /// <summary>Tope de página del listado de carpeta (guardrail anti-abuso).</summary>
+    private const int MaxFolderPageSize = 200;
+
     /// <summary>
     /// parentFolderId null = raiz. ownerType/ownerId son opcionales — solo
     /// tienen efecto para staff interno navegando la raiz de un tenant con varios duenos
@@ -31,6 +36,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpGet]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
@@ -43,14 +49,45 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         [FromQuery] Guid? parentFolderId,
         [FromQuery] OwnerType? ownerType,
         [FromQuery] Guid? ownerId,
-        CancellationToken ct
+        [FromQuery] int? skip,
+        [FromQuery] int? take,
+        [FromQuery] FolderType[]? folderTypes,
+        [FromQuery] int[]? taxYears,
+        [FromQuery] string[]? extensions,
+        [FromQuery] FileStatus[]? statuses,
+        [FromQuery] FileSortKey sort = FileSortKey.Name,
+        [FromQuery] bool desc = false,
+        CancellationToken ct = default
     )
     {
         if (!User.TryGet(out var tenantId, out _, out var scope))
             return Unauthorized();
 
+        // Guardrail: take null = sin paginar (compat); si se pide, se acota a [1, MaxFolderPageSize]
+        // para que un cliente no pueda pedir una página gigante. skip nunca negativo.
+        int? clampedTake = take is null ? null : Math.Clamp(take.Value, 1, MaxFolderPageSize);
+        int clampedSkip = skip is null or < 0 ? 0 : skip.Value;
+
+        var filter = new FolderContentsFilter(
+            folderTypes is { Length: > 0 } ? folderTypes : null,
+            taxYears is { Length: > 0 } ? taxYears : null,
+            extensions is { Length: > 0 } ? extensions : null,
+            statuses is { Length: > 0 } ? statuses : null,
+            sort,
+            desc
+        );
+
         var result = await bus.InvokeAsync<FolderContentsResponse>(
-            new GetFolderContentsQuery(tenantId, scope, parentFolderId, ownerType, ownerId),
+            new GetFolderContentsQuery(
+                tenantId,
+                scope,
+                parentFolderId,
+                ownerType,
+                ownerId,
+                clampedSkip,
+                clampedTake,
+                filter
+            ),
             ct
         );
         return Ok(result);
@@ -63,6 +100,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpGet("tree")]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
@@ -161,7 +199,11 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Rechaza con 409 (Folder.NotEmpty) si tiene subfolders o archivos directos. Ver DeleteFolderHandler.</summary>
+    /// <summary>
+    /// Borrado RECURSIVO: manda el contenido (archivos directos y de subcarpetas) a la papelera y
+    /// elimina el subárbol. 409 solo si hay archivos en retención legal (Folder.HasLegalHold); 403 si
+    /// es carpeta de sistema. Ver DeleteFolderHandler.
+    /// </summary>
     [HttpDelete("{folderId:guid}")]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
@@ -172,7 +214,17 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new DeleteFolderCommand(tenantId, actorId, scope, folderId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new DeleteFolderCommand(tenantId, actorId, scope, folderId, AuditContext()),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    private RequestAuditContext AuditContext() =>
+        new(
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            correlation.CorrelationId
+        );
 }

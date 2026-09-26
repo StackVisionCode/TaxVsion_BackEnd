@@ -21,6 +21,19 @@ public interface ITaskRepository
 
     Task<Result<TaskItem>> GetByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Como <see cref="GetByIdAsync"/> pero con visibilidad por asignación (P2) para el read del detalle:
+    /// si <paramref name="assignedToUserId"/> no es null, devuelve NotFound cuando la tarea es de un cliente
+    /// NO asignado al actor (las sin cliente, las que él tiene asignadas y las que creó siguen visibles). El
+    /// path de MUTACIÓN sigue usando <see cref="GetByIdAsync"/> sin filtrar. Default = sin filtro (fakes).
+    /// </summary>
+    Task<Result<TaskItem>> GetByIdForReadAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    ) => GetByIdAsync(tenantId, taskId, ct);
+
     /// <summary>La tarea con sus timers cargados. Aparte porque el resto de los caminos no los usa.</summary>
     Task<Result<TaskItem>> GetByIdWithTimersAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
 
@@ -44,6 +57,7 @@ public interface ITaskRepository
         Guid parentTaskId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -53,6 +67,7 @@ public interface ITaskRepository
         TaskQueryFilter filter,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -64,6 +79,7 @@ public interface ITaskRepository
         Guid tenantId,
         TaskQueryFilter filter,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -77,6 +93,7 @@ public interface ITaskRepository
         DateTime toUtc,
         Guid? assigneeUserId,
         int take,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -93,6 +110,16 @@ public interface ITaskRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Cuántas tareas ABIERTAS tiene asignadas el empleado — para el pre-flight de impacto al
+    /// retirarlo (mismo filtro que ListForAssigneeAsync con status null, sin paginar). Default 0 para no
+    /// romper los fakes; el repo real lo implementa con COUNT.</summary>
+    Task<int> CountForAssigneeAsync(
+        Guid tenantId,
+        Guid assigneeUserId,
+        TaskItemStatus? status,
+        CancellationToken ct = default
+    ) => Task.FromResult(0);
+
     /// <summary>Tareas de un cliente, opcionalmente acotadas a un año fiscal.</summary>
     Task<PagedResult<TaskItem>> ListByCustomerAsync(
         Guid tenantId,
@@ -100,6 +127,7 @@ public interface ITaskRepository
         int? taxYear,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -111,6 +139,7 @@ public interface ITaskRepository
         Guid tenantId,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 

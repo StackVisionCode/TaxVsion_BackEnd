@@ -65,6 +65,7 @@ public interface IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     );
 
@@ -86,8 +87,26 @@ public interface IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Borradores ABIERTOS (<see cref="DraftStatus.Draft"/>) cuyo autor es <paramref name="createdByUserId"/>
+    /// en el tenant — para reasignarlos al sucesor (o descartarlos) al retirar (offboard) a ese empleado.
+    /// Tracked (se mutan). Index-backed por <c>IX_Drafts_TenantId_CreatedByUserId_Status</c>.
+    /// </summary>
+    Task<IReadOnlyList<Draft>> ListOpenByAuthorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Cuántos borradores ABIERTOS tiene el autor (mismo filtro que ListOpenByAuthorAsync, sin
+    /// materializar) — pre-flight de impacto al retirarlo. Default 0 para no romper los fakes; el repo
+    /// real lo implementa con COUNT.</summary>
+    Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
+        Task.FromResult(0);
 
     // Borrado permanente (solo desde la papelera).
     void Remove(Draft entity);

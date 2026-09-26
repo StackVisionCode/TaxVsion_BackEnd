@@ -50,4 +50,14 @@ internal sealed class FakeConnectorsClient : IConnectorsClient
         );
         return Task.FromResult(AttachmentResponse);
     }
+
+    public Result<IReadOnlyCollection<Guid>> VisibleAccountIdsResponse { get; set; } =
+        Result.Success<IReadOnlyCollection<Guid>>([]);
+
+    public Task<Result<IReadOnlyCollection<Guid>>> GetVisibleAccountIdsAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    ) => Task.FromResult(VisibleAccountIdsResponse);
 }

@@ -296,6 +296,111 @@ public sealed class PermissionsProjectionConsumersTests
         Assert.Equal([TasksPermissions.ManageAll], untouched.PermissionCodes());
     }
 
+    [Fact]
+    public async Task UserDeactivated_marks_the_projection_inactive_so_it_fails_closed()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = UserPermissionsProjection.Create(tenantId, userId, 1, [TasksPermissions.Read], []);
+        var repo = new RecordingUserRepository(existing);
+        var uow = new NoOpUnitOfWork();
+
+        await UserLifecyclePermissionsProjectionConsumer.Handle(
+            new UserDeactivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                Email = "x@example.com",
+                ActorType = "TenantEmployee",
+            },
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.False((await repo.GetAsync(tenantId, userId))!.IsActive);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task UserOffboarded_marks_the_projection_inactive()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = UserPermissionsProjection.Create(tenantId, userId, 1, [TasksPermissions.Read], []);
+        var repo = new RecordingUserRepository(existing);
+        var uow = new NoOpUnitOfWork();
+
+        await UserLifecyclePermissionsProjectionConsumer.Handle(
+            new UserOffboardedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                Email = "x@example.com",
+                ActorType = "TenantEmployee",
+                RemovedAtUtc = DateTime.UtcNow,
+            },
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.False((await repo.GetAsync(tenantId, userId))!.IsActive);
+    }
+
+    [Fact]
+    public async Task UserReactivated_marks_the_projection_active_again()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var existing = UserPermissionsProjection.Create(tenantId, userId, 1, [TasksPermissions.Read], []);
+        existing.MarkInactive();
+        var repo = new RecordingUserRepository(existing);
+        var uow = new NoOpUnitOfWork();
+
+        await UserLifecyclePermissionsProjectionConsumer.Handle(
+            new UserReactivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                Email = "x@example.com",
+                ActorType = "TenantEmployee",
+            },
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True((await repo.GetAsync(tenantId, userId))!.IsActive);
+    }
+
+    [Fact]
+    public async Task UserDeactivated_is_a_noop_when_no_projection_exists()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new RecordingUserRepository();
+        var uow = new NoOpUnitOfWork();
+
+        await UserLifecyclePermissionsProjectionConsumer.Handle(
+            new UserDeactivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                UserId = Guid.NewGuid(),
+                Email = "x@example.com",
+                ActorType = "TenantEmployee",
+            },
+            repo,
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, uow.SaveCount);
+    }
+
     // ------------------------------------------------------------------
     // Fakes
     // ------------------------------------------------------------------

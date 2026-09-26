@@ -18,6 +18,22 @@ public sealed class CredentialTokenRepository(AuthDbContext db) : ICredentialTok
     public Task<PasswordResetToken?> GetPasswordResetByHashAsync(string tokenHash, CancellationToken ct = default) =>
         db.PasswordResetTokens.IgnoreQueryFilters().FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
 
+    // IgnoreQueryFilters(): el reset por enlace corre sin JWT; el UserId ya identifica la cuenta.
+    public async Task<IReadOnlyList<PasswordResetToken>> GetPendingPasswordResetsAsync(
+        Guid userId,
+        DateTime utcNow,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .PasswordResetTokens.IgnoreQueryFilters()
+            .Where(token =>
+                token.UserId == userId
+                && token.UsedAtUtc == null
+                && token.RevokedAtUtc == null
+                && token.ExpiresAtUtc > utcNow
+            )
+            .ToListAsync(ct);
+
     public async Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default) =>
         await db.EmailVerificationTokens.AddAsync(token, ct);
 

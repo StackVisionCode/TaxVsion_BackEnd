@@ -31,6 +31,10 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.VoidReason).HasMaxLength(512);
         b.Property(i => i.RowVersion).IsRowVersion();
 
+        // CustomerId denormalizado desde el snapshot (que va como JSON opaco): habilita filtrar/indexar
+        // facturas por cliente para la visibilidad por-asignación (P2).
+        b.Property(i => i.CustomerId).IsRequired();
+
         // Onboarding pago-primero: factura pre-tenant keyed por OnboardingId (re-hospedada al activar).
         b.Property(i => i.OnboardingId);
         b.Property(i => i.PlanId);
@@ -39,6 +43,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
         b.HasIndex(i => new { i.TenantId, i.InvoiceNumber }).IsUnique().HasFilter("[InvoiceNumber] IS NOT NULL");
         b.HasIndex(i => new { i.TenantId, i.Status });
+        b.HasIndex(i => new { i.TenantId, i.CustomerId });
         // Una factura por onboarding (idempotencia del alta pre-tenant).
         b.HasIndex(i => i.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
 

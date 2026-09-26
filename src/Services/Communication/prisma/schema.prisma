@@ -186,6 +186,30 @@ model CustomerPreparerAssignment {
 }
 
 // -----------------------------------------------------------------------------
+// CustomerAssignmentProjection (P2) — proyeccion local del set M:N COMPLETO de
+// staff asignado a un customer, alimentada por el snapshot
+// `customer.assignments_changed.v1` (event-carried state transfer) y sembrada
+// por el reconciliador `internal/customers/assignments/reconciliation`. A
+// diferencia de CustomerPreparerAssignment (1:1, solo el primary, para
+// isPrimaryPreparer), esta cubre TODOS los asignados: es la fuente del gate
+// restrictCustomerChatToAssignedPreparer, que con el modelo M:N debe permitir a
+// CUALQUIER staff asignado (no solo al primary) chatear con el customer. El
+// primary tambien esta en este set, asi que este check subsume el viejo 1:1.
+// Version (UpdatedAtUtc del customer) = idempotencia: solo se reemplaza el set
+// con snapshots mas nuevos (descarta reordenados/duplicados).
+// @since P2.5 (visibilidad por asignacion)
+model CustomerAssignmentProjection {
+  Id         String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId   String   @db.UniqueIdentifier
+  CustomerId String   @db.UniqueIdentifier
+  UserId     String   @db.UniqueIdentifier
+  Version    DateTime @db.DateTime2
+
+  @@unique([TenantId, CustomerId, UserId])
+  @@index([TenantId, CustomerId])
+}
+
+// -----------------------------------------------------------------------------
 // AttachmentTracking — vincula un CloudStorage FileId con el Message de chat
 // que lo referencia, y su estado de disponibilidad (Pending/Available/
 // Infected/Deleted). Alimentada por `send-message.ts` (crea Pending al enviar

@@ -98,14 +98,16 @@ public static class CreateInvitationHandler
             );
         }
 
-        if (await users.EmailExistsAsync(command.TenantId, normalizedEmail, ct))
+        // El email es único por tipo de cuenta: un cliente del portal puede ser invitado como empleado.
+        var accountKind = UserAccountKinds.Of(command.ActorType);
+        if (await users.EmailExistsAsync(command.TenantId, normalizedEmail, accountKind, ct))
         {
             return Result.Failure<CreateInvitationResponse>(
                 new Error("User.EmailConflict", "Email is already registered in this tenant.")
             );
         }
 
-        if (await invitations.HasPendingAsync(command.TenantId, normalizedEmail, ct))
+        if (await invitations.HasPendingAsync(command.TenantId, normalizedEmail, accountKind, ct))
         {
             return Result.Failure<CreateInvitationResponse>(
                 new Error(

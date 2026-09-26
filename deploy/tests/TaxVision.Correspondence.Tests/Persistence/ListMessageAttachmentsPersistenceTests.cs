@@ -110,6 +110,7 @@ public sealed class ListMessageAttachmentsPersistenceTests
         var result = await ListMessageAttachmentsHandler.Handle(
             new ListMessageAttachmentsQuery(tenantId, emailId),
             repository,
+            new EmailThreadRepository(reloadDb),
             CancellationToken.None
         );
 

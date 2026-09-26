@@ -16,6 +16,16 @@ public enum SubscriptionChangeReason
     GraceExpired,
     SuspensionTimeout,
     CancellationRequested,
+
+    /// <summary>El tenant canceló al fin del período: sigue activo y pagado hasta esa fecha.</summary>
+    CancellationScheduled,
+
+    /// <summary>Deshizo esa cancelación antes de que llegara el fin del período.</summary>
+    CancellationResumed,
+
+    /// <summary>Recordatorio: se acerca el fin del acceso de una cancelación programada. No es una
+    /// transición — viaja por el mismo canal para reusar la resolución de destinatario y el envío.</summary>
+    AccessEnding,
     CancellationEnded,
     AdminSuspended,
     AdminReactivated,
@@ -45,6 +55,10 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 
     /// <summary>Fin de la ventana de gracia, cuando el estado nuevo es <c>GracePeriod</c>.</summary>
     public DateTime? GracePeriodEndsAtUtc { get; init; }
+
+    /// <summary>Hasta cuándo llega el acceso ya pagado. Lo llena la cancelación programada, para que el
+    /// correo pueda decir la fecha exacta en la que se termina.</summary>
+    public DateTime? AccessEndsAtUtc { get; init; }
 
     /// <summary>Código de fallo del proveedor, cuando la transición la dispara un pago fallido.</summary>
     public string? FailureCode { get; init; }

@@ -7,6 +7,6 @@ namespace TaxVision.Connectors.Application.Providers;
 /// </summary>
 public interface IMessageBodyRateLimiter
 {
-    /// <summary>true si había cupo y se consumió; false si se superó el límite (10/min default) — el caller debe rechazar con 429, no reintentar/esperar acá.</summary>
+    /// <summary>true si había cupo y se consumió; false si se superó el límite (60/min default) — el caller debe rechazar con 429, no reintentar/esperar acá.</summary>
     Task<bool> TryAcquireAsync(Guid tenantId, Guid accountId, CancellationToken ct = default);
 }

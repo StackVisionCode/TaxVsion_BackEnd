@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Queries;
 
@@ -11,6 +12,9 @@ public sealed record UserSummaryResponse(
     string Email,
     string ActorType,
     bool IsActive,
+    // Ciclo de vida: Active/Deactivated/Offboarded (viaja como string). Distingue un retiro terminal
+    // de una simple suspensión, que IsActive por sí solo no puede.
+    string Status,
     bool MfaEnabled,
     DateTime CreatedAtUtc,
     IReadOnlyList<string> Roles,
@@ -25,7 +29,9 @@ public sealed record GetUsersQuery(
     int Size = 20,
     string? Search = null,
     bool? IsActive = null,
-    Guid? CustomerId = null
+    Guid? CustomerId = null,
+    /// <summary>Personal o clientes de portal. Sin valor, los dos — que es lo que nadie suele querer.</summary>
+    UserAccountKind? AccountKind = null
 );
 
 public static class GetUsersHandler
@@ -51,6 +57,7 @@ public static class GetUsersHandler
             query.Search,
             query.IsActive,
             query.CustomerId,
+            query.AccountKind,
             ct
         );
 
@@ -71,6 +78,7 @@ public static class GetUsersHandler
                     user.Email,
                     user.ActorType.ToString(),
                     user.IsActive,
+                    user.Status.ToString(),
                     user.MfaEnabled,
                     user.CreatedAtUtc,
                     roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
@@ -115,6 +123,7 @@ public static class GetUserByIdHandler
                 user.Email,
                 user.ActorType.ToString(),
                 user.IsActive,
+                user.Status.ToString(),
                 user.MfaEnabled,
                 user.CreatedAtUtc,
                 roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

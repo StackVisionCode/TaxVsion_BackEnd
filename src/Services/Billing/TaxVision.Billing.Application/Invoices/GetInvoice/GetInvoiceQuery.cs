@@ -1,10 +1,11 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 
 namespace TaxVision.Billing.Application.Invoices.GetInvoice;
 
-public sealed record GetInvoiceQuery(Guid TenantId, Guid InvoiceId);
+public sealed record GetInvoiceQuery(Guid TenantId, Guid InvoiceId, Guid ActorUserId, bool CanViewAll);
 
 public sealed record InvoiceSummaryResponse(
     Guid Id,
@@ -34,10 +35,12 @@ public static class GetInvoiceHandler
     public static async Task<Result<InvoiceSummaryResponse>> Handle(
         GetInvoiceQuery query,
         IInvoiceRepository invoices,
+        IOptions<BillingVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
-        var invoice = await invoices.GetByIdAsync(query.TenantId, query.InvoiceId, ct);
+        var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
+        var invoice = await invoices.GetByIdAsync(query.TenantId, query.InvoiceId, ct, assignedTo);
         if (invoice is null)
             return Result.Failure<InvoiceSummaryResponse>(
                 new Error("Billing.Invoice.NotFound", "Invoice does not exist.")

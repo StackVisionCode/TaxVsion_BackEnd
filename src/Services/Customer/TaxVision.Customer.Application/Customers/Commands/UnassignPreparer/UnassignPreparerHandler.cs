@@ -37,6 +37,7 @@ public static class UnassignPreparerHandler
                 UnassignedByUserId = cmd.UnassignedByUserId,
             }
         );
+        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
 
         return Result.Success();
     }

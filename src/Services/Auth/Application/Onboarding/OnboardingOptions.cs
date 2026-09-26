@@ -8,7 +8,7 @@ public sealed class OnboardingOptions
 {
     public const string SectionName = "Onboarding";
 
-    public string RegistrationUrlBase { get; set; } = "http://localhost:4200";
+    public string RegistrationUrlBase { get; set; } = "http://localhost:4201";
 
     /// <summary>Origen INTERNO de Auth: loopback de la saga (creación del owner vía
     /// <c>internal/tenants/{id}/owners</c>, que NO pasa por el Gateway). En prod es

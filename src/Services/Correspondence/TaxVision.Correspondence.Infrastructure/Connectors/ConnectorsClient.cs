@@ -294,6 +294,75 @@ internal sealed class ConnectorsClient(
         );
     }
 
+    public async Task<Result<IReadOnlyCollection<Guid>>> GetVisibleAccountIdsAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+            return Result.Failure<IReadOnlyCollection<Guid>>(
+                new Error(
+                    "ConnectorsClient.ServiceAuthUnavailable",
+                    "Could not acquire a service token to call Connectors."
+                )
+            );
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, "internal/accounts/visible-ids")
+                {
+                    Content = JsonContent.Create(
+                        new
+                        {
+                            tenantId,
+                            userId,
+                            includeOffice,
+                        },
+                        options: Json
+                    ),
+                };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                using var response = await httpClient.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // 4xx estructurado no es transitorio; 5xx sí. Un 4xx acá es un fallo de negocio raro.
+                    if ((int)response.StatusCode < 500)
+                        return Result.Failure<IReadOnlyCollection<Guid>>(
+                            new Error(
+                                "ConnectorsClient.UnexpectedStatus",
+                                $"Connectors returned HTTP {(int)response.StatusCode}."
+                            )
+                        );
+                }
+                else
+                {
+                    var dto = await response.Content.ReadFromJsonAsync<VisibleAccountIdsDto>(Json, ct);
+                    IReadOnlyCollection<Guid> ids = dto?.AccountIds ?? [];
+                    return Result.Success(ids);
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                logger.LogWarning(ex, "Connectors visible-ids fetch threw (attempt {Attempt}).", attempt);
+            }
+
+            if (attempt == 1)
+                await Task.Delay(RetryBackoff, ct);
+        }
+
+        return Result.Failure<IReadOnlyCollection<Guid>>(
+            new Error("ConnectorsClient.Unavailable", "Connectors did not respond after retrying.")
+        );
+    }
+
+    private sealed record VisibleAccountIdsDto(IReadOnlyCollection<Guid>? AccountIds);
+
     private readonly record struct Attempt(bool IsTransient, Result<MessageBodyResponse> Result);
 
     private readonly record struct AttachmentAttempt(bool IsTransient, Result<ConnectorsAttachmentBytes> Result);

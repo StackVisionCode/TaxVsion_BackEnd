@@ -57,6 +57,12 @@ public sealed class TenantSignatureSettings : BaseEntity
     /// <summary>Si se genera el Certificate of Completion por default en cada solicitud nueva.</summary>
     public bool GenerateCertificateByDefault { get; private set; }
 
+    /// <summary>
+    /// Gobernanza de firmas del preparador (14.5 My Signature): si es true, cada empleado puede usar su
+    /// propia firma; si es false, se fuerza la firma de oficina. Default true (norma de la industria).
+    /// </summary>
+    public bool AllowEmployeeOwnSignature { get; private set; }
+
     /// <summary>Límites de documento (tamaño, páginas). Value Object inmutable.</summary>
     public DocumentLimits DocumentLimits { get; private set; } = default!;
 
@@ -115,6 +121,7 @@ public sealed class TenantSignatureSettings : BaseEntity
                 RemindersEnabledByDefault = true,
                 DefaultReminderIntervalHoursValue = DefaultReminderIntervalHours,
                 GenerateCertificateByDefault = true,
+                AllowEmployeeOwnSignature = true,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
                 PlanConstraints = SignaturePlanConstraints.Default(),
@@ -246,6 +253,26 @@ public sealed class TenantSignatureSettings : BaseEntity
             return;
 
         GenerateCertificateByDefault = false;
+        Touch();
+    }
+
+    /// <summary>Permite que cada empleado use su propia firma (My Signature).</summary>
+    public void EnableEmployeeOwnSignature()
+    {
+        if (AllowEmployeeOwnSignature)
+            return;
+
+        AllowEmployeeOwnSignature = true;
+        Touch();
+    }
+
+    /// <summary>Fuerza la firma de oficina: los empleados no usan su firma personal.</summary>
+    public void DisableEmployeeOwnSignature()
+    {
+        if (!AllowEmployeeOwnSignature)
+            return;
+
+        AllowEmployeeOwnSignature = false;
         Touch();
     }
 

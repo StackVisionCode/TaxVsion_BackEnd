@@ -70,4 +70,14 @@ public sealed class ImapCredentials : BaseEntity
 
     /// <summary>Rotación de contraseña — el usuario la cambió del lado del servidor IMAP y hay que actualizarla acá también.</summary>
     public void UpdatePassword(EncryptedSecret passwordCipher) => PasswordCipher = passwordCipher;
+
+    /// <summary>Reconexión de un buzón desconectado: al reconectar el usuario puede cambiar servidor/puerto/usuario además de la contraseña. Los valores ya pasaron la validación real de conectividad antes de llegar acá.</summary>
+    public void UpdateSettings(string host, int port, bool useSsl, string username, EncryptedSecret passwordCipher)
+    {
+        Host = host;
+        Port = port;
+        UseSsl = useSsl;
+        Username = username;
+        PasswordCipher = passwordCipher;
+    }
 }

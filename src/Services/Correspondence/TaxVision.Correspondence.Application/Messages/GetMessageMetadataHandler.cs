@@ -17,15 +17,30 @@ public static class GetMessageMetadataHandler
     public static async Task<Result<MessageSummary>> Handle(
         GetMessageMetadataQuery query,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         CancellationToken ct
     )
     {
         var email = await incomingEmails.GetByIdAsync(query.TenantId, query.IncomingEmailId, ct);
-        return email is null
-            ? Result.Failure<MessageSummary>(
+        if (email is null)
+            return Result.Failure<MessageSummary>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
+
+        if (
+            !await MailboxVisibility.CanSeeMessageAsync(
+                query.VisibleAccountIds,
+                query.TenantId,
+                email,
+                emailThreads,
+                ct
             )
-            : Result.Success(ToSummary(email));
+        )
+            return Result.Failure<MessageSummary>(
+                new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
+
+        return Result.Success(ToSummary(email));
     }
 
     internal static MessageSummary ToSummary(IncomingEmail email) =>

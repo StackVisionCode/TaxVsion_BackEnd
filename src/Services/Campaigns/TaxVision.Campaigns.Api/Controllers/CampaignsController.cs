@@ -31,7 +31,7 @@ namespace TaxVision.Campaigns.Api.Controllers;
 [ApiController]
 [Route("campaigns")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class CampaignsController(IMessageBus bus) : ControllerBase
+public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     private const int DefaultSize = 20;
 
@@ -228,6 +228,7 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
 
         var manual = (request.Manual ?? []).Select(m => new ManualAudienceEntry(m.Email, m.PhoneE164)).ToList();
 
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(
             new StartCampaignRunFromAudienceCommand(
                 tenantId,
@@ -235,7 +236,8 @@ public sealed class CampaignsController(IMessageBus bus) : ControllerBase
                 userId,
                 request.ContactListIds ?? [],
                 manual,
-                IncludeCustomers: request.IncludeCustomers
+                IncludeCustomers: request.IncludeCustomers,
+                CanViewAllCustomers: canViewAllCustomers
             ),
             ct
         );

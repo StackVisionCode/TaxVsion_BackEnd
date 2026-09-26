@@ -6,6 +6,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Correspondence.Api.Requests;
+using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Application.Messages;
 using Wolverine;
@@ -19,7 +20,7 @@ namespace TaxVision.Correspondence.Api.Controllers;
 [ApiController]
 [Route("correspondence/messages")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class MessagesController(IMessageBus bus) : ControllerBase
+public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolver visibility) : ControllerBase
 {
     /// <summary>
     /// Marca este correo inbound como leído (estado compartido por el tenant). Idempotente — abrir el
@@ -93,7 +94,11 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result<MessageSummary>>(new GetMessageMetadataQuery(tenantId, id), ct);
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
+        var result = await bus.InvokeAsync<Result<MessageSummary>>(
+            new GetMessageMetadataQuery(tenantId, id, visible),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -105,7 +110,11 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result<MessageBodyResult>>(new GetMessageBodyQuery(tenantId, id), ct);
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
+        var result = await bus.InvokeAsync<Result<MessageBodyResult>>(
+            new GetMessageBodyQuery(tenantId, id, visible),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -117,8 +126,9 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<AttachmentSummary>>>(
-            new ListMessageAttachmentsQuery(tenantId, id),
+            new ListMessageAttachmentsQuery(tenantId, id, visible),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

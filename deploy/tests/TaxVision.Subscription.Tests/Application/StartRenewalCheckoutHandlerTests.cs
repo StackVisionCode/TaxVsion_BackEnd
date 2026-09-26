@@ -58,6 +58,41 @@ public sealed class StartRenewalCheckoutHandlerTests
         Assert.Equal(2, unitOfWork.SaveChangesCallCount);
     }
 
+    // Guard del doble cobro, el mismo que ya tienen asientos, add-ons y el upgrade: mientras la sesión viva,
+    // se devuelve esa misma URL en vez de abrir un segundo cobro.
+    [Fact]
+    public async Task A_second_attempt_reuses_the_open_session_instead_of_charging_twice()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var intents = new FakeRenewalCheckoutIntentRepository();
+        var client = OkClient();
+
+        var first = await StartRenewalCheckoutHandler.Handle(
+            Command(subscription.TenantId),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            intents,
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+        var second = await StartRenewalCheckoutHandler.Handle(
+            Command(subscription.TenantId),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            intents,
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value.RenewalIntentId, second.Value.RenewalIntentId);
+        Assert.Equal(first.Value.CheckoutUrl, second.Value.CheckoutUrl);
+        Assert.Equal(1, client.CreateCalls);
+        Assert.Single(intents.Added);
+    }
+
     [Fact]
     public async Task An_active_subscription_cannot_start_a_renewal_checkout()
     {

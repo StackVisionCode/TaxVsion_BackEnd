@@ -19,6 +19,10 @@ public sealed class TenantEmployeeDirectoryEntry
     public Guid TenantId { get; private set; }
     public string ActorType { get; private set; } = default!;
     public bool IsActive { get; private set; }
+
+    /// <summary>Retirado del tenant (offboard): terminal. Nunca vuelve a ser elegible como preparador.</summary>
+    public bool IsOffboarded { get; private set; }
+    public DateTime? OffboardedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
     public static TenantEmployeeDirectoryEntry Create(Guid userId, Guid tenantId, string actorType, bool isActive)
@@ -46,6 +50,9 @@ public sealed class TenantEmployeeDirectoryEntry
 
     public void MarkActive()
     {
+        // Offboard es terminal: no reactivar un empleado retirado.
+        if (IsOffboarded)
+            return;
         IsActive = true;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -56,9 +63,21 @@ public sealed class TenantEmployeeDirectoryEntry
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>Retira al empleado del tenant (offboard): terminal e idempotente.</summary>
+    public void MarkOffboarded()
+    {
+        if (IsOffboarded)
+            return;
+        IsOffboarded = true;
+        IsActive = false;
+        OffboardedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     /// <summary>
-    /// La regla que protege AssignPreparer: solo TenantEmployee/TenantAdmin son staff
-    /// interno elegible como preparador — CustomerPortal/PlatformAdmin nunca lo son.
+    /// La regla que protege AssignPreparer: solo TenantEmployee/TenantAdmin activos y NO retirados
+    /// son staff interno elegible como preparador — CustomerPortal/PlatformAdmin nunca lo son.
     /// </summary>
-    public bool IsEligiblePreparer => IsActive && (ActorType == "TenantEmployee" || ActorType == "TenantAdmin");
+    public bool IsEligiblePreparer =>
+        IsActive && !IsOffboarded && (ActorType == "TenantEmployee" || ActorType == "TenantAdmin");
 }

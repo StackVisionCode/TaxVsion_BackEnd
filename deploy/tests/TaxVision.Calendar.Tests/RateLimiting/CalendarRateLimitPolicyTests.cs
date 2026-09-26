@@ -74,17 +74,19 @@ public sealed class CalendarRateLimitPolicyTests
     }
 
     /// <summary>
-    /// Las dos consultas caras van en categorías más restrictivas que el CRUD: la de rango expande el
-    /// RRULE de cada serie del tenant, y la de disponibilidad además cruza reglas y bloqueos.
+    /// Las dos consultas caras nunca son más permisivas que el CRUD: la de rango expande el RRULE de
+    /// cada serie del tenant, y la de disponibilidad además cruza reglas y bloqueos. Antes estaban muy
+    /// por debajo (20 y 10/min) y la vista de calendario se bloqueaba con uso normal; ahora van a la par
+    /// del CRUD base, y disponibilidad (categoría I) no escala en starter.
     /// </summary>
     [Fact]
-    public void The_expensive_queries_are_capped_below_the_crud()
+    public void The_expensive_queries_never_exceed_the_crud()
     {
         var create = RateLimitPolicyCatalog.GetByName("calendar.g.create");
         var range = RateLimitPolicyCatalog.GetByName("calendar.h.range");
         var availability = RateLimitPolicyCatalog.GetByName("calendar.i.availability");
 
-        Assert.True(range.BaseQuotaPerMinute < create.BaseQuotaPerMinute);
-        Assert.True(availability.BaseQuotaPerMinute < range.BaseQuotaPerMinute);
+        Assert.True(range.BaseQuotaPerMinute <= create.BaseQuotaPerMinute);
+        Assert.True(availability.BaseQuotaPerMinute <= range.BaseQuotaPerMinute);
     }
 }

@@ -41,13 +41,17 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
     /// <summary>Nombre del parametro de ruta donde vive la credencial de una politica por token.</summary>
     public const string TokenRouteValue = "token";
 
+    /// <summary>La política que aplica esta acción. Expuesta para que los fitness tests puedan mirar su
+    /// categoría, no solo que haya alguna.</summary>
+    public string PolicyName { get; } = policyName;
+
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
     {
         var services = context.HttpContext.RequestServices;
         var registry = services.GetRequiredService<IRateLimitPolicyRegistry>();
         var evaluator = services.GetRequiredService<ITieredRateLimitEvaluator>();
 
-        var policy = registry.GetByName(policyName);
+        var policy = registry.GetByName(PolicyName);
         var user = context.HttpContext.User;
 
         // Una politica particionada por token no espera claims: la credencial esta en la ruta, y el
@@ -59,7 +63,7 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
             var token = context.RouteData.Values[TokenRouteValue] as string;
             if (string.IsNullOrEmpty(token))
             {
-                RecordMissingClaims(services, policyName);
+                RecordMissingClaims(services, PolicyName);
                 await next().ConfigureAwait(false);
                 return;
             }
@@ -80,7 +84,7 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
 
         if (!user.TryGetTenantId(out var tenantId) || !user.TryGetUserId(out var userId))
         {
-            RecordMissingClaims(services, policyName);
+            RecordMissingClaims(services, PolicyName);
             await next().ConfigureAwait(false);
             return;
         }
@@ -170,23 +174,18 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
         var response = context.HttpContext.Response;
         var resetAtUnixSeconds = DateTimeOffset.UtcNow.AddSeconds(verdict.RetryAfterSeconds).ToUnixTimeSeconds();
 
-        response.Headers["Retry-After"] = verdict.RetryAfterSeconds.ToString();
         response.Headers["X-RateLimit-Policy"] = policy.Name.Value;
         response.Headers["X-RateLimit-Layer"] = verdict.Layer;
         response.Headers["X-RateLimit-Limit"] = verdict.Limit.ToString();
         response.Headers["X-RateLimit-Remaining"] = "0";
         response.Headers["X-RateLimit-Reset"] = resetAtUnixSeconds.ToString();
 
-        response.StatusCode = StatusCodes.Status429TooManyRequests;
-        await response
-            .WriteAsJsonAsync(
-                new
-                {
-                    Code = "RateLimit.Exceeded",
-                    Message = $"{verdict.Layer} rate limit exceeded. Retry after {verdict.RetryAfterSeconds} seconds.",
-                    Policy = policy.Name.Value,
-                    Layer = verdict.Layer,
-                },
+        await RateLimitRejection
+            .WriteAsync(
+                context.HttpContext,
+                verdict.RetryAfterSeconds,
+                policy.Name.Value,
+                verdict.Layer,
                 context.HttpContext.RequestAborted
             )
             .ConfigureAwait(false);

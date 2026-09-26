@@ -3,21 +3,29 @@ using BuildingBlocks.Messaging.NotesIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Notes.Application.Notes.Abstractions;
+using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Notes.Application.Notes.Commands;
 
-public sealed record UpdateNoteContentCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, string RawHtml);
+public sealed record UpdateNoteContentCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    string RawHtml,
+    bool ActorHasViewAll
+);
 
-/// <summary>Solo el autor edita el contenido (03_Plan_De_Fases.md §Fase 5) — ni siquiera <c>notes.view_all</c> lo habilita, ver <see cref="NoteVisibilityPolicy.CanEditContent"/>.</summary>
+/// <summary>El autor edita el contenido (03_Plan_De_Fases.md §Fase 5); desde el punto 3.2 también un staff con <c>notes.view_all</c> si el autor fue retirado, ver <see cref="NoteVisibilityPolicy.CanEditContentAsync"/>.</summary>
 public static class UpdateNoteContentHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         UpdateNoteContentCommand command,
         INoteRepository notes,
         IHtmlSanitizer sanitizer,
+        IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -28,7 +36,15 @@ public static class UpdateNoteContentHandler
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
 
-        if (!NoteVisibilityPolicy.CanEditContent(note, command.ActorUserId))
+        if (
+            !await NoteVisibilityPolicy.CanEditContentAsync(
+                note,
+                command.ActorUserId,
+                command.ActorHasViewAll,
+                offboardedStaff,
+                ct
+            )
+        )
             return Result.Failure<NoteResponse>(NoteErrors.Forbidden);
 
         var contentResult = NoteContent.Create(sanitizer.Sanitize(command.RawHtml));

@@ -49,6 +49,7 @@ public sealed class ListMessageAttachmentsHandlerTests
         var result = await ListMessageAttachmentsHandler.Handle(
             new ListMessageAttachmentsQuery(tenantId, email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 
@@ -79,6 +80,7 @@ public sealed class ListMessageAttachmentsHandlerTests
         var result = await ListMessageAttachmentsHandler.Handle(
             new ListMessageAttachmentsQuery(tenantId, email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 
@@ -94,6 +96,7 @@ public sealed class ListMessageAttachmentsHandlerTests
         var result = await ListMessageAttachmentsHandler.Handle(
             new ListMessageAttachmentsQuery(Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 
@@ -111,6 +114,7 @@ public sealed class ListMessageAttachmentsHandlerTests
         var result = await ListMessageAttachmentsHandler.Handle(
             new ListMessageAttachmentsQuery(Guid.NewGuid(), email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 

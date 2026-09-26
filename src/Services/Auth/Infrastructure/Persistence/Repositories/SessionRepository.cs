@@ -63,6 +63,36 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
         return tokens.Count;
     }
 
+    public async Task<int> RevokeSurfaceTokensAsync(
+        Guid sessionId,
+        SessionSurface surface,
+        string reason,
+        CancellationToken ct = default
+    )
+    {
+        // IgnoreQueryFilters(): el sessionId sale de un refresh token o un vale ya validados.
+        var tokens = await db
+            .RefreshTokens.IgnoreQueryFilters()
+            .Where(token => token.SessionId == sessionId && token.Surface == surface && token.RevokedAtUtc == null)
+            .ToListAsync(ct);
+        foreach (var token in tokens)
+            token.Revoke(reason);
+
+        return tokens.Count;
+    }
+
+    public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
+        db
+            .RefreshTokens.IgnoreQueryFilters()
+            .AnyAsync(
+                token =>
+                    token.SessionId == sessionId
+                    && token.Surface == surface
+                    && token.RevokedAtUtc == null
+                    && token.ExpiresAtUtc > DateTime.UtcNow,
+                ct
+            );
+
     /// <summary>Revoca todas las sesiones y tokens del usuario, opcionalmente conservando una sesión; devuelve cuántas se revocaron.</summary>
     // IgnoreQueryFilters(): mismo bug — los 3 llamadores pasan el propio userId del actor
     // (password change, logout-all) o un target ya validado contra el tenant (Deactivate).

@@ -5,10 +5,19 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
-public sealed record ExchangeHandoffTicketCommand(Guid Ticket, string? DeviceName = null);
+/// <summary>
+/// <see cref="Surface"/>: el subdominio de la oficina canjea para el workspace; el Account del Landing
+/// canjea el mismo vale para su propia cadena (solo TenantAdmin).
+/// </summary>
+public sealed record ExchangeHandoffTicketCommand(
+    Guid Ticket,
+    string? DeviceName = null,
+    SessionSurface Surface = SessionSurface.Workspace
+);
 
 /// <summary>
 /// Tokens de la sesión recién materializada + <see cref="MfaSetupRequired"/>: cuando el usuario debe
@@ -90,6 +99,12 @@ public static class ExchangeHandoffTicketHandler
         if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
             return Result.Failure<HandoffSessionResponse>(invalid);
 
+        if (
+            command.Surface == SessionSurface.Account
+            && AccountSurfacePolicy.Check(user, payload.MustEnrollMfa) is { } denied
+        )
+            return Result.Failure<HandoffSessionResponse>(denied);
+
         // Sesión única: si el usuario ya tiene una sesión activa en la oficina, se exige takeover en
         // vez de materializar; si no, se emite. El flag de enrolamiento MFA viaja en el vale.
         var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
@@ -98,6 +113,7 @@ public static class ExchangeHandoffTicketHandler
             ["pwd", "handoff"],
             command.DeviceName,
             mustEnrollMfa: payload.MustEnrollMfa,
+            command.Surface,
             roles,
             issuer,
             sessions,
@@ -116,7 +132,9 @@ public static class ExchangeHandoffTicketHandler
                     request.IpAddress,
                     request.UserAgent,
                     correlation.CorrelationId,
-                    detailsJson: """{"method":"handoff","takeoverRequired":true}"""
+                    detailsJson: command.Surface == SessionSurface.Account
+                        ? """{"method":"handoff","surface":"account","takeoverRequired":true}"""
+                        : """{"method":"handoff","takeoverRequired":true}"""
                 ),
                 ct
             );
@@ -141,7 +159,9 @@ public static class ExchangeHandoffTicketHandler
                 request.IpAddress,
                 request.UserAgent,
                 correlation.CorrelationId,
-                detailsJson: """{"method":"handoff"}"""
+                detailsJson: command.Surface == SessionSurface.Account
+                    ? """{"method":"handoff","surface":"account"}"""
+                    : """{"method":"handoff"}"""
             ),
             ct
         );

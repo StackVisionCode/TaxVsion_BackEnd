@@ -68,6 +68,23 @@ public static class ClaimsPrincipalExtensions
     public static int GetPermissionsVersion(this ClaimsPrincipal principal) =>
         int.TryParse(principal.FindFirst("perm_v")?.Value, out var version) ? version : 0;
 
+    /// <summary>Superficie del token (<see cref="AccessSurface"/>); null en los tokens del CRM y del portal.</summary>
+    public static string? GetSurface(this ClaimsPrincipal principal)
+    {
+        var raw = principal.FindFirst(ClaimNames.Surface)?.Value;
+        return string.IsNullOrWhiteSpace(raw) ? null : raw;
+    }
+
+    /// <summary>Momento de la última reautenticación (claim <c>reauth_at</c>, epoch en segundos).</summary>
+    public static bool TryGetReauthenticatedAt(this ClaimsPrincipal principal, out DateTimeOffset reauthenticatedAt)
+    {
+        reauthenticatedAt = default;
+        if (!long.TryParse(principal.FindFirst(ClaimNames.ReauthenticatedAt)?.Value, out var epochSeconds))
+            return false;
+        reauthenticatedAt = DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
+        return true;
+    }
+
     /// <summary>Null si el claim falta o trae un valor que no matchea ningún <see cref="ActorType"/>
     /// conocido — se trata como "no confiable", nunca se asume un actor type por default
     /// (fail-closed, ver Fase 0 de Actor_Type_Authorization_Layers_Plan.md).</summary>

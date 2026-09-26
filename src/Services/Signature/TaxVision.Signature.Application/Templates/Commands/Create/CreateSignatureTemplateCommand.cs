@@ -8,7 +8,7 @@ public sealed record CreateSignatureTemplateCommand(
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,

@@ -51,6 +51,8 @@ export async function verifyAccessToken(token: string): Promise<AuthenticatedPri
     throw new UnauthorizedError('Auth.InvalidToken', 'Access token could not be verified.');
   });
 
+  ensureNoSurface(payload);
+
   const jti = typeof payload.jti === 'string' ? payload.jti : undefined;
   const sessionId = typeof payload['sid'] === 'string' ? (payload['sid'] as string) : undefined;
 
@@ -72,6 +74,19 @@ export async function verifyAccessToken(token: string): Promise<AuthenticatedPri
     jti,
     raw: payload,
   };
+}
+
+/**
+ * Un token con claim `surface` fue emitido para una superficie acotada (hoy el Account del Landing) y solo
+ * sirve donde esa superficie se declara. Communication no tiene nada del Account, asi que cualquier
+ * superficie se rechaza. Los .NET hacen lo mismo con SurfaceAuthorizationFilter, que es un filtro de MVC y
+ * por eso no alcanza hasta aca.
+ */
+function ensureNoSurface(payload: JWTPayload): void {
+  const surface = payload['surface'];
+  if (typeof surface === 'string' && surface.length > 0) {
+    throw new UnauthorizedError('Auth.SurfaceNotAllowed', "This session can't be used for this action.");
+  }
 }
 
 async function ensureNotDenied(jti: string | undefined, sessionId: string | undefined): Promise<void> {

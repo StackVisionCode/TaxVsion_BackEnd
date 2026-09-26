@@ -10,19 +10,25 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 
 public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProtector protector) : ICustomerReadService
 {
+    /// <summary>Tope de `size` de la búsqueda pública (guardrail anti-barrido del directorio).</summary>
+    private const int MaxPageSize = 100;
+
     public async Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         Guid tenantId,
         string? term,
         CustomerStatusFilter status,
         int page,
         int size,
+        Guid? assignedToUserId = null,
+        bool includeAssignees = false,
         CancellationToken ct = default
     )
     {
         if (page < 1)
             page = 1;
-        if (size < 1)
-            size = 20;
+        // Cap de tamaño de página (guardrail): sin tope, un cliente podía pedir `size` arbitrario y
+        // barrer el directorio entero en una request. 100 alcanza de sobra para pickers/typeahead.
+        size = Math.Clamp(size, 1, MaxPageSize);
 
         // Aislamiento multi-tenant: filtro explícito por el tenant del solicitante.
         // IgnoreQueryFilters() — este query corre dentro de un handler de Wolverine
@@ -55,24 +61,116 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             );
         }
 
+        // Visibilidad por asignación: solo los clientes asignados a este usuario. IgnoreQueryFilters +
+        // tenant explícito en el subquery (el scope de Wolverine no tiene tenant ambiente — mismo motivo
+        // que el filtro de arriba). null = sin restricción (admin/view_all o flag apagado).
+        if (assignedToUserId is { } assignee)
+            query = query.Where(c =>
+                db.CustomerAssignments.IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == c.Id && a.UserId == assignee)
+            );
+
         var totalCount = await query.CountAsync(ct);
 
-        var items = await query
+        var pageRows = await query
             .OrderBy(c => c.DisplayName)
+            .ThenBy(c => c.Id)
             .Skip((page - 1) * size)
             .Take(size)
+            .Select(c => new
+            {
+                c.Id,
+                c.Kind,
+                c.Status,
+                c.DisplayName,
+                Email = c.PrimaryEmail.Value,
+                Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
+                c.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        // Staff asignado por cliente de la página, en 1 sola query (no N+1). Solo para admin/view_all
+        // (need-to-know): un no-admin no recibe el roster.
+        var assigneesByCustomer = includeAssignees
+            ? await LoadAssigneeIdsAsync(tenantId, pageRows.Select(r => r.Id).ToList(), ct)
+            : new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var items = pageRows
+            .Select(r => new CustomerSummaryResponse(
+                r.Id,
+                r.Kind,
+                r.Status,
+                r.DisplayName,
+                r.Email,
+                r.Phone,
+                r.CreatedAtUtc,
+                assigneesByCustomer.GetValueOrDefault(r.Id, [])
+            ))
+            .ToList();
+
+        return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
+    }
+
+    public async Task<CustomerDirectoryOverviewResponse> GetOverviewAsync(
+        Guid tenantId,
+        int months,
+        Guid? assignedToUserId = null,
+        CancellationToken ct = default
+    )
+    {
+        months = Math.Clamp(months, 1, 24);
+        var now = DateTime.UtcNow;
+        // Primer día (UTC) del primer mes de la ventana; los meses previos no cuentan para el desglose.
+        var since = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-(months - 1));
+
+        // Mismo aislamiento que SearchAsync (IgnoreQueryFilters + filtro explícito de tenant).
+        var scoped = db.Customers.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
+
+        // Visibilidad por asignación (dashboard del empleado cuenta solo lo suyo).
+        if (assignedToUserId is { } assignee)
+            scoped = scoped.Where(c =>
+                db.CustomerAssignments.IgnoreQueryFilters()
+                    .Any(a => a.TenantId == tenantId && a.CustomerId == c.Id && a.UserId == assignee)
+            );
+
+        var totalCount = await scoped.CountAsync(ct);
+
+        var monthly = await scoped
+            .Where(c => c.CreatedAtUtc >= since)
+            .GroupBy(c => new { c.CreatedAtUtc.Year, c.CreatedAtUtc.Month })
+            .Select(g => new MonthlyNewCustomers(g.Key.Year, g.Key.Month, g.Count()))
+            .ToListAsync(ct);
+
+        var recentRows = await scoped
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Take(3)
+            .Select(c => new
+            {
+                c.Id,
+                c.Kind,
+                c.Status,
+                c.DisplayName,
+                Email = c.PrimaryEmail.Value,
+                Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
+                c.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        // El overview (dashboard) no muestra asignados; se omiten para no encarecer la query.
+        var recent = recentRows
             .Select(c => new CustomerSummaryResponse(
                 c.Id,
                 c.Kind,
                 c.Status,
                 c.DisplayName,
-                c.PrimaryEmail.Value,
-                c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
-                c.CreatedAtUtc
+                c.Email,
+                c.Phone,
+                c.CreatedAtUtc,
+                []
             ))
-            .ToListAsync(ct);
+            .ToList();
 
-        return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
+        return new CustomerDirectoryOverviewResponse(totalCount, monthly, recent);
     }
 
     public async Task<PagedResult<CustomerReconciliationResponse>> ListForReconciliationAsync(
@@ -122,12 +220,83 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         return new PagedResult<CustomerReconciliationResponse>(items, page, size, totalCount);
     }
 
-    public async Task<CustomerDetailResponse?> GetDetailByIdAsync(
-        Guid tenantId,
-        Guid customerId,
+    public async Task<PagedResult<CustomerAssignmentsReconciliationResponse>> ListAssignmentsForReconciliationAsync(
+        int page,
+        int size,
         CancellationToken ct = default
     )
     {
+        if (page < 1)
+            page = 1;
+        size = Math.Clamp(size, 1, 500);
+
+        // Cross-tenant (sin filtro de tenant, como ListForReconciliationAsync) y solo clientes que tienen al
+        // menos una asignación — los admin-only no viajan. IgnoreQueryFilters salta el filtro ambiental.
+        var query = db
+            .Customers.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(c => db.CustomerAssignments.Any(a => a.CustomerId == c.Id));
+
+        var totalCount = await query.CountAsync(ct);
+
+        var customerPage = await query
+            .OrderBy(c => c.TenantId)
+            .ThenBy(c => c.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(c => new
+            {
+                c.TenantId,
+                c.Id,
+                c.AssignedPreparerUserId,
+                Version = c.UpdatedAtUtc ?? c.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        // Set de asignados de la página, en 1 query (no N+1).
+        var pageIds = customerPage.Select(c => c.Id).ToList();
+        var assignments = await db
+            .CustomerAssignments.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(a => pageIds.Contains(a.CustomerId))
+            .Select(a => new { a.CustomerId, a.UserId })
+            .ToListAsync(ct);
+
+        var byCustomer = assignments
+            .GroupBy(a => a.CustomerId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(x => x.UserId).ToList());
+
+        var items = customerPage
+            .Select(c => new CustomerAssignmentsReconciliationResponse(
+                c.TenantId,
+                c.Id,
+                byCustomer.GetValueOrDefault(c.Id, []),
+                c.AssignedPreparerUserId,
+                c.Version
+            ))
+            .ToList();
+
+        return new PagedResult<CustomerAssignmentsReconciliationResponse>(items, page, size, totalCount);
+    }
+
+    public async Task<CustomerDetailResponse?> GetDetailByIdAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid? assignedToUserId = null,
+        bool includeAssignees = false,
+        CancellationToken ct = default
+    )
+    {
+        // Visibilidad por asignación: si está restringido y el usuario no está asignado, se comporta como
+        // "no existe" (404) — no filtra fila ajena. null = sin restricción (admin/view_all o flag apagado).
+        if (
+            assignedToUserId is { } assignee
+            && !await db
+                .CustomerAssignments.IgnoreQueryFilters()
+                .AnyAsync(a => a.TenantId == tenantId && a.CustomerId == customerId && a.UserId == assignee, ct)
+        )
+            return null;
+
         // Bloque escalar del cliente (mismo IgnoreQueryFilters + filtro explícito de tenant que SearchAsync).
         var data = await (
             from c in db.Customers.AsNoTracking().IgnoreQueryFilters()
@@ -290,6 +459,17 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 fiscalRow.UpdatedByUserId
             );
 
+        // Staff asignado (M:N) con su rol — solo para admin/view_all (need-to-know); vacío para el resto.
+        var assignees = includeAssignees
+            ? await db
+                .CustomerAssignments.AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(a => a.CustomerId == customerId && a.TenantId == tenantId)
+                .OrderByDescending(a => a.IsPrimary)
+                .Select(a => new CustomerAssigneeResponse(a.UserId, a.IsPrimary))
+                .ToListAsync(ct)
+            : new List<CustomerAssigneeResponse>();
+
         return new CustomerDetailResponse(
             data.Id,
             data.TenantId,
@@ -314,8 +494,31 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             addresses,
             contactPoints,
             relations,
-            fiscalProfile
+            fiscalProfile,
+            assignees
         );
+    }
+
+    // Carga, en 1 query, los userIds de staff asignados a cada cliente del set (para los avatares del
+    // directorio). Sin filtro global en CustomerAssignments → tenant explícito, mismo aislamiento que el resto.
+    private async Task<Dictionary<Guid, IReadOnlyList<Guid>>> LoadAssigneeIdsAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> customerIds,
+        CancellationToken ct
+    )
+    {
+        if (customerIds.Count == 0)
+            return [];
+
+        var rows = await db
+            .CustomerAssignments.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && customerIds.Contains(a.CustomerId))
+            .Select(a => new { a.CustomerId, a.UserId })
+            .ToListAsync(ct);
+
+        return rows.GroupBy(r => r.CustomerId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(x => x.UserId).ToList());
     }
 
     public async Task<IReadOnlyList<OccupationResponse>> ListOccupationsAsync(

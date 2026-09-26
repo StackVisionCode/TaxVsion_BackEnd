@@ -18,9 +18,11 @@ using TaxVision.Signature.Application.Requests.Commands.Cancel;
 using TaxVision.Signature.Application.Requests.Commands.ClearPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.ClearPreparer;
 using TaxVision.Signature.Application.Requests.Commands.Create;
+using TaxVision.Signature.Application.Requests.Commands.Delete;
 using TaxVision.Signature.Application.Requests.Commands.ExtendExpiration;
 using TaxVision.Signature.Application.Requests.Commands.LegalHold;
 using TaxVision.Signature.Application.Requests.Commands.PlaceField;
+using TaxVision.Signature.Application.Requests.Commands.PreparerFields;
 using TaxVision.Signature.Application.Requests.Commands.RemoveField;
 using TaxVision.Signature.Application.Requests.Commands.RemoveSigner;
 using TaxVision.Signature.Application.Requests.Commands.ReorderSigners;
@@ -29,6 +31,7 @@ using TaxVision.Signature.Application.Requests.Commands.Send;
 using TaxVision.Signature.Application.Requests.Commands.SetPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.SetPreparer;
 using TaxVision.Signature.Application.Requests.Commands.SignAsPreparer;
+using TaxVision.Signature.Application.Requests.Commands.Update;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
 using TaxVision.Signature.Domain.Requests;
@@ -136,17 +139,20 @@ public sealed class SignatureRequestsController(
     [ProducesResponseType<ListSignatureRequestsResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListSignatureRequestsResult>> List(
         [FromQuery] SignatureRequestStatus? status = null,
-        [FromQuery] SignatureCategory? category = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
+        [FromQuery] bool editableOnly = false,
         CancellationToken ct = default
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las solicitudes.
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
-            new ListSignatureRequestsQuery(tenantId, status, category, page, size),
+            new ListSignatureRequestsQuery(tenantId, status, category, page, size, userId, canViewAll, editableOnly),
             ct
         );
         return Ok(result);
@@ -160,11 +166,12 @@ public sealed class SignatureRequestsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<SignatureRequestResponse?>(
-            new GetSignatureRequestByIdQuery(tenantId, id),
+            new GetSignatureRequestByIdQuery(tenantId, id, userId, canViewAll),
             ct
         );
         return result is null ? NotFound() : Ok(result);
@@ -286,6 +293,82 @@ public sealed class SignatureRequestsController(
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // ---------- POST /signature/requests/{id}/preparer-fields ----------
+    // Coloca un campo del preparador (canal paralelo, Form 8879). Se estampa con su firma al sellar.
+    [HttpPost("{id:guid}/preparer-fields")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<PreparerFieldResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PlacePreparerField(
+        [FromRoute] Guid id,
+        [FromBody] PlacePreparerFieldBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var cmd = new PlacePreparerFieldCommand(
+            tenantId,
+            id,
+            body.Kind,
+            body.Page,
+            body.X,
+            body.Y,
+            body.Width,
+            body.Height,
+            body.Label
+        );
+        var result = await bus.InvokeAsync<Result<PreparerFieldResponse>>(cmd, ct);
+        return result.IsSuccess
+            ? Created($"/signature/requests/{id}/preparer-fields/{result.Value.Id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id}/preparer-fields/{fieldId} ----------
+    [HttpDelete("{id:guid}/preparer-fields/{fieldId:guid}")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RemovePreparerField(
+        [FromRoute] Guid id,
+        [FromRoute] Guid fieldId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RemovePreparerFieldCommand(tenantId, id, fieldId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id}/preparer-signature ----------
+    // Fija qué firma reutilizable se estampará por el preparador (o la efectiva si no se envía fileId).
+    [HttpPut("{id:guid}/preparer-signature")]
+    [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetPreparerSignature(
+        [FromRoute] Guid id,
+        [FromBody] SetPreparerSignatureBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
+        var result = await bus.InvokeAsync<Result>(
+            new SetPreparerSignatureCommand(tenantId, id, userId, isAdmin, body.SignatureFileId),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     // ---------- POST /signature/requests/{id}/send ----------
     [HttpPost("{id:guid}/send")]
     [HasPermission(SignaturePermissions.RequestCreate)]
@@ -328,6 +411,65 @@ public sealed class SignatureRequestsController(
             new CancelSignatureRequestCommand(tenantId, id, userId, body.Reason),
             ct
         );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id} ----------
+    // Edita la metadata de un borrador (Draft/Ready). El dominio rechaza editar una enviada/terminal.
+    [HttpPut("{id:guid}")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Update(
+        [FromRoute] Guid id,
+        [FromBody] UpdateSignatureRequestBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(
+            new UpdateSignatureRequestCommand(
+                tenantId,
+                id,
+                body.Title,
+                body.Description,
+                body.Category,
+                body.TokenExpirationHours,
+                body.SendSignedDocumentToSigners,
+                body.SendCertificateToSigners,
+                body.AutoRemindersEnabled,
+                body.ReminderIntervalHours
+            ),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id} ----------
+    // Borra en firme un borrador sin enviar. Enviadas/terminales no se borran (se cancelan) — lo
+    // impone el dominio. Misma autoría que crear/editar un borrador (RequestCreate) + ownership.
+    [HttpDelete("{id:guid}")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(new DeleteSignatureRequestCommand(tenantId, id), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

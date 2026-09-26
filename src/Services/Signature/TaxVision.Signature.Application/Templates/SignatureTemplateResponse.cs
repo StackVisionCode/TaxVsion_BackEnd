@@ -24,13 +24,25 @@ public sealed record TemplateFieldResponse(
     bool IsRequired
 );
 
+/// <summary>Campo del preparador predefinido en la plantilla (sin slot). Se hereda al instanciar.</summary>
+public sealed record TemplatePreparerFieldResponse(
+    Guid Id,
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
+);
+
 public sealed record SignatureTemplateResponse(
     Guid Id,
     Guid TenantId,
     Guid CreatedByUserId,
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     SignatureTemplateStatus Status,
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
@@ -47,7 +59,8 @@ public sealed record SignatureTemplateResponse(
     DateTime? PublishedAtUtc,
     DateTime? ArchivedAtUtc,
     IReadOnlyList<TemplateSlotResponse> Slots,
-    IReadOnlyList<TemplateFieldResponse> Fields
+    IReadOnlyList<TemplateFieldResponse> Fields,
+    IReadOnlyList<TemplatePreparerFieldResponse> PreparerFields
 )
 {
     public static SignatureTemplateResponse From(SignatureTemplate template) =>
@@ -94,6 +107,18 @@ public sealed record SignatureTemplateResponse(
                     f.Position.Height,
                     f.Label,
                     f.IsRequired
+                ))
+                .ToList(),
+            template
+                .PreparerFields.Select(f => new TemplatePreparerFieldResponse(
+                    f.Id,
+                    f.Kind,
+                    f.Position.Page,
+                    f.Position.X,
+                    f.Position.Y,
+                    f.Position.Width,
+                    f.Position.Height,
+                    f.Label
                 ))
                 .ToList()
         );

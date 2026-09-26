@@ -7,14 +7,27 @@ namespace TaxVision.Billing.Application.Abstractions;
 /// <summary>Acceso a facturas del tenant.</summary>
 public interface IInvoiceRepository
 {
-    Task<Invoice?> GetByIdAsync(Guid tenantId, Guid invoiceId, CancellationToken ct = default);
+    /// <param name="assignedToUserId">Si no es null, solo devuelve la factura si su cliente está asignado a
+    /// ese usuario (visibilidad P2); si no lo está → null (404). null = sin restricción (admin/view_all o flag off).</param>
+    Task<Invoice?> GetByIdAsync(
+        Guid tenantId,
+        Guid invoiceId,
+        CancellationToken ct = default,
+        Guid? assignedToUserId = null
+    );
 
     /// <summary>Factura de onboarding por su OnboardingId (independiente del tenant dueño). Se usa para la
     /// idempotencia del alta pre-tenant y para el backfill del tenant real. IgnoreQueryFilters interno.</summary>
     Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
-    /// <summary>Facturas del tenant, más recientes primero (para la tabla del frontend).</summary>
-    Task<IReadOnlyList<Invoice>> ListByTenantAsync(Guid tenantId, int take, CancellationToken ct = default);
+    /// <summary>Facturas del tenant, más recientes primero (para la tabla del frontend).
+    /// <paramref name="assignedToUserId"/> no null → solo las de clientes asignados a ese usuario.</summary>
+    Task<IReadOnlyList<Invoice>> ListByTenantAsync(
+        Guid tenantId,
+        int take,
+        CancellationToken ct = default,
+        Guid? assignedToUserId = null
+    );
     Task AddAsync(Invoice invoice, CancellationToken ct = default);
 }
 

@@ -11,6 +11,8 @@ namespace TaxVision.Sms.Application.Abstractions;
 /// </summary>
 public interface ISmsReadService
 {
+    // assignedToUserId (P2): si no es null, restringe a los clientes asignados a ese usuario (visibilidad por
+    // asignación). null = sin restricción (view_all / flag apagado / uso interno). Opcional para no romper callers.
     Task<PagedResult<SmsMessageSummaryResponse>> SearchMessagesAsync(
         Guid tenantId,
         Guid? customerId,
@@ -21,16 +23,23 @@ public interface ISmsReadService
         string? sourceContext,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
-    Task<SmsMessageDetailResponse?> GetMessageByIdAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
+    Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
+        Guid tenantId,
+        Guid messageId,
+        Guid? assignedToUserId = null,
+        CancellationToken ct = default
+    );
 
     Task<SmsStatsResponse> GetStatsAsync(
         Guid tenantId,
         DateTime fromUtc,
         DateTime toUtc,
         string? sourceContext,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 
@@ -40,6 +49,7 @@ public interface ISmsReadService
         string? term,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
 }

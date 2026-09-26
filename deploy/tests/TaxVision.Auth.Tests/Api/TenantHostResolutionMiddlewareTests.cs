@@ -157,6 +157,46 @@ public sealed class TenantHostResolutionMiddlewareTests
         );
     }
 
+    [Theory]
+    [InlineData("taxproffice.com")]
+    [InlineData("www.taxproffice.com")]
+    [InlineData("app.taxproffice.com")]
+    [InlineData("client.taxproffice.com")]
+    public async Task Platform_system_hosts_pass_without_lookup_or_audit_even_when_enforced(string host)
+    {
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString(host);
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Null(resolver.LastRequestedHost);
+        Assert.Null(tenantContext.ResolvedTenantId);
+        Assert.Empty(audit.Logs);
+    }
+
+    [Fact]
+    public async Task Internal_m2m_calls_skip_host_resolution_even_when_enforced()
+    {
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("auth-api:8080");
+        context.Request.Path = $"/internal/tenants/{Guid.NewGuid()}/users/{Guid.NewGuid()}/permissions-snapshot";
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Null(resolver.LastRequestedHost);
+        Assert.Empty(audit.Logs);
+    }
+
     [Fact]
     public async Task Unknown_host_falls_through_when_enforcement_disabled_but_is_still_audited()
     {
@@ -173,6 +213,27 @@ public sealed class TenantHostResolutionMiddlewareTests
         Assert.True(nextCalled[0]);
         Assert.Null(tenantContext.ResolvedTenantId);
         Assert.Single(audit.Logs, log => log.Action == AuthAuditAction.TenantResolutionFailed);
+    }
+
+    // El reset de contraseña se acota a la oficina del subdominio: necesita el Host resuelto.
+    [Fact]
+    public async Task Forgot_password_resolves_the_office_host()
+    {
+        var tenantId = Guid.NewGuid();
+        var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
+            enforce: true
+        );
+        resolver.ResolveFn = _ => HostResolutionResult.Resolved(tenantId);
+
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("coretaxpro.taxproffice.com");
+        context.Request.Path = "/auth/password/forgot";
+
+        await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
+
+        Assert.True(nextCalled[0]);
+        Assert.Equal("coretaxpro.taxproffice.com", resolver.LastRequestedHost);
+        Assert.Equal(tenantId, tenantContext.ResolvedTenantId);
     }
 
     [Theory]

@@ -186,6 +186,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(45)
                         .HasColumnType("nvarchar(45)");
 
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -931,6 +934,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SessionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Surface")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1152,6 +1160,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.view",
                             Description = "Ver clientes",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000000c9"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "customers.view_all",
+                            Description = "Ver TODOS los clientes del tenant (no solo los asignados)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -1594,6 +1615,32 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "connectors.accounts.write",
                             Description = "Conectar, reconectar y desconectar cuentas de correo del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "connectors",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000000c7"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "connectors.accounts.connect_own",
+                            Description = "Conectar y administrar el buzón de correo personal propio",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "connectors",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000000c8"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "connectors.accounts.office.read",
+                            Description = "Ver el buzón de correo de oficina y su correo",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -2566,15 +2613,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000104"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "payment_app.saas_payment.refund",
-                            Description = "Reembolsar un pago SaaS del propio tenant",
-                            IsAssignableByTenant = true,
+                            Description = "Reembolsar un pago SaaS de cualquier tenant (soporte de plataforma)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
@@ -3883,6 +3930,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PhoneVerified")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("RemovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -3906,8 +3961,13 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CustomerId")
                         .HasFilter("[CustomerId] IS NOT NULL");
 
-                    b.HasIndex("TenantId", "Email")
-                        .IsUnique();
+                    b.HasIndex(new[] { "TenantId", "Email" }, "IX_Users_TenantId_Email_Portal")
+                        .IsUnique()
+                        .HasFilter("[ActorType] = N'CustomerPortal'");
+
+                    b.HasIndex(new[] { "TenantId", "Email" }, "IX_Users_TenantId_Email_Staff")
+                        .IsUnique()
+                        .HasFilter("[ActorType] <> N'CustomerPortal'");
 
                     b.ToTable("Users", (string)null);
                 });

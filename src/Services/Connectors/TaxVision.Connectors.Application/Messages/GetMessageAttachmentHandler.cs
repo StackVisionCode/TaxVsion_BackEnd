@@ -24,11 +24,11 @@ public static class GetMessageAttachmentHandler
         CancellationToken ct
     )
     {
-        if (!await rateLimiter.TryAcquireAsync(query.TenantId, ct))
+        if (!await rateLimiter.TryAcquireAsync(query.TenantId, query.AccountId, ct))
             return Result.Failure<MessageAttachmentDownload>(
                 new Error(
                     "GetMessageAttachmentHandler.RateLimited",
-                    "Attachment fetch rate limit exceeded for this tenant."
+                    "Too many attachments opened from this mailbox. Please wait a moment and try again."
                 )
             );
 

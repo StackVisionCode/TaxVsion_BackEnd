@@ -5,7 +5,7 @@ namespace TaxVision.Signature.Application.Requests.Queries.List;
 public sealed record SignatureRequestSummary(
     Guid Id,
     string Title,
-    SignatureCategory Category,
+    string Category,
     SignatureRequestStatus Status,
     Guid OriginalFileId,
     int SignerCount,

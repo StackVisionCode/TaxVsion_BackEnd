@@ -73,6 +73,26 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // Mismo criterio cross-tenant que GetStuckProcessingAsync. El pago del onboarding queda fuera solo,
+    // porque nace sin tenant: su recibo lo pide Auth.
+    public async Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .SaaSPayments.IgnoreQueryFilters()
+            .Where(payment =>
+                payment.Status == PaymentStatus.Succeeded
+                && payment.TenantId != Guid.Empty
+                && payment.ReceiptFileId == null
+                && payment.PaidAtUtc != null
+                && payment.PaidAtUtc < cutoffUtc
+            )
+            .OrderBy(payment => payment.PaidAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
         DateTime nowUtc,
         int batchSize,
@@ -114,6 +134,33 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
                 payment.Status == PaymentStatus.Succeeded && payment.Type == type && payment.PaidAtUtc >= sinceUtc
             )
             .SumAsync(payment => payment.Amount.AmountCents, ct);
+
+    // IgnoreQueryFilters: hasta que la saga crea el tenant, la fila vive con TenantId = Guid.Empty y el
+    // filtro ambiental no la alcanzaría.
+    public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        db.SaaSPayments.IgnoreQueryFilters().FirstOrDefaultAsync(payment => payment.OnboardingId == onboardingId, ct);
+
+    // Solo refunds: los Attempts traen el cuerpo crudo del proveedor y no salen del lado admin. El .Where
+    // explícito por tenant es lo que aísla, igual que en el resto de lecturas.
+    public async Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
+        Guid tenantId,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
+    {
+        var query = db.SaaSPayments.AsNoTracking().IgnoreQueryFilters().Where(payment => payment.TenantId == tenantId);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .Include(payment => payment.Refunds)
+            .OrderByDescending(payment => payment.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
 
     public async Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
         Guid? tenantId,

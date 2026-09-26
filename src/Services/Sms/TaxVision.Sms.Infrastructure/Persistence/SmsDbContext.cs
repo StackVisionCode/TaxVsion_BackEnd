@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -33,9 +34,14 @@ public sealed class SmsDbContext(DbContextOptions<SmsDbContext> options, ITenant
     // RateLimit Fase 2 — proyección local de plan-code (mantenida por los eventos de Subscription).
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
+    // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

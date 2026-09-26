@@ -317,9 +317,8 @@ services:
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      # DEV: aceptar el tenantId del body en /auth/login (sin resolución por Host/subdominio).
-      # En prod queda true (appsettings.json). Development ya usa false.
-      TenantDomains__EnforceHostResolution: "false"
+      # Resolución por Host activa (appsettings.json): apex/www/app/client son hosts de sistema y /internal
+      # (M2M por la red interna) queda exento, así que ya no hace falta apagarla en prod.
       # RS256: unico servicio con la clave privada — firma los JWT y publica el
       # JWKS real en /auth/.well-known/jwks.json (con HS256 ese endpoint
       # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
@@ -363,6 +362,9 @@ services:
       # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:4200) y el
       # correo "Completa tu cuenta" salía con un link a localhost.
       Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # Orígenes del Landing que pueden usar la cookie del Account (chequeo de Origin anti-CSRF).
+      AccountSession__AllowedOrigins__0: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      AccountSession__AllowedOrigins__1: https://www.${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       Onboarding__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
@@ -488,6 +490,10 @@ services:
       # falta Audience/Scopes acá — mismo estilo que los clientes 0-8.
       ServiceAuth__Clients__14__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
       ServiceAuth__Clients__14__Secret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
+      # El mismo acquirer firma la descarga del recibo de una compra: CloudStorage exige
+      # [HasPermission(cloudstorage.file.download)] ademas de actor Service, y el token se pide para el
+      # tenant del pago, asi que solo puede firmar archivos de esa oficina. Sin esto la descarga daba 403.
+      ServiceAuth__Clients__14__Permissions__0: cloudstorage.file.download
       # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos, uno por servicio que antes
       # solo RECIBIA llamadas M2M, solo para leer el catalogo de PlanRateLimits de
       # Subscription (HttpPlanRateLimitReader). Subscription's ServiceOnly policy solo exige
@@ -1090,6 +1096,11 @@ services:
       # ServiceAuthClient__* más abajo — un acquirer por servicio, un HttpClient tipado por
       # destino real (mismo criterio confirmado en Correspondence).
       Notes__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Notes__AssignmentVisibility__Enabled: ${NOTES_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Fase 7 — CloudStorage Caso B (subida directa del navegador): Notes solo consume eventos
       # FileAvailable/FileInfectedDetected/FileBlockedByPolicy, sin MinIO ni M2M propio hacia
       # CloudStorage. BaseUrl se conserva solo por si algún endpoint de lectura lo necesita.
@@ -1139,6 +1150,11 @@ services:
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${SMS_SERVICE_CLIENT_ID:-sms-worker}
       ServiceAuthClient__ClientSecret: ${SMS_SERVICE_CLIENT_SECRET:-}
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Sms__AssignmentVisibility__Enabled: ${SMS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Proveedor SMS global (MVP). El adapter concreto y sus secretos se configuran por env
       # Sms__Providers__<code>__... ; por defecto arranca con el proveedor "fake" para dev/E2E.
@@ -1201,6 +1217,11 @@ services:
       ServiceAuthClient__ClientSecret: ${CAMPAIGNS_SERVICE_CLIENT_SECRET:-}
       # Directorio de clientes para resolver la audiencia de la campaña (M2M, ServiceOnly).
       CustomerService__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro de audiencia por asignación (tras sembrar).
+      Campaigns__AssignmentVisibility__Enabled: ${CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Tier-aware rate limiting: catálogo de PlanRateLimits desde Subscription (M2M, ServiceOnly).
       RateLimit__EnforceTierQuotas: "true"
       SubscriptionClient__BaseUrl: http://subscription-api:8080
@@ -1360,6 +1381,11 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Directorio local de customers: backfill reactivo + los dos jobs de reconciliacion.
       Calendar__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Calendar__AssignmentVisibility__Enabled: ${CALENDAR_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
@@ -1401,6 +1427,11 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Directorio local de customers: backfill reactivo + los dos jobs de reconciliacion.
       Tasks__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       Tasks__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
@@ -1529,6 +1560,11 @@ services:
       # el CustomerClientOptions caía al default de dev (localhost:5263), inalcanzable dentro de
       # la red de contenedores, y el barrido de 12h moría en silencio (el cliente nunca lanza).
       Signature__Customer__BaseUrl: http://customer-api:8080
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con Signature__ServiceAuth).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Signature__AssignmentVisibility__Enabled: ${SIGNATURE_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Fase D1 — credenciales MinIO propias para subir PDFs sellados (IAM scoped a
       # taxvision-temp/signature/*, ver deploy/docker/minio/policies/signature-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -1773,6 +1809,11 @@ services:
       # Bases de los servicios destino (prod docker; en dev Documents corre en el host → override por .env).
       Billing__Documents__BaseUrl: ${BILLING_DOCUMENTS_BASE_URL:-http://documents-api:8080}
       Billing__PaymentClient__BaseUrl: ${BILLING_PAYMENTCLIENT_BASE_URL:-http://payment-client-api:8080}
+      # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con Billing__ServiceClients).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
+      Billing__AssignmentVisibility__Enabled: ${BILLING_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Billing → Inventory (M2M): descuento de stock al emitir la factura (Fase 3, cliente Platform).
       Billing__Inventory__BaseUrl: ${BILLING_INVENTORY_BASE_URL:-http://inventory-api:8080}
       # Cuotas por tier: HttpPlanRateLimitReader va contra este host. Sin esto caía al default
@@ -1919,6 +1960,12 @@ services:
       # en silencio (el cliente devuelve null en cualquier falla). RECONCILE_ENABLED/INTERVAL_HOURS
       # se dejan en sus defaults de config.ts (true / 12h).
       COMMUNICATION_CUSTOMER_BASE_URL: http://customer-api:8080
+      # Visibilidad por asignación (P2) — flag GLOBAL, espejo del <Svc>__AssignmentVisibility__Enabled
+      # de los servicios .NET. OFF por default: en el despliegue de P1 se deja en "false" (la
+      # reconciliación siembra la proyección sin cambiar comportamiento); para P2 se pone "true" y se
+      # redespliega → el picker de customers y el gate de chat pasan a filtrar por asignación en TODOS
+      # los tenants. El setting por-tenant restrictCustomerChatToAssignedPreparer sigue como opt-in aparte.
+      COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED: ${COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}
@@ -2122,17 +2169,21 @@ services:
       Cors__Origins__3: https://client.taxproffice.com
       Cors__Origins__4: http://localhost:5173
       Cors__Origins__5: http://localhost:4200
-      # GW-08 — las 8 claves escalares del load shedder (Capa 1) expuestas para poder
+      # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son
       # tuneables, no cambia el comportamiento. LoadShedding__Criticality es un diccionario
       # (25 rutas) y se queda en appsettings: cambiar la criticidad de una ruta es una
       # decision de diseno que debe pasar por code review, no por una variable de entorno.
+      # PassThroughPathPrefixes (Socket.IO) tambien vive en appsettings: es una lista.
       LoadShedding__Enabled: "true"
-      LoadShedding__P99LatencyThresholdMs: "2000"
+      LoadShedding__P99LatencyThresholdMs: "5000"
       LoadShedding__ErrorRate5xxThreshold: "0.5"
       LoadShedding__WindowSeconds: "60"
-      LoadShedding__MinSamples: "20"
+      LoadShedding__MinSamples: "200"
+      LoadShedding__ActivationSeconds: "10"
+      LoadShedding__RecoveryRatio: "0.8"
+      LoadShedding__UnmeasuredRequestBodyBytes: "1048576"
       LoadShedding__FairShareExcessFactor: "2.0"
       LoadShedding__DefaultCriticality: Standard
       LoadShedding__RetryAfterSeconds: "5"

@@ -1,12 +1,13 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 
 namespace TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 
 /// <summary>Lectura RICA de una factura (incluye cliente y líneas) para prellenar el formulario de
 /// edición. El listado/summary no trae líneas; esto sí.</summary>
-public sealed record GetInvoiceDetailQuery(Guid TenantId, Guid InvoiceId);
+public sealed record GetInvoiceDetailQuery(Guid TenantId, Guid InvoiceId, Guid ActorUserId, bool CanViewAll);
 
 public sealed record InvoiceDetailCustomer(Guid CustomerId, string Name, string? Email, string? Phone, string? TaxId);
 
@@ -40,10 +41,12 @@ public static class GetInvoiceDetailHandler
     public static async Task<Result<InvoiceDetailResponse>> Handle(
         GetInvoiceDetailQuery query,
         IInvoiceRepository invoices,
+        IOptions<BillingVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
-        var invoice = await invoices.GetByIdAsync(query.TenantId, query.InvoiceId, ct);
+        var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
+        var invoice = await invoices.GetByIdAsync(query.TenantId, query.InvoiceId, ct, assignedTo);
         if (invoice is null)
             return Result.Failure<InvoiceDetailResponse>(
                 new Error("Billing.Invoice.NotFound", "Invoice does not exist.")

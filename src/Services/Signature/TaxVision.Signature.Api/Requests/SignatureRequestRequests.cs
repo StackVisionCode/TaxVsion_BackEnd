@@ -5,7 +5,7 @@ namespace TaxVision.Signature.Api.Requests;
 public sealed record CreateSignatureRequestBody(
     string Title,
     string? Description,
-    SignatureCategory Category,
+    string Category,
     Guid OriginalFileId,
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
@@ -16,6 +16,20 @@ public sealed record CreateSignatureRequestBody(
     bool SendSignedDocumentToSigners = true,
     bool SendCertificateToSigners = false,
     // Recordatorios automáticos a firmantes: null = usar el default del tenant; con valor = override.
+    bool? AutoRemindersEnabled = null,
+    int? ReminderIntervalHours = null
+);
+
+// Edición de metadata de un borrador (Draft/Ready). GenerateCertificate y el documento no se editan
+// aquí: son decisiones de creación. Los flags de entrega/reminders son OPCIONALES (null = no tocar),
+// porque el detalle no los devuelve y no queremos pisarlos al editar solo título/categoría.
+public sealed record UpdateSignatureRequestBody(
+    string Title,
+    string? Description,
+    string Category,
+    int TokenExpirationHours,
+    bool? SendSignedDocumentToSigners = null,
+    bool? SendCertificateToSigners = null,
     bool? AutoRemindersEnabled = null,
     int? ReminderIntervalHours = null
 );
@@ -49,5 +63,18 @@ public sealed record ExtendExpirationBody(int AdditionalHours);
 public sealed record SetPractitionerPinBody(string Pin);
 
 public sealed record SetPreparerBody(string PtinOrEfin, string DisplayName, string? TitleLabel);
+
+public sealed record PlacePreparerFieldBody(
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label
+);
+
+/// <summary>Firma reutilizable a estampar por el preparador. Null = usar la firma efectiva (personal u oficina).</summary>
+public sealed record SetPreparerSignatureBody(Guid? SignatureFileId);
 
 public sealed record PlaceLegalHoldBody(string Reason);

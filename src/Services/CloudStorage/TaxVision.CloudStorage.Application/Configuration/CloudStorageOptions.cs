@@ -34,7 +34,7 @@ public sealed class CloudStorageOptions
     public int MaxZipFiles { get; set; } = 500;
 
     /// <summary>Fase B2 — cap duro de tamano agregado (suma de SizeBytes) por descarga ZIP (413 si se supera).</summary>
-    public long MaxZipAggregateBytes { get; set; } = 500L * 1024 * 1024;
+    public long MaxZipAggregateBytes { get; set; } = 2L * 1024 * 1024 * 1024;
 
     /// <summary>
     /// Fase B2.1 — cap duro de cantidad de carpetas por descarga ZIP (413 si se
@@ -173,6 +173,7 @@ public sealed class CloudStorageOptions
             [FolderType.Templates] = TemplatesPolicy(),
             [FolderType.Branding] = BrandingPolicy(),
             [FolderType.VoiceNotes] = VoiceNotesPolicy(),
+            [FolderType.SaaSReceipts] = SaaSReceiptsPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -222,7 +223,10 @@ public sealed class CloudStorageOptions
         // VoiceNotes se trata igual que Branding: upload de SISTEMA mediado por Communication (Service),
         // no un documento de usuario gateado por tier. La folder policy define el set de audio; sin este
         // bypass la interseccion con el plan (que no lista audio/*) dejaria fuera las notas de voz.
-        if (folderType is FolderType.Branding or FolderType.VoiceNotes)
+        // El recibo de la suscripción lo genera Documents, nunca lo sube un usuario: mismo criterio
+        // que Branding y VoiceNotes — el set de tipos lo fija la folder policy, sin intersectar con el
+        // plan, porque el tier del tenant no tiene por qué decidir si puede recibir su propio recibo.
+        if (folderType is FolderType.Branding or FolderType.VoiceNotes or FolderType.SaaSReceipts)
         {
             return new EffectiveUploadPolicy(
                 folderPolicy.MaxSizeBytes,
@@ -416,6 +420,15 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 500L * 1024,
             AllowedExtensions = [".png", ".jpg", ".jpeg", ".svg"],
             AllowedContentTypes = ["image/png", "image/jpeg", "image/svg+xml"],
+        };
+
+    /// <summary>Recibo de un cobro de la suscripción: siempre un PDF que genera Documents.</summary>
+    private static StorageFolderTypePolicy SaaSReceiptsPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 5L * 1024 * 1024,
+            AllowedExtensions = [".pdf"],
+            AllowedContentTypes = ["application/pdf"],
         };
 
     private static StorageFolderTypePolicy BackupsPolicy() =>

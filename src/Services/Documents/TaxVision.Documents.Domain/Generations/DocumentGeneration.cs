@@ -209,6 +209,24 @@ public sealed class DocumentGeneration : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Desatasca una generación que arrancó y nunca terminó. Pasa cuando el paso siguiente se pierde fuera
+    /// de acá —el archivo no llegó a almacenarse, el evento de vuelta no llegó— y la fila se queda a mitad
+    /// de camino para siempre: sin esto, el único estado reintentable era <c>Failed</c>, y un atasco
+    /// silencioso no lo es. Lo terminado (Completed, Cancelled) no se toca.
+    /// </summary>
+    public Result RetryStalled(DateTime nowUtc)
+    {
+        if (Status is DocumentGenerationStatus.Completed or DocumentGenerationStatus.Cancelled)
+            return Result.Failure(new Error("Documents.Generation.InvalidTransition", $"Cannot retry from {Status}."));
+
+        Status = DocumentGenerationStatus.Queued;
+        ErrorCode = null;
+        ErrorMessage = null;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     public void SetContentHash(ContentHash hash, string fileName)
     {
         ContentHash = hash;

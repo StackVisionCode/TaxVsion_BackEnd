@@ -85,6 +85,12 @@ public sealed class SignatureRequestsControllerOwnershipTests
             int batchSize,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListStaleUnsentAsync(
+            DateTime olderThanUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
     }
 
     private sealed class ControllableMessageBus : IMessageBus
@@ -250,7 +256,7 @@ public sealed class SignatureRequestsControllerOwnershipTests
                 createdByUserId,
                 "Test request",
                 description: null,
-                SignatureCategory.Other,
+                "Other",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -8,8 +9,10 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Signature.Domain.Analytics;
 using TaxVision.Signature.Domain.Audit;
+using TaxVision.Signature.Domain.Categories;
 using TaxVision.Signature.Domain.Consents;
 using TaxVision.Signature.Domain.Permissions;
+using TaxVision.Signature.Domain.Profiles;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.RateLimiting;
 using TaxVision.Signature.Domain.Requests;
@@ -31,6 +34,8 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureField> SignatureFields => Set<SignatureField>();
 
+    public DbSet<PreparerField> PreparerFields => Set<PreparerField>();
+
     public DbSet<SignerVerificationChallenge> SignerVerificationChallenges => Set<SignerVerificationChallenge>();
 
     public DbSet<CustomerEmailProjection> CustomerEmailProjections => Set<CustomerEmailProjection>();
@@ -39,9 +44,15 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureTemplate> SignatureTemplates => Set<SignatureTemplate>();
 
+    public DbSet<TenantSignatureCategory> SignatureCategories => Set<TenantSignatureCategory>();
+
+    public DbSet<SignatureProfile> SignatureProfiles => Set<SignatureProfile>();
+
     public DbSet<TemplateSignerSlot> TemplateSignerSlots => Set<TemplateSignerSlot>();
 
     public DbSet<TemplateField> TemplateFields => Set<TemplateField>();
+
+    public DbSet<TemplatePreparerField> TemplatePreparerFields => Set<TemplatePreparerField>();
 
     public DbSet<SignatureAnalyticsSnapshot> SignatureAnalyticsSnapshots => Set<SignatureAnalyticsSnapshot>();
 
@@ -71,9 +82,14 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     // por TenantBrandingProjectionConsumer (TenantCreated + TenantLogoUpdated).
     public DbSet<TenantBrandingRef> TenantBrandingRefs => Set<TenantBrandingRef>();
 
+    // P2 — proyección compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el consumer compartido + la reconciliación. Alimenta el filtro de visibilidad de solicitudes.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyGlobalTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

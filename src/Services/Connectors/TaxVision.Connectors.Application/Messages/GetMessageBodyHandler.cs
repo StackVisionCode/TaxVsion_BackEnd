@@ -26,7 +26,10 @@ public static class GetMessageBodyHandler
     {
         if (!await rateLimiter.TryAcquireAsync(query.TenantId, query.AccountId, ct))
             return Result.Failure<MessageBodyDto>(
-                new Error("GetMessageBodyHandler.RateLimited", "Body fetch rate limit exceeded for this account.")
+                new Error(
+                    "GetMessageBodyHandler.RateLimited",
+                    "Too many emails opened from this mailbox. Please wait a moment and try again."
+                )
             );
 
         var accountResult = await accountRepository.GetByIdAsync(query.AccountId, ct);

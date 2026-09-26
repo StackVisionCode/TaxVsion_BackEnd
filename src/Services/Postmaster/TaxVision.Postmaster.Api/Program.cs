@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Postmaster.Api.Jobs;
 using TaxVision.Postmaster.Application;
+using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Infrastructure;
 using TaxVision.Postmaster.Infrastructure.Persistence;
 using Wolverine;
@@ -120,6 +121,21 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, PostmasterDbContext>();
     options.Policies.AutoApplyTransactions();
+
+    // Email por encima del cupo del provider: se reprograma tras la espera del limiter (con jitter) en
+    // vez de gastar los 3 reintentos estándar de 1/5/15 s. Va antes de la política estándar: gana la
+    // primera regla que matchea.
+    options
+        .Policies.OnException<EmailRateLimitedException>()
+        .CustomAction(
+            (_, lifecycle, ex) =>
+                new ValueTask(
+                    lifecycle.ReScheduleAsync(
+                        DateTimeOffset.UtcNow.Add(((EmailRateLimitedException)ex).NextAttemptDelay())
+                    )
+                ),
+            "Reschedule an email that is over the provider quota"
+        );
 
     options.ApplyStandardFailurePolicies();
 

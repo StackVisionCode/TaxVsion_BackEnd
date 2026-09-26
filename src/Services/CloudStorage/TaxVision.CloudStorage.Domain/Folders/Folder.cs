@@ -26,6 +26,18 @@ public sealed class Folder : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>
+    /// Papelera de carpetas: cuando se borra una carpeta, ella y todo su subárbol pasan a
+    /// SoftDeleted (recuperables durante la retención). <see cref="DeletedBatchId"/> agrupa todo lo
+    /// borrado en la misma operación (carpetas y archivos comparten el batch); la carpeta RAÍZ que el
+    /// usuario borró es la que cumple <c>DeletedBatchId == Id</c> (la que aparece en la papelera).
+    /// </summary>
+    public DateTime? SoftDeletedAtUtc { get; private set; }
+    public DateTime? SoftDeleteExpiresAtUtc { get; private set; }
+    public Guid? DeletedBatchId { get; private set; }
+
+    public bool IsDeleted => SoftDeletedAtUtc is not null;
+
+    /// <summary>
     /// Ver <see cref="FolderCategory"/> — inmutable desde la creacion a proposito: identifica
     /// PARA QUE modulo esta carpeta es la ancla de un dueno, y reclasificarla despues rompería
     /// esa garantia de get-or-create. Si un modulo necesita otra categoria, crea otra carpeta.
@@ -84,6 +96,28 @@ public sealed class Folder : TenantEntity
     /// responsabilidad de aplicacion, no de este agregado individual.
     /// </summary>
     public void RebasePath(string newRelativePath) => RelativePath = newRelativePath;
+
+    /// <summary>Manda la carpeta a la papelera dentro de un batch (la raíz usa batchId == su propio Id).</summary>
+    public Result SoftDelete(Guid batchId, DateTime nowUtc, TimeSpan retention)
+    {
+        if (IsDeleted)
+            return Result.Failure(FolderErrors.AlreadyDeleted);
+        SoftDeletedAtUtc = nowUtc;
+        SoftDeleteExpiresAtUtc = nowUtc.Add(retention);
+        DeletedBatchId = batchId;
+        return Result.Success();
+    }
+
+    /// <summary>Restaura la carpeta desde la papelera (vuelve a ser navegable con su misma jerarquía).</summary>
+    public Result Restore()
+    {
+        if (!IsDeleted)
+            return Result.Failure(FolderErrors.NotDeleted);
+        SoftDeletedAtUtc = null;
+        SoftDeleteExpiresAtUtc = null;
+        DeletedBatchId = null;
+        return Result.Success();
+    }
 
     private static string ComposePath(string? parentPath, string name) =>
         string.IsNullOrEmpty(parentPath) ? $"/{name}" : $"{parentPath}/{name}";

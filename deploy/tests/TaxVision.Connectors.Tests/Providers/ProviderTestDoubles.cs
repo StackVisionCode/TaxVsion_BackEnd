@@ -73,4 +73,6 @@ internal sealed class FakeImapCredentialsRepository : IImapCredentialsRepository
                 : Result.Success(found)
         );
     }
+
+    public void Remove(ImapCredentials credentials) => Credentials.Remove(credentials);
 }

@@ -38,6 +38,7 @@ public sealed class TwilioSmsProvider(
 {
     public const string ProviderCode = "twilio";
     private const string DefaultBaseUrl = "https://api.twilio.com";
+    private const string StatusWebhookPath = "/sms/webhooks/twilio/status";
 
     public string Code => ProviderCode;
 
@@ -53,6 +54,7 @@ public sealed class TwilioSmsProvider(
             SupportsDeliveryReceipts = true,
             SupportsInbound = true,
             SupportsBulkSend = false,
+            SupportsStatusPull = true, // Twilio expone GET /Messages/{sid}.json (estado por sid).
             MaxBatchSize = 1,
             SupportsMedia = true,
             SupportsMultipleMedia = true,
@@ -73,7 +75,7 @@ public sealed class TwilioSmsProvider(
         var http = httpClientFactory.CreateClient(nameof(TwilioSmsProvider));
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config, accountSid))
         {
-            Content = BuildForm(config, request),
+            Content = BuildForm(config, request, StatusCallbackUrl()),
         };
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
             "Basic",
@@ -172,16 +174,72 @@ public sealed class TwilioSmsProvider(
                 new Error("sms.webhook.malformed", "Malformed Twilio DLR payload.")
             );
 
-        var status = rawStatus!.ToLowerInvariant() switch
+        var status = MapStatus(rawStatus);
+        var errorCode = form.GetValueOrDefault("ErrorCode");
+        return Result.Success(new SmsDeliveryUpdate(messageSid!, rawStatus!, status, errorCode, null));
+    }
+
+    /// <summary>PULL de estado: <c>GET /2010-04-01/Accounts/{sid}/Messages/{messageSid}.json</c> por mensaje
+    /// (Twilio no tiene fetch por lote de ids). Devuelve el estado actual de cada sid consultado. Backstop del
+    /// StatusCallback (webhook) para reconciliar cuando el DLR no llegó. Fail-open por mensaje: un error en uno
+    /// no aborta el resto.</summary>
+    public async Task<Result<IReadOnlyList<SmsDeliveryUpdate>>> FetchDeliveryReportsAsync(
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var config = Config;
+        var (accountSid, _) = SplitCredential(config.Auth.Credential);
+        var ids = providerMessageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        if (string.IsNullOrWhiteSpace(accountSid) || ids.Count == 0)
+            return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>([]);
+
+        var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? DefaultBaseUrl : config.BaseUrl;
+        var http = httpClientFactory.CreateClient(nameof(TwilioSmsProvider));
+        var breaker = resilience.GetOrCreate(nameof(TwilioSmsProvider));
+        var basicAuth = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(config.Auth.Credential ?? string.Empty))
+        );
+
+        var updates = new List<SmsDeliveryUpdate>(ids.Count);
+        foreach (var sid in ids)
+        {
+            var url =
+                $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages/{Uri.EscapeDataString(sid)}.json";
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url)
+            {
+                Headers = { Authorization = basicAuth },
+            };
+            try
+            {
+                using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+                var payload = await response.Content.ReadAsStringAsync(ct);
+                var (fetchedSid, rawStatus, errorCode) = ParseSendResponse(payload);
+                var effectiveSid = fetchedSid ?? sid;
+                if (string.IsNullOrWhiteSpace(rawStatus))
+                    continue;
+                updates.Add(new SmsDeliveryUpdate(effectiveSid, rawStatus!, MapStatus(rawStatus), errorCode, null));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
+            {
+                logger.LogWarning(ex, "Twilio status pull failed for {Sid}.", sid);
+            }
+        }
+        return Result.Success<IReadOnlyList<SmsDeliveryUpdate>>(updates);
+    }
+
+    /// <summary>Mapea el status de Twilio (envío/DLR/fetch — mismo vocabulario) al canónico. Fuente única.</summary>
+    private static SmsCanonicalStatus MapStatus(string? rawStatus) =>
+        (rawStatus ?? string.Empty).ToLowerInvariant() switch
         {
             "delivered" => SmsCanonicalStatus.Delivered,
             "undelivered" => SmsCanonicalStatus.Undeliverable,
             "failed" => SmsCanonicalStatus.Failed,
-            _ => SmsCanonicalStatus.Accepted, // queued / sending / sent
+            _ => SmsCanonicalStatus.Accepted, // queued / sending / sent / accepted
         };
-        var errorCode = form.GetValueOrDefault("ErrorCode");
-        return Result.Success(new SmsDeliveryUpdate(messageSid!, rawStatus!, status, errorCode, null));
-    }
 
     public Result<SmsInboundMessage> ParseInbound(string rawPayload)
     {
@@ -211,7 +269,11 @@ public sealed class TwilioSmsProvider(
         return $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages.json";
     }
 
-    private static FormUrlEncodedContent BuildForm(SmsProviderConfig config, SmsSendRequest request)
+    private static FormUrlEncodedContent BuildForm(
+        SmsProviderConfig config,
+        SmsSendRequest request,
+        string? statusCallback
+    )
     {
         var fields = new List<KeyValuePair<string, string>>
         {
@@ -219,9 +281,20 @@ public sealed class TwilioSmsProvider(
             new("From", config.SenderId ?? string.Empty),
             new("Body", request.Body),
         };
+        // StatusCallback: Twilio POSTea el DLR a nuestra URL pública. Sin base pública (dev local) se omite
+        // y la reconciliación por pull cubre el estado.
+        if (statusCallback is not null)
+            fields.Add(new KeyValuePair<string, string>("StatusCallback", statusCallback));
         foreach (var media in request.Media)
             fields.Add(new KeyValuePair<string, string>("MediaUrl", media.Url)); // MMS: MediaUrl repetido
         return new FormUrlEncodedContent(fields);
+    }
+
+    /// <summary>URL pública del webhook de estado de Twilio, o null si no se configuró una base pública.</summary>
+    private string? StatusCallbackUrl()
+    {
+        var baseUrl = options.Value.PublicWebhookBaseUrl;
+        return string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl.TrimEnd('/') + StatusWebhookPath;
     }
 
     private static (string sid, string token) SplitCredential(string? credential)

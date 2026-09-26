@@ -106,7 +106,7 @@ public sealed class SignerFieldValueCaptureTests
                 Guid.NewGuid(),
                 "Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

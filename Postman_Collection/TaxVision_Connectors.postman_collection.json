@@ -22,7 +22,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"providerCode\": \"Gmail\"\n}",
+							"raw": "{\n  \"providerCode\": \"Gmail\",\n  \"asOffice\": false\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -39,7 +39,7 @@
 								"accounts"
 							]
 						},
-						"description": "Arranca el flujo de conectar cuenta (D3 §12.4). `providerCode` es `Gmail` o `Graph` (para IMAP usar `POST /connectors/accounts/manual`, este endpoint no aplica). Genera un `state` CSRF de un solo uso y devuelve `{ authorizationUrl }` — el frontend redirige el navegador ahi (no es un fetch normal, el consentimiento vive en Google/Microsoft). Requiere connectors.accounts.write."
+						"description": "Arranca el flujo de conectar cuenta (D3 12.4). `providerCode` es `Gmail` o `Graph`. `asOffice`: true = buzon de OFICINA compartido (exige connectors.accounts.write; el guard de identidad NO aplica, el email puede diferir del login); false = buzon PERSONAL del usuario (exige write o connectors.accounts.connect_own; el email debe ser el de login). Devuelve `{ authorizationUrl }`, el frontend redirige el navegador ahi."
 					},
 					"response": [],
 					"event": [
@@ -73,7 +73,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"emailAddress\": \"contacto@miempresa.com\",\n  \"displayName\": \"Contacto MiEmpresa\",\n  \"imapHost\": \"imap.miempresa.com\",\n  \"imapPort\": 993,\n  \"imapUseSsl\": true,\n  \"imapUsername\": \"contacto@miempresa.com\",\n  \"imapPassword\": \"{{connectorsManualImapPassword}}\",\n  \"smtpHost\": \"smtp.miempresa.com\",\n  \"smtpPort\": 587,\n  \"smtpUseStartTls\": true,\n  \"smtpUsername\": \"contacto@miempresa.com\",\n  \"smtpPassword\": \"{{connectorsManualSmtpPassword}}\"\n}",
+							"raw": "{\n  \"emailAddress\": \"contacto@miempresa.com\",\n  \"displayName\": \"Contacto MiEmpresa\",\n  \"imapHost\": \"imap.miempresa.com\",\n  \"imapPort\": 993,\n  \"imapUseSsl\": true,\n  \"imapUsername\": \"contacto@miempresa.com\",\n  \"imapPassword\": \"{{connectorsManualImapPassword}}\",\n  \"smtpHost\": \"smtp.miempresa.com\",\n  \"smtpPort\": 587,\n  \"smtpUseStartTls\": true,\n  \"smtpUsername\": \"contacto@miempresa.com\",\n  \"smtpPassword\": \"{{connectorsManualSmtpPassword}}\",\n  \"asOffice\": false\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -91,7 +91,7 @@
 								"manual"
 							]
 						},
-						"description": "Conecta una cuenta manual IMAP+SMTP (D3 Compose §8) — sin redireccion, valida conectividad real contra ambos servidores (`IManualAccountConnectivityValidator`) antes de persistir nada. Si `emailAddress` ya esta conectado bajo otro tenant o el mismo tenant, falla limpio sin tocar la DB (desconectar primero). Requiere connectors.accounts.write."
+						"description": "Conecta una cuenta manual IMAP+SMTP (D3 Compose 8) sin redireccion; valida conectividad real antes de persistir. `asOffice`: true = oficina (write; email libre, distinto del login); false = personal (write o connect_own; el guard exige emailAddress == email de login, y el username IMAP/SMTP se toma como el propio email). RECONEXION: si el email ya existe pero esta Disconnected (buzon IMAP), este endpoint lo REVIVE (misma fila/Id, actualiza credenciales) en vez de fallar; cualquier otro estado devuelve AlreadyConnected (desconectar primero)."
 					},
 					"response": [],
 					"event": [
@@ -134,7 +134,7 @@
 								"accounts"
 							]
 						},
-						"description": "Lista las cuentas de correo conectadas del tenant (`TenantEmailAccountDto[]` — nunca incluye el token/credenciales). Requiere connectors.accounts.read."
+						"description": "Lista los buzones visibles para el usuario: sus PERSONALES siempre, y el de OFICINA solo si tiene connectors.accounts.office.read (o write). Cada item trae `isOffice`/`ownerUserId`. Requiere connectors.accounts.read."
 					},
 					"response": [],
 					"event": [
@@ -177,7 +177,7 @@
 								"{{connectorsAccountId}}"
 							]
 						},
-						"description": "Detalle de una cuenta conectada (`TenantEmailAccountDto` — nunca incluye el token). Requiere connectors.accounts.read."
+						"description": "Detalle de un buzon. Un personal solo lo ve su dueño; el de OFICINA solo con office.read (o write) — sin permiso devuelve 404 (anti-enumeracion). Requiere connectors.accounts.read."
 					},
 					"response": [],
 					"event": [
@@ -522,6 +522,56 @@
 									"  } else {",
 									"    pm.expect([400, 401, 403, 404, 429, 504]).to.include(pm.response.code);",
 									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "VisibleIds (M2M)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"userId\": \"{{connectorsUserId}}\",\n  \"includeOffice\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/internal/accounts/visible-ids",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"internal",
+								"accounts",
+								"visible-ids"
+							]
+						},
+						"description": "M2M — solo Correspondence (policy ServiceOnly, actor_type=Service), nunca frontend. Devuelve `{ accountIds: [...] }`: los buzones que ese usuario puede ver (personales + oficina si includeOffice). Correspondence lo usa para ocultar el correo del buzon de oficina a empleados sin office.read (pasa includeOffice=false)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with accountIds, or ServiceOnly rejection\", () => {",
+									"  if (pm.response.code === 200) { pm.expect(pm.response.json()).to.have.property(\"accountIds\"); }",
+									"  else { pm.expect([401,403]).to.include(pm.response.code); }",
 									"});"
 								]
 							}

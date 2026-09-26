@@ -16,43 +16,43 @@ public sealed class GatewayRateLimitOptions
     public const string SectionName = "GatewayRateLimiting";
 
     /// <summary>
-    /// Endpoints alcanzables sin JWT (login, refresh, reset de password, aceptar invitación,
-    /// registro de tenant). Se particionan por <c>IP + path</c> porque no hay identidad todavía.
+    /// Endpoints alcanzables sin JWT (login, MFA, reset de password, aceptar invitación, registro
+    /// de tenant). Se particionan por <c>IP + path</c> porque no hay identidad todavía, así que el
+    /// cupo tiene que alcanzar para una oficina entera detrás de un NAT; el brute force de una cuenta
+    /// lo frena Auth por email/cuenta. Fuera de aquí: <c>/auth/refresh</c> (un 429 deslogueaba al
+    /// usuario; lo acota Auth con su propio limiter) y el <c>/auth/invitations</c> autenticado del
+    /// admin (lista/creación, con su política tiered).
     /// </summary>
     public GatewayRateLimitGroup PreAuthByIp { get; set; } =
-        new()
-        {
-            PermitLimit = 10,
-            WindowSeconds = 60,
-            Rules =
-            [
-                new GatewayRateLimitRule { Pattern = "/auth/login" },
-                new GatewayRateLimitRule { Pattern = "/auth/refresh" },
-                new GatewayRateLimitRule { Pattern = "/auth/mfa/verify" },
-                new GatewayRateLimitRule { Pattern = "/auth/password/forgot" },
-                new GatewayRateLimitRule { Pattern = "/auth/password/reset" },
-                new GatewayRateLimitRule { Pattern = "/auth/me/email/confirm" },
-                new GatewayRateLimitRule { Pattern = "/auth/invitations/accept" },
-                new GatewayRateLimitRule { Pattern = "/auth/invitations" },
-                new GatewayRateLimitRule { Pattern = "/tenants", Method = "POST" },
-            ],
-        };
-
-    /// <summary>
-    /// Inicio y cierre de subida a CloudStorage. Se particiona por <c>tenant_id</c> del JWT (con la
-    /// IP como fallback si aún no hay token): una cuota por IP castigaría a toda una oficina detrás
-    /// de un NAT.
-    /// </summary>
-    public GatewayRateLimitGroup StorageUploadByTenant { get; set; } =
         new()
         {
             PermitLimit = 30,
             WindowSeconds = 60,
             Rules =
             [
-                new GatewayRateLimitRule { Pattern = "/storage/files/uploads", Method = "POST" },
-                new GatewayRateLimitRule { Pattern = "/storage/files/*/complete", Method = "POST" },
+                new GatewayRateLimitRule { Pattern = "/auth/login" },
+                new GatewayRateLimitRule { Pattern = "/auth/mfa/verify" },
+                new GatewayRateLimitRule { Pattern = "/auth/password/forgot" },
+                new GatewayRateLimitRule { Pattern = "/auth/password/reset" },
+                new GatewayRateLimitRule { Pattern = "/auth/password/reset/validate" },
+                new GatewayRateLimitRule { Pattern = "/auth/me/email/confirm" },
+                new GatewayRateLimitRule { Pattern = "/auth/invitations/accept" },
+                new GatewayRateLimitRule { Pattern = "/tenants", Method = "POST" },
             ],
+        };
+
+    /// <summary>
+    /// Cuota por <c>tenant_id</c> del JWT (IP como fallback) para rutas de CloudStorage. Sin reglas por
+    /// defecto: la subida ya la acota <c>cloudstorage.i.upload</c> en el servicio (distribuido en Redis),
+    /// y esta cuota era un segundo límite en memoria, por réplica, que duplicaba el castigo. Se deja el
+    /// grupo para poder reactivarlo por configuración en un incidente.
+    /// </summary>
+    public GatewayRateLimitGroup StorageUploadByTenant { get; set; } =
+        new()
+        {
+            PermitLimit = 30,
+            WindowSeconds = 60,
+            Rules = [],
         };
 }
 

@@ -8,5 +8,8 @@ public sealed record TenantEmailAccountDto(
     string? DisplayName,
     string Status,
     DateTime? ConnectedAtUtc,
-    DateTime CreatedAtUtc
+    DateTime CreatedAtUtc,
+    // null = buzón de oficina (compartido); con valor = personal de ese usuario.
+    Guid? OwnerUserId,
+    bool IsOffice
 );

@@ -41,6 +41,25 @@ internal sealed class FakeSmsMessageRepository : ISmsMessageRepository
     public Task<SmsMessage?> GetLatestByPhoneAsync(string phoneE164, CancellationToken ct = default) =>
         Task.FromResult(_latestByPhone);
 
+    public Task<IReadOnlyList<SmsMessage>> GetStuckForReconciliationAsync(
+        Guid? tenantId,
+        DateTime olderThanUtc,
+        int limit,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<SmsMessage>>([
+            .. _byProviderMessageId
+                .Concat(Added)
+                .Where(m =>
+                    m.Status == SmsMessageStatus.Accepted
+                    && m.ProviderMessageId != null
+                    && m.UpdatedAtUtc < olderThanUtc
+                    && (tenantId is null || m.TenantId == tenantId)
+                )
+                .OrderBy(m => m.UpdatedAtUtc)
+                .Take(limit),
+        ]);
+
     public Task AddAsync(SmsMessage message, CancellationToken ct = default)
     {
         Added.Add(message);

@@ -33,25 +33,28 @@ public sealed class AuthSessionIssuer(
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
+        SessionSurface surface,
         CancellationToken ct = default
     )
     {
         var session = UserSession.Start(user.TenantId, user.Id, deviceName, request.UserAgent, request.IpAddress);
         await sessions.AddSessionAsync(session, ct);
 
-        var rawRefreshToken = tokens.GenerateToken(64);
-        var refreshToken = RefreshToken.Create(
-            user.TenantId,
-            user.Id,
-            session.Id,
-            tokens.Hash(rawRefreshToken),
-            DateTime.UtcNow.AddDays(_options.ExpirationDays)
-        );
-        await sessions.AddTokenAsync(refreshToken, ct);
+        return await IssueChainAsync(session, user, effectiveTimeZoneId, roles, authMethods, surface, ct);
+    }
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods);
-
-        return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
+    public async Task<IssuedTokens> JoinSessionAsync(
+        UserSession session,
+        User user,
+        string effectiveTimeZoneId,
+        IReadOnlyCollection<string> roles,
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface,
+        CancellationToken ct = default
+    )
+    {
+        await sessions.RevokeSurfaceTokensAsync(session.Id, surface, "surface_rejoined", ct);
+        return await IssueChainAsync(session, user, effectiveTimeZoneId, roles, authMethods, surface, ct);
     }
 
     public async Task<IssuedTokens> RotateAsync(
@@ -70,13 +73,40 @@ public sealed class AuthSessionIssuer(
             user.Id,
             session.Id,
             tokens.Hash(rawRefreshToken),
-            DateTime.UtcNow.AddDays(_options.ExpirationDays)
+            DateTime.UtcNow.AddDays(_options.ExpirationDays),
+            currentToken.Surface
         );
 
         currentToken.Rotate(replacement.Id);
         await sessions.AddTokenAsync(replacement, ct);
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods);
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods, currentToken.Surface);
+
+        return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
+    }
+
+    private async Task<IssuedTokens> IssueChainAsync(
+        UserSession session,
+        User user,
+        string effectiveTimeZoneId,
+        IReadOnlyCollection<string> roles,
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface,
+        CancellationToken ct
+    )
+    {
+        var rawRefreshToken = tokens.GenerateToken(64);
+        var refreshToken = RefreshToken.Create(
+            user.TenantId,
+            user.Id,
+            session.Id,
+            tokens.Hash(rawRefreshToken),
+            DateTime.UtcNow.AddDays(_options.ExpirationDays),
+            surface
+        );
+        await sessions.AddTokenAsync(refreshToken, ct);
+
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods, surface);
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }

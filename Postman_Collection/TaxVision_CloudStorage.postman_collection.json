@@ -645,10 +645,58 @@
 									"key": "ownerId",
 									"value": "{{customerId}}",
 									"description": "2026-07-20, opcional — va junto con ownerType. Omitir ambos para ver todos los duenos mezclados (comportamiento previo)."
+								},
+								{
+									"key": "skip",
+									"value": "0",
+									"description": "Paginación (server-side). Offset 0-based. Solo tiene efecto si se manda 'take'.",
+									"disabled": true
+								},
+								{
+									"key": "take",
+									"value": "25",
+									"description": "Paginación: tamaño de página. Si se OMITE, devuelve TODO el contenido (compat). Se acota a [1,200] (MaxFolderPageSize). Orden 'carpetas primero': una página cubre subcarpetas y, si sobra cupo, sigue con archivos.",
+									"disabled": true
+								},
+								{
+									"key": "folderTypes",
+									"value": "Documents",
+									"description": "Repetible. Acota los archivos a estos FolderType (el explorador manda el set user-facing: Documents, Receipts, Invoices, EmailIncoming, EmailOutgoing, Tasks, Signatures). Oculta el ruido interno (Branding/Avatars/Templates…). NO oculta carpetas.",
+									"disabled": true
+								},
+								{
+									"key": "taxYears",
+									"value": "2024",
+									"description": "Repetible (filtro de archivo). Ej. taxYears=2024&taxYears=2023. Con cualquier file-filter activo (year/extension/status) las CARPETAS se ocultan.",
+									"disabled": true
+								},
+								{
+									"key": "extensions",
+									"value": "PDF",
+									"description": "Repetible (filtro de archivo). Extensión en mayúscula (PDF, XLSX…). Matchea por fin de nombre, colación CI. Oculta carpetas.",
+									"disabled": true
+								},
+								{
+									"key": "statuses",
+									"value": "Available",
+									"description": "Repetible (filtro de archivo). FileStatus del backend: Available|Infected|BlockedByPolicy|PendingUpload|PendingScan|Scanning|ScanFailed|PendingReview. Oculta carpetas.",
+									"disabled": true
+								},
+								{
+									"key": "sort",
+									"value": "Name",
+									"description": "Orden: Name (default) | Modified | Size. Aplica a archivos; las carpetas usan Name (o CreatedAtUtc si sort=Modified), Size cae a Name.",
+									"disabled": true
+								},
+								{
+									"key": "desc",
+									"value": "false",
+									"description": "true = descendente. Default false (ascendente).",
+									"disabled": true
 								}
 							]
 						},
-						"description": "Fase C2 — arbol navegable de UN NIVEL: subcarpetas + archivos directos de parentFolderId (null = raiz). Para navegación por clicks (tipo Explorer). Requiere storage.file.view.\n\nPara el arbol COMPLETO de una sola vez (sidebar expandible) usar GetFolderTree en su lugar."
+						"description": "Fase C2 — arbol navegable de UN NIVEL: subcarpetas + archivos directos de parentFolderId (null = raiz). Para navegación por clicks (tipo Explorer). Requiere storage.file.view.\n\nPaginación + filtro/orden server-side (2026-09): sin 'take' devuelve todo (compat). Respuesta: `{ subfolders, files, folderCount, fileCount, totalCount, skip, take }` — cada file/folder trae `isShared`. Ventana 'carpetas primero'. Con un file-filter (taxYears/extensions/statuses) las carpetas se ocultan y folderCount=0.\n\nPara el arbol COMPLETO de una sola vez (sidebar expandible) usar GetFolderTree en su lugar."
 					},
 					"response": [],
 					"event": [
@@ -658,7 +706,7 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
-									"pm.test(\"incluye subfolders y files\", () => { const r = pm.response.json(); pm.expect(r).to.have.property(\"subfolders\"); pm.expect(r).to.have.property(\"files\"); });"
+									"pm.test(\"incluye subfolders, files y totales\", () => { const r = pm.response.json(); pm.expect(r).to.have.property(\"subfolders\"); pm.expect(r).to.have.property(\"files\"); pm.expect(r).to.have.property(\"totalCount\"); });"
 								]
 							}
 						}
@@ -922,7 +970,7 @@
 								"shares"
 							]
 						},
-						"description": "Fase C3 — crea un link de acceso sobre un archivo. visibility: Public|TenantOnly|SpecificUsers|TenantCustomers|ExternalRecipients (Public requiere que el tenant tenga AllowPublicShareLinks habilitado, ver StorageAdministration/SetPublicSharingPolicy). permission: View|Preview|Download|Upload|EditMetadata (Upload/EditMetadata solo asignables con storage.share.manage). Requiere storage.share.create."
+						"description": "Fase C3 — crea un link de acceso sobre un archivo. visibility: Public|TenantOnly|SpecificUsers|TenantCustomers|ExternalRecipients|ExternalLink. Public requiere que el tenant tenga AllowPublicShareLinks habilitado (ver StorageAdministration/SetPublicSharingPolicy). ExternalLink (8.1) = link seguro sin email, abre por token solo; gated por TenantStorageLimit.AllowLinkOnlyExternalShares (def true) y con guardrails: password obligatorio si RequirePasswordOnLinkShares, y expiracion tope MaxShareLifetimeDays (def 30) — no admite permisos Upload/EditMetadata. permission: View|Preview|Download|Upload|EditMetadata (Upload/EditMetadata solo asignables con storage.share.manage). Requiere storage.share.create."
 					},
 					"response": []
 				},
@@ -999,7 +1047,7 @@
 								"shares"
 							]
 						},
-						"description": "Fase C4 — crea un link de acceso sobre una carpeta. isRecursive/appliesToFutureItems solo tienen efecto aca (ver FolderShareCoverage). Requiere storage.share.create."
+						"description": "Fase C4 — crea un link de acceso sobre una carpeta. isRecursive (incluir subcarpetas) / appliesToFutureItems (cubrir archivos agregados despues) solo tienen efecto aca (ver FolderShareCoverage). visibility acepta tambien ExternalLink (8.1, link seguro sin email) — un token de Folder se navega/descarga por los endpoints publicos ResolvePublicFolder y DownloadPublicFolderZip. Requiere storage.share.create."
 					},
 					"response": []
 				},
@@ -1283,6 +1331,82 @@
 					"response": []
 				},
 				{
+					"name": "ResolvePublicFolder (8.2 navegar carpeta)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/storage/public/{{shareToken}}/folder?password=&email=&folderId=",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"public",
+								"{{shareToken}}",
+								"folder"
+							],
+							"query": [
+								{
+									"key": "password",
+									"value": "",
+									"description": "Requerido si el link tiene password"
+								},
+								{
+									"key": "email",
+									"value": "",
+									"description": "Requerido si visibility=ExternalRecipients"
+								},
+								{
+									"key": "folderId",
+									"value": "",
+									"description": "Subcarpeta a navegar dentro del share; vacio = raiz del link. Debe estar cubierta por el share (FolderShareCoverage) o 404."
+								}
+							]
+						},
+						"description": "8.2 — Publico (AllowAnonymous). Solo tokens de tipo Folder. Navega el contenido (subcarpetas + archivos) SIN servir binarios. 200 { folderId, folderName, isRecursive, permission, expiresAt, breadcrumb:[{folderId,name}], subfolders:[{folderId,name}], files:[{fileId,name,sizeBytes,contentType}] }; 401 { requiresPassword:true } si falta password; 404 en cualquier otro caso (anti-enumeracion). Los archivos se descargan sueltos via ResolvePublicShare con ?fileId=. Rate-limit \"share-public\" (20/min IP)."
+					},
+					"response": []
+				},
+				{
+					"name": "DownloadPublicFolderZip (8.2 Download all)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/storage/public/{{shareToken}}/zip?password=&email=&folderId=",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"public",
+								"{{shareToken}}",
+								"zip"
+							],
+							"query": [
+								{
+									"key": "password",
+									"value": "",
+									"description": "Requerido si el link tiene password"
+								},
+								{
+									"key": "email",
+									"value": "",
+									"description": "Requerido si visibility=ExternalRecipients"
+								},
+								{
+									"key": "folderId",
+									"value": "",
+									"description": "Subcarpeta a empaquetar; vacio = raiz del link"
+								}
+							]
+						},
+						"description": "8.2 — Publico (AllowAnonymous). \"Download all\": streamea toda la carpeta (recursivo si el link lo es) como un unico .zip directo al Response.Body (chunked, sin Content-Length). EXIGE permiso Download. Cuenta como UN acceso (MaxAccessCount) y audita folder.zip.download. 200 application/zip; 401 { requiresPassword:true }; 413 { code:ShareLink.ZipTooLarge } si supera los topes (MaxZipFiles=500 / MaxZipFolders=50 / MaxZipAggregateBytes=2GB); 404 en cualquier otro caso. Rate-limit dedicado \"share-public-zip\" (6/min IP). El Gateway lo excluye del load-shedding (no envenena el p99)."
+					},
+					"response": []
+				},
+				{
 					"name": "ResolvePrivateShare",
 					"request": {
 						"method": "GET",
@@ -1378,7 +1502,34 @@
 								"{{fileId}}"
 							]
 						},
-						"description": "Requiere storage.recyclebin.manage."
+						"description": "Restaura un ARCHIVO suelto de la papelera -> 200 FileResponse. Requiere storage.recyclebin.manage. (Los archivos borrados junto con su carpeta no se listan sueltos: se restauran con RestoreFolder.)"
+					},
+					"response": []
+				},
+				{
+					"name": "RestoreFolder",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/recycle-bin/restore-folder/{{folderId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"recycle-bin",
+								"restore-folder",
+								"{{folderId}}"
+							]
+						},
+						"description": "Restaura una CARPETA borrada desde la papelera y TODO su contenido (subcarpetas + archivos del batch), devolviendolos a su jerarquia original -> 204. folderId = la raiz que aparece en GetRecycleBin con itemType=Folder. 404 (Folder.NotDeleted) si el id no es una raiz de papelera valida. Requiere storage.recyclebin.manage."
 					},
 					"response": []
 				},

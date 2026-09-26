@@ -26,7 +26,12 @@ public static class SignatureRequestSentAnalyticsConsumer
                 return;
 
             var day = DateOnly.FromDateTime(evt.SentAtUtc);
-            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(evt.TenantId, day, request.Category, ct);
+            var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
+                evt.TenantId,
+                day,
+                SignatureCategoryParsing.ToSystemCategory(request.Category),
+                ct
+            );
             snapshot.IncrementSent();
             await unitOfWork.SaveChangesAsync(ct);
         }

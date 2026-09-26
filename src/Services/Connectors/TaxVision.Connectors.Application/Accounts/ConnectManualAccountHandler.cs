@@ -40,34 +40,62 @@ public static class ConnectManualAccountHandler
         CancellationToken ct
     )
     {
-        // El buzón debe ser el propio email del usuario (bloquea sincronizar un correo ajeno).
-        var identityCheck = ConnectedEmailIdentityGuard.Ensure(cmd.EmailAddress, cmd.InitiatorEmail);
-        if (identityCheck.IsFailure)
-            return Result.Failure<ConnectManualAccountResult>(identityCheck.Error);
+        // Personal: el buzón debe ser el propio email del usuario (bloquea sincronizar un correo ajeno).
+        // Oficina: el manual es flexible a propósito — el dueño de la oficina puede conectar un correo
+        // distinto al de su login (office@…), así que ahí el guard NO aplica.
+        if (!cmd.AsOffice)
+        {
+            var identityCheck = ConnectedEmailIdentityGuard.Ensure(cmd.EmailAddress, cmd.InitiatorEmail);
+            if (identityCheck.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(identityCheck.Error);
+        }
 
-        var duplicateCheck = await EnsureEmailNotAlreadyConnectedAsync(cmd, accountRepository, ct);
-        if (duplicateCheck.IsFailure)
-            return Result.Failure<ConnectManualAccountResult>(duplicateCheck.Error);
+        // ¿Existe ya una fila (tenant, email)? Una DESCONECTADA de un buzón manual se reconecta
+        // (revive la fila + credenciales, paridad con OAuth); cualquier otro estado = AlreadyConnected.
+        var targetResult = await ResolveReconnectTargetAsync(cmd, accountRepository, ct);
+        if (targetResult.IsFailure)
+            return Result.Failure<ConnectManualAccountResult>(targetResult.Error);
+        var existingAccount = targetResult.Value;
 
         var connectivityCheck = await ValidateConnectivityAsync(cmd, connectivityValidator, ct);
         if (connectivityCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(connectivityCheck.Error);
 
-        var buildResult = BuildAccountAndCredentials(cmd, protector);
-        if (buildResult.IsFailure)
-            return Result.Failure<ConnectManualAccountResult>(buildResult.Error);
-        var (account, imapCredentials, smtpCredentials) = buildResult.Value;
+        TenantEmailAccount account;
+        if (existingAccount is null)
+        {
+            var buildResult = BuildAccountAndCredentials(cmd, protector);
+            if (buildResult.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(buildResult.Error);
+            var (newAccount, imapCredentials, smtpCredentials) = buildResult.Value;
+            account = newAccount;
 
-        await PersistAsync(
-            account,
-            imapCredentials,
-            smtpCredentials,
-            accountRepository,
-            imapCredentialsRepository,
-            smtpCredentialsRepository,
-            unitOfWork,
-            ct
-        );
+            await PersistAsync(
+                account,
+                imapCredentials,
+                smtpCredentials,
+                accountRepository,
+                imapCredentialsRepository,
+                smtpCredentialsRepository,
+                unitOfWork,
+                ct
+            );
+        }
+        else
+        {
+            var reconnectResult = await ReconnectCredentialsAsync(
+                existingAccount,
+                cmd,
+                protector,
+                imapCredentialsRepository,
+                smtpCredentialsRepository,
+                unitOfWork,
+                ct
+            );
+            if (reconnectResult.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(reconnectResult.Error);
+            account = existingAccount;
+        }
 
         // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar; acá solo se
         // audita (antes se publicaba también acá — se quitó para no duplicar el evento).
@@ -90,24 +118,74 @@ public static class ConnectManualAccountHandler
         return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
     }
 
-    private static async Task<Result> EnsureEmailNotAlreadyConnectedAsync(
+    /// <summary>
+    /// Resuelve contra qué fila trabajar: null = no existe (alta nueva); una cuenta = reconexión de un
+    /// buzón manual desconectado (se revive reutilizando su Id y credenciales, como el flujo OAuth);
+    /// Failure = duplicado real (ya conectado, o un buzón OAuth con ese email → reconectar por su vía).
+    /// Scoped al tenant (uniqueness (TenantId, EmailAddress)): el mismo buzón en OTRO tenant no colisiona.
+    /// </summary>
+    private static async Task<Result<TenantEmailAccount?>> ResolveReconnectTargetAsync(
         ConnectManualAccountCommand cmd,
         ITenantEmailAccountRepository accountRepository,
         CancellationToken ct
     )
     {
-        // Scoped al tenant (uniqueness (TenantId, EmailAddress), igual que Auth): el mismo buzón en
-        // OTRO tenant NO es un duplicado — la misma persona puede conectarlo en cada oficina suya.
         var existingResult = await accountRepository.GetByTenantAndEmailAsync(cmd.TenantId, cmd.EmailAddress, ct);
         if (existingResult.IsFailure)
-            return Result.Success();
+            return Result.Success<TenantEmailAccount?>(null);
 
-        return Result.Failure(
+        var account = existingResult.Value;
+        if (account.Status == TenantEmailAccountStatus.Disconnected && account.ProviderCode == ProviderCode.Imap)
+            return Result.Success<TenantEmailAccount?>(account);
+
+        return Result.Failure<TenantEmailAccount?>(
             new Error(
                 "ConnectManualAccountHandler.AlreadyConnected",
                 $"'{cmd.EmailAddress}' is already connected. Disconnect it first before reconnecting."
             )
         );
+    }
+
+    /// <summary>
+    /// Reconexión: el buzón Imap desconectado conserva sus filas de credenciales (1:1 por AccountId), así
+    /// que se actualizan en sitio con lo que el usuario reingresó (servidor/usuario/contraseña pueden
+    /// cambiar). No se recrea la cuenta: <see cref="WatchActivationService"/> la revive Disconnected→Active.
+    /// </summary>
+    private static async Task<Result> ReconnectCredentialsAsync(
+        TenantEmailAccount account,
+        ConnectManualAccountCommand cmd,
+        IEncryptedSecretProtector protector,
+        IImapCredentialsRepository imapCredentialsRepository,
+        ISmtpCredentialsRepository smtpCredentialsRepository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var imapCipher = EncryptedSecret.Create(cmd.ImapPassword, protector);
+        if (imapCipher.IsFailure)
+            return Result.Failure(imapCipher.Error);
+        var smtpCipher = EncryptedSecret.Create(cmd.SmtpPassword, protector);
+        if (smtpCipher.IsFailure)
+            return Result.Failure(smtpCipher.Error);
+
+        var imapResult = await imapCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
+        if (imapResult.IsFailure)
+            return Result.Failure(imapResult.Error);
+        imapResult.Value.UpdateSettings(cmd.ImapHost, cmd.ImapPort, cmd.ImapUseSsl, cmd.ImapUsername, imapCipher.Value);
+
+        var smtpResult = await smtpCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
+        if (smtpResult.IsFailure)
+            return Result.Failure(smtpResult.Error);
+        smtpResult.Value.UpdateSettings(
+            cmd.SmtpHost,
+            cmd.SmtpPort,
+            cmd.SmtpUseStartTls,
+            cmd.SmtpUsername,
+            smtpCipher.Value
+        );
+
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     /// <summary>
@@ -153,7 +231,9 @@ public static class ConnectManualAccountHandler
             ProviderCode.Imap,
             cmd.InitiatedByUserId,
             DateTime.UtcNow,
-            cmd.DisplayName
+            // Oficina = sin dueño (compartido); personal = del usuario que conecta.
+            ownerUserId: cmd.AsOffice ? null : cmd.InitiatedByUserId,
+            displayName: cmd.DisplayName
         );
         if (accountResult.IsFailure)
             return Result.Failure<(TenantEmailAccount, ImapCredentials, SmtpCredentials)>(accountResult.Error);

@@ -1,4 +1,5 @@
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
@@ -17,6 +18,7 @@ public static class SessionEstablishment
         Tenant tenant,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
+        SessionSurface surface,
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
         CancellationToken ct
@@ -24,7 +26,7 @@ public static class SessionEstablishment
     {
         var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
-        return await issuer.StartSessionAsync(user, timeZone, roleNames, authMethods, deviceName, ct);
+        return await issuer.StartSessionAsync(user, timeZone, roleNames, authMethods, deviceName, surface, ct);
     }
 
     /// <summary>
@@ -40,6 +42,7 @@ public static class SessionEstablishment
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
         bool mustEnrollMfa,
+        SessionSurface surface,
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
         ISessionRepository sessions,
@@ -53,13 +56,20 @@ public static class SessionEstablishment
         if (active.Count > 0)
         {
             var ticket = await takeoverTickets.IssueAsync(
-                new SessionTakeoverPayload(user.TenantId, user.Id, [.. authMethods], deviceName, mustEnrollMfa),
+                new SessionTakeoverPayload(
+                    user.TenantId,
+                    user.Id,
+                    [.. authMethods],
+                    deviceName,
+                    mustEnrollMfa,
+                    surface
+                ),
                 ct
             );
             return SessionOutcome.Takeover(ticket);
         }
 
-        var issued = await IssueAsync(user, tenant, authMethods, deviceName, roles, issuer, ct);
+        var issued = await IssueAsync(user, tenant, authMethods, deviceName, surface, roles, issuer, ct);
         return SessionOutcome.Issued(issued);
     }
 }

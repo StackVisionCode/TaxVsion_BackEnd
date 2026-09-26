@@ -34,6 +34,10 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     public SubscriptionRenewalIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
     public string? CheckoutUrl { get; private set; }
+
+    /// <summary>Cuándo caduca la sesión del proveedor. Mientras no caduque, esta intención sigue siendo
+    /// pagable: abrir otra en paralelo arriesga un doble cobro.</summary>
+    public DateTime? CheckoutExpiresAtUtc { get; private set; }
     public Guid RequestedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -82,7 +86,7 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     }
 
     /// <summary>Guarda la referencia al pago y la URL de checkout una vez creada la sesión en PaymentApp.</summary>
-    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime nowUtc)
+    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc, DateTime nowUtc)
     {
         if (Status != SubscriptionRenewalIntentStatus.Pending)
             return Result.Failure(
@@ -91,9 +95,14 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
 
         SaaSPaymentId = saaSPaymentId;
         CheckoutUrl = checkoutUrl;
+        CheckoutExpiresAtUtc = expiresAtUtc;
         Touch(nowUtc);
         return Result.Success();
     }
+
+    /// <summary>¿Sigue viva? Reutilizarla es lo que evita el doble cobro.</summary>
+    public bool IsOpen(DateTime nowUtc) =>
+        Status == SubscriptionRenewalIntentStatus.Pending && CheckoutUrl is not null && CheckoutExpiresAtUtc > nowUtc;
 
     /// <summary>Marca el pago confirmado (webhook/reconcile). Idempotente.</summary>
     public Result MarkPaid(DateTime paidAtUtc)

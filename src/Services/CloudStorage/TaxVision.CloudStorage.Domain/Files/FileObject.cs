@@ -39,6 +39,20 @@ public sealed class FileObject : TenantEntity
     public bool IsLegalHeld { get; private set; }
 
     /// <summary>
+    /// Status que tenía el archivo justo antes de mandarse a la papelera. Permite borrar archivos
+    /// bloqueados/en proceso y, si se restauran, devolverlos a su estado real (un infectado vuelve a
+    /// bloqueado, no a Available). Null salvo mientras está SoftDeleted.
+    /// </summary>
+    public FileStatus? StatusBeforeSoftDelete { get; private set; }
+
+    /// <summary>
+    /// Si el archivo llegó a la papelera como parte del borrado de una carpeta, este es el id del
+    /// batch (== id de la carpeta raíz borrada). Permite restaurar la carpeta con sus archivos en
+    /// bloque y que el archivo NO aparezca suelto en la papelera. Null si se borró individualmente.
+    /// </summary>
+    public Guid? DeletedBatchId { get; private set; }
+
+    /// <summary>
     /// Fase U — id de la sesion de multipart upload en S3/MinIO (null para uploads
     /// de un solo POST). Se necesita para poder llamar AbortMultipartUpload si el
     /// cliente nunca completa o si Complete falla: sin este id, un upload multiparte
@@ -193,15 +207,21 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result SoftDelete(DateTime nowUtc, TimeSpan retention)
+    public Result SoftDelete(DateTime nowUtc, TimeSpan retention, Guid? deletedBatchId = null)
     {
         if (IsLegalHeld)
             return Result.Failure(FileErrors.LegalHold);
-        if (Status != FileStatus.Available)
+        if (Status == FileStatus.SoftDeleted)
             return Result.Failure(FileErrors.InvalidTransition);
+        // Se puede mandar a la papelera cualquier estado (no solo Available): un bloqueado
+        // (Infected/BlockedByPolicy/ScanFailed) o uno a medio procesar también hay que poder
+        // limpiarlos. Se recuerda el estado previo para restaurarlo tal cual.
+        StatusBeforeSoftDelete = Status;
         Status = FileStatus.SoftDeleted;
         SoftDeletedAtUtc = nowUtc;
         SoftDeleteExpiresAtUtc = nowUtc.Add(retention);
+        // Batch != null cuando cae junto con su carpeta (para restaurar/agrupar en la papelera).
+        DeletedBatchId = deletedBatchId;
         return Result.Success();
     }
 
@@ -284,9 +304,12 @@ public sealed class FileObject : TenantEntity
     {
         if (Status != FileStatus.SoftDeleted)
             return Result.Failure(FileErrors.InvalidTransition);
-        Status = FileStatus.Available;
+        // Vuelve al estado previo al borrado (un infectado NO debe reaparecer como Available).
+        Status = StatusBeforeSoftDelete ?? FileStatus.Available;
+        StatusBeforeSoftDelete = null;
         SoftDeletedAtUtc = null;
         SoftDeleteExpiresAtUtc = null;
+        DeletedBatchId = null;
         return Result.Success();
     }
 }

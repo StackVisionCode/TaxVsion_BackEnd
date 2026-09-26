@@ -73,11 +73,15 @@ public static class CompleteOAuthConnectHandler
                 )
             );
 
-        // Política estricta: aunque OAuth pruebe la propiedad del buzón, debe ser el email del propio
-        // usuario en el sistema (bloquea conectar el buzón de otro). El email vino en el state.
-        var identityCheck = ConnectedEmailIdentityGuard.Ensure(emailAddress, cmd.InitiatorEmail);
-        if (identityCheck.IsFailure)
-            return Result.Failure<CompleteOAuthConnectResult>(identityCheck.Error);
+        // Buzón PERSONAL: aunque OAuth pruebe la propiedad, debe ser el email del propio usuario en el
+        // sistema (bloquea conectar el buzón de otro). El buzón de OFICINA (compartido) no lleva esa
+        // restricción — la oficina tiene su correo propio, distinto del login del admin.
+        if (!cmd.AsOffice)
+        {
+            var identityCheck = ConnectedEmailIdentityGuard.Ensure(emailAddress, cmd.InitiatorEmail);
+            if (identityCheck.IsFailure)
+                return Result.Failure<CompleteOAuthConnectResult>(identityCheck.Error);
+        }
 
         var now = DateTime.UtcNow;
         // Scoped al tenant (uniqueness (TenantId, EmailAddress), igual que Auth): el mismo buzón en
@@ -94,7 +98,9 @@ public static class CompleteOAuthConnectHandler
                 emailAddress,
                 cmd.ProviderCode,
                 cmd.InitiatedByUserId,
-                now
+                now,
+                // Oficina = sin dueño (compartido); personal = del usuario que conecta.
+                ownerUserId: cmd.AsOffice ? null : cmd.InitiatedByUserId
             );
             if (createResult.IsFailure)
                 return Result.Failure<CompleteOAuthConnectResult>(createResult.Error);

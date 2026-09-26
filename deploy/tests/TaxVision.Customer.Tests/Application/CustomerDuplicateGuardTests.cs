@@ -9,6 +9,7 @@ using TaxVision.Customer.Application.Customers.Commands.Update;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
+using TaxVision.Customer.Domain.Employees;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Tests.Application;
@@ -155,6 +156,7 @@ public sealed class CustomerDuplicateGuardTests
             ),
             repo,
             detector,
+            new NoDirectory(),
             new NoOpUnitOfWork(),
             bus ?? new FakeMessageBus(),
             new NoOpCorrelationContext(),
@@ -257,6 +259,41 @@ public sealed class CustomerDuplicateGuardTests
             Guid? excludeRelationId,
             CancellationToken ct
         ) => Task.FromResult<Guid?>(null);
+
+        public Task<IReadOnlyList<DomainCustomer>> ListByAssignedPreparerAsync(
+            Guid tenantId,
+            Guid preparerUserId,
+            int batchSize,
+            Guid afterId,
+            CancellationToken ct
+        ) =>
+            Task.FromResult<IReadOnlyList<DomainCustomer>>(
+                All.FindAll(c => c.TenantId == tenantId && c.AssignedPreparerUserId == preparerUserId && c.Id > afterId)
+                    .OrderBy(c => c.Id)
+                    .Take(batchSize)
+                    .ToList()
+            );
+    }
+
+    // El creador no está en el directorio → se trata como no-admin → el alta lo auto-asigna (camino real).
+    private sealed class NoDirectory : ITenantEmployeeDirectoryRepository
+    {
+        public Task<TenantEmployeeDirectoryEntry?> GetByUserIdAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<TenantEmployeeDirectoryEntry?>(null);
+
+        public Task UpsertAsync(
+            Guid userId,
+            Guid tenantId,
+            string actorType,
+            bool isActive,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
+        public Task MarkActiveAsync(Guid userId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task MarkInactiveAsync(Guid userId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task MarkOffboardedAsync(Guid userId, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

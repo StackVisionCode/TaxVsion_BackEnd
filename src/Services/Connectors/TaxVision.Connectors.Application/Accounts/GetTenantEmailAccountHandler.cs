@@ -15,9 +15,15 @@ public static class GetTenantEmailAccountHandler
             return Result.Failure<TenantEmailAccountDto>(accountResult.Error);
 
         var account = accountResult.Value;
-        if (account.TenantId != query.TenantId)
+        // Un buzón personal solo lo ve su dueño; el de oficina, quien tenga office.read. Otro tenant,
+        // el personal de un colega, o la oficina sin permiso → NotFound (anti-enumeración).
+        var hidden =
+            account.TenantId != query.TenantId
+            || (account.IsOffice && !query.CanSeeOffice)
+            || (!account.IsOffice && account.OwnerUserId != query.CallerUserId);
+        if (hidden)
             return Result.Failure<TenantEmailAccountDto>(
-                new Error("GetTenantEmailAccountHandler.Forbidden", "Account does not belong to the caller's tenant.")
+                new Error("TenantEmailAccount.NotFound", "The email account was not found.")
             );
 
         return Result.Success(
@@ -28,7 +34,9 @@ public static class GetTenantEmailAccountHandler
                 account.DisplayName,
                 account.Status.ToString(),
                 account.ConnectedAtUtc,
-                account.CreatedAtUtc
+                account.CreatedAtUtc,
+                account.OwnerUserId,
+                account.IsOffice
             )
         );
     }

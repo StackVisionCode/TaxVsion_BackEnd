@@ -6,7 +6,11 @@ import { config } from './infrastructure/config.js';
 import { logger } from './infrastructure/logger/logger.js';
 import { prisma, connectPrisma, disconnectPrisma } from './infrastructure/persistence/prisma-client.js';
 import { connectRedis, disconnectRedis } from './infrastructure/redis/redis-client.js';
-import { connectRabbit, disconnectRabbit, onRabbitReconnected } from './infrastructure/rabbit/rabbit-connection.js';
+import {
+  connectRabbit,
+  disconnectRabbit,
+  onRabbitReconnected,
+} from './infrastructure/rabbit/rabbit-connection.js';
 import { buildHttpServer } from './infrastructure/http/build-server.js';
 import { buildSocketServer, markShuttingDown } from './infrastructure/socket/build-io.js';
 import { buildContainer } from './infrastructure/container.js';
@@ -18,11 +22,13 @@ import { startMissedCallScheduler } from './infrastructure/schedulers/missed-cal
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
 import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
+import { startCustomerAssignmentReconciliationScheduler } from './infrastructure/schedulers/customer-assignment-reconciliation-scheduler.js';
 import { startOutboxDrainer } from './infrastructure/rabbit/outbox-drainer.js';
 import { ConsumerRuntime } from './infrastructure/rabbit/consumer-runtime.js';
 import { bindSignatureConsumers } from './application/event-handlers/signature-consumers.js';
 import { bindCustomerConsumers } from './application/event-handlers/customer-consumers.js';
 import { bindAuthConsumers } from './application/event-handlers/auth-consumers.js';
+import { bindOffboardingConsumers } from './application/event-handlers/offboarding-consumers.js';
 import { bindCloudStorageConsumers } from './application/event-handlers/cloudstorage-consumers.js';
 import { bindCloudStorageNotificationConsumers } from './application/event-handlers/cloudstorage-notification-consumers.js';
 import { bindConnectorsConsumers } from './application/event-handlers/connectors-consumers.js';
@@ -48,7 +54,10 @@ import { seedDefaultNotificationActionMappings } from './infrastructure/seed/see
 function installProcessSafetyNet(): void {
   process.on('unhandledRejection', (reason) => {
     logger.error(
-      { err: reason instanceof Error ? reason.message : String(reason), stack: reason instanceof Error ? reason.stack : undefined },
+      {
+        err: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+      },
       'Unhandled promise rejection — logged and swallowed to keep the service alive',
     );
   });
@@ -127,6 +136,15 @@ async function main(): Promise<void> {
       lock: container.distributedLock,
     },
   );
+  // P2.5 — siembra/auto-repara la proyeccion M:N que alimenta el gate de chat por asignacion.
+  const customerAssignmentReconciliation = startCustomerAssignmentReconciliationScheduler(
+    { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },
+    {
+      client: container.customerAssignmentsReconciliation,
+      customerAssignments: container.customerAssignments,
+      lock: container.distributedLock,
+    },
+  );
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
@@ -141,12 +159,22 @@ async function main(): Promise<void> {
     emitter,
     customerDirectory: container.customerDirectory,
     customerPreparerAssignments: container.customerPreparerAssignments,
+    customerAssignments: container.customerAssignments,
   });
   bindAuthConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
     userDirectory: container.userDirectory,
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
+  });
+  // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
+  bindOffboardingConsumers(consumers.register.bind(consumers), {
+    userPermissions: container.userPermissions,
+    userDirectory: container.userDirectory,
+    customerPortalAccounts: container.customerPortalAccounts,
+    meetings: container.meetings,
+    publisher: container.publisher,
+    emitter,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
@@ -231,6 +259,7 @@ async function main(): Promise<void> {
         purge,
         recordingConsentTimeout,
         customerReconciliation,
+        customerAssignmentReconciliation,
         sessionWatcher,
         presenceWatcher,
         consumers,
@@ -251,6 +280,7 @@ async function shutdown(
   purge: ReturnType<typeof startPurgeScheduler>,
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
   customerReconciliation: ReturnType<typeof startCustomerReconciliationScheduler>,
+  customerAssignmentReconciliation: ReturnType<typeof startCustomerAssignmentReconciliationScheduler>,
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
@@ -262,6 +292,7 @@ async function shutdown(
     purge.stop();
     recordingConsentTimeout.stop();
     customerReconciliation.stop();
+    customerAssignmentReconciliation.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

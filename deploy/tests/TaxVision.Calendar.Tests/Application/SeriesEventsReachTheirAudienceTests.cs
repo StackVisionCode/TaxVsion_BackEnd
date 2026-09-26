@@ -147,6 +147,13 @@ public sealed class SeriesEventsReachTheirAudienceTests
 
     private sealed class SingleAppointmentRepository(Appointment appointment) : IAppointmentRepository
     {
+        public Task<IReadOnlyList<Appointment>> ListFutureByOrganizerAsync(
+            Guid tenantId,
+            Guid organizerUserId,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<Appointment>>([]);
+
         public Task<Result<Appointment>> GetByIdAsync(
             Guid tenantId,
             Guid appointmentId,

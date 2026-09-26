@@ -221,6 +221,10 @@ internal static class ShareLinkCreationCore
             recipientUserIds,
             recipientCustomerIds,
             recipientEmails,
+            password,
+            expiresAtUtc,
+            clock.UtcNow,
+            enforceLinkGuardrails: true,
             limits,
             ct
         );
@@ -325,6 +329,10 @@ internal static class ShareLinkCreationCore
         IReadOnlyList<Guid> recipientUserIds,
         IReadOnlyList<Guid> recipientCustomerIds,
         IReadOnlyList<string> recipientEmails,
+        string? password,
+        DateTime? expiresAtUtc,
+        DateTime nowUtc,
+        bool enforceLinkGuardrails,
         IStorageLimitRepository limits,
         CancellationToken ct
     )
@@ -332,15 +340,10 @@ internal static class ShareLinkCreationCore
         if (permission is SharePermission.Upload or SharePermission.EditMetadata && !actorHasManagePermission)
             return Result.Failure(ShareErrors.ElevatedPermissionRequiresManage);
 
-        // Fase C4 (completitud) — §20.4 del plan: "en un PublicLink, nunca Upload/
-        // Edit/ShareAgain". Antes solo se exigia cloudstorage.share.manage para
-        // otorgar Upload/EditMetadata, pero nada impedia que ese mismo actor los
-        // combinara con Visibility.Public (un link sin autenticacion con permiso
-        // de escritura).
-        if (
-            visibility == ShareVisibility.Public
-            && permission is SharePermission.Upload or SharePermission.EditMetadata
-        )
+        // §20.4 del plan: un link sin autenticación (Public o ExternalLink) nunca puede otorgar
+        // Upload/EditMetadata (sería escritura anónima).
+        var isUnauthenticatedLink = visibility is ShareVisibility.Public or ShareVisibility.ExternalLink;
+        if (isUnauthenticatedLink && permission is SharePermission.Upload or SharePermission.EditMetadata)
             return Result.Failure(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink);
 
         if (visibility == ShareVisibility.Public)
@@ -348,6 +351,20 @@ internal static class ShareLinkCreationCore
             var limit = await limits.GetAsync(tenantId, ct);
             if (limit is null || !limit.AllowPublicShareLinks)
                 return Result.Failure(ShareErrors.PublicSharingDisabled);
+        }
+        else if (visibility == ShareVisibility.ExternalLink)
+        {
+            var limit = await limits.GetAsync(tenantId, ct);
+            if (limit is null || !limit.AllowLinkOnlyExternalShares)
+                return Result.Failure(ShareErrors.LinkSharingDisabled);
+            // Guardrails solo al crear (no al cambiar permiso de un link ya existente).
+            if (enforceLinkGuardrails)
+            {
+                if (limit.RequirePasswordOnLinkShares && string.IsNullOrWhiteSpace(password))
+                    return Result.Failure(ShareErrors.PasswordRequiredForLinkShare);
+                if (expiresAtUtc is { } exp && exp > nowUtc.AddDays(limit.MaxShareLifetimeDays))
+                    return Result.Failure(ShareErrors.ShareLifetimeExceedsMax);
+            }
         }
 
         var needsRecipients = visibility is ShareVisibility.SpecificUsers or ShareVisibility.ExternalRecipients;
@@ -477,6 +494,10 @@ public static class ChangeSharePermissionHandler
             recipientUserIds: [],
             recipientCustomerIds: [],
             recipientEmails: [],
+            password: null,
+            expiresAtUtc: null,
+            clock.UtcNow,
+            enforceLinkGuardrails: false,
             limits,
             ct
         );

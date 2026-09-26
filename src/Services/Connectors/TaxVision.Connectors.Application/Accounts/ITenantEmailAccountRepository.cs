@@ -36,6 +36,14 @@ public interface ITenantEmailAccountRepository
     /// <summary>Cuentas del tenant llamante — <c>GET /connectors/accounts</c> (D3 §12.4), a diferencia de GetByIdAsync/GetByEmailAddressAsync sí filtra por tenant porque el caller es un usuario autenticado del frontend.</summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Buzones visibles para un usuario: siempre los suyos propios; el de oficina (OwnerUserId null) solo si <paramref name="includeOffice"/>. No expone los personales de otros empleados.</summary>
+    Task<IReadOnlyList<TenantEmailAccount>> ListVisibleAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    );
+
     /// <summary>
     /// Cuentas Active de TODOS los tenants/proveedores — usada por ReconciliationJob, mismo patrón
     /// sin filtro de tenant que GetByIdAsync/GetByEmailAddressAsync (background job system-level).
@@ -43,4 +51,20 @@ public interface ITenantEmailAccountRepository
     /// Disconnected/Error no deberían sincronizar nada hasta que un reauth manual las reactive.
     /// </summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Buzones PERSONALES de <paramref name="ownerUserId"/> en el tenant (OwnerUserId == user) — para
+    /// desconectarlos y purgar sus secretos al retirar (offboard) a ese empleado. Los de oficina
+    /// (OwnerUserId null) no entran. Tracked (se mutan). Default vacío: los fakes no necesitan implementarlo.
+    /// </summary>
+    Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
+        Guid tenantId,
+        Guid ownerUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TenantEmailAccount>>([]);
+
+    /// <summary>Cuántos buzones PERSONALES tiene el empleado (mismo filtro que ListByOwnerUserAsync, sin
+    /// materializar) — pre-flight de impacto al retirarlo. Default 0; el repo real lo implementa con COUNT.</summary>
+    Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default) =>
+        Task.FromResult(0);
 }

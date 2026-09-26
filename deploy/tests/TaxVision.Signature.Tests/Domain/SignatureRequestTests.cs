@@ -35,7 +35,7 @@ public sealed class SignatureRequestTests
             Guid.NewGuid(),
             title,
             null,
-            SignatureCategory.Fiscal,
+            "Fiscal",
             Guid.NewGuid(),
             tokenExpirationHours: 72,
             requiresSequentialSigning: false,
@@ -57,7 +57,7 @@ public sealed class SignatureRequestTests
             Guid.NewGuid(),
             "Consent to Disclose",
             null,
-            SignatureCategory.ConsentToDisclose,
+            "ConsentToDisclose",
             Guid.NewGuid(),
             tokenExpirationHours: hours,
             requiresSequentialSigning: false,
@@ -211,6 +211,70 @@ public sealed class SignatureRequestTests
         Assert.Equal(sentAt, request.SentAtUtc);
     }
 
+    [Fact]
+    public void Send_sets_expiry_clock_from_send_time_not_creation()
+    {
+        var request = NewReadyDraftWithSignatureField("s@example.com");
+
+        var sentAt = DateTime.UtcNow.AddDays(3);
+        request.Send(sentAt);
+
+        Assert.Equal(sentAt.AddHours(request.TokenExpirationHours), request.ExpiresAtUtc);
+    }
+
+    [Fact]
+    public void EnsureCanBeDeleted_allows_draft_and_ready_but_not_sent()
+    {
+        var draft = NewDraft().Value;
+        Assert.True(draft.EnsureCanBeDeleted().IsSuccess);
+
+        var ready = NewReadyDraftWithSignatureField("s@example.com");
+        Assert.True(ready.EnsureCanBeDeleted().IsSuccess);
+
+        ready.Send(DateTime.UtcNow);
+        var blocked = ready.EnsureCanBeDeleted();
+        Assert.True(blocked.IsFailure);
+        Assert.Equal("Signature.Request.NotDeletable", blocked.Error.Code);
+    }
+
+    [Fact]
+    public void UpdateMetadata_edits_draft_fields()
+    {
+        var request = NewDraft().Value;
+
+        var result = request.UpdateMetadata("Renamed request 2026", "Updated notes", "ConsentToDisclose", 120);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Renamed request 2026", request.Title);
+        Assert.Equal("Updated notes", request.Description);
+        Assert.Equal("ConsentToDisclose", request.Category);
+        Assert.Equal(120, request.TokenExpirationHours);
+    }
+
+    [Fact]
+    public void UpdateMetadata_rejects_invalid_title_and_hours()
+    {
+        var request = NewDraft().Value;
+
+        Assert.Equal("Signature.Request.Title", request.UpdateMetadata("ab", null, "Fiscal", 72).Error.Code);
+        Assert.Equal(
+            "Signature.Request.TokenExpiration",
+            request.UpdateMetadata("A valid title", null, "Fiscal", 1000).Error.Code
+        );
+    }
+
+    [Fact]
+    public void UpdateMetadata_blocked_after_send()
+    {
+        var request = NewReadyDraftWithSignatureField("s@example.com");
+        request.Send(DateTime.UtcNow);
+
+        var result = request.UpdateMetadata("A valid title", null, "Fiscal", 72);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
+    }
+
     // -------------------- MarkSignerSigned --------------------
 
     [Fact]
@@ -307,7 +371,7 @@ public sealed class SignatureRequestTests
             createdByUserId: Guid.NewGuid(),
             title: "Consent to Disclose 2026",
             description: null,
-            category: SignatureCategory.ConsentToDisclose,
+            category: "ConsentToDisclose",
             originalFileId: Guid.NewGuid(),
             tokenExpirationHours: 72,
             requiresSequentialSigning: false,

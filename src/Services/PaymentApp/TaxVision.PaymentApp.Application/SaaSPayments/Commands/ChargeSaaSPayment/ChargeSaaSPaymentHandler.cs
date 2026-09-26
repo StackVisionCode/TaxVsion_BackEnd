@@ -74,7 +74,7 @@ public static class ChargeSaaSPaymentHandler
             ct
         );
 
-        await SaaSPaymentChargeOutcome.PublishResultAsync(payment, bus, correlation, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -115,7 +115,8 @@ public static class ChargeSaaSPaymentHandler
             command.CodeReservationId,
             command.CodeReservationPaymentId,
             command.DiscountAmountCents,
-            command.PromotionSnapshotHash
+            command.PromotionSnapshotHash,
+            ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
         );
     }
 

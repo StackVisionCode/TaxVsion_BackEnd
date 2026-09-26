@@ -34,6 +34,54 @@ public sealed class GetUsersHandlerTests
         Assert.Equal("TenantAdmin", row.ActorType); // el actor_type viaja en su propio campo
         Assert.Contains("Tenant Admin", row.Roles); // rol de sistema real
         Assert.DoesNotContain("TenantAdmin", row.Roles); // pseudo-rol ya NO se duplica en Roles
+        Assert.Equal("Active", row.Status); // ciclo de vida por defecto
+    }
+
+    // Un usuario retirado debe distinguirse de uno solo suspendido (ambos IsActive=false).
+    [Fact]
+    public async Task Status_reflects_offboarded_so_the_ui_can_distinguish_it_from_suspended()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = User.Register(
+            tenantId,
+            "Sofia",
+            "Martinez",
+            "sofia@acme.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        user.Offboard(DateTime.UtcNow);
+
+        var users = new FakeUserRepository { Page = [user] };
+        var roles = new FakeRoleRepository();
+
+        var result = await GetUsersHandler.Handle(new GetUsersQuery(tenantId), users, roles, CancellationToken.None);
+
+        var row = Assert.Single(result.Value.Items);
+        Assert.Equal("Offboarded", row.Status);
+        Assert.False(row.IsActive);
+    }
+
+    /// <summary>
+    /// "Team members" y el acceso al portal del perfil del cliente leen la MISMA lista. Sin decir de qué tipo
+    /// de cuenta se habla, los clientes salían entre el personal y se les ofrecían acciones de empleado.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(UserAccountKind.Staff)]
+    [InlineData(UserAccountKind.Portal)]
+    public async Task The_list_asks_the_repository_for_the_kind_of_account_it_wants(UserAccountKind? kind)
+    {
+        var users = new FakeUserRepository();
+
+        await GetUsersHandler.Handle(
+            new GetUsersQuery(Guid.NewGuid(), 1, 20, null, null, null, kind),
+            users,
+            new FakeRoleRepository(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(kind, users.AskedForKind);
     }
 
     private sealed class FakeUserRepository : IUserRepository
@@ -47,22 +95,47 @@ public sealed class GetUsersHandlerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
-        ) => Task.FromResult((Page, Page.Count));
+        )
+        {
+            AskedForKind = accountKind;
+            return Task.FromResult((Page, Page.Count));
+        }
+
+        /// <summary>Qué tipo de cuenta pidió el handler — lo comprueba el test del filtro.</summary>
+        public UserAccountKind? AskedForKind { get; private set; }
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 

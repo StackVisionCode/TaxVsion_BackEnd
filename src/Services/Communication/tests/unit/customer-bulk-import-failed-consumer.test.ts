@@ -5,6 +5,7 @@ import type { IncomingEnvelope } from '../../src/application/ports/event-consume
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
 import type { CustomerDirectoryRepository } from '../../src/application/ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../../src/application/ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../../src/application/ports/customer-assignment-projection-repository.js';
 
 /**
  * Test de contrato (regla de la Fase 0 del plan de notificaciones): los payloads de
@@ -42,8 +43,19 @@ function setup() {
     unassign: vi.fn(),
     findByCustomerId: vi.fn(),
   };
+  const customerAssignments = {
+    getVersion: vi.fn().mockResolvedValue(null),
+    replace: vi.fn(),
+    isAssigned: vi.fn(),
+  } as unknown as CustomerAssignmentProjectionRepository;
 
-  bindCustomerConsumers(register, { notifications, emitter, customerDirectory, customerPreparerAssignments });
+  bindCustomerConsumers(register, {
+    notifications,
+    emitter,
+    customerDirectory,
+    customerPreparerAssignments,
+    customerAssignments,
+  });
   return { handlers, notifications, emitter };
 }
 

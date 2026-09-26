@@ -123,7 +123,7 @@ public sealed class RequiredVerificationMethodTests
                 Guid.NewGuid(),
                 "Test",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

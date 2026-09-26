@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -250,7 +252,11 @@ public static class SignatureRequestCompletedConsumer
         // ya pasó el scan (readyImageSignerIds), para que el engine estampe la imagen y quede puro (sin I/O).
         var signatureImages = await DownloadSignatureImagesAsync(request, readyImageSignerIds, storage, ct);
 
-        var sealResult = ApplySeal(request, evt, originalBytesResult.Value, signatureImages, sealer);
+        // Firma reutilizable del preparador (canal paralelo, Form 8879). Best-effort: la imagen se subió al
+        // crear el perfil (F1), así que ya está Available; si por lo que sea no baja, cae al sello tipográfico.
+        var preparerImage = await DownloadPreparerSignatureAsync(request, storage, ct);
+
+        var sealResult = ApplySeal(request, evt, originalBytesResult.Value, signatureImages, preparerImage, sealer);
 
         // ORDEN CRÍTICO (carrera con el commit): el handler de sellado corre bajo una transacción de
         // Wolverine que commitea al FINAL, pero las subidas publican SaveFileRequested de inmediato, así
@@ -344,15 +350,29 @@ public static class SignatureRequestCompletedConsumer
         return images;
     }
 
+    private static async Task<byte[]?> DownloadPreparerSignatureAsync(
+        SignatureRequest request,
+        ISignatureCloudStorageClient storage,
+        CancellationToken ct
+    )
+    {
+        if (request.PreparerSignatureFileId is not { } fileId || request.PreparerFields.Count == 0)
+            return null;
+
+        var download = await storage.DownloadAsync(request.TenantId, fileId, ct);
+        return download.IsSuccess ? download.Value : null;
+    }
+
     private static SealingResult ApplySeal(
         SignatureRequest request,
         SignatureRequestCompletedIntegrationEvent evt,
         byte[] originalBytes,
         IReadOnlyDictionary<Guid, byte[]> signatureImages,
+        byte[]? preparerImage,
         IDocumentSealingEngine sealer
     )
     {
-        var fields = BuildFieldRenders(request, signatureImages);
+        var fields = BuildFieldRenders(request, signatureImages, preparerImage);
         // Sin el id de la SignatureRequest: es un identificador interno sensible y no debe estamparse en
         // cada página del documento firmado. La integridad ya la ancla el "Doc SHA-256" del pie, y la
         // referencia del envelope vive en el Certificate of Completion (documento aparte).
@@ -363,7 +383,8 @@ public static class SignatureRequestCompletedConsumer
 
     private static IReadOnlyList<SealedFieldRender> BuildFieldRenders(
         SignatureRequest request,
-        IReadOnlyDictionary<Guid, byte[]> signatureImages
+        IReadOnlyDictionary<Guid, byte[]> signatureImages,
+        byte[]? preparerImage
     )
     {
         var renders = new List<SealedFieldRender>();
@@ -396,6 +417,29 @@ public static class SignatureRequestCompletedConsumer
                 );
             }
         }
+
+        // Campos del preparador (canal paralelo): se estampan con su firma reutilizable al sellar, nunca
+        // antes → el firmante no la ve. Sin imagen (perfil sin subir/baja fallida) → sello tipográfico.
+        var preparerName = request.Preparer?.DisplayName ?? "Preparer";
+        var preparerSignedAt = request.PreparerSignedAtUtc ?? request.CompletedAtUtc ?? DateTime.UtcNow;
+        foreach (var field in request.PreparerFields)
+        {
+            renders.Add(
+                new SealedFieldRender(
+                    Page: field.Position.Page,
+                    X: field.Position.X,
+                    Y: field.Position.Y,
+                    Width: field.Position.Width,
+                    Height: field.Position.Height,
+                    Kind: field.Kind,
+                    Label: field.Label,
+                    SignerDisplayName: preparerName,
+                    SignedAtUtc: preparerSignedAt,
+                    SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? preparerImage : null,
+                    Value: null
+                )
+            );
+        }
         return renders;
     }
 
@@ -404,7 +448,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: sealResult.SealedPdfBytes,
-            FileName: $"signed-{request.Id:D}.pdf",
+            FileName: BuildDocumentFileName(request.Title, "_Signed.pdf"),
             ContentType: "application/pdf",
             // Values must match CloudStorage's OwnerType / FolderType enums.
             OwnerType: ownerType,
@@ -474,7 +518,7 @@ public static class SignatureRequestCompletedConsumer
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: certificateBytes,
-            FileName: $"certificate-{request.Id:D}.pdf",
+            FileName: BuildDocumentFileName(request.Title, "_Certificate.pdf"),
             ContentType: "application/pdf",
             OwnerType: ownerType,
             OwnerId: ownerId,
@@ -482,6 +526,39 @@ public static class SignatureRequestCompletedConsumer
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId
         );
+    }
+
+    private const int MaxFileNameBaseLength = 120;
+
+    /// <summary>Nombre de descarga profesional desde el Title (translitera acentos, deja [A-Za-z0-9._-]). No toca el ObjectKey.</summary>
+    private static string BuildDocumentFileName(string title, string suffix)
+    {
+        var normalized = (title ?? string.Empty).Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalized.Length);
+        var lastWasUnderscore = false;
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '.')
+            {
+                sb.Append(ch);
+                lastWasUnderscore = false;
+            }
+            else if (!lastWasUnderscore)
+            {
+                sb.Append('_');
+                lastWasUnderscore = true;
+            }
+        }
+
+        var cleaned = sb.ToString().Trim('_', '.', '-');
+        if (cleaned.Length > MaxFileNameBaseLength)
+            cleaned = cleaned[..MaxFileNameBaseLength].Trim('_', '.', '-');
+        if (string.IsNullOrEmpty(cleaned))
+            cleaned = "Document";
+        return cleaned + suffix;
     }
 
     private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(
@@ -544,8 +621,37 @@ public static class SignatureRequestCompletedConsumer
                 .ToList(),
             IssuerName: issuerName,
             PlatformLogo: platformLogo,
-            TenantLogo: tenantLogo
+            TenantLogo: tenantLogo,
+            // Referencia del preparador (ERO): solo si firmó internamente. Identificador enmascarado, sin imagen.
+            Preparer: BuildPreparerEntry(request)
         );
+
+    private static CertificatePreparerEntry? BuildPreparerEntry(SignatureRequest request)
+    {
+        // Un acta legal referencia partes por IDENTIDAD REAL (así lo hacen DocuSign/Adobe): solo se
+        // incluye al preparador si su identidad 8879 (PreparerInfo: nombre + PTIN) está fijada. Una firma
+        // "My Signature" estampada sin identidad NO genera una entrada con nombre inventado — la firma
+        // visual vive en el documento; el acta lista partes identificadas.
+        if (request.Preparer is not { } preparer)
+            return null;
+
+        var stampApplied = request.PreparerSignatureFileId is not null && request.PreparerFields.Count > 0;
+        if (!request.IsPreparerSigned && !stampApplied)
+            return null;
+
+        var at = request.PreparerSignedAtUtc ?? request.CompletedAtUtc;
+        return new CertificatePreparerEntry(preparer.DisplayName, MaskIdentifier(preparer.PtinOrEfin), at);
+    }
+
+    /// <summary>Enmascara un PTIN/EFIN dejando visibles los últimos 4 (p. ej. "P•••••5678").</summary>
+    private static string MaskIdentifier(string identifier)
+    {
+        if (string.IsNullOrEmpty(identifier))
+            return string.Empty;
+        if (identifier.Length <= 4)
+            return new string('•', identifier.Length);
+        return identifier[0] + new string('•', identifier.Length - 5) + identifier[^4..];
+    }
 
     // ============== Fase 5: persistir en el aggregate ==============
 

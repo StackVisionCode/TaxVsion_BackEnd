@@ -19,6 +19,17 @@ public interface ISessionRepository
     /// <summary>Revoca la sesión y todos sus refresh tokens activos. Devuelve tokens revocados.</summary>
     Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default);
 
+    /// <summary>Revoca solo la cadena de una superficie dentro de la sesión (la sesión sigue viva). Devuelve tokens revocados.</summary>
+    Task<int> RevokeSurfaceTokensAsync(
+        Guid sessionId,
+        SessionSurface surface,
+        string reason,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿La sesión tiene una cadena activa de esa superficie?</summary>
+    Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default);
+
     /// <summary>Revoca todas las sesiones activas del usuario (opcionalmente excepto una).</summary>
     Task<int> RevokeAllForUserAsync(
         Guid userId,

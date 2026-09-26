@@ -99,6 +99,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<Guid?>("DeletedBatchId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("DetectedContentType")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
@@ -160,6 +163,10 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<string>("StatusBeforeSoftDelete")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<int?>("TaxYear")
                         .HasColumnType("int");
 
@@ -201,6 +208,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("DeletedBatchId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -222,10 +232,20 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<DateTime?>("SoftDeleteExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SoftDeletedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SoftDeleteExpiresAtUtc");
+
+                    b.HasIndex("TenantId", "DeletedBatchId");
 
                     b.HasIndex("TenantId", "RelativePath");
 
@@ -391,6 +411,11 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("AllowLinkOnlyExternalShares")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("AllowPublicShareLinks")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -405,10 +430,20 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.Property<long>("MaxFileSizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("MaxShareLifetimeDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
+
                     b.Property<string>("PlanCode")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("RequirePasswordOnLinkShares")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<long>("ReservedBytes")
                         .HasColumnType("bigint");
@@ -547,6 +582,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "CreatedByUserId");
 
                     b.HasIndex("TenantId", "Status");
 

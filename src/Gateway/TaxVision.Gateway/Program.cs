@@ -1,6 +1,7 @@
-using BuildingBlocks.Web.Hosting;
+using System.Net;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
@@ -11,6 +12,7 @@ using Serilog;
 using TaxVision.Gateway.Health;
 using TaxVision.Gateway.LoadShedding;
 using TaxVision.Gateway.Middleware;
+using Yarp.ReverseProxy.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("gateway");
@@ -24,7 +26,22 @@ var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>
 builder.Services.AddCors(options =>
     options.AddPolicy(
         "spa",
-        policy => policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+        policy =>
+            policy
+                .WithOrigins(corsOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials()
+                // Sin esto el navegador oculta estos headers a la SPA en cross-origin y el front no puede
+                // decirle al usuario cuánto esperar tras un 429/503.
+                .WithExposedHeaders(
+                    "Retry-After",
+                    "X-RateLimit-Limit",
+                    "X-RateLimit-Remaining",
+                    "X-RateLimit-Reset",
+                    "X-RateLimit-Policy",
+                    "X-RateLimit-Layer"
+                )
     )
 );
 
@@ -46,7 +63,25 @@ builder
         tags: ["dependencies"]
     );
 
-builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+builder
+    .Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    // El Gateway ya resolvió la IP real (UseForwardedHeaders consume CF-Connecting-IP), pero ese header
+    // queda vacío hacia el backend; se re-inyecta para que cada servicio la lea igual que el Gateway.
+    .AddTransforms(context =>
+        context.AddRequestTransform(transform =>
+        {
+            var ip = transform.HttpContext.Connection.RemoteIpAddress;
+            if (ip is not null)
+            {
+                if (ip.IsIPv4MappedToIPv6)
+                    ip = ip.MapToIPv4();
+                transform.ProxyRequest.Headers.Remove("CF-Connecting-IP");
+                transform.ProxyRequest.Headers.TryAddWithoutValidation("CF-Connecting-IP", ip.ToString());
+            }
+            return ValueTask.CompletedTask;
+        })
+    );
 
 // Tarea 3 (senior) — validación Host↔tenant en el Gateway (TenantHostGuardMiddleware). El resolver
 // llama al `by-host` de Auth reusando la MISMA dirección del cluster YARP "auth" (dev localhost,
@@ -105,6 +140,7 @@ app.MapHealthChecks(
     "/health/dependencies",
     new HealthCheckOptions { Predicate = check => check.Tags.Contains("dependencies") }
 );
+
 // YARP solo proxya upgrades de WebSocket si el middleware de WebSockets está en el
 // pipeline; sin esto el gateway rechaza el handshake `Upgrade: websocket` con 400 y
 // socket.io cae a long-polling (que detrás de Cloudflare se rompe por buffering →

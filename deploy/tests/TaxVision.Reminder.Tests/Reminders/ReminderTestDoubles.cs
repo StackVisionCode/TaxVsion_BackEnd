@@ -96,6 +96,22 @@ internal sealed class FakeReminderRepository : IReminderRepository
                 .ToList()
         );
 
+    public Task<IReadOnlyList<ReminderAggregate>> ListPendingGeneralByUserAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ReminderAggregate>>(
+            Stored
+                .Where(r =>
+                    r.TenantId == tenantId
+                    && r.UserId == userId
+                    && r.Target.Category == ReminderCategory.General
+                    && PendingStatuses.Contains(r.Status)
+                )
+                .ToList()
+        );
+
     /// <summary>
     /// Es <see cref="IUnitOfWork"/> quien confirma el <c>Add</c> pendiente: sin eso, el <c>catch</c>
     /// de la carrera vería la fila del perdedor ya guardada y el test no probaría nada.

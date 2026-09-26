@@ -1,4 +1,4 @@
-using BuildingBlocks.Authorization;
+﻿using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
@@ -34,6 +34,7 @@ public static class PermissionCatalog
 
     // Módulos operativos
     public const string CustomersView = CustomersPermissions.View;
+    public const string CustomersViewAll = CustomersPermissions.ViewAll;
     public const string CustomersManage = CustomersPermissions.Manage;
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
@@ -111,6 +112,8 @@ public static class PermissionCatalog
     // sembrado en este catálogo — sin fila real, ningún rol podía tenerlos asignados.
     public const string ConnectorsAccountsRead = ConnectorsPermissions.AccountsRead;
     public const string ConnectorsAccountsWrite = ConnectorsPermissions.AccountsWrite;
+    public const string ConnectorsAccountsConnectOwn = ConnectorsPermissions.AccountsConnectOwn;
+    public const string ConnectorsAccountsOfficeRead = ConnectorsPermissions.AccountsOfficeRead;
 
     // Scribe — templates/layouts de correo, event mappings y render (bounded context propio, ver
     // microservicio Scribe). Fase 10.5 (hardening): estos 9 permisos ya los exigían los 4
@@ -217,9 +220,9 @@ public static class PermissionCatalog
     public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
 
     // Portal del cliente final
-    public const string PortalCallsUse = "portal.calls.use";
-    public const string PortalMilesUse = "portal.miles.use";
-    public const string PortalFoldersView = "portal.folders.view";
+    public const string PortalCallsUse = PortalPermissions.CallsUse;
+    public const string PortalMilesUse = PortalPermissions.MilesUse;
+    public const string PortalFoldersView = PortalPermissions.FoldersView;
 
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
@@ -445,6 +448,13 @@ public static class PermissionCatalog
             false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000000c9"),
+            CustomersViewAll,
+            "customers",
+            "Ver TODOS los clientes del tenant (no solo los asignados)",
+            false
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000011"),
             CustomersManage,
@@ -753,6 +763,25 @@ public static class PermissionCatalog
             ConnectorsAccountsWrite,
             "connectors",
             "Conectar, reconectar y desconectar cuentas de correo del tenant",
+            false
+        ),
+        new(
+            // Conectar/administrar SOLO el buzón personal propio (mismo riesgo que ConnectorsAccountsWrite
+            // pero acotado al correo del propio empleado): assignable por el tenant para que el
+            // TenantAdmin lo delegue sin dar el write completo (que administra el buzón de oficina y
+            // cualquiera). No se otorga por defecto al empleado.
+            new Guid("a1000000-0000-0000-0000-0000000000c7"),
+            ConnectorsAccountsConnectOwn,
+            "connectors",
+            "Conectar y administrar el buzón de correo personal propio",
+            false
+        ),
+        new(
+            // Ver el buzón de oficina y su correo. ON por defecto en el empleado; deny per-usuario.
+            new Guid("a1000000-0000-0000-0000-0000000000c8"),
+            ConnectorsAccountsOfficeRead,
+            "connectors",
+            "Ver el buzón de correo de oficina y su correo",
             false
         ),
         new(
@@ -1434,11 +1463,14 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Solo plataforma: un tenant nunca se reembolsa su propia suscripción.
             new Guid("a1000000-0000-0000-0000-000000000104"),
             PaymentAppSaaSPaymentRefund,
             "payment_app",
-            "Reembolsar un pago SaaS del propio tenant",
-            false
+            "Reembolsar un pago SaaS de cualquier tenant (soporte de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000105"),
@@ -2024,10 +2056,16 @@ public static class PermissionCatalog
                 CorrespondenceSend,
                 // Connectors: el empleado puede ver qué cuentas de correo están conectadas (para
                 // elegir remitente al redactar correspondencia, o diagnosticar por qué algo no
-                // llegó) — no incluye accounts.write (conectar/desconectar es una acción de
-                // configuración de integración, reservada a TenantAdmin por defecto, mismo
-                // criterio que CloudStorageSettingsManage/SignatureSettingsManage).
+                // llegó) — no incluye accounts.write (conectar/desconectar el buzón de OFICINA
+                // compartido es una acción de configuración reservada a TenantAdmin por defecto,
+                // mismo criterio que CloudStorageSettingsManage/SignatureSettingsManage).
                 ConnectorsAccountsRead,
+                // connect_own: conectar/administrar su propio buzón personal. ON por defecto; el admin
+                // lo restringe por usuario desde Edit access.
+                ConnectorsAccountsConnectOwn,
+                // office.read: ver el buzón de oficina y su correo. ON por defecto; deny per-usuario
+                // para dejar al empleado solo con su personal.
+                ConnectorsAccountsOfficeRead,
                 // Scribe: el empleado puede ver los templates/layouts/event-mappings vigentes
                 // (System y del tenant) para redactar/diagnosticar comunicaciones — mismo criterio
                 // operativo que ConnectorsAccountsRead. No incluye templates.write/layouts.write/

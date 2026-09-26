@@ -62,7 +62,7 @@ public static class RetrySaaSPaymentHandler
             ct
         );
 
-        await SaaSPaymentChargeOutcome.PublishResultAsync(payment, bus, correlation, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 

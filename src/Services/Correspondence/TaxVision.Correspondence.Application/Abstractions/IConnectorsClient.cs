@@ -40,6 +40,14 @@ public interface IConnectorsClient
         string? partId,
         CancellationToken ct = default
     );
+
+    /// <summary>Los AccountIds que el usuario puede ver (sus personales + la oficina si <paramref name="includeOffice"/>). Para ocultar el correo del buzón de oficina a quien no tiene office.read.</summary>
+    Task<Result<IReadOnlyCollection<Guid>>> GetVisibleAccountIdsAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    );
 }
 
 /// <summary>

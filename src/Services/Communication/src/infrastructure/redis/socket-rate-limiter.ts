@@ -1,14 +1,14 @@
 import type { Redis } from 'ioredis';
-import { incrementAndGet } from './rate-counter.js';
+import { consumeWithinLimit } from './rate-counter.js';
 import { recordEvaluated, recordBlocked, recordFallbackOpen } from '../telemetry/rate-limit-metrics.js';
 
 /**
  * Leaky bucket generico por (scope, tenant, user) — mismo patron que
  * `DominantSpeakerThrottle`, generalizado para cubrir el resto de eventos de
  * socket sin proteccion (SendMessage, TypingStart, EditMessage, Call.Initiate,
- * Call.Signal). Rate Limit Fase 0.4 — incremento atomico via `incrementAndGet`
- * (antes INCR + EXPIRE como dos llamadas separadas): al superar `maxPerWindow`
- * dentro de `windowSeconds`, el evento se rechaza/descarta.
+ * Call.Signal). Rate Limit Fase 0.4 — chequeo + incremento atomicos via `consumeWithinLimit`
+ * (antes INCR + EXPIRE como dos llamadas separadas): al llegar a `maxPerWindow`
+ * dentro de `windowSeconds`, el evento se rechaza/descarta sin consumir cupo.
  *
  * Fase 8 — emite `ratelimit.evaluated_total`/`blocked_total` etiquetados `layer: "socket"`
  * (categoria O del catalogo .NET no tiene overlay, una sola capa siempre).
@@ -31,15 +31,14 @@ export class SocketRateLimiter {
     const key = `comm:rl:${input.scope}:${input.tenantId}:${input.userId}`;
     recordEvaluated(input.scope, 'socket', input.tenantId);
 
-    let count: number;
+    let allowed: boolean;
     try {
-      count = await incrementAndGet(this.redis, key, input.windowSeconds);
+      ({ allowed } = await consumeWithinLimit(this.redis, key, input.windowSeconds, input.maxPerWindow));
     } catch (error) {
       recordFallbackOpen(input.scope, 'redis_error');
       return true;
     }
 
-    const allowed = count <= input.maxPerWindow;
     if (!allowed) recordBlocked(input.scope, 'socket', input.tenantId);
     return allowed;
   }

@@ -17,15 +17,18 @@ using TaxVision.Customer.Application.Customers.Commands.AddContactPoint;
 using TaxVision.Customer.Application.Customers.Commands.AddRelation;
 using TaxVision.Customer.Application.Customers.Commands.Archive;
 using TaxVision.Customer.Application.Customers.Commands.AssignPreparer;
+using TaxVision.Customer.Application.Customers.Commands.BulkAssign;
 using TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Deactivate;
+using TaxVision.Customer.Application.Customers.Commands.GrantAccess;
 using TaxVision.Customer.Application.Customers.Commands.Reactivate;
 using TaxVision.Customer.Application.Customers.Commands.RemoveAddress;
 using TaxVision.Customer.Application.Customers.Commands.RemoveContactPoint;
 using TaxVision.Customer.Application.Customers.Commands.RemoveRelation;
 using TaxVision.Customer.Application.Customers.Commands.RequestPortalInvitation;
 using TaxVision.Customer.Application.Customers.Commands.RevealTaxIdentifier;
+using TaxVision.Customer.Application.Customers.Commands.RevokeAccess;
 using TaxVision.Customer.Application.Customers.Commands.SetCustomerFiscalProfile;
 using TaxVision.Customer.Application.Customers.Commands.SetRelationFiscalProfile;
 using TaxVision.Customer.Application.Customers.Commands.UnassignPreparer;
@@ -36,6 +39,8 @@ using TaxVision.Customer.Application.Customers.Commands.UpdateRelation;
 using TaxVision.Customer.Application.Customers.FiscalProfiles;
 using TaxVision.Customer.Application.Customers.Queries.CheckExists;
 using TaxVision.Customer.Application.Customers.Queries.GetById;
+using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
+using TaxVision.Customer.Application.Customers.Queries.Overview;
 using TaxVision.Customer.Application.Customers.Queries.Search;
 using Wolverine;
 
@@ -44,7 +49,7 @@ namespace TaxVision.Customer.Api.Controllers;
 [ApiController]
 [Route("customers")]
 [Authorize]
-public sealed class CustomerController(IMessageBus bus) : ControllerBase
+public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     // ---------- POST /customers ----------
     [HttpPost]
@@ -102,13 +107,70 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct = default
     )
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
+            new SearchCustomersQuery(tenantId, term, status, page, size, userId, canViewAll),
+            ct
+        );
+
+        // ETag/If-None-Match: el navegador revalida barato (304 sin cuerpo) cuando el directorio no
+        // cambió. `private, no-cache` = cachea por-usuario pero siempre revalida. Weak ETag: refleja
+        // el contenido devuelto (ids/estado/nombre/…), no la representación byte a byte.
+        var etag = WeakETag(result);
+        Response.Headers.CacheControl = "private, no-cache";
+        Response.Headers.ETag = etag;
+        if (Request.Headers.IfNoneMatch.Contains(etag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return Ok(result);
+    }
+
+    /// <summary>Weak ETag estable del contenido de una respuesta (SHA-256 del JSON canónico).</summary>
+    private static string WeakETag(object payload)
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(payload);
+        var hash = System.Security.Cryptography.SHA256.HashData(json);
+        return $"W/\"{Convert.ToHexString(hash)}\"";
+    }
+
+    // ---------- GET /customers/overview ----------
+    [HttpGet("overview")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.h.search")]
+    [ProducesResponseType<CustomerDirectoryOverviewResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<CustomerDirectoryOverviewResponse>> Overview(
+        [FromQuery] int months = 6,
+        CancellationToken ct = default
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<CustomerDirectoryOverviewResponse>(
+            new CustomerOverviewQuery(tenantId, months, userId, canViewAll),
+            ct
+        );
+        return Ok(result);
+    }
+
+    // ---------- GET /customers/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántos clientes activos hay que reasignar antes de retirar a este empleado.
+    [HttpGet("offboarding-impact/{userId:guid}")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(tenantId, term, status, page, size),
-            ct
-        );
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(new OffboardingImpactQuery(tenantId, userId), ct);
         return Ok(result);
     }
 
@@ -147,10 +209,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<CustomerDetailResponse>>(new GetCustomerByIdQuery(tenantId, id), ct);
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<CustomerDetailResponse>>(
+            new GetCustomerByIdQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
 
         if (result.IsSuccess)
             return Ok(result.Value);
@@ -649,6 +715,84 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // ============== Asignaciones adicionales (acceso por cliente, M:N) ==============
+
+    // Da acceso a un cliente a otro miembro del staff (sin hacerlo primary). Solo admin reparte clientes.
+    [HttpPost("{id:guid}/assignees")]
+    [HasPermission(CustomersPermissions.PreparerManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GrantAccess(
+        Guid id,
+        [FromBody] GrantCustomerAccessRequest body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new GrantCustomerAccessCommand(tenantId, id, body.UserId, userId),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Revoca el acceso de un miembro del staff a un cliente.
+    [HttpDelete("{id:guid}/assignees/{assigneeUserId:guid}")]
+    [HasPermission(CustomersPermissions.PreparerManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RevokeAccess(Guid id, Guid assigneeUserId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new RevokeCustomerAccessCommand(tenantId, id, assigneeUserId, userId),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code is "Customer.NotFound" or "Customer.NotAssigned")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Reparto masivo: asigna UN usuario a MUCHOS clientes de un tirón (set-based, tope por request).
+    [HttpPost("assignees/bulk")]
+    [HasPermission(CustomersPermissions.PreparerManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.i.bulk_status_change")]
+    [ProducesResponseType<BulkAssignResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> BulkAssign([FromBody] BulkAssignCustomersRequest body, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<BulkAssignResponse>>(
+            new BulkAssignCustomersCommand(tenantId, body.UserId, body.CustomerIds, userId),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     // ============== Bulk status transitions ==============
 
     // "{statusAction}", no "{action}" — el token "action" es un route value reservado por MVC
@@ -696,9 +840,10 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("customer.g.write")]
-    [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
-    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<Error>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RequestPortalInvitation(Guid id, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
@@ -709,8 +854,9 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
             ct
         );
 
+        // 200 con el desenlace (Invited / Resent / AlreadyActive); un rechazo de Auth llega con su motivo.
         if (result.IsSuccess)
-            return Accepted($"/customers/{id}/portal-invitations", result.Value);
+            return Ok(result.Value);
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);

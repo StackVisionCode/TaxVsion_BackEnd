@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -39,6 +40,13 @@ public static class DependencyInjection
 
         // Read model del CRM (solo lectura sobre las tablas ya persistidas).
         services.AddScoped<ISmsReadService, SmsReadService>();
+
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre SmsDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<SmsDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.SmsPlatformTokenProvider>(configuration);
+        services.AddOptions<SmsVisibilityOptions>().Bind(configuration.GetSection(SmsVisibilityOptions.SectionName));
 
         // RBAC Fase 7 — proyección local de permisos consultada por ProjectionPermissionsSource
         // cuando Authorization:PermissionsSource="Projection". La misma instancia scoped satisface
@@ -98,6 +106,10 @@ public static class DependencyInjection
         );
 
         AddRateLimitTierQuotas(services, configuration);
+
+        // Job de fondo: reconciliación de estado por pull (backstop de los DLR por webhook). Se auto-desactiva
+        // en tiempo de ejecución si Sms:Reconciliation:Enabled=false; el endpoint manual funciona igual.
+        services.AddHostedService<Jobs.SmsStatusReconciliationService>();
 
         return services;
     }

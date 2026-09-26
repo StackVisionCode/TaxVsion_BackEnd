@@ -23,6 +23,13 @@ public static class AcceptInvitationHandler
         "Invitation is invalid or expired."
     );
 
+    // 429 propio: con el mismo "invalid or expired" una oficina entera detrás de una IP veía su link
+    // válido rechazado sin pista de que solo tenía que esperar. No revela nada sobre el token.
+    private static readonly Error InvitationAcceptThrottled = new(
+        "Auth.InvitationAcceptThrottled",
+        "Too many attempts from your network. Please wait a few minutes and try again."
+    );
+
     /// <summary>Fase 18 — throttle por IP (20/hora, protege contra guessing masivo del token) y
     /// límite de intentos por invitación (Invitation.MaxAcceptAttempts=5, protege una invitación
     /// puntual de intentos repetidos de canje una vez que el token ya coincidió).</summary>
@@ -43,8 +50,8 @@ public static class AcceptInvitationHandler
         CancellationToken ct
     )
     {
-        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is not null)
-            return Result.Failure<UserResponse>(InvalidInvitation);
+        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
+            return Result.Failure<UserResponse>(InvitationAcceptThrottled.WithRetryAfter(retryAfter));
         await throttler.RegisterInvitationAcceptAttemptAsync(request.IpAddress, ct);
 
         var tokenHash = tokens.Hash(command.InvitationToken);
@@ -92,7 +99,7 @@ public static class AcceptInvitationHandler
             return Result.Failure<UserResponse>(passwordResult.Error);
         }
 
-        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
+        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, invitation.AccountKind, ct))
         {
             invitation.RegisterAcceptAttempt();
             await unitOfWork.SaveChangesAsync(ct);

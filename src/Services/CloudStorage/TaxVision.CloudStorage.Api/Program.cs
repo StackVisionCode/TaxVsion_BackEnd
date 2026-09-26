@@ -85,7 +85,7 @@ builder.Services.AddOwnershipAuthorization<ShareLink>(CloudStoragePermissions.Sh
 // (varios accesos al mismo link compartido desde la misma red).
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "share-public",
         context =>
@@ -102,11 +102,32 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+
+    // 8.2 — el "Download all (ZIP)" público arma y streamea toda la carpeta: mucho más caro que
+    // resolver un token. Se le da un límite propio (6/min por IP), sin ramificar por token para
+    // que un mismo atacante no lo sortee variando el token.
+    options.AddPolicy(
+        "share-public-zip",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:zip",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 6,
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                     AutoReplenishment = true,

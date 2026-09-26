@@ -9,5 +9,7 @@ public sealed record CustomerSummaryResponse(
     string DisplayName,
     string PrimaryEmail,
     string? PrimaryPhone,
-    DateTime CreatedAtUtc
+    DateTime CreatedAtUtc,
+    // Staff asignado (M:N) — para pintar los avatares de asignados en el directorio. El nombre lo resuelve el front.
+    IReadOnlyList<Guid> AssigneeUserIds
 );

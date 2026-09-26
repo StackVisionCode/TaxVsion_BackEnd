@@ -110,6 +110,93 @@ public sealed class StartSeatCheckoutHandlerTests
         Assert.Equal("Seats.Checkout.ProviderError", result.Error.Code);
     }
 
+    // Guard del doble cobro (aceptación de la F6): repetir la MISMA compra devuelve la sesión que ya existe.
+    [Fact]
+    public async Task Repeating_the_same_purchase_reuses_the_open_checkout_instead_of_charging_twice()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var client = Client();
+        var command = Command(subscription.TenantId, "Standard", 2);
+
+        var first = await HandleAsync(command, subscription, pricing, intents, client);
+        var second = await HandleAsync(command, subscription, pricing, intents, client);
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value.SeatPurchaseIntentId, second.Value.SeatPurchaseIntentId);
+        Assert.Equal(first.Value.CheckoutUrl, second.Value.CheckoutUrl);
+        Assert.Single(intents.Added);
+        Assert.Equal(1, client.CreateCalls);
+    }
+
+    [Fact]
+    public async Task A_different_purchase_while_one_is_open_is_rejected_instead_of_opening_a_second_one()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var client = Client();
+        await HandleAsync(Command(subscription.TenantId, "Standard", 2), subscription, pricing, intents, client);
+
+        var result = await HandleAsync(
+            Command(subscription.TenantId, "Standard", 5),
+            subscription,
+            pricing,
+            intents,
+            client
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Seat.CheckoutInProgress", result.Error.Code);
+        Assert.Single(intents.Added);
+        Assert.Equal(1, client.CreateCalls);
+    }
+
+    [Fact]
+    public async Task Once_the_session_expired_a_new_checkout_starts_clean()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var expired = Client(expiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        var command = Command(subscription.TenantId, "Standard", 2);
+        await HandleAsync(command, subscription, pricing, intents, expired);
+
+        var fresh = Client();
+        var result = await HandleAsync(command, subscription, pricing, intents, fresh);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, intents.Added.Count);
+        Assert.Equal(1, fresh.CreateCalls);
+    }
+
+    private static FakeSeatCheckoutPaymentClient Client(DateTime? expiresAtUtc = null) =>
+        new(
+            Result.Success(
+                new SeatCheckoutClientResult(
+                    Guid.NewGuid(),
+                    "https://pay.example/xyz",
+                    "cs_123",
+                    expiresAtUtc ?? DateTime.UtcNow.AddHours(24)
+                )
+            )
+        );
+
+    private static Task<Result<StartSeatCheckoutResponse>> HandleAsync(
+        StartSeatCheckoutCommand command,
+        TenantSubscription subscription,
+        SeatPricing pricing,
+        FakeSeatPurchaseIntentRepository intents,
+        FakeSeatCheckoutPaymentClient client
+    ) =>
+        StartSeatCheckoutHandler.Handle(
+            command,
+            new FakeSubscriptionRepo(subscription),
+            new FakeSeatPricingRepository(pricing),
+            intents,
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
     private static (TenantSubscription Subscription, SeatPricing Pricing) ActiveSubscriptionWithPricing()
     {
         var now = DateTime.UtcNow;

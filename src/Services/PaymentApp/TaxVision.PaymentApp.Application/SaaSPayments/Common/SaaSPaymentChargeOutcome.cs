@@ -1,37 +1,39 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
-using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 
 /// <summary>
-/// Aplicar un <see cref="ChargeAuthorizationResult"/> a un <see cref="SaaSPayment"/> y
-/// publicar el evento de resultado correspondiente es idéntico sin importar si el intento
-/// vino de <c>ChargeSaaSPaymentHandler</c> (primer intento) o de
-/// <c>RetrySaaSPaymentHandler</c> (dunning) — vive acá una sola vez.
+/// Aplicar un <see cref="ChargeAuthorizationResult"/> a un <see cref="SaaSPayment"/> es idéntico
+/// sin importar si el intento vino de <c>ChargeSaaSPaymentHandler</c> (primer intento) o de
+/// <c>RetrySaaSPaymentHandler</c> (dunning). El resultado lo publica <see cref="SaaSPaymentResultPublisher"/>.
 /// </summary>
 public static class SaaSPaymentChargeOutcome
 {
-    /// <summary>Backoff de dunning: 1h → 6h → 24h → se abandona. Indexado por
-    /// <see cref="SaaSPayment.Attempts"/>.Count, así que el mismo cálculo sirve tanto para
-    /// el primer intento (0 attempts todavía) como para cada retry posterior.
-    /// <see cref="SaaSPaymentType.PlanChangeCharge"/> es la excepción: es un cargo interactivo
-    /// iniciado por el usuario (un upgrade de plan), no una renovación en background — un solo
-    /// intento, sin dunning, para que el fallo se reporte rápido en vez de reintentarse en
-    /// silencio horas después.</summary>
-    public static DateTime? ComputeNextRetryAtUtc(SaaSPayment payment, DateTime nowUtc)
+    /// <summary>Solo las renovaciones en background tienen dunning. El cambio de plan es un cargo
+    /// interactivo (el fallo se reporta en el acto) y los checkouts hosteados los reintenta el
+    /// propio usuario.</summary>
+    public static bool SupportsDunning(SaaSPaymentType type) =>
+        type is SaaSPaymentType.SubscriptionRenewal or SaaSPaymentType.SeatRenewal or SaaSPaymentType.AddOnRenewal;
+
+    /// <summary>Backoff de dunning: 1h → 6h → 24h → se abandona, indexado por intentos previos al que
+    /// falló. El cobro síncrono lo calcula antes de registrar su intento; el webhook y la
+    /// reconciliación, con el intento fallido ya registrado (<paramref name="failedAttemptRecorded"/>).</summary>
+    public static DateTime? ComputeNextRetryAtUtc(
+        SaaSPayment payment,
+        DateTime nowUtc,
+        bool failedAttemptRecorded = false
+    )
     {
-        if (payment.Type == SaaSPaymentType.PlanChangeCharge)
+        if (!SupportsDunning(payment.Type))
             return null;
 
-        return payment.Attempts.Count switch
+        var previousAttempts = payment.Attempts.Count - (failedAttemptRecorded ? 1 : 0);
+        return previousAttempts switch
         {
             0 => nowUtc.AddHours(1),
             1 => nowUtc.AddHours(6),
@@ -153,203 +155,6 @@ public static class SaaSPaymentChargeOutcome
         payment.MarkFailed(code, message, willRetry: nextRetryAtUtc is not null, nextRetryAtUtc, actorUserId, nowUtc);
         metrics.RecordFailed(payment.ProviderCode.ToString(), payment.Type.ToString(), code);
     }
-
-    /// <summary>Despacha el resultado al evento de integración correspondiente según
-    /// <see cref="SaaSPayment.Type"/>. Cada renewal type (suscripción base, seat, add-on)
-    /// tiene su propio par Succeeded/Failed — Subscription trata cada uno de forma
-    /// independiente (renovar un seat no renueva la suscripción base). No-op si el pago no
-    /// llegó a un estado terminal (p.ej. quedó RequiresAction).</summary>
-    public static ValueTask PublishResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    )
-    {
-        if (payment.Status != PaymentStatus.Succeeded && payment.Status != PaymentStatus.Failed)
-            return ValueTask.CompletedTask;
-
-        return payment.Type switch
-        {
-            SaaSPaymentType.SubscriptionRenewal => PublishSubscriptionRenewalResultAsync(payment, bus, correlation),
-            SaaSPaymentType.SeatRenewal => PublishSeatRenewalResultAsync(payment, bus, correlation),
-            SaaSPaymentType.AddOnRenewal => PublishAddOnRenewalResultAsync(payment, bus, correlation),
-            SaaSPaymentType.PlanChangeCharge => PublishPlanChangeResultAsync(payment, bus, correlation),
-            _ => ValueTask.CompletedTask,
-        };
-    }
-
-    private static async ValueTask PublishSubscriptionRenewalResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        ICorrelationContext correlation
-    )
-    {
-        if (payment.Status != PaymentStatus.Succeeded)
-        {
-            await bus.PublishAsync(
-                new SubscriptionRenewalPaymentFailedIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    TenantSubscriptionId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    FailureCode = payment.FailureCode ?? "Unknown",
-                    FailureReason = payment.FailureReason ?? "The charge failed.",
-                    WillRetry = payment.NextRetryAtUtc is not null,
-                    NextRetryAtUtc = payment.NextRetryAtUtc,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-            return;
-        }
-
-        await bus.PublishAsync(
-            new SubscriptionRenewalPaymentSucceededIntegrationEvent
-            {
-                TenantId = payment.TenantId,
-                TenantSubscriptionId = payment.TargetAggregateId,
-                SaaSPaymentId = payment.Id,
-                IdempotencyKey = payment.IdempotencyKey.Value,
-                ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
-                PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
-        // Fase 4 Referidos (2026-07-21) — este cobro reservó un descuento de bienvenida del
-        // referido en Growth/Codes (ver ActivateSubscriptionHandler + IReferralBenefitReserver).
-        // El envelope financiero genérico es el mismo que PaymentSucceededConsumer de Growth ya
-        // consume sin cambios (ver PaymentLifecycleConsumers.cs) — PaymentApp solo necesitaba
-        // empezar a publicarlo para este flujo, que hasta ahora nunca lo hacía.
-        if (payment.CodeReservationId is { } reservationId && payment.CodeReservationPaymentId is { } paymentId)
-        {
-            await bus.PublishAsync(
-                new PaymentSucceededIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    AggregateId = payment.TargetAggregateId,
-                    AggregateVersion = 1,
-                    PaymentSource = "PaymentApp",
-                    PaymentId = paymentId,
-                    GrossAmountCents = payment.Amount.AmountCents + (payment.DiscountAmountCents ?? 0),
-                    DiscountAmountCents = payment.DiscountAmountCents ?? 0,
-                    NetAmountCents = payment.Amount.AmountCents,
-                    Currency = payment.Amount.Currency,
-                    CodeReservationId = reservationId,
-                    PromotionSnapshotHash = payment.PromotionSnapshotHash,
-                    IsFirstSuccessfulPayment = true,
-                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-        }
-    }
-
-    private static ValueTask PublishSeatRenewalResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        ICorrelationContext correlation
-    ) =>
-        payment.Status == PaymentStatus.Succeeded
-            ? bus.PublishAsync(
-                new SeatRenewalPaymentSucceededIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    SeatId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
-                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            )
-            : bus.PublishAsync(
-                new SeatRenewalPaymentFailedIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    SeatId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    FailureCode = payment.FailureCode ?? "Unknown",
-                    FailureReason = payment.FailureReason ?? "The charge failed.",
-                    WillRetry = payment.NextRetryAtUtc is not null,
-                    NextRetryAtUtc = payment.NextRetryAtUtc,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-
-    private static ValueTask PublishAddOnRenewalResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        ICorrelationContext correlation
-    ) =>
-        payment.Status == PaymentStatus.Succeeded
-            ? bus.PublishAsync(
-                new AddOnRenewalPaymentSucceededIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    TenantAddOnId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
-                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            )
-            : bus.PublishAsync(
-                new AddOnRenewalPaymentFailedIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    TenantAddOnId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    FailureCode = payment.FailureCode ?? "Unknown",
-                    FailureReason = payment.FailureReason ?? "The charge failed.",
-                    WillRetry = payment.NextRetryAtUtc is not null,
-                    NextRetryAtUtc = payment.NextRetryAtUtc,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-
-    /// <summary>A diferencia de los Renewal*, no lleva WillRetry/NextRetryAtUtc — un upgrade
-    /// de plan es un cargo interactivo iniciado por el usuario, no dunning en background (ver
-    /// override de <see cref="ComputeNextRetryAtUtc"/> para este tipo en ChargeSaaSPaymentHandler/
-    /// RetrySaaSPaymentHandler, que siempre pasa null). payment.TargetAggregateId es el
-    /// PlanChangeRequestId — así Subscription no necesita ningún campo extra para ubicar el
-    /// request de vuelta.</summary>
-    private static ValueTask PublishPlanChangeResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        ICorrelationContext correlation
-    ) =>
-        payment.Status == PaymentStatus.Succeeded
-            ? bus.PublishAsync(
-                new SubscriptionPlanChangePaymentSucceededIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    PlanChangeRequestId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
-                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                    RequestedByUserId = payment.CreatedBy,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            )
-            : bus.PublishAsync(
-                new SubscriptionPlanChangePaymentFailedIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    PlanChangeRequestId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    FailureCode = payment.FailureCode ?? "Unknown",
-                    FailureReason = payment.FailureReason ?? "The charge failed.",
-                    RequestedByUserId = payment.CreatedBy,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
 
     public static PaymentAuditAction MapAuditAction(PaymentStatus status) =>
         status switch

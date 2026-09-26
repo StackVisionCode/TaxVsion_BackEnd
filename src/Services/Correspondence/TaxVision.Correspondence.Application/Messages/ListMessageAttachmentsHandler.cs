@@ -15,11 +15,25 @@ public static class ListMessageAttachmentsHandler
     public static async Task<Result<IReadOnlyList<AttachmentSummary>>> Handle(
         ListMessageAttachmentsQuery query,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         CancellationToken ct
     )
     {
         var email = await incomingEmails.GetByIdAsync(query.TenantId, query.IncomingEmailId, ct);
         if (email is null)
+            return Result.Failure<IReadOnlyList<AttachmentSummary>>(
+                new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
+
+        if (
+            !await MailboxVisibility.CanSeeMessageAsync(
+                query.VisibleAccountIds,
+                query.TenantId,
+                email,
+                emailThreads,
+                ct
+            )
+        )
             return Result.Failure<IReadOnlyList<AttachmentSummary>>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
             );

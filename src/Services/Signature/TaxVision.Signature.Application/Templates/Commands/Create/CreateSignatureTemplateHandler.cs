@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Domain.Templates;
 
 namespace TaxVision.Signature.Application.Templates.Commands.Create;
@@ -11,10 +12,15 @@ public static class CreateSignatureTemplateHandler
         CreateSignatureTemplateCommand cmd,
         ISignatureTemplateRepository repository,
         IUnitOfWork unitOfWork,
+        ISignatureCategoryResolver categoryResolver,
         CancellationToken ct
     )
     {
-        var factoryResult = CreateDraft(cmd);
+        var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
+        if (category.IsFailure)
+            return Result.Failure<SignatureTemplateResponse>(category.Error);
+
+        var factoryResult = CreateDraft(cmd, category.Value);
         if (factoryResult.IsFailure)
             return Result.Failure<SignatureTemplateResponse>(factoryResult.Error);
 
@@ -22,13 +28,13 @@ public static class CreateSignatureTemplateHandler
         return Result.Success(SignatureTemplateResponse.From(factoryResult.Value));
     }
 
-    private static Result<SignatureTemplate> CreateDraft(CreateSignatureTemplateCommand cmd) =>
+    private static Result<SignatureTemplate> CreateDraft(CreateSignatureTemplateCommand cmd, string category) =>
         SignatureTemplate.CreateDraft(
             tenantId: cmd.TenantId,
             createdByUserId: cmd.CreatedByUserId,
             title: cmd.Title,
             description: cmd.Description,
-            category: cmd.Category,
+            category: category,
             defaultTokenExpirationHours: cmd.DefaultTokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,
             requiresConsent: cmd.RequiresConsent,

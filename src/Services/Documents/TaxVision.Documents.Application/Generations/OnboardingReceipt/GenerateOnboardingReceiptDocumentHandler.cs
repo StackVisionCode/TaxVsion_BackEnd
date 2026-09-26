@@ -172,7 +172,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
             TemplateVersion: command.TemplateVersion,
             OnboardingId: command.OnboardingId,
             DocumentVersion: command.DocumentVersion,
-            FileName: $"receipt-{command.OnboardingId:N}.pdf",
+            FileName: $"TaxProffice_Receipt_{command.Receipt.PaidAtUtc:yyyy-MM-dd}.pdf",
             CorrelationId: correlationId,
             Receipt: command.Receipt
         );

@@ -32,6 +32,29 @@ public class TenantEmailAccountTests
         Assert.Equal(TenantId, result.Value.TenantId);
     }
 
+    [Fact]
+    public void Create_WithoutOwner_IsOfficeMailbox()
+    {
+        var account = TenantEmailAccount
+            .Create(TenantId, "office@taxpro.com", ProviderCode.Gmail, CreatedByUserId, Now)
+            .Value;
+
+        Assert.True(account.IsOffice);
+        Assert.Null(account.OwnerUserId);
+    }
+
+    [Fact]
+    public void Create_WithOwner_IsPersonalMailbox()
+    {
+        var owner = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(TenantId, "me@taxpro.com", ProviderCode.Gmail, owner, Now, ownerUserId: owner)
+            .Value;
+
+        Assert.False(account.IsOffice);
+        Assert.Equal(owner, account.OwnerUserId);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not-an-email")]

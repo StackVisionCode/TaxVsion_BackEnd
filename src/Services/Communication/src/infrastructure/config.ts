@@ -92,8 +92,12 @@ const rawEnv = z
     // (join-by-token/by-code, publicos) tenian estos numeros literales inline pese a que
     // el docblock de la ruta ya afirmaba que salian de config.rateLimit. Mismos defaults
     // que los literales que reemplazan, sin cambio de comportamiento fuera de .env.
-    COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX: z.coerce.number().int().positive().default(300),
+    // Por IP: techo para trafico anonimo y para una oficina entera detras de un NAT (antes 300, que
+    // abrir el chat varias veces bastaba para agotar). Por usuario autenticado va aparte (HTTP_USER).
+    COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX: z.coerce.number().int().positive().default(1000),
     COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    COMMUNICATION_RATE_LIMIT_HTTP_USER_MAX: z.coerce.number().int().positive().default(600),
+    COMMUNICATION_RATE_LIMIT_HTTP_USER_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     // RateLimit Fase 7 — subido de 5 a 20/60s para igualar el valor ya sembrado
     // en el catalogo .NET (RateLimitPolicyCatalog.cs, communication.d.meeting_join_by_token) —
     // la discrepancia (Node ten a 5, .NET tenia 20) se detecto al espejar el
@@ -147,6 +151,18 @@ const rawEnv = z
       .default('true')
       .transform((value) => value === 'true'),
     COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
+
+    // Visibilidad por asignacion (P2) — flag GLOBAL de despliegue, espejo del
+    // `<Svc>:AssignmentVisibility:Enabled` de los servicios .NET: con ON, un staff
+    // que NO ve todo (customers.view_all / PlatformAdmin) solo ve en el picker y en
+    // el gate de chat los clientes que tiene ASIGNADOS, en TODOS los tenants. Default
+    // OFF para rollout seguro (deploy -> reconciliacion siembra -> encender). El
+    // setting por-tenant `restrictCustomerChatToAssignedPreparer` sigue vigente como
+    // control independiente (OR): un tenant puede restringir aunque el flag global este OFF.
+    COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .parse(process.env);
 
@@ -268,6 +284,10 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS,
     },
+    httpUser: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_USER_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_USER_WINDOW_SECONDS,
+    },
     meetingJoinByToken: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_WINDOW_SECONDS,
@@ -305,6 +325,9 @@ export const config = {
   customerReconcile: {
     enabled: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_ENABLED,
     intervalHours: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS,
+  },
+  assignmentVisibility: {
+    enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,
   },
 } as const;
 

@@ -69,10 +69,41 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
             .OrderBy(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantEmailAccount>> ListVisibleAsync(
+        Guid tenantId,
+        Guid userId,
+        bool includeOffice,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && (a.OwnerUserId == userId || (includeOffice && a.OwnerUserId == null)))
+            .OrderBy(a => a.CreatedAtUtc)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default) =>
         await dbContext
             .TenantEmailAccounts.IgnoreQueryFilters()
             .Where(a => a.Status == TenantEmailAccountStatus.Active)
             .OrderBy(a => a.Id)
             .ToListAsync(ct);
+
+    // Tracked (sin AsNoTracking): el consumer de offboard los desconecta y persiste. IgnoreQueryFilters
+    // porque corre system-level (el ITenantContext ambiente puede llegar vacío al scope del handler);
+    // el WHERE ya acota por TenantId explícito. Index-backed por IX (TenantId, OwnerUserId).
+    public async Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
+        Guid tenantId,
+        Guid ownerUserId,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.OwnerUserId == ownerUserId)
+            .ToListAsync(ct);
+
+    // Mismo filtro que ListByOwnerUserAsync (buzones personales del usuario), solo cuenta — pre-flight.
+    public Task<int> CountByOwnerUserAsync(Guid tenantId, Guid ownerUserId, CancellationToken ct = default) =>
+        dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .CountAsync(a => a.TenantId == tenantId && a.OwnerUserId == ownerUserId, ct);
 }

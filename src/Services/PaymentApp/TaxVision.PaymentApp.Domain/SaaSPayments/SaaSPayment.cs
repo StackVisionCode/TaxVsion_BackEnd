@@ -22,6 +22,9 @@ public sealed class SaaSPayment : TenantEntity
 
     public IdempotencyKey IdempotencyKey { get; private set; } = null!;
     public Money Amount { get; private set; } = null!;
+
+    /// <summary>Desglose del importe para el recibo. Ausente cuando el cobro no tiene unidades que contar.</summary>
+    public ChargeBreakdown? Breakdown { get; private set; }
     public SaaSPaymentType Type { get; private set; }
     public Guid TargetAggregateId { get; private set; }
     public PaymentProviderCode ProviderCode { get; private set; }
@@ -53,6 +56,9 @@ public sealed class SaaSPayment : TenantEntity
     /// financia, del lado de Auth. No hay FK — Auth y PaymentApp son bases de datos separadas.</summary>
     public Guid? OnboardingId { get; private set; }
 
+    /// <summary>El PDF del recibo, una vez que Documents lo generó y CloudStorage lo guardó.</summary>
+    public Guid? ReceiptFileId { get; private set; }
+
     /// <summary>PayFlow (Fase 8) — id de la Checkout Session hosteada del provider (p.ej.
     /// <c>cs_...</c> de Stripe). Distinto de <see cref="ExternalChargeReference"/>, que guarda
     /// la referencia del PaymentIntent subyacente (lo que el webhook usa para resolver el pago).</summary>
@@ -81,7 +87,8 @@ public sealed class SaaSPayment : TenantEntity
         Guid? codeReservationId = null,
         Guid? codeReservationPaymentId = null,
         long? discountAmountCents = null,
-        string? promotionSnapshotHash = null
+        string? promotionSnapshotHash = null,
+        ChargeBreakdown? breakdown = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -97,10 +104,18 @@ public sealed class SaaSPayment : TenantEntity
                 new Error("SaaSPayment.InvalidAmount", "Amount must be greater than zero.")
             );
 
+        // O el desglose cuadra con lo cobrado, o no hay desglose: un recibo cuyas cuentas no salen
+        // es peor que uno que solo muestra el total.
+        if (breakdown is not null && breakdown.TotalCents != amount.AmountCents)
+            return Result.Failure<SaaSPayment>(
+                new Error("SaaSPayment.BreakdownMismatch", "The breakdown does not add up to the amount charged.")
+            );
+
         var payment = new SaaSPayment
         {
             IdempotencyKey = key,
             Amount = amount,
+            Breakdown = breakdown,
             Type = type,
             TargetAggregateId = targetAggregateId,
             ProviderCode = provider,
@@ -176,6 +191,43 @@ public sealed class SaaSPayment : TenantEntity
     /// lo mismo que <see cref="MarkProcessing"/> para un cargo directo, solo que la referencia
     /// externa que correlaciona el webhook posterior (<paramref name="paymentIntentReference"/>)
     /// llega junto con el id de sesión en vez de con el resultado inmediato de un charge.</summary>
+    /// <summary>
+    /// Re-hospeda el pago de un onboarding al tenant real, una vez que la saga lo crea. Nace con
+    /// <c>TenantId = Guid.Empty</c> porque el tenant todavía no existe, y hasta que esto corre es invisible
+    /// para su dueño. Idempotente. Molde: <c>Billing.Invoice.RehomeToTenant</c>.
+    /// </summary>
+    /// <summary>Cuelga el recibo ya generado. Idempotente: una redelivery no lo cambia.</summary>
+    public Result AttachReceipt(Guid receiptFileId, DateTime nowUtc)
+    {
+        if (receiptFileId == Guid.Empty)
+            return Result.Failure(new Error("SaaSPayment.InvalidReceipt", "A receipt file id is required."));
+
+        if (ReceiptFileId == receiptFileId)
+            return Result.Success();
+
+        ReceiptFileId = receiptFileId;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    public Result RehomeToTenant(Guid realTenantId, DateTime nowUtc)
+    {
+        if (realTenantId == Guid.Empty)
+            return Result.Failure(new Error("SaaSPayment.InvalidTenant", "Real tenant is required."));
+
+        if (OnboardingId is null)
+            return Result.Failure(
+                new Error("SaaSPayment.NotOnboarding", "Only an onboarding payment can be re-homed to a tenant.")
+            );
+
+        if (TenantId == realTenantId)
+            return Result.Success();
+
+        SetTenant(realTenantId);
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     public Result RecordHostedCheckoutSession(
         string providerSessionId,
         ExternalPaymentReference paymentIntentReference,

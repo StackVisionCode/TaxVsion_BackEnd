@@ -22,8 +22,6 @@ namespace TaxVision.Documents.Application.Generations.FileStored;
 /// </summary>
 public static class DocumentFileAvailableConsumer
 {
-    private const string DocumentTypeInvoice = "Invoice";
-
     public static async Task Handle(
         FileAvailableIntegrationEvent evt,
         IDocumentGenerationRepository repository,
@@ -85,6 +83,21 @@ public static class DocumentFileAvailableConsumer
             await unitOfWork.SaveChangesAsync(ct);
             await PublishClosedAsync(generation, storage, correlation.CorrelationId, bus);
 
+            // El recibo de una compra SaaS necesita que PaymentApp cuelgue el FileId del pago: es lo que el
+            // historial del Account usa para ofrecer la descarga.
+            if (generation.Owner.OwnerType == "SaaSPayment")
+            {
+                await bus.PublishAsync(
+                    new SaaSReceiptReadyIntegrationEvent
+                    {
+                        TenantId = generation.TenantId,
+                        CorrelationId = correlation.CorrelationId,
+                        SaaSPaymentId = generation.Owner.OwnerId,
+                        ReceiptFileId = storage.FileId,
+                    }
+                );
+            }
+
             logger.LogInformation(
                 "Generation {GenerationId} completed with stored file {FileId} ({Bytes} bytes).",
                 generation.Id,
@@ -118,7 +131,9 @@ public static class DocumentFileAvailableConsumer
                 TenantId = generation.TenantId,
                 CorrelationId = correlationId,
                 GenerationId = generation.Id,
-                DocumentType = DocumentTypeInvoice,
+                // El tipo real de la generación. Estaba fijo en "Invoice", así que los recibos se
+                // anunciaban como facturas; solo no rompía porque cada consumer filtra por OwnerType.
+                DocumentType = generation.DocumentType.Value,
                 OwnerType = generation.Owner.OwnerType,
                 OwnerId = generation.Owner.OwnerId,
                 DocumentVersion = generation.DocumentVersion,

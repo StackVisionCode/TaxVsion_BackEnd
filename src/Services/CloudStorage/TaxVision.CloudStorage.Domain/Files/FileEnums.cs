@@ -33,6 +33,14 @@ public enum OwnerType
     /// todavía un Tenant real). Usado por el recibo de pago del onboarding, almacenado bajo el
     /// tenant plataforma (<c>PlatformTenant.Id</c>) igual que los templates propios de Scribe.</summary>
     Onboarding,
+
+    /// <summary>
+    /// Dueño es un cobro de la suscripción (SaaSPayment en PaymentApp). A diferencia de
+    /// <see cref="Onboarding"/>, acá el tenant ya existe y el recibo se guarda bajo el suyo, para que la
+    /// autorización de CloudStorage sea la que decide quién lo baja. Se agrega AL FINAL; el enum se
+    /// persiste como string, así que no hay valores que correr.
+    /// </summary>
+    SaaSPayment,
 }
 
 public enum FolderType
@@ -80,6 +88,14 @@ public enum FolderType
     /// no correr los valores int ya persistidos de los demas FolderType. Sin RequiresYear (no fiscal).
     /// </summary>
     VoiceNotes,
+
+    /// <summary>
+    /// Recibos de los cobros de la suscripción de la oficina. Carpeta propia y NO navegable a propósito:
+    /// <see cref="Receipts"/> es del gestor documental —los recibos de los clientes—, y mezclar ahí la
+    /// facturación de la plataforma confundiría dos cosas distintas. El Account los baja por URL firmada,
+    /// que no necesita carpeta. Sin RequiresYear: no es un documento fiscal del cliente.
+    /// </summary>
+    SaaSReceipts,
 }
 
 public static class FolderTypeRules

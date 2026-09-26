@@ -5,6 +5,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
+using BuildingBlocks.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Activate;
@@ -13,6 +14,7 @@ using TaxVision.Subscription.Application.Subscriptions.Commands.CancelPendingPla
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Reactivate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
+using TaxVision.Subscription.Application.Subscriptions.Commands.Resume;
 using TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Suspend;
 using TaxVision.Subscription.Application.Subscriptions.Queries;
@@ -46,20 +48,80 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// Todo lo que el Account (Manage subscription, en el Landing) muestra del lado de Subscription: plan
+    /// contratado, período, cambio pendiente, asientos y catálogo de add-ons con su elegibilidad. Los
+    /// asientos usados los sabe Auth, así que el front compone con GET /auth/tenants/limits.
+    /// </summary>
+    [HttpGet("me/account")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<AccountSubscriptionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetAccountSubscription(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<AccountSubscriptionResponse>>(
+            new GetAccountSubscriptionQuery(tenantId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary><paramref name="BillingCycle"/> es opcional ("Monthly"/"Yearly") — se manda
     /// junto con el plan en el mismo request. Null mantiene el ciclo actual. Un downgrade (o
     /// un cambio sin diferencia de precio) aplica inmediato, sin cargo, sin crédito, sin
     /// reembolso. Un upgrade calcula el prorrateo del período en curso y requiere confirmar el
     /// cobro antes de aplicarse — la respuesta es 202 con un estado a pollear, no 204: el plan
     /// NO cambia en esta misma request.</summary>
-    public sealed record ChangePlanRequest(string PlanCode, string? BillingCycle = null);
+    /// <summary>Con <c>SuccessUrl</c>/<c>CancelUrl</c> (y el email del pagador) el upgrade se cobra por
+    /// checkout hosteado — el único camino para un tenant sin método en archivo. Sin ellas, off-session.</summary>
+    public sealed record ChangePlanRequest(
+        string PlanCode,
+        string? BillingCycle = null,
+        string? PayerEmail = null,
+        string? SuccessUrl = null,
+        string? CancelUrl = null
+    );
 
-    public sealed record ChangePlanResponse(string Status, Guid? PlanChangeRequestId);
+    public sealed record ChangePlanResponse(string Status, Guid? PlanChangeRequestId, string? CheckoutUrl);
+
+    /// <summary>Qué pasaría con este cambio, antes de confirmarlo: cuánto se cobra y cuándo, o desde cuándo
+    /// aplica el plan más barato, y si la oficina entra en el cupo del plan destino.</summary>
+    [HttpGet("change-plan/preview")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<PlanChangePreviewResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> PreviewPlanChange(
+        [FromQuery] string planCode,
+        [FromQuery] string? billingCycle,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<PlanChangePreviewResponse>>(
+            new GetPlanChangePreviewQuery(tenantId, planCode, billingCycle),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 
     [HttpPost("change-plan")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.plan_change")]
+    [AllowSurface(AccessSurface.Account)]
+    [RequireRecentAuthentication]
+    [RateLimit("subscription.l.plan_change")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ChangePlanResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ChangePlan(ChangePlanRequest request, CancellationToken ct)
@@ -68,7 +130,15 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<ChangePlanResult>>(
-            new ChangePlanCommand(tenantId, request.PlanCode, request.BillingCycle, userId),
+            new ChangePlanCommand(
+                tenantId,
+                request.PlanCode,
+                request.BillingCycle,
+                userId,
+                request.PayerEmail,
+                request.SuccessUrl,
+                request.CancelUrl
+            ),
             ct
         );
 
@@ -76,7 +146,9 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
         return result.Value.AwaitingPayment
-            ? Accepted(new ChangePlanResponse("PaymentProcessing", result.Value.PlanChangeRequestId))
+            ? Accepted(
+                new ChangePlanResponse("PaymentProcessing", result.Value.PlanChangeRequestId, result.Value.CheckoutUrl)
+            )
             : NoContent();
     }
 
@@ -122,7 +194,8 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("me/renew-checkout")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.subscription_manage")]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.l.renew_checkout")]
     [ProducesResponseType<StartRenewalCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> StartRenewCheckout(RenewCheckoutRequest request, CancellationToken ct)
     {
@@ -148,6 +221,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     /// <summary>Estado de una intención de renovación self-service — el front lo pollea tras volver del checkout
     /// hasta <c>Provisioned</c>/<c>Failed</c>.</summary>
     [HttpGet("me/renew-checkout/{intentId:guid}")]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("subscription.f.subscription_read")]
     [ProducesResponseType<RenewalCheckoutStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetRenewCheckoutStatus(Guid intentId, CancellationToken ct)
@@ -180,9 +254,11 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Deshacer un downgrade agendado no mueve dinero ni quita nada: no pide step-up.</summary>
     [HttpPost("plan-change/cancel")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("subscription.g.subscription_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> CancelPendingPlanChange(CancellationToken ct)
@@ -195,11 +271,32 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Deshace la cancelación programada. No cobra nada ni pide step-up: no quita nada.</summary>
+    [HttpPost("resume")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Resume(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new ResumeSubscriptionCommand(tenantId, userId), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record CancelRequest(string Reason);
 
+    /// <summary>Cancelación self-service: NO corta nada ahora. El período ya está pagado, así que el acceso
+    /// sigue hasta el fin y ahí expira; sin reembolso (D7). Se deshace con <c>POST subscriptions/resume</c>.</summary>
     [HttpPost("cancel")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RequireRecentAuthentication]
     [RateLimit("subscription.g.subscription_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(CancelRequest request, CancellationToken ct)

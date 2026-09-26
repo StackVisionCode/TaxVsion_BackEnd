@@ -27,6 +27,7 @@ interface RawPlanRateLimitRow {
 }
 
 const CATALOG_TTL_MS = 5 * 60 * 1000;
+const RETRY_AFTER_FAILURE_MS = 30 * 1000;
 
 export class HttpPlanRateLimitReader {
   private catalog: Map<string, PlanRateLimitSnapshot> | null = null;
@@ -44,29 +45,39 @@ export class HttpPlanRateLimitReader {
     if (this.catalog && this.catalogExpiresAtMs > Date.now()) return this.catalog;
     if (this.inFlight) return this.inFlight;
 
-    this.inFlight = this.fetchCatalog();
+    this.inFlight = this.refreshCatalog();
     try {
-      const catalog = await this.inFlight;
-      this.catalog = catalog;
-      this.catalogExpiresAtMs = Date.now() + CATALOG_TTL_MS;
-      return catalog;
+      return await this.inFlight;
     } finally {
       this.inFlight = null;
     }
   }
 
-  // Fail-open siempre: cualquier fallo (token, red, status, parseo) devuelve catalogo vacio, que
-  // hace que getMultiplier() resuelva null y el caller caiga a la cuota base sin escalar — nunca
-  // un 500 por esto.
-  private async fetchCatalog(): Promise<Map<string, PlanRateLimitSnapshot>> {
-    const empty = new Map<string, PlanRateLimitSnapshot>();
+  // Antes un fallo dejaba un catalogo VACIO cacheado 5 min: todos los tenants caian a la cuota base
+  // aunque Subscription volviera enseguida. Ahora se sigue sirviendo el ultimo catalogo bueno (o vacio,
+  // si nunca hubo uno) y se reintenta a los 30 s.
+  private async refreshCatalog(): Promise<Map<string, PlanRateLimitSnapshot>> {
+    const fetched = await this.fetchCatalog();
+    if (fetched) {
+      this.catalog = fetched;
+      this.catalogExpiresAtMs = Date.now() + CATALOG_TTL_MS;
+      return fetched;
+    }
 
+    this.catalog ??= new Map<string, PlanRateLimitSnapshot>();
+    this.catalogExpiresAtMs = Date.now() + RETRY_AFTER_FAILURE_MS;
+    return this.catalog;
+  }
+
+  // Fail-open siempre: cualquier fallo (token, red, status) devuelve null — getMultiplier() resuelve con
+  // el ultimo catalogo bueno o null, y el caller cae a la cuota base sin escalar; nunca un 500 por esto.
+  private async fetchCatalog(): Promise<Map<string, PlanRateLimitSnapshot> | null> {
     let token: string;
     try {
       token = await this.tokens.getToken(config.platformTenantId);
     } catch (error) {
       logger.warn({ error }, 'could not acquire service token for plan-rate-limits catalog; failing open');
-      return empty;
+      return null;
     }
 
     let response: Response;
@@ -76,12 +87,12 @@ export class HttpPlanRateLimitReader {
       });
     } catch (error) {
       logger.warn({ error }, 'plan-rate-limits catalog request failed; failing open');
-      return empty;
+      return null;
     }
 
     if (!response.ok) {
       logger.warn({ status: response.status }, 'plan-rate-limits catalog request failed; failing open');
-      return empty;
+      return null;
     }
 
     const rows = (await response.json().catch(() => [])) as RawPlanRateLimitRow[];

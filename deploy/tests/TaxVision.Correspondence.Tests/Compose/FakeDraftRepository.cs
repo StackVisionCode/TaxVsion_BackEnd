@@ -62,6 +62,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -70,6 +71,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
         var filtered = _store
             .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent)
+            .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
 
@@ -108,6 +110,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -118,6 +121,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
             .Where(x =>
                 x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent && x.IsDeleted
             )
+            .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.DeletedAtUtc)
             .ToList();
 
@@ -126,6 +130,26 @@ internal sealed class FakeDraftRepository : IDraftRepository
             new PagedResult<Draft>(items, normalizedPage, normalizedSize, filtered.Count)
         );
     }
+
+    public Task<IReadOnlyList<Draft>> ListOpenByAuthorAsync(
+        Guid tenantId,
+        Guid createdByUserId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Draft>>(
+            _store
+                .Where(x =>
+                    x.TenantId == tenantId && x.CreatedByUserId == createdByUserId && x.Status == DraftStatus.Draft
+                )
+                .ToList()
+        );
+
+    public Task<int> CountOpenByAuthorAsync(Guid tenantId, Guid createdByUserId, CancellationToken ct = default) =>
+        Task.FromResult(
+            _store.Count(x =>
+                x.TenantId == tenantId && x.CreatedByUserId == createdByUserId && x.Status == DraftStatus.Draft
+            )
+        );
 
     public void Remove(Draft entity) => _store.Remove(entity);
 }

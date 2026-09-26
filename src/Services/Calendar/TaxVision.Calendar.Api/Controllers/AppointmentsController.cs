@@ -19,7 +19,7 @@ namespace TaxVision.Calendar.Api.Controllers;
 [ApiController]
 [Route("calendar/appointments")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class AppointmentsController(IMessageBus bus) : ControllerBase
+public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSource permissionsSource) : ControllerBase
 {
     /// <summary>
     /// Devuelve 201 con <c>warnings</c> cuando el solapamiento sólo avisa, y 409 cuando el tipo de
@@ -65,15 +65,34 @@ public sealed class AppointmentsController(IMessageBus bus) : ControllerBase
     [RateLimit("calendar.f.read")]
     public async Task<IActionResult> GetById(Guid appointmentId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<AppointmentResponse>>(
-            new GetAppointmentByIdQuery(tenantId, appointmentId),
+            new GetAppointmentByIdQuery(tenantId, appointmentId, userId, canViewAll),
             ct
         );
 
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    // ---------- GET /calendar/offboarding-impact/{userId} ----------
+    // Pre-flight (punto 3.2): cuántas citas vigentes organiza este empleado antes de retirarlo.
+    [HttpGet("/calendar/offboarding-impact/{userId:guid}")]
+    [HasPermission(CalendarPermissions.Read)]
+    [RateLimit("calendar.f.read")]
+    [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<OffboardingImpactResponse>(
+            new OffboardingImpactQuery(tenantId, userId, DateTime.UtcNow),
+            ct
+        );
+        return Ok(result);
     }
 
     /// <summary>La consulta que pinta el calendario: expande las series del rango al vuelo.</summary>
@@ -87,11 +106,12 @@ public sealed class AppointmentsController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<OccurrenceResponse>>>(
-            new GetAppointmentRangeQuery(tenantId, AsUtc(from), AsUtc(to), organizerUserId),
+            new GetAppointmentRangeQuery(tenantId, AsUtc(from), AsUtc(to), organizerUserId, userId, canViewAll),
             ct
         );
 
@@ -126,8 +146,18 @@ public sealed class AppointmentsController(IMessageBus bus) : ControllerBase
         if (bounds.IsFailure)
             return StatusCode(bounds.Error.ToHttpStatusCode(), bounds.Error);
 
+        // Es la agenda del propio usuario (OrganizerUserId=userId): la visibilidad por asignación no le quita
+        // nada (uno siempre ve lo que organiza), pero se pasa el actor por consistencia.
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<OccurrenceResponse>>>(
-            new GetAppointmentRangeQuery(tenantId, bounds.Value.StartUtc, bounds.Value.EndUtc, userId),
+            new GetAppointmentRangeQuery(
+                tenantId,
+                bounds.Value.StartUtc,
+                bounds.Value.EndUtc,
+                userId,
+                userId,
+                canViewAll
+            ),
             ct
         );
 

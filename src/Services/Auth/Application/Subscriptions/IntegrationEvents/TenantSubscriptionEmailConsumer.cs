@@ -75,6 +75,7 @@ public static class TenantSubscriptionEmailConsumer
                     Status = evt.Status,
                     Reason = evt.Reason,
                     GracePeriodEndsAtUtc = evt.GracePeriodEndsAtUtc,
+                    AccessEndsAtUtc = evt.AccessEndsAtUtc,
                     FailureCode = evt.FailureCode,
                     RenewUrl = renewUrl,
                     CorrelationId = correlationId,
@@ -89,8 +90,21 @@ public static class TenantSubscriptionEmailConsumer
         }
     }
 
+    /// <summary>Cancelar al fin del período no cambia el estado (sigue Active), así que el aviso se reconoce
+    /// por el motivo, no por el estado.</summary>
+    private static readonly HashSet<string> ScheduledCancellationReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        nameof(SubscriptionChangeReason.CancellationScheduled),
+        nameof(SubscriptionChangeReason.AccessEnding),
+    };
+
+    private static bool IsScheduledCancellation(string status, string reason) =>
+        string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
+        && ScheduledCancellationReasons.Contains(reason);
+
     private static bool ShouldNotify(string status, string reason) =>
-        string.Equals(status, "GracePeriod", StringComparison.OrdinalIgnoreCase)
+        IsScheduledCancellation(status, reason)
+        || string.Equals(status, "GracePeriod", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "Suspended", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase)
         || (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) && RecoveryReasons.Contains(reason));

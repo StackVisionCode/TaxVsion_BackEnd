@@ -401,6 +401,21 @@ jobs:
           TAXVISION_BASE_DOMAIN=${{ secrets.TAXVISION_BASE_DOMAIN }}
           CLOUDFLARE_DNS_API_TOKEN=${{ secrets.CLOUDFLARE_DNS_API_TOKEN }}
 
+          # ---------- Visibilidad por asignación (P2) — flags por servicio ----------
+          # Espejo del <Svc>__AssignmentVisibility__Enabled (y COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED)
+          # en docker-compose.yml, todos con default false via ${VAR:-false}. Rollout por servicio: P1 se
+          # despliega con todos en "false" (la reconciliación siembra la proyección sin cambiar comportamiento);
+          # para P2 se pone el/los secret(s) del servicio verificado en "true" y se redespliega. Secret ausente
+          # o vacío = false.
+          BILLING_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.BILLING_ASSIGNMENT_VISIBILITY_ENABLED }}
+          SIGNATURE_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.SIGNATURE_ASSIGNMENT_VISIBILITY_ENABLED }}
+          SMS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.SMS_ASSIGNMENT_VISIBILITY_ENABLED }}
+          CALENDAR_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CALENDAR_ASSIGNMENT_VISIBILITY_ENABLED }}
+          NOTES_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.NOTES_ASSIGNMENT_VISIBILITY_ENABLED }}
+          CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED }}
+          TASKS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.TASKS_ASSIGNMENT_VISIBILITY_ENABLED }}
+          COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED }}
+
           # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
           TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
           EOF

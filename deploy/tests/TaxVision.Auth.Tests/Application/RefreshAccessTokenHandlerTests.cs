@@ -12,7 +12,7 @@ using Xunit;
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>Fase 18.3 — RefreshToken host binding: un token emitido para un tenant no debe canjearse
-/// desde el subdominio de otro.</summary>
+/// desde el subdominio de otro. Además, cada superficie de la sesión (workspace y Account) rota su cadena.</summary>
 public sealed class RefreshAccessTokenHandlerTests
 {
     [Fact]
@@ -87,6 +87,100 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.Null(denylist.DeniedSessionId);
     }
 
+    [Fact]
+    public async Task Each_surface_rotates_its_own_chain_without_tripping_reuse_detection_on_the_other()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+        var session = (await world.Sessions.GetSessionByIdAsync(sessionId))!;
+        var account = await world.Issuer.JoinSessionAsync(
+            session,
+            world.Admin,
+            "UTC",
+            [],
+            ["handoff"],
+            SessionSurface.Account
+        );
+
+        var workspace = await RefreshAsync(world, workspaceRefresh, SessionSurface.Workspace);
+        var accountRotated = await RefreshAsync(world, account.RefreshToken, SessionSurface.Account);
+        var workspaceAgain = await RefreshAsync(world, workspace.Value.RefreshToken, SessionSurface.Workspace);
+
+        Assert.True(workspace.IsSuccess && accountRotated.IsSuccess && workspaceAgain.IsSuccess);
+        Assert.True(session.IsActive);
+        // Emisiones: inicio CRM, alta Account, refresh CRM, refresh Account, refresh CRM.
+        Assert.Equal(
+            new[]
+            {
+                SessionSurface.Workspace,
+                SessionSurface.Account,
+                SessionSurface.Workspace,
+                SessionSurface.Account,
+                SessionSurface.Workspace,
+            },
+            world.Jwt.Issued.Select(issued => issued.Surface)
+        );
+        var rotated = await world.Sessions.GetTokenByHashAsync(
+            world.TokenService.Hash(accountRotated.Value.RefreshToken)
+        );
+        Assert.Equal(SessionSurface.Account, rotated!.Surface);
+    }
+
+    [Fact]
+    public async Task A_refresh_endpoint_only_accepts_tokens_of_its_own_surface()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+
+        var result = await RefreshAsync(world, workspaceRefresh, SessionSurface.Account);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
+    }
+
+    [Fact]
+    public async Task Revoking_the_shared_session_cuts_both_surfaces()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+        var session = (await world.Sessions.GetSessionByIdAsync(sessionId))!;
+        var account = await world.Issuer.JoinSessionAsync(
+            session,
+            world.Admin,
+            "UTC",
+            [],
+            ["handoff"],
+            SessionSurface.Account
+        );
+
+        await world.Sessions.RevokeSessionAsync(sessionId, "single_session_superseded");
+
+        Assert.True((await RefreshAsync(world, workspaceRefresh, SessionSurface.Workspace)).IsFailure);
+        Assert.True((await RefreshAsync(world, account.RefreshToken, SessionSurface.Account)).IsFailure);
+    }
+
+    private static Task<BuildingBlocks.Results.Result<AuthTokensResponse>> RefreshAsync(
+        AccountSessionFixture world,
+        string refreshToken,
+        SessionSurface surface
+    ) =>
+        RefreshAccessTokenHandler.Handle(
+            new RefreshAccessTokenCommand(refreshToken, ResolvedTenantId: null, surface),
+            world.Sessions,
+            world.TokenService,
+            world.Users,
+            world.Tenants,
+            world.Roles,
+            world.Issuer,
+            world.Denylist,
+            world.Audit,
+            world.Request,
+            world.Correlation,
+            world.UnitOfWork,
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
     private sealed class FakeSecureTokenService : ISecureTokenService
     {
         public string GenerateToken(int byteLength = 32) => "raw-token";
@@ -132,6 +226,16 @@ public sealed class RefreshAccessTokenHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<int> RevokeSurfaceTokensAsync(
+            Guid sessionId,
+            SessionSurface surface,
+            string reason,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
@@ -154,17 +258,34 @@ public sealed class RefreshAccessTokenHandlerTests
     {
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -181,6 +302,7 @@ public sealed class RefreshAccessTokenHandlerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -280,6 +402,17 @@ public sealed class RefreshAccessTokenHandlerTests
             IReadOnlyCollection<string> roles,
             IReadOnlyCollection<string> authMethods,
             string? deviceName,
+            SessionSurface surface,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IssuedTokens> JoinSessionAsync(
+            UserSession session,
+            User user,
+            string effectiveTimeZoneId,
+            IReadOnlyCollection<string> roles,
+            IReadOnlyCollection<string> authMethods,
+            SessionSurface surface,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

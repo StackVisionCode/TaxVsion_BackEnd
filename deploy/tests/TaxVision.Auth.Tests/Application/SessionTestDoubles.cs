@@ -31,6 +31,16 @@ internal sealed class EmptyUserSessionRepository : ISessionRepository
         CancellationToken ct = default
     ) => Task.FromResult(0);
 
+    public Task<int> RevokeSurfaceTokensAsync(
+        Guid sessionId,
+        SessionSurface surface,
+        string reason,
+        CancellationToken ct = default
+    ) => Task.FromResult(0);
+
+    public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
+        Task.FromResult(false);
+
     public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
         Task.FromResult(0);
 }

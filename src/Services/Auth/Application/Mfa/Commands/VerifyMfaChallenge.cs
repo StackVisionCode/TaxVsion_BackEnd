@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Application.Mfa.Commands;
 
@@ -154,6 +155,7 @@ public static class VerifyMfaChallengeHandler
             ["pwd", methodAmr],
             command.DeviceName,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             roles,
             issuer,
             sessions,

@@ -42,7 +42,7 @@
 								}
 							]
 						},
-						"description": "Fase 9 — inbox paginado de un customer, hilos mas reciente primero (LastMessageAtUtc DESC), incluye hilos archivados. page default 1, size default 20 (clampeado a max 100 en el repositorio). Requiere correspondence.read."
+						"description": "Fase 9 — inbox paginado de un customer, hilos mas reciente primero (LastMessageAtUtc DESC), incluye hilos archivados. page default 1, size default 20 (clampeado a max 100 en el repositorio). Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
 					},
 					"response": [],
 					"event": [
@@ -94,7 +94,7 @@
 								}
 							]
 						},
-						"description": "Fase 9, extendido en Fase 15 — mensajes de UN hilo, thread unificado inbound (IncomingEmail) + outbound (Draft ya Sent), orden cronologico ascendente (el mas viejo primero, como cualquier cliente de correo), paginado sobre el resultado YA fusionado (nunca por fuente). Cada item trae Direction (Inbound/Outbound); Outbound expone Subject/OccurredAtUtc/ToAddresses en vez de From/Snippet/BodyStatus. 404 EmailThread.NotFound si el hilo no existe o pertenece a otro tenant. Nunca incluye body (ver GetBody). Requiere correspondence.read."
+						"description": "Fase 9, extendido en Fase 15 — mensajes de UN hilo, thread unificado inbound (IncomingEmail) + outbound (Draft ya Sent), orden cronologico ascendente (el mas viejo primero, como cualquier cliente de correo), paginado sobre el resultado YA fusionado (nunca por fuente). Cada item trae Direction (Inbound/Outbound); Outbound expone Subject/OccurredAtUtc/ToAddresses en vez de From/Snippet/BodyStatus. 404 EmailThread.NotFound si el hilo no existe o pertenece a otro tenant. Nunca incluye body (ver GetBody). Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
 					},
 					"response": [],
 					"event": [
@@ -174,7 +174,7 @@
 								"{{correspondenceMessageId}}"
 							]
 						},
-						"description": "Fase 9 — metadata de UN mensaje (mismo shape que ListThreadMessages), nunca llama a Connectors ni incluye body. 404 IncomingEmail.NotFound si no existe o es de otro tenant. Requiere correspondence.read."
+						"description": "Fase 9 — metadata de UN mensaje (mismo shape que ListThreadMessages), nunca llama a Connectors ni incluye body. 404 IncomingEmail.NotFound si no existe o es de otro tenant. Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
 					},
 					"response": [],
 					"event": [
@@ -212,7 +212,7 @@
 								"body"
 							]
 						},
-						"description": "Fase 5 — body fetch bajo demanda: le pide html/text/headers a Connectors en vivo, nunca se persiste (plan de diseno Sec17). Requiere correspondence.read."
+						"description": "Fase 5 — body fetch bajo demanda: le pide html/text/headers a Connectors en vivo, nunca se persiste (plan de diseno Sec17). Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
 					},
 					"response": [],
 					"event": [
@@ -250,7 +250,7 @@
 								"attachments"
 							]
 						},
-						"description": "Fase 7 — lista los attachments ya persistidos del mensaje (filename/contentType/size/isInline/downloadStatus/cloudStorageFileId), nunca bytes. Requiere correspondence.read."
+						"description": "Fase 7 — lista los attachments ya persistidos del mensaje (filename/contentType/size/isInline/downloadStatus/cloudStorageFileId), nunca bytes. Requiere correspondence.read. GATE BUZON OFICINA: los resultados se filtran por los buzones que el usuario puede ver; un empleado con connectors.accounts.office.read DENEGADO no ve el correo del buzon de oficina (hilos solo-oficina ocultos; un hilo mixto se muestra entero; abrir el cuerpo/adjuntos de un mensaje de un hilo no visible da 404). Admin y empleados con el permiso ven todo (sin filtro)."
 					},
 					"response": [],
 					"event": [

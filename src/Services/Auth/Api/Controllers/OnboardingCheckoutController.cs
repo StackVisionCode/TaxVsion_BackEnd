@@ -34,7 +34,7 @@ public sealed class OnboardingCheckoutController(
 
     [HttpPost]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-create")]
     [RateLimitExempt("Anonymous onboarding checkout creation keeps the native limiter; no JWT exists yet.")]
     [ProducesResponseType<CreateOnboardingResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateOnboardingRequest request, CancellationToken ct)
@@ -90,7 +90,7 @@ public sealed class OnboardingCheckoutController(
 
     [HttpPost("checkout")]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-checkout")]
     [RateLimitExempt("Anonymous onboarding checkout start keeps the native limiter; no JWT exists yet.")]
     [ProducesResponseType<StartOnboardingCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Checkout(StartCheckoutRequest request, CancellationToken ct)
@@ -137,7 +137,7 @@ public sealed class OnboardingCheckoutController(
     /// reusando el SaaSPayment del lado de PaymentApp), respetando el tope+ventana de reintento.</summary>
     [HttpPost("resume-checkout")]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-checkout")]
     [RateLimitExempt(
         "Anonymous onboarding checkout resume keeps the native limiter; the opaque reference is the authorization."
     )]
@@ -242,7 +242,7 @@ public sealed class OnboardingCheckoutController(
 
     [HttpPost("{onboardingId:guid}/cancel")]
     [AllowAnonymous]
-    [EnableRateLimiting("onboarding-checkout-create")]
+    [EnableRateLimiting("onboarding-cancel")]
     [RateLimitExempt("Anonymous onboarding cancellation keeps the native limiter; no JWT exists yet.")]
     public async Task<IActionResult> Cancel(Guid onboardingId, CancelOnboardingRequest? request, CancellationToken ct)
     {

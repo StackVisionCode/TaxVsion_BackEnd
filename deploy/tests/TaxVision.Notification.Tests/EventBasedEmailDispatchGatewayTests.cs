@@ -154,8 +154,60 @@ public sealed class EventBasedEmailDispatchGatewayTests
         // por diseño), pero la IdempotencyKey publicada debe ser idéntica en los 4.
         var keys = Enumerable.Range(0, 4).Select(_ => CaptureKey()).ToList();
 
-        Assert.All(keys, key => Assert.Equal(relatedEventId.ToString("N"), key));
+        // La clave es estable entre reintentos del MISMO destinatario, y ahora incluye el correo
+        // (por-destinatario) para que Postmaster no colapse un fan-out multi-firmante.
+        var expected = $"{relatedEventId:N}:customer@test.com";
+        Assert.All(keys, key => Assert.Equal(expected, key));
         Assert.Single(keys.Distinct());
+    }
+
+    /// <summary>
+    /// Regresión (bug E2E firma secuencial 2 firmantes): un evento de finalización hace fan-out de un
+    /// correo por firmante (mismo RelatedEventId + plantilla, distinto destinatario). La idempotencia debe
+    /// ser POR-DESTINATARIO: los dos firmantes reciben su correo, pero un reintento del mismo firmante se
+    /// dedupa. Antes, la clave sin destinatario descartaba al 2º firmante como "duplicado".
+    /// </summary>
+    [Fact]
+    public async Task QueueEmailAsync_fans_out_to_distinct_recipients_but_dedupes_a_retry_for_the_same_recipient()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var logRepo = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            logRepo,
+            new NoOpUnitOfWork(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+
+        var tenantId = Guid.NewGuid();
+        var relatedEventId = Guid.NewGuid();
+        EmailDispatchRequest ReqFor(string to) =>
+            new(
+                TenantId: tenantId,
+                To: to,
+                Subject: "Signed",
+                HtmlBody: "<p>x</p>",
+                TextBody: "x",
+                TemplateKey: "sig.completed.v1",
+                RelatedEventId: relatedEventId,
+                CorrelationId: "corr",
+                Scope: EmailDispatchScope.Tenant
+            );
+
+        // Fan-out: dos firmantes distintos, mismo evento + plantilla → AMBOS se encolan.
+        await gateway.QueueEmailAsync(ReqFor("first@test.com"), CancellationToken.None);
+        await gateway.QueueEmailAsync(ReqFor("second@test.com"), CancellationToken.None);
+        // Reintento del primer firmante (mismo evento+plantilla+destinatario) → dedupado.
+        await gateway.QueueEmailAsync(ReqFor("first@test.com"), CancellationToken.None);
+
+        Assert.Equal(2, logRepo.Logs.Count);
+        Assert.Equal(2, publisher.Published.Count);
+        var recipients = publisher
+            .Published.Cast<NotificationsEmailSendRequestedIntegrationEvent>()
+            .Select(e => e.To)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(new[] { "first@test.com", "second@test.com" }, recipients);
     }
 
     [Fact]
@@ -330,8 +382,19 @@ public sealed class EventBasedEmailDispatchGatewayTests
             Guid tenantId,
             Guid relatedEventId,
             string templateKey,
+            string recipient,
             CancellationToken ct = default
-        ) => Task.FromResult<NotificationLog?>(null);
+        ) =>
+            Task.FromResult(
+                Logs.Where(l =>
+                        l.TenantId == tenantId
+                        && l.RelatedEventId == relatedEventId
+                        && l.TemplateKey == templateKey
+                        && l.Recipient == recipient
+                    )
+                    .OrderByDescending(l => l.CreatedAtUtc)
+                    .FirstOrDefault()
+            );
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

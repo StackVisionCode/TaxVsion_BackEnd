@@ -89,10 +89,8 @@ public static class IssueDownloadUrlHandler
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotAvailable);
 
         var lifetime = TimeSpan.FromMinutes(Math.Clamp(options.Value.PresignedUrlMinutes, 1, 60));
-        // Fuerza descarga (no vista inline en el navegador): sin esto el browser abría el PDF/imagen en
-        // una pestaña nueva, exponiendo la URL presignada. Con content-disposition=attachment el archivo
-        // baja directo con su nombre real.
-        var disposition = $"attachment; filename=\"{file.OriginalName.Replace('"', '_')}\"";
+        // Fuerza descarga (attachment) con el nombre real; sin esto el browser abriría inline exponiendo la URL.
+        var disposition = ContentDispositionBuilder.Build("attachment", file.OriginalName);
         var url = await storage.PresignGetAsync(options.Value.MainBucket, file.ObjectKey, lifetime, disposition, ct);
         audit.Add(
             StorageAccessLog.Create(

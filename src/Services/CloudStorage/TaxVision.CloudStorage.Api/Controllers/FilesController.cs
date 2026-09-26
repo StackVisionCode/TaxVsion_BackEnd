@@ -7,6 +7,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
@@ -70,7 +71,7 @@ public sealed class FilesController(
         // Ver InitiateUpload: Communication finaliza la subida mediada como Service.
         ActorType.Service
     )]
-    [RateLimit("cloudstorage.i.upload")]
+    [RateLimit("cloudstorage.g.upload_complete")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteUpload(Guid fileId, CancellationToken ct)
     {
@@ -123,7 +124,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
-    [RateLimit("cloudstorage.i.upload")]
+    [RateLimit("cloudstorage.g.upload_complete")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteMultipartUpload(
         Guid fileId,
@@ -269,6 +270,9 @@ public sealed class FilesController(
         Response.ContentType = "application/zip";
         Response.Headers.ContentDisposition = $"attachment; filename=\"{archiveName}\"";
 
+        // ZipArchive escribe el directorio central/data-descriptors de forma SÍNCRONA al cerrar; Kestrel
+        // prohíbe IO síncrono por defecto (revienta con 500 a mitad del stream). Se habilita solo aquí.
+        HttpContext.Features.Get<IHttpBodyControlFeature>()!.AllowSynchronousIO = true;
         var mainBucket = storageOptions.Value.MainBucket;
         using (var zip = new ZipArchive(Response.Body, ZipArchiveMode.Create, leaveOpen: true))
         {

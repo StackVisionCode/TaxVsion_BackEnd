@@ -23,6 +23,34 @@ namespace TaxVision.Billing.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", "billing");
+                });
+
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -53,6 +81,9 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<string>("Customer")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
@@ -171,6 +202,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.HasIndex("OnboardingId")
                         .IsUnique()
                         .HasFilter("[OnboardingId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "CustomerId");
 
                     b.HasIndex("TenantId", "InvoiceNumber")
                         .IsUnique()

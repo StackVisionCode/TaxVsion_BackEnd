@@ -16,4 +16,7 @@ public interface ITenantEmployeeDirectoryRepository
     Task MarkActiveAsync(Guid userId, CancellationToken ct = default);
 
     Task MarkInactiveAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Marca al empleado como retirado (offboard, terminal): deja de ser preparador elegible.</summary>
+    Task MarkOffboardedAsync(Guid userId, CancellationToken ct = default);
 }

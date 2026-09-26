@@ -61,7 +61,7 @@
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\",\r\n  \"accountKind\": \"Staff\"\r\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -77,7 +77,8 @@
             "auth",
             "login"
           ]
-        }
+        },
+        "description": "accountKind (opcional): Staff (CRM) o Portal (portal del cliente). La misma persona puede tener ambas cuentas con el mismo email en una oficina. Sin indicarlo se usa la Staff y, si no existe, la Portal."
       },
       "response": []
     },
@@ -158,7 +159,49 @@
         },
         "description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
       },
-      "response": [],
+      "response": [
+        {
+          "name": "RateLimit.Exceeded (429) — auth-refresh por IP",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/refresh",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Retry-After",
+              "value": "17"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 17 seconds.\",\n  \"retryAfterSeconds\": 17,\n  \"policy\": \"auth-refresh\"\n}"
+        }
+      ],
       "event": [
         {
           "listen": "test",
@@ -278,6 +321,337 @@
         "description": "Revoca un refresh token (logout selectivo de una familia de tokens) sin cerrar la sesion completa."
       },
       "response": []
+    },
+    {
+      "name": "Reauthenticate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/reauthenticate",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "reauthenticate"
+          ]
+        },
+        "description": "Step-up: contraseña (+ código si hay TOTP). Devuelve un access token de la misma sesión y superficie con reauth_at (vale 10 min para [RequireRecentAuthentication]). Errores: 400 Auth.ReauthenticationFailed / Auth.MfaCodeRequired, 429 Auth.LockedOut.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"{{password}}\",\n  \"code\": null\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+              "  pm.environment.set(\"accessToken\", pm.response.json().accessToken);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Account (Landing)",
+      "description": "Sesión del Account del Landing. El refresh vive solo en la cookie __Host-tv-account-rt (HttpOnly, SameSite=Strict); los endpoints de sesión exigen Origin = {{LandingOrigin}} (dev http://localhost:4201). El access token del Account lleva surface=account y audiencia TaxVision.Account.",
+      "item": [
+        {
+          "name": "AccountHandoff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/handoff",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "handoff"
+              ]
+            },
+            "description": "CRM → vale de un solo uso (60 s) para abrir el Account con la MISMA sesión. Solo TenantAdmin con billing.view; un token del Account no puede pedirlo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().ticket) {",
+                  "  pm.environment.set(\"accountHandoffTicket\", pm.response.json().ticket);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionFromHandoff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/from-handoff",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "from-handoff"
+              ]
+            },
+            "description": "Landing canjea el vale del CRM: suma la cadena del Account al mismo sid y deja el refresh en la cookie.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{accountHandoffTicket}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionFromLogin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/from-login",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "from-login"
+              ]
+            },
+            "description": "Entrada directa: canjea el vale del login central (discover-login/handoff). Si ya hay sesión abierta devuelve takeoverRequired + takeoverTicket.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{handoffTicket}}\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionTakeover",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/takeover",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "takeover"
+              ]
+            },
+            "description": "Confirma cerrar la otra sesión y abre el Account (solo vales pedidos desde el Account).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket\": \"{{takeoverTicket}}\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionRefresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/refresh",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "refresh"
+              ]
+            },
+            "description": "Rota el refresh de la cookie. 401 borra la cookie."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.json().accessToken) {",
+                  "  pm.environment.set(\"accountAccessToken\", pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AccountSessionLogout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{LandingOrigin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/account/session/logout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "account",
+                "session",
+                "logout"
+              ]
+            },
+            "description": "Cierra el Account. Si se entró desde el CRM, el CRM sigue abierto; si era solo del Account, cierra la sesión entera."
+          },
+          "response": []
+        },
+        {
+          "name": "AccountGetMe",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accountAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "El único GET de Auth abierto al token del Account (además de reauthenticate)."
+          },
+          "response": []
+        }
+      ]
     },
     {
       "name": "Terms",
@@ -662,14 +1036,14 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"jturbi@example.com\"\n}",
+              "raw": "{\n  \"email\": \"jturbi@example.com\",\n  \"accountKind\": \"Staff\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "description": "Siempre responde 202 (anti-enumeracion)."
+            "description": "Siempre responde 202 (anti-enumeracion). La oficina sale del Host, nunca del body: desde el subdominio de una oficina (p.ej. coretaxpro.taxproffice.com) solo se resetea esa oficina; desde la entrada general (api.*, app.*, localhost) se envía un link por cada oficina del email. accountKind (opcional): Staff o Portal; sin indicarlo, ambas cuentas. Cada correo dice de qué cuenta y oficina es."
           },
           "response": []
         },
@@ -697,7 +1071,38 @@
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Canjea el token del enlace del correo por la contraseña nueva (204). El enlace es de un solo uso; al cambiar la contraseña se anulan los demás enlaces pendientes de esa cuenta y se cierran todas sus sesiones."
+          },
+          "response": []
+        },
+        {
+          "name": "ValidateResetToken",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/password/reset/validate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "reset",
+                "validate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<token del enlace del correo>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Dice si el enlace de reset todavía sirve, sin consumirlo ni contar intentos: 204 si sirve; 401 Auth.InvalidResetToken si caducó, ya se usó o fue anulado. La página de reset lo consulta al abrirse."
           },
           "response": []
         },
@@ -731,7 +1136,8 @@
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Cambia la contraseña con la actual (requiere sesión). Cierra las demás sesiones y anula los enlaces de reset pendientes de esa cuenta."
           },
           "response": []
         },
@@ -1278,6 +1684,47 @@
                 "reactivate"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "OffboardUser",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"successorUserId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/offboard",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "offboard"
+              ]
+            },
+            "description": "Retiro terminal del tenant (punto 3.2). Mas estricto que deactivate: solo TenantAdmin/PlatformAdmin, permiso users.manage. successorUserId (opcional): a quien se reasigna el trabajo activo del que se va (preparer, tasks, appointments, meetings-host, drafts). null = se desasigna/oficina. Idempotente. 204 No Content."
           },
           "response": []
         },

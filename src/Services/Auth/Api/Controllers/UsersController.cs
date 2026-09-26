@@ -13,6 +13,7 @@ using TaxVision.Auth.Application.Tenants.Queries;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
 using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -32,6 +33,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] bool? isActive = null,
         [FromQuery] Guid? customerId = null,
+        [FromQuery] UserAccountKind? accountKind = null,
         CancellationToken ct = default
     )
     {
@@ -39,7 +41,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<UserSummaryResponse>>>(
-            new GetUsersQuery(tenantId, page, size, search, isActive, customerId),
+            new GetUsersQuery(tenantId, page, size, search, isActive, customerId, accountKind),
             ct
         );
 
@@ -87,6 +89,31 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ReactivateUserCommand(tenantId, userId, requesterId), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record OffboardUserRequest(Guid? SuccessorUserId);
+
+    // Retirar del tenant (offboard): terminal. Más estricto que deactivate — solo admins.
+    [HttpPost("{userId:guid}/offboard")]
+    [HasPermission(PermissionCatalog.UsersManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.user_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Offboard(
+        Guid userId,
+        [FromBody] OffboardUserRequest? request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var requesterId) || !User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new OffboardUserCommand(tenantId, userId, requesterId, request?.SuccessorUserId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -189,6 +216,8 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
     [HttpGet("/auth/tenants/limits")]
     [HasPermission(PermissionCatalog.UsersView)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    // El Account del Landing lo compone con su read model: los asientos usados solo los sabe Auth.
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("auth.f.tenant_limits_read")]
     [ProducesResponseType<TenantLimitsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTenantLimits(CancellationToken ct)

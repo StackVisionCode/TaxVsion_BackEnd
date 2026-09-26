@@ -49,20 +49,19 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
         pdf.Info.Subject = $"Legal audit trail for signature request {model.SignatureRequestId:D}";
         pdf.Info.Keywords = "e-signature; audit trail; ESIGN; eIDAS; PAdES-B";
 
-        // El logo embebido (marca de plataforma) es SOLO último recurso: se usa cuando no hay ni logo
-        // de plataforma proyectado ni logo de oficina. Si la oficina tiene su propio logo, no queremos
-        // estampar además el de plataforma embebido al lado (saldrían dos marcas).
-        var platformSource = model.PlatformLogo ?? (model.TenantLogo is null ? PlatformLogoBytes : null);
+        // Solo el logo de TaxProffice (el certificado lo emite la plataforma): logo de plataforma
+        // proyectado o, si no hay, el embebido. No se estampa el logo de la oficina.
+        var platformSource = model.PlatformLogo ?? PlatformLogoBytes;
         XImage? platformLogo = TryLoadImage(platformSource);
-        XImage? tenantLogo = TryLoadImage(model.TenantLogo);
         try
         {
             using var ctx = new RenderContext(pdf);
 
-            WriteHeader(ctx, model, platformLogo, tenantLogo);
+            WriteHeader(ctx, model, platformLogo);
             WriteSummary(ctx, model);
             WriteIntegrity(ctx, model);
             WriteSigners(ctx, model.Signers);
+            WritePreparer(ctx, model.Preparer);
             WriteLegalFooter(ctx, model);
 
             using var output = new MemoryStream();
@@ -73,7 +72,6 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
         finally
         {
             platformLogo?.Dispose();
-            tenantLogo?.Dispose();
         }
     }
 
@@ -81,12 +79,7 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
     // Sections
     // ------------------------------------------------------------------
 
-    private static void WriteHeader(
-        RenderContext ctx,
-        CertificateOfCompletionModel model,
-        XImage? platformLogo,
-        XImage? tenantLogo
-    )
+    private static void WriteHeader(RenderContext ctx, CertificateOfCompletionModel model, XImage? platformLogo)
     {
         var gfx = ctx.Gfx;
         var titleFont = new XFont(SansFamily, 22, XFontStyleEx.Bold);
@@ -95,12 +88,10 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
 
         var top = ctx.CursorY;
 
-        // Marca: logos si hay; si no, chip de texto de la plataforma.
-        if (platformLogo is not null || tenantLogo is not null)
+        // Solo la marca de la plataforma (TaxProffice); si no hay imagen, chip de texto.
+        if (platformLogo is not null)
         {
-            var x = MarginLeft;
-            x = DrawLogo(gfx, platformLogo, x, top);
-            DrawLogo(gfx, tenantLogo, x, top);
+            DrawLogo(gfx, platformLogo, MarginLeft, top);
         }
         else
         {
@@ -132,6 +123,19 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
             new XPoint(MarginLeft, ctx.CursorY)
         );
         ctx.CursorY += 20;
+        if (!string.IsNullOrWhiteSpace(model.Title))
+        {
+            WriteWrapped(
+                ctx,
+                model.Title,
+                new XFont(SansFamily, 12, XFontStyleEx.Bold),
+                TextPrimary,
+                MarginLeft,
+                ctx.ContentWidth,
+                lineHeight: 15
+            );
+            ctx.CursorY += 6;
+        }
         gfx.DrawString(
             "This document certifies the events of the electronic signature process below.",
             subtitleFont,
@@ -191,6 +195,23 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
             DrawSignerCard(ctx, signer);
             ctx.CursorY += 10;
         }
+    }
+
+    /// <summary>
+    /// Sección del preparador (ERO, Form 8879): nombre + identificador ENMASCARADO + cuándo firmó. Es una
+    /// referencia de auditoría; la firma visual va en el documento sellado, no aquí.
+    /// </summary>
+    private static void WritePreparer(RenderContext ctx, CertificatePreparerEntry? preparer)
+    {
+        if (preparer is null)
+            return;
+
+        WriteSectionHeader(ctx, "Preparer (ERO)");
+        WriteRow(ctx, "Name", preparer.DisplayName);
+        // El PTIN/EFIN solo se muestra si hay identidad 8879 (con My Signature "a secas" no la hay).
+        if (!string.IsNullOrEmpty(preparer.MaskedIdentifier))
+            WriteRow(ctx, "PTIN/EFIN", preparer.MaskedIdentifier);
+        WriteRow(ctx, "Signed (UTC)", preparer.SignedAtUtc is { } at ? FormatUtc(at) : "—");
     }
 
     private static void DrawSignerCard(RenderContext ctx, CertificateSignerEntry signer)

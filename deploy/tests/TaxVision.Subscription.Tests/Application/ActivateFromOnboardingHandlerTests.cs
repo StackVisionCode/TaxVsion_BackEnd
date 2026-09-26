@@ -237,6 +237,13 @@ public sealed class ActivateFromOnboardingHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
+            DateTime fromUtc,
+            DateTime toUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
             int page,
             int pageSize,

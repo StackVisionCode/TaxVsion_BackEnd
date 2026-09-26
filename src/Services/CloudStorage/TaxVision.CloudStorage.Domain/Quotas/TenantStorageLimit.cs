@@ -16,6 +16,15 @@ public sealed class TenantStorageLimit : TenantEntity
 
     /// <summary>Habilitado por defecto; un Tenant Admin lo puede desactivar explicitamente desde Settings.</summary>
     public bool AllowPublicShareLinks { get; private set; } = true;
+
+    /// <summary>Link externo sin email (ShareVisibility.ExternalLink). Habilitado por default; la oficina lo puede apagar.</summary>
+    public bool AllowLinkOnlyExternalShares { get; private set; } = true;
+
+    /// <summary>Si la oficina exige contraseña en los links externos sin email.</summary>
+    public bool RequirePasswordOnLinkShares { get; private set; }
+
+    /// <summary>Tope de vida (días) de un link externo sin email.</summary>
+    public int MaxShareLifetimeDays { get; private set; } = 30;
     public byte[] RowVersion { get; private set; } = [];
 
     public static TenantStorageLimit Create(Guid tenantId, string planCode, long maxBytes, long maxFileSizeBytes)
@@ -27,6 +36,8 @@ public sealed class TenantStorageLimit : TenantEntity
             MaxBytes = maxBytes,
             MaxFileSizeBytes = maxFileSizeBytes,
             AllowPublicShareLinks = true,
+            AllowLinkOnlyExternalShares = true,
+            MaxShareLifetimeDays = 30,
         };
         limit.SetTenant(tenantId);
         return limit;
@@ -73,6 +84,14 @@ public sealed class TenantStorageLimit : TenantEntity
     public void EnablePublicSharing() => AllowPublicShareLinks = true;
 
     public void DisablePublicSharing() => AllowPublicShareLinks = false;
+
+    /// <summary>Política de links externos sin email (settings de oficina). maxLifetimeDays se acota a 1..3650.</summary>
+    public void SetLinkSharingPolicy(bool allow, bool requirePassword, int maxLifetimeDays)
+    {
+        AllowLinkOnlyExternalShares = allow;
+        RequirePasswordOnLinkShares = requirePassword;
+        MaxShareLifetimeDays = Math.Clamp(maxLifetimeDays, 1, 3650);
+    }
 }
 
 public static class QuotaErrors

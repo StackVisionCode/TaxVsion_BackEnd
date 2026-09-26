@@ -18,6 +18,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.Challenges)
             .Include(request => request.Signers)
                 .ThenInclude(signer => signer.FieldValues)
+            .Include(request => request.PreparerFields)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetBySealedFileIdAsync(
@@ -71,14 +72,9 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         await db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(r => r.Signers)
-            .Where(r =>
-                r.ExpiresAtUtc <= nowUtc
-                && (
-                    r.Status == SignatureRequestStatus.Draft
-                    || r.Status == SignatureRequestStatus.Ready
-                    || r.Status == SignatureRequestStatus.InProgress
-                )
-            )
+            // Sólo lo enviado (InProgress) expira por reloj de firma; los borradores se
+            // limpian por retención (ListStaleUnsentAsync), no por expiración.
+            .Where(r => r.Status == SignatureRequestStatus.InProgress && r.ExpiresAtUtc <= nowUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<SignatureRequest>> ListReminderCandidatesAsync(
@@ -118,6 +114,23 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                     || r.Status == SignatureRequestStatus.Canceled
                     || r.Status == SignatureRequestStatus.Expired
                 )
+                && r.UpdatedAtUtc <= olderThanUtc
+            )
+            .OrderBy(r => r.UpdatedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
+    // Retención de borradores: Draft/Ready sin enviar, sin LegalHold y sin tocar desde el corte.
+    public async Task<IReadOnlyList<SignatureRequest>> ListStaleUnsentAsync(
+        DateTime olderThanUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Where(r =>
+                !r.LegalHold
+                && (r.Status == SignatureRequestStatus.Draft || r.Status == SignatureRequestStatus.Ready)
                 && r.UpdatedAtUtc <= olderThanUtc
             )
             .OrderBy(r => r.UpdatedAtUtc)

@@ -60,6 +60,15 @@ public interface ISubscriptionRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Suscripciones con cancelación programada cuyo acceso termina en la ventana dada. No son las
+    /// mismas que las de <see cref="GetRenewingBetweenAsync"/>: éstas no renuevan, terminan.</summary>
+    Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
+        DateTime fromUtc,
+        DateTime toUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>Admin cross-tenant query — only PlatformAdmin endpoints call this.</summary>
     Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
         int page,
@@ -82,6 +91,10 @@ public interface ISubscriptionSeatRepository
     Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Como GetByCurrentUserIdAsync pero TRACKED — para liberar el asiento desde un consumer
+    /// (la variante AsNoTracking no persistiría la mutación).</summary>
+    Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>
@@ -129,6 +142,10 @@ public interface ISeatPurchaseIntentRepository
     /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
     Task<SeatPurchaseIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>La compra de asientos que el tenant dejó a medias y todavía se puede pagar (<c>Pending</c> con
+    /// sesión de checkout sin caducar). Es el guard contra el doble cobro al reintentar.</summary>
+    Task<SeatPurchaseIntent?> GetOpenByTenantAsync(Guid tenantId, DateTime nowUtc, CancellationToken ct = default);
+
     /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
     /// tenant del evento antes de mutar (mismo patrón que los consumers de resultado de pago).</summary>
     Task<SeatPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);
@@ -144,6 +161,37 @@ public interface ISeatPurchaseIntentRepository
     );
 }
 
+/// <summary>Intenciones de compra de add-ons por hosted-checkout. Espejo de
+/// <see cref="ISeatPurchaseIntentRepository"/>; el guard de doble cobro es por add-on, no por tenant.</summary>
+public interface IAddOnPurchaseIntentRepository
+{
+    Task AddAsync(AddOnPurchaseIntent intent, CancellationToken ct = default);
+
+    /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
+    Task<AddOnPurchaseIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>La compra de ESE add-on que el tenant dejó a medias y todavía se puede pagar. A diferencia de
+    /// los asientos, dos add-ons distintos sí pueden estar en curso a la vez: son compras independientes.</summary>
+    Task<AddOnPurchaseIntent?> GetOpenByTenantAsync(
+        Guid tenantId,
+        string addOnCode,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
+    /// tenant del evento antes de mutar.</summary>
+    Task<AddOnPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant (job de reconciliación): intenciones <c>Pending</c> con pago ya emitido creadas
+    /// antes de <paramref name="olderThanUtc"/> — las que pudieron quedar sin activar si se perdió el evento.</summary>
+    Task<IReadOnlyList<AddOnPurchaseIntent>> FindStalePendingWithPaymentAsync(
+        DateTime olderThanUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+}
+
 /// <summary>Intenciones de renovación/reactivación self-service por hosted-checkout (Expiración/Dunning,
 /// Fase 4). Espejo de <see cref="ISeatPurchaseIntentRepository"/>.</summary>
 public interface IRenewalCheckoutIntentRepository
@@ -152,6 +200,14 @@ public interface IRenewalCheckoutIntentRepository
 
     /// <summary>Lectura tenant-scoped (endpoint de estado del tenant).</summary>
     Task<SubscriptionRenewalIntent?> GetByIdAsync(Guid intentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>La renovación que el tenant dejó a medias y todavía se puede pagar. Es el guard contra el
+    /// doble cobro al reintentar, igual que en asientos y add-ons.</summary>
+    Task<SubscriptionRenewalIntent?> GetOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
 
     /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
     /// tenant del evento antes de mutar.</summary>

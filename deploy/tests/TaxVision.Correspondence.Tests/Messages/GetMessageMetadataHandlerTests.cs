@@ -37,6 +37,7 @@ public sealed class GetMessageMetadataHandlerTests
         var result = await GetMessageMetadataHandler.Handle(
             new GetMessageMetadataQuery(tenantId, email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 
@@ -60,6 +61,45 @@ public sealed class GetMessageMetadataHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithVisibilityGate_HidesMessageWhoseThreadIsNotVisible()
+    {
+        var tenantId = Guid.NewGuid();
+        var email = NewIncomingEmail(tenantId, Guid.NewGuid(), Guid.NewGuid());
+        var incomingEmails = new FakeIncomingEmailRepository();
+        await incomingEmails.AddAsync(email);
+        var threads = new FakeEmailThreadRepository { HasVisibleMessageResult = false };
+
+        var result = await GetMessageMetadataHandler.Handle(
+            new GetMessageMetadataQuery(tenantId, email.Id, VisibleAccountIds: [Guid.NewGuid()]),
+            incomingEmails,
+            threads,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("IncomingEmail.NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Handle_WithVisibilityGate_ShowsMessageWhoseThreadIsVisible()
+    {
+        var tenantId = Guid.NewGuid();
+        var email = NewIncomingEmail(tenantId, Guid.NewGuid(), Guid.NewGuid());
+        var incomingEmails = new FakeIncomingEmailRepository();
+        await incomingEmails.AddAsync(email);
+        var threads = new FakeEmailThreadRepository { HasVisibleMessageResult = true };
+
+        var result = await GetMessageMetadataHandler.Handle(
+            new GetMessageMetadataQuery(tenantId, email.Id, VisibleAccountIds: [Guid.NewGuid()]),
+            incomingEmails,
+            threads,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public async Task Handle_WithUnknownMessage_ReturnsNotFound()
     {
         var incomingEmails = new FakeIncomingEmailRepository();
@@ -67,6 +107,7 @@ public sealed class GetMessageMetadataHandlerTests
         var result = await GetMessageMetadataHandler.Handle(
             new GetMessageMetadataQuery(Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 
@@ -84,6 +125,7 @@ public sealed class GetMessageMetadataHandlerTests
         var result = await GetMessageMetadataHandler.Handle(
             new GetMessageMetadataQuery(Guid.NewGuid(), email.Id),
             incomingEmails,
+            new FakeEmailThreadRepository(),
             CancellationToken.None
         );
 

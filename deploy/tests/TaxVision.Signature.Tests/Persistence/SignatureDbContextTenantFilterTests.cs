@@ -88,7 +88,7 @@ public sealed class SignatureDbContextTenantFilterTests
                 Guid.NewGuid(),
                 $"Solicitud de {tenantId:N}",
                 null,
-                SignatureCategory.Fiscal,
+                "Fiscal",
                 Guid.NewGuid(),
                 tokenExpirationHours: 72,
                 requiresSequentialSigning: false,

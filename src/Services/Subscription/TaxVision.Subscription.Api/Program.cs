@@ -70,6 +70,7 @@ builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
 builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
+builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
 
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,

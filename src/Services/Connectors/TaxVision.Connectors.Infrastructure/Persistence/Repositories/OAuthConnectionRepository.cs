@@ -35,4 +35,12 @@ public sealed class OAuthConnectionRepository(ConnectorsDbContext dbContext) : I
             .Select(c => c.AccountId)
             .ToListAsync(ct);
     }
+
+    // El token es tabla aparte sin FK con cascade (ver ConnectorsDbContext): se borra explícito.
+    public void Remove(OAuthConnection connection)
+    {
+        if (connection.Token is not null)
+            dbContext.OAuthTokens.Remove(connection.Token);
+        dbContext.OAuthConnections.Remove(connection);
+    }
 }

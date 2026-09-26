@@ -5,7 +5,31 @@ import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
+import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
 import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
+import {
+  CustomerSocketEvents,
+  type CustomerChangedDto,
+} from '../../contracts/socket/customer-socket-events.js';
+
+/** Avisa a todo el tenant que un cliente cambió, para que el cache de clientes del front lo invalide (backlog 5.1). */
+function emitCustomerChanged(
+  env: IncomingEnvelope,
+  emitter: RealtimeEmitter,
+  customerId: string,
+  changeType: CustomerChangedDto['changeType'],
+): void {
+  emitter.emitToTenant<CustomerChangedDto>({
+    tenantId: env.tenantId,
+    event: CustomerSocketEvents.Changed,
+    envelope: {
+      eventId: randomUUID(),
+      correlationId: env.correlationId ?? '',
+      emittedAtUtc: new Date().toISOString(),
+      payload: { customerId, changeType },
+    },
+  });
+}
 
 /**
  * Cierra TODO explicito en src/Services/Customer/DependencyInjection.cs:46 y
@@ -21,18 +45,16 @@ export function bindCustomerConsumers(
     emitter: RealtimeEmitter;
     customerDirectory: CustomerDirectoryRepository;
     customerPreparerAssignments: CustomerPreparerAssignmentRepository;
+    customerAssignments: CustomerAssignmentProjectionRepository;
   },
 ): void {
   register('customer.bulk_imported.v1', async (env) => {
-    const createdBy =
-      getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
+    const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
     const totalRows = getNumber(env.payload, 'totalRows') ?? getNumber(env.payload, 'TotalRows') ?? 0;
     const successCount =
       getNumber(env.payload, 'successCount') ?? getNumber(env.payload, 'SuccessCount') ?? 0;
-    const failedCount =
-      getNumber(env.payload, 'failedCount') ?? getNumber(env.payload, 'FailedCount') ?? 0;
-    const importJobId =
-      getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
+    const failedCount = getNumber(env.payload, 'failedCount') ?? getNumber(env.payload, 'FailedCount') ?? 0;
+    const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
     if (!createdBy) return;
 
     const result = await pushNotification(
@@ -92,7 +114,9 @@ export function bindCustomerConsumers(
         kind: 'customer.bulk_import_failed',
         priority: 'High',
         title: 'Importacion masiva fallida',
-        body: reason ? `La importacion no pudo completarse: ${reason}` : 'La importacion no pudo completarse.',
+        body: reason
+          ? `La importacion no pudo completarse: ${reason}`
+          : 'La importacion no pudo completarse.',
         metadata: { importJobId, reason },
         sourceEventId: env.eventId,
         sourceEventType: env.eventType,
@@ -141,6 +165,7 @@ export function bindCustomerConsumers(
       email,
       isActive: true,
     });
+    emitCustomerChanged(env, deps.emitter, customerId, 'created');
   });
 
   register('customer.updated.v1', async (env) => {
@@ -156,12 +181,14 @@ export function bindCustomerConsumers(
       email,
       isActive: existing?.isActive ?? true,
     });
+    emitCustomerChanged(env, deps.emitter, customerId, 'updated');
   });
 
   register('customer.deactivated.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     if (!customerId) return;
     await deps.customerDirectory.markInactive(customerId);
+    emitCustomerChanged(env, deps.emitter, customerId, 'deactivated');
   });
 
   // 2026-08-06 (auditoria de proyecciones de customer): antes solo se escuchaba
@@ -173,6 +200,7 @@ export function bindCustomerConsumers(
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     if (!customerId) return;
     await deps.customerDirectory.markInactive(customerId);
+    emitCustomerChanged(env, deps.emitter, customerId, 'archived');
   });
 
   // Fase B2 (chat tipado) — mantiene al dia CustomerPreparerAssignment, la
@@ -181,7 +209,8 @@ export function bindCustomerConsumers(
   // CustomerDirectoryEntry arriba.
   register('customer.preparer_assigned.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
-    const preparerUserId = getString(env.payload, 'preparerUserId') ?? getString(env.payload, 'PreparerUserId');
+    const preparerUserId =
+      getString(env.payload, 'preparerUserId') ?? getString(env.payload, 'PreparerUserId');
     if (!customerId || !preparerUserId) return;
     await deps.customerPreparerAssignments.assign({ customerId, tenantId: env.tenantId, preparerUserId });
   });
@@ -191,6 +220,31 @@ export function bindCustomerConsumers(
     if (!customerId) return;
     await deps.customerPreparerAssignments.unassign(customerId);
   });
+
+  // P2.5 — snapshot M:N del set COMPLETO de asignados (event-carried state transfer). Reemplaza el set
+  // local del customer, version-guarded (solo aplica snapshots mas nuevos): descarta reordenados/duplicados.
+  // Es la fuente del gate restrictCustomerChatToAssignedPreparer, que con M:N permite a CUALQUIER staff
+  // asignado (no solo al primary) chatear con el customer. Coexiste con la proyeccion 1:1 (isPrimaryPreparer).
+  register('customer.assignments_changed.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    const versionRaw = getString(env.payload, 'version') ?? getString(env.payload, 'Version');
+    if (!customerId || !versionRaw) return;
+    const version = new Date(versionRaw);
+    if (Number.isNaN(version.getTime())) return;
+
+    const applied = await deps.customerAssignments.getVersion(env.tenantId, customerId);
+    if (applied && version <= applied) return; // snapshot igual o mas viejo ya aplicado -> ignorar
+
+    const assigneeUserIds =
+      getStringArray(env.payload, 'assigneeUserIds') ?? getStringArray(env.payload, 'AssigneeUserIds') ?? [];
+    await deps.customerAssignments.replace(env.tenantId, customerId, assigneeUserIds, version);
+  });
+}
+
+function getStringArray(source: Record<string, unknown>, key: string): string[] | undefined {
+  const value = source[key];
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

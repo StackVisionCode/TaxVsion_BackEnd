@@ -36,7 +36,7 @@ public class PdfSharpCertificateRendererTests
         new(
             SignatureRequestId: Guid.NewGuid(),
             Title: "Resumen operacional con un título deliberadamente largo para forzar el ajuste de línea por ancho medido",
-            Category: SignatureCategory.Fiscal,
+            Category: "Fiscal",
             CreatedAtUtc: DateTime.UtcNow.AddHours(-2),
             CompletedAtUtc: DateTime.UtcNow,
             DocumentHashPre: new string('a', 64),

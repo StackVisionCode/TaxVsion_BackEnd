@@ -35,8 +35,19 @@ public sealed class AcceptInvitationHandlerTests
         public Task<Invitation?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
             Task.FromResult<Invitation?>(invitation);
 
-        public Task<bool> HasPendingAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> HasPendingAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<Invitation?> GetPendingAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(Invitation invitation, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -63,6 +74,8 @@ public sealed class AcceptInvitationHandlerTests
 
     private sealed class FakeLoginThrottler : ILoginThrottler
     {
+        public TimeSpan? InvitationAcceptRetryAfter { get; init; }
+
         public Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>
             Task.FromResult<TimeSpan?>(null);
 
@@ -86,7 +99,7 @@ public sealed class AcceptInvitationHandlerTests
         ) => Task.CompletedTask;
 
         public Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>
-            Task.FromResult<TimeSpan?>(null);
+            Task.FromResult(InvitationAcceptRetryAfter);
 
         public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
             Task.CompletedTask;
@@ -107,17 +120,34 @@ public sealed class AcceptInvitationHandlerTests
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(null);
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            Task.FromResult(false);
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => Task.FromResult(false);
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             Task.FromResult<User?>(null);
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default)
         {
@@ -138,6 +168,7 @@ public sealed class AcceptInvitationHandlerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -343,6 +374,49 @@ public sealed class AcceptInvitationHandlerTests
 
         // El evento de alta ya existía antes del fix — confirma que no lo rompimos.
         Assert.Single(bus.Published.OfType<UserRegisteredIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_throttled_by_ip_returns_its_own_error_not_invalid_invitation()
+    {
+        // Con "invalid or expired" una oficina entera detrás de una IP veía su link válido rechazado sin
+        // saber que solo tenía que esperar; el código propio se mapea a 429.
+        var tenantId = Guid.NewGuid();
+        var invitation = Invitation
+            .Create(
+                tenantId,
+                "newhire@example.com",
+                UserActorType.TenantEmployee,
+                customerId: null,
+                invitedByUserId: Guid.NewGuid(),
+                tokenHash: FixedTokenHash,
+                expiresAtUtc: DateTime.UtcNow.AddDays(1)
+            )
+            .Value;
+        var users = new FakeUserRepository();
+
+        var result = await AcceptInvitationHandler.Handle(
+            new AcceptInvitationCommand(RawToken, "Ana", "Gomez", "Str0ng-Passw0rd!"),
+            new FakeInvitationRepository(invitation),
+            new FakeInvitationTokenService(),
+            users,
+            new FakeTenantRegistry(
+                Tenant.Register(tenantId, "Acme", "acme", TenantKind.Customer, "America/Santo_Domingo").Value
+            ),
+            new FakePasswordHasher(),
+            new FakeRoleRepository(),
+            new FakeLoginThrottler { InvitationAcceptRetryAfter = TimeSpan.FromMinutes(5) },
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.InvitationAcceptThrottled", result.Error.Code);
+        Assert.Null(users.Added);
     }
 
     [Fact]

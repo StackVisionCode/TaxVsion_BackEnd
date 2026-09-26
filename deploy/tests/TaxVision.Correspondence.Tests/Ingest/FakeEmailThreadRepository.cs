@@ -48,6 +48,7 @@ internal sealed class FakeEmailThreadRepository : IEmailThreadRepository
         Guid customerId,
         int page,
         int size,
+        IReadOnlyCollection<Guid>? visibleAccountIds = null,
         CancellationToken ct = default
     )
     {
@@ -64,4 +65,14 @@ internal sealed class FakeEmailThreadRepository : IEmailThreadRepository
             new PagedResult<EmailThread>(items, normalizedPage, normalizedSize, filtered.Count)
         );
     }
+
+    /// <summary>Fake: por defecto "visible" (los tests de gate lo controlan si hace falta).</summary>
+    public bool HasVisibleMessageResult { get; set; } = true;
+
+    public Task<bool> HasVisibleMessageAsync(
+        Guid tenantId,
+        Guid threadId,
+        IReadOnlyCollection<Guid> visibleAccountIds,
+        CancellationToken ct = default
+    ) => Task.FromResult(HasVisibleMessageResult);
 }

@@ -13,6 +13,37 @@ public sealed class RateLimitPolicyCatalogTests
         Assert.Equal(names.Length, names.Distinct().Count());
     }
 
+    // Primaria por tenant + overlay [Tenant] construyen la MISMA clave Redis: cada request se contaba dos
+    // veces y el límite efectivo quedaba en la mitad (le pasaba a 3 políticas de Growth).
+    [Fact]
+    public void No_policy_overlays_the_same_tenant_bucket_as_its_primary_partition()
+    {
+        var offenders = RateLimitPolicyCatalog
+            .All.Where(policy =>
+                policy.OverlayQuotaPerMinute is not null
+                && policy.PrimaryPartition == RateLimitPartitionDimension.Tenant
+                && policy.OverlayLayers.SequenceEqual([RateLimitPartitionDimension.Tenant])
+            )
+            .Select(policy => policy.Name.Value)
+            .ToList();
+
+        Assert.True(
+            offenders.Count == 0,
+            "Overlay duplicates the primary tenant bucket: " + string.Join(", ", offenders)
+        );
+    }
+
+    // El tope global por endpoint no escala por plan y lo comparten todos los tenants: en listados y
+    // búsquedas (H) era un techo arbitrario sobre lecturas que el overlay por tenant ya acota.
+    [Fact]
+    public void Only_bulk_policies_carry_a_global_endpoint_cap()
+    {
+        Assert.All(
+            RateLimitPolicyCatalog.All.Where(policy => policy.EndpointCapPerWindow is not null),
+            policy => Assert.Equal(RateLimitCategory.I, policy.Category)
+        );
+    }
+
     [Theory]
     [InlineData(RateLimitCategory.A)]
     [InlineData(RateLimitCategory.B)]

@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -54,6 +55,17 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
+
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre CampaignsDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF) + lector de asignaciones para acotar la audiencia "Clients".
+        // El consumer del snapshot se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<CampaignsDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.CampaignsPlatformTokenProvider>(configuration);
+        services
+            .AddOptions<Application.Runs.Audience.CampaignsVisibilityOptions>()
+            .Bind(configuration.GetSection(Application.Runs.Audience.CampaignsVisibilityOptions.SectionName));
+        services.AddScoped<ICampaignCustomerAssignmentReader, CampaignCustomerAssignmentReader>();
 
         // Scheduler durable (SendMode Scheduled/Recurring): lease-based claim + fan-out por disparo.
         services.AddHostedService<CampaignSchedulerService>();

@@ -84,19 +84,9 @@ builder.Services.AddOwnershipAuthorization<SignatureRequest>(SignaturePermission
 // enumeración/fuerza bruta de tokens.
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    // Auditoría post-Fase-9 (hallazgo #13a) — el limiter nativo de ASP.NET Core no emite headers
-    // en el 429 a menos que se lo pida explícito, a diferencia del evaluador tiered
-    // (RateLimitAttribute.WriteRateLimitResponseAsync, §6.3 del plan). Solo Retry-After — el
-    // resto de headers X-RateLimit-* del path tiered están atados a policy/tenant/capa,
-    // conceptos que este limiter pre-auth por-IP no tiene.
-    options.OnRejected = async (context, ct) =>
-    {
-        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
-            context.HttpContext.Response.Headers.RetryAfter = ((int)retryAfter.TotalSeconds).ToString();
-        await ValueTask.CompletedTask;
-    };
+    // Mismo 429 que el evaluador tiered: Retry-After + body con retryAfterSeconds. Los headers
+    // X-RateLimit-* quedan solo en el tiered (atados a tenant/capa, que este limiter por IP no tiene).
+    options.UseTaxVisionRejectionResponse();
 
     options.AddPolicy(
         "public-signature",
@@ -114,7 +104,7 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
@@ -141,7 +131,7 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
@@ -199,6 +189,8 @@ builder.Host.UseWolverine(options =>
 {
     // Descubre consumers y handlers en el assembly Application.
     options.Discovery.IncludeAssembly(typeof(TenantCreatedConsumer).Assembly);
+    // P2 — consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

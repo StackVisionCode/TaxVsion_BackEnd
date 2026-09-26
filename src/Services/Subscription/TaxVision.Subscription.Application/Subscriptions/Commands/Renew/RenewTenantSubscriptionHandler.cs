@@ -57,7 +57,7 @@ public static class RenewTenantSubscriptionHandler
 
         return subscription.CompleteRenewal(
             renewal.Id,
-            externalPaymentReference: "manual-admin-renewal",
+            externalPaymentReference: "platform-support-renewal",
             actorUserId,
             nowUtc
         );

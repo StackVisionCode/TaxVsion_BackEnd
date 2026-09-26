@@ -60,6 +60,22 @@ public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext co
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Restaura una carpeta borrada (y todo su contenido) desde la papelera.</summary>
+    [HttpPost("restore-folder/{folderId:guid}")]
+    [RateLimit("cloudstorage.g.recycle_bin_restore")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RestoreFolder(Guid folderId, CancellationToken ct)
+    {
+        if (!User.TryGet(out var tenantId, out var actorId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new RestoreFolderCommand(tenantId, actorId, folderId, AuditContext()),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpDelete("empty")]
     [RateLimit("cloudstorage.i.recycle_bin_empty")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]

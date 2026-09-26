@@ -4,6 +4,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Application.CentralLogin.Commands;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -18,7 +19,12 @@ namespace TaxVision.Auth.Api.Controllers;
 [Route("auth")]
 public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
 {
-    public sealed record DiscoverLoginRequest(string Email, string Password, string? DeviceName = null);
+    public sealed record DiscoverLoginRequest(
+        string Email,
+        string Password,
+        string? DeviceName = null,
+        UserAccountKind? AccountKind = null
+    );
 
     /// <summary>Paso 1: password contra cada oficina. Devuelve vale directo (1 oficina, sin MFA) o selector.</summary>
     [HttpPost("discover-login")]
@@ -30,13 +36,23 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> DiscoverLogin(DiscoverLoginRequest request, CancellationToken ct)
     {
-        var command = new DiscoverLoginCommand(request.Email, request.Password, request.DeviceName);
+        var command = new DiscoverLoginCommand(
+            request.Email,
+            request.Password,
+            request.DeviceName,
+            request.AccountKind
+        );
         var result = await bus.InvokeAsync<Result<DiscoverLoginResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record HandoffRequest(Guid DiscoverySessionRef, Guid ChosenTenantId, string? MfaCode = null);
+    public sealed record HandoffRequest(
+        Guid DiscoverySessionRef,
+        Guid ChosenTenantId,
+        string? MfaCode = null,
+        UserAccountKind? AccountKind = null
+    );
 
     /// <summary>Paso 2 (solo con selector/MFA): elige oficina, resuelve MFA y emite el vale.</summary>
     [HttpPost("session/handoff")]
@@ -51,7 +67,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
         var command = new IssueHandoffTicketCommand(
             request.DiscoverySessionRef,
             request.ChosenTenantId,
-            request.MfaCode
+            request.MfaCode,
+            request.AccountKind
         );
         var result = await bus.InvokeAsync<Result<HandoffTicketView>>(command, ct);
 

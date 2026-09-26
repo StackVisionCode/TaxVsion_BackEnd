@@ -21,13 +21,6 @@ public static class EntitlementSnapshotBuilder
     // Estados que dan acceso: se mantiene el acceso durante toda la ventana de morosidad
     // (PastDue = reintento de cobro, GracePeriod = gracia) para no cortar por un blip de pago.
     // Fuera de este conjunto (Draft/Suspended/Cancelled/Expired) los módulos se apagan (fail-closed).
-    private static readonly SubscriptionStatus[] AccessGrantingStatuses =
-    [
-        SubscriptionStatus.Trialing,
-        SubscriptionStatus.Active,
-        SubscriptionStatus.PastDue,
-        SubscriptionStatus.GracePeriod,
-    ];
 
     public static async Task<Result<TenantEntitlementSnapshot>> BuildAsync(
         Guid tenantId,
@@ -55,7 +48,7 @@ public static class EntitlementSnapshotBuilder
 
         // Enforcement status-aware: si la base no da acceso, los módulos del plan se apagan y
         // los add-ons (dependientes) no cuentan. Los límites/cuotas se conservan (el gate es por módulo).
-        var grantsAccess = Array.IndexOf(AccessGrantingStatuses, subscription.Status) >= 0;
+        var grantsAccess = SubscriptionAccess.GrantsAccess(subscription.Status);
 
         var entries = SeedEntriesFromPlan(planVersion, grantsAccess);
         if (grantsAccess)

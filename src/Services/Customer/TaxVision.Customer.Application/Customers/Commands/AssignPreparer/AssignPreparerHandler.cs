@@ -53,6 +53,7 @@ public static class AssignPreparerHandler
                 AssignedByUserId = cmd.AssignedByUserId,
             }
         );
+        await bus.PublishAsync(CustomerAssignmentSnapshot.From(customer, correlation.CorrelationId));
 
         return Result.Success();
     }

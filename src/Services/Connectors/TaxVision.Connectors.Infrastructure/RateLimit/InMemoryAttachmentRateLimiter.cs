@@ -8,13 +8,13 @@ namespace TaxVision.Connectors.Infrastructure.RateLimit;
 public sealed class InMemoryAttachmentRateLimiter(IOptions<AttachmentRateLimiterOptions> options)
     : IAttachmentRateLimiter
 {
-    private readonly ConcurrentDictionary<Guid, (long Minute, int Count)> _windows = new();
+    private readonly ConcurrentDictionary<(Guid TenantId, Guid AccountId), (long Minute, int Count)> _windows = new();
 
-    public Task<bool> TryAcquireAsync(Guid tenantId, CancellationToken ct = default)
+    public Task<bool> TryAcquireAsync(Guid tenantId, Guid accountId, CancellationToken ct = default)
     {
         var nowMinute = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
         var updated = _windows.AddOrUpdate(
-            tenantId,
+            (tenantId, accountId),
             _ => (nowMinute, 1),
             (_, existing) => existing.Minute == nowMinute ? (existing.Minute, existing.Count + 1) : (nowMinute, 1)
         );

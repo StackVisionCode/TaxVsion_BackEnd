@@ -37,10 +37,13 @@ public sealed class EventBasedEmailDispatchGateway(
         // reintentos porque viene del evento de dominio original, no de un Guid recién generado.
         if (request.RelatedEventId is { } relatedEventId)
         {
+            // El destinatario es parte de la clave: un evento con fan-out a varios firmantes (mismo
+            // evento+plantilla, distinto correo) NO es un reintento y no debe deduparse.
             var existing = await logRepository.GetByRelatedEventIdAsync(
                 request.TenantId,
                 relatedEventId,
                 request.TemplateKey,
+                request.To,
                 ct
             );
             if (existing is not null)
@@ -102,8 +105,15 @@ public sealed class EventBasedEmailDispatchGateway(
         // llegaran a correr esta creación en paralelo para el mismo evento (carrera que el chequeo
         // de arriba no cierra del todo, al no tener lock), SqlIdempotencyGuard (Postmaster) todavía
         // puede dedupear el envío real porque ambas calcularían la MISMA key.
+        // Clave por-destinatario: si cayera a RelatedEventId solo, Postmaster (SqlIdempotencyGuard, que
+        // reserva por TenantId+IdempotencyKey) volvería a colapsar los correos de un fan-out multi-firmante.
         var idempotencyKey =
-            request.IdempotencyKey ?? request.RelatedEventId?.ToString("N") ?? $"{log.Id:N}:{attempt.Id:N}";
+            request.IdempotencyKey
+            ?? (
+                request.RelatedEventId is { } eventKey
+                    ? $"{eventKey:N}:{request.To.ToLowerInvariant()}"
+                    : $"{log.Id:N}:{attempt.Id:N}"
+            );
         var evt = new NotificationsEmailSendRequestedIntegrationEvent
         {
             TenantId = request.TenantId,

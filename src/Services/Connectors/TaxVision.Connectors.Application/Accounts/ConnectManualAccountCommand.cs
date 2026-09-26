@@ -17,5 +17,8 @@ public sealed record ConnectManualAccountCommand(
     int SmtpPort,
     bool SmtpUseStartTls,
     string SmtpUsername,
-    string SmtpPassword
+    string SmtpPassword,
+    // true = buzón de oficina (compartido; el email puede diferir del login → guard NO aplica);
+    // false = personal (el email debe ser el del login). Default false.
+    bool AsOffice = false
 );

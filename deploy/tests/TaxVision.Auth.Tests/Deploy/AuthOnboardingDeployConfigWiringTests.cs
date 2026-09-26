@@ -43,7 +43,9 @@ public sealed class AuthOnboardingDeployConfigWiringTests
     {
         var appsettings = ReadRepoFile("src/Services/Auth/Api/appsettings.json");
 
-        Assert.Contains("\"RegistrationUrlBase\": \"http://localhost:4200\"", appsettings);
+        // El Landing corre en 4201 en local; 4200 es el CRM, que solo reenvía /register* al Landing.
+        Assert.Contains("\"RegistrationUrlBase\": \"http://localhost:4201\"", appsettings);
+        Assert.DoesNotContain("\"RegistrationUrlBase\": \"http://localhost:4200\"", appsettings);
         Assert.DoesNotContain("\"RegistrationUrlBase\": \"http://localhost:5173\"", appsettings);
     }
 

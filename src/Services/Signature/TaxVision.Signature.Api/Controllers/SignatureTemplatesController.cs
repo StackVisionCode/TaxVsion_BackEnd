@@ -16,6 +16,7 @@ using TaxVision.Signature.Application.Templates.Commands.Archive;
 using TaxVision.Signature.Application.Templates.Commands.Create;
 using TaxVision.Signature.Application.Templates.Commands.Instantiate;
 using TaxVision.Signature.Application.Templates.Commands.PlaceField;
+using TaxVision.Signature.Application.Templates.Commands.PreparerFields;
 using TaxVision.Signature.Application.Templates.Commands.PublishTemplate;
 using TaxVision.Signature.Application.Templates.Commands.RemoveField;
 using TaxVision.Signature.Application.Templates.Commands.RemoveSlot;
@@ -84,7 +85,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<ListTemplatesResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListTemplatesResult>> List(
         [FromQuery] SignatureTemplateStatus? status = null,
-        [FromQuery] SignatureCategory? category = null,
+        [FromQuery] string? category = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken ct = default
@@ -341,6 +342,58 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveTemplateFieldCommand(tenantId, id, fieldId), ct);
+        return MapResult(result);
+    }
+
+    // ---------- POST /signature/templates/{id}/preparer-fields ----------
+    // Predefine el campo de firma del preparador; "from template" lo hereda en la solicitud.
+    [HttpPost("{id:guid}/preparer-fields")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType<TemplatePreparerFieldCreatedResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PlacePreparerField(
+        [FromRoute] Guid id,
+        [FromBody] PlaceTemplatePreparerFieldBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var cmd = new PlaceTemplatePreparerFieldCommand(
+            tenantId,
+            id,
+            body.Kind,
+            body.Page,
+            body.X,
+            body.Y,
+            body.Width,
+            body.Height,
+            body.Label
+        );
+        var result = await bus.InvokeAsync<Result<TemplatePreparerFieldCreatedResponse>>(cmd, ct);
+        return result.IsSuccess
+            ? Created($"/signature/templates/{id}/preparer-fields/{result.Value.Id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/templates/{id}/preparer-fields/{fieldId} ----------
+    [HttpDelete("{id:guid}/preparer-fields/{fieldId:guid}")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RemovePreparerField(
+        [FromRoute] Guid id,
+        [FromRoute] Guid fieldId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RemoveTemplatePreparerFieldCommand(tenantId, id, fieldId), ct);
         return MapResult(result);
     }
 

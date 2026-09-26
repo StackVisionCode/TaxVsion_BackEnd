@@ -142,7 +142,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"user rate limit exceeded. Retry after 42 seconds.\",\n  \"policy\": \"customer.g.create\",\n  \"layer\": \"user\"\n}"
+              "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 42 seconds.\",\n  \"retryAfterSeconds\": 42,\n  \"policy\": \"customer.g.create\",\n  \"layer\": \"user\"\n}"
             }
           ]
         },
@@ -213,7 +213,134 @@
               ]
             }
           },
-          "response": []
+          "response": [
+            {
+              "name": "RateLimit.Exceeded (429) — listado H, token bucket",
+              "originalRequest": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{accessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "customers"
+                  ],
+                  "query": [
+                    {
+                      "key": "term",
+                      "value": "maria"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                }
+              },
+              "status": "Too Many Requests",
+              "code": 429,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Retry-After",
+                  "value": "1"
+                },
+                {
+                  "key": "X-RateLimit-Policy",
+                  "value": "customer.h.search"
+                },
+                {
+                  "key": "X-RateLimit-Layer",
+                  "value": "user"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "0"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 1 second.\",\n  \"retryAfterSeconds\": 1,\n  \"policy\": \"customer.h.search\",\n  \"layer\": \"user\"\n}"
+            },
+            {
+              "name": "LoadShedding.Active (503) — Gateway sobrecargado",
+              "originalRequest": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{accessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "customers"
+                  ],
+                  "query": [
+                    {
+                      "key": "term",
+                      "value": "maria"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                }
+              },
+              "status": "Service Unavailable",
+              "code": 503,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Retry-After",
+                  "value": "5"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"code\": \"LoadShedding.Active\",\n  \"message\": \"We're receiving an unusually high number of requests. Please try again in 5 seconds.\",\n  \"retryAfterSeconds\": 5\n}"
+            }
+          ]
         },
         {
           "name": "UpdateCustomer",
@@ -1493,7 +1620,8 @@
                 "{{customerId}}",
                 "portal-invitations"
               ]
-            }
+            },
+            "description": "Pide a Auth el acceso al portal del cliente con su email principal. 200 con status: Invited (correo enviado), Resent (había una invitación pendiente y se reenvió) o AlreadyActive (ya tiene portal; no se envía nada). 409 Auth.PortalEmailInUse (el email ya es del portal de otro cliente) o Auth.PortalAccessDeactivated (reactivar en vez de invitar); 429 Invitation.ResendLimit; 503 Customer.PortalAccessUnavailable. Un empleado de la oficina puede ser invitado como cliente con el mismo email."
           },
           "response": []
         },

@@ -98,8 +98,19 @@ public sealed class ValidateInvitationHandlerTests
         public Task<Invitation?> GetByIdAsync(Guid invitationId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<bool> HasPendingAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> HasPendingAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<Invitation?> GetPendingAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(Invitation invitation, CancellationToken ct = default) =>
             throw new NotSupportedException();

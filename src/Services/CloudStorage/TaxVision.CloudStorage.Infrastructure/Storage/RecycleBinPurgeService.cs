@@ -34,6 +34,7 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var files = scope.ServiceProvider.GetRequiredService<IFileObjectRepository>();
+            var folders = scope.ServiceProvider.GetRequiredService<IFolderRepository>();
             var limits = scope.ServiceProvider.GetRequiredService<IStorageLimitRepository>();
             var audit = scope.ServiceProvider.GetRequiredService<IStorageAuditRepository>();
             var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
@@ -65,10 +66,23 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
                 );
             }
 
-            if (expired.Count > 0)
+            // Carpetas borradas cuya retención venció: los archivos del batch ya los limpió el paso de
+            // arriba (comparten SoftDeleteExpiresAtUtc); acá solo se eliminan las filas de carpeta.
+            var expiredFolderRoots = await folders.ListPurgeableRootsPastRetentionAsync(clock.UtcNow, 100, ct);
+            foreach (var root in expiredFolderRoots)
+            {
+                foreach (var folder in await folders.ListBatchAsync(root.TenantId, root.Id, ct))
+                    folders.Remove(folder);
+            }
+
+            if (expired.Count > 0 || expiredFolderRoots.Count > 0)
             {
                 await unitOfWork.SaveChangesAsync(ct);
-                logger.LogInformation("Purged {Count} CloudStorage files past recycle-bin retention.", expired.Count);
+                logger.LogInformation(
+                    "Purged {Files} files and {Folders} folder trees past recycle-bin retention.",
+                    expired.Count,
+                    expiredFolderRoots.Count
+                );
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

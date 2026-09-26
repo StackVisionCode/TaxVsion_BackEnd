@@ -42,7 +42,7 @@ public static class RenewAddOnHandler
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
-            "Add-on {TenantAddOnId} manually renewed (requested by {UserId}).",
+            "Add-on {TenantAddOnId} renewed without charge by platform support {UserId}.",
             addOn.Id,
             command.RequestedByUserId
         );
@@ -62,7 +62,12 @@ public static class RenewAddOnHandler
         if (renewal is null)
             return Result.Failure(new Error("AddOn.RenewalNotFound", "Renewal was not scheduled."));
 
-        return addOn.CompleteRenewal(renewal.Id, externalPaymentReference: "manual-admin-renewal", actorUserId, nowUtc);
+        return addOn.CompleteRenewal(
+            renewal.Id,
+            externalPaymentReference: "platform-support-renewal",
+            actorUserId,
+            nowUtc
+        );
     }
 
     private static TenantAddOnRenewal? FindRenewalByKey(TenantAddOn addOn, string idempotencyKey)

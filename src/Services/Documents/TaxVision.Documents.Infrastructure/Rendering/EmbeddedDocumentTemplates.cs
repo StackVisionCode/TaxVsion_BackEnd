@@ -16,6 +16,12 @@ internal static class EmbeddedDocumentTemplates
             return true;
         }
 
+        if (string.Equals(templateKey, "saas.receipt.v1", StringComparison.OrdinalIgnoreCase) && version == 1)
+        {
+            source = SaaSReceiptV1;
+            return true;
+        }
+
         if (string.Equals(templateKey, "onboarding.receipt.v1", StringComparison.OrdinalIgnoreCase) && version == 1)
         {
             source = OnboardingReceiptV1;
@@ -191,6 +197,168 @@ internal static class EmbeddedDocumentTemplates
     // PayFlow (Fase 10). Datos bajo la variable "receipt" (ver ProcessOnboardingReceiptGenerationHandler).
     // Emisor = la plataforma (issuer.*, config PlatformIssuer). El logo (issuer.logo) es el system header
     // logo que administra el PlatformAdmin en Scribe — la misma marca que usan los correos.
+    /// <summary>Recibo de una compra SaaS de un tenant existente. Mismo diseño que el de onboarding —
+    /// le factura a la oficina en vez de a una persona, y el concepto es lo que se cobró.</summary>
+    private const string SaaSReceiptV1 = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>Payment receipt {{ receipt.transactionReferenceMask }}</title>
+          <style>
+            :root {
+              --brand: #0074d4; --brand-dark: #0a2540; --ink: #1f2933; --muted: #64748b;
+              --line: #e6eaf0; --ok: #15803d; --ok-bg: #f0fdf4; --ok-border: #bbf7d0;
+            }
+            * { box-sizing: border-box; }
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; color: var(--ink); margin: 0; padding: 40px 44px; font-size: 12px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+            .top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 20px; }
+            .brand { display: flex; align-items: center; gap: 12px; }
+            .brand .logo { max-height: 44px; max-width: 180px; display: block; }
+            .brand .wordmark { font-size: 18px; font-weight: 800; letter-spacing: .2px; color: var(--brand-dark); line-height: 1.1; }
+            .doc-meta { text-align: right; }
+            .doc-meta .kicker { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--brand); }
+            .doc-meta h1 { margin: 2px 0 8px; font-size: 22px; font-weight: 800; color: var(--brand-dark); letter-spacing: .3px; }
+            .doc-meta .ref { font-size: 11px; color: var(--muted); }
+            .doc-meta .ref b { color: var(--ink); font-weight: 600; }
+            .accent { height: 4px; border-radius: 3px; background: linear-gradient(90deg, var(--brand) 0%, #4aa3e8 60%, #bfe0f7 100%); }
+
+            .paid { margin: 22px 0 26px; display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--ok-bg); border: 1px solid var(--ok-border); border-radius: 12px; }
+            .paid .check { width: 30px; height: 30px; border-radius: 999px; background: var(--ok); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; flex-shrink: 0; }
+            .paid .txt strong { display: block; color: var(--ok); font-size: 13px; }
+            .paid .txt span { color: #3f6b4f; font-size: 11px; }
+            .paid .amt { margin-left: auto; text-align: right; }
+            .paid .amt .n { font-size: 22px; font-weight: 800; color: var(--brand-dark); letter-spacing: .2px; }
+            .paid .amt .c { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+            .parties { display: flex; gap: 28px; margin-bottom: 26px; }
+            .party { flex: 1; }
+            .party h2 { font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 8px; font-weight: 700; }
+            .party .name { font-size: 13px; font-weight: 700; color: var(--brand-dark); }
+            .party p { margin: 3px 0; color: #47546a; line-height: 1.5; }
+            .party .sub { color: var(--muted); font-size: 10.5px; }
+
+            table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+            thead th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; padding: 0 0 10px; border-bottom: 1.5px solid var(--brand-dark); }
+            thead th.num { text-align: right; }
+            tbody td { padding: 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+            tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+            .item-name { font-weight: 700; color: var(--brand-dark); font-size: 12.5px; }
+            .item-desc { color: var(--muted); font-size: 10.5px; margin-top: 3px; }
+
+            .totals { width: 260px; margin-left: auto; margin-top: 14px; }
+            .totals .r { display: flex; justify-content: space-between; padding: 5px 0; color: #47546a; }
+            .totals .grand { margin-top: 8px; padding-top: 12px; border-top: 2px solid var(--brand-dark); font-size: 15px; font-weight: 800; color: var(--brand-dark); }
+            .totals .grand .g { font-variant-numeric: tabular-nums; }
+
+            .details { margin-top: 30px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+            .details .h { background: #f7f9fc; padding: 10px 16px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; border-bottom: 1px solid var(--line); }
+            .details .grid { display: flex; flex-wrap: wrap; }
+            .details .cell { width: 50%; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+            .details .cell:nth-child(odd) { border-right: 1px solid var(--line); }
+            .details .cell .k { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+            .details .cell .v { font-size: 12px; color: var(--ink); font-weight: 600; }
+            .details .cell .v code { font-family: 'SF Mono', Consolas, monospace; font-size: 10.5px; color: var(--brand-dark); word-break: break-all; }
+
+            .foot { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+            .foot .legal { font-size: 9.5px; color: var(--muted); line-height: 1.6; max-width: 64%; }
+            .foot .legal b { color: #47546a; }
+            .foot .verify { text-align: right; font-size: 9px; color: var(--muted); }
+            .foot .verify .hash { font-family: 'SF Mono', Consolas, monospace; color: #94a3b8; word-break: break-all; max-width: 190px; display: inline-block; }
+          </style>
+        </head>
+        <body>
+          <div class="top">
+            <div class="brand">
+              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% endif %}
+              <div class="wordmark">{{ receipt.issuer.name }}</div>
+            </div>
+            <div class="doc-meta">
+              <div class="kicker">Payment receipt</div>
+              <h1>PAID</h1>
+              <div class="ref"><b>Ref.</b> {{ receipt.transactionReferenceMask }}</div>
+              <div class="ref"><b>Date</b> {{ receipt.paidAt }}</div>
+            </div>
+          </div>
+          <div class="accent"></div>
+
+          <div class="paid">
+            <div class="check">&#10003;</div>
+            <div class="txt">
+              <strong>Payment confirmed</strong>
+              <span>This document is your official proof of payment.</span>
+            </div>
+            <div class="amt">
+              <div class="n">{{ receipt.price }}</div>
+              <div class="c">{{ receipt.currency }}</div>
+            </div>
+          </div>
+
+          <div class="parties">
+            <div class="party">
+              <h2>Billed to</h2>
+              <div class="name">{{ receipt.officeName }}</div>
+              <p class="sub">Office</p>
+            </div>
+            <div class="party">
+              <h2>Issued by</h2>
+              <div class="name">{{ receipt.issuer.name }}</div>
+              {% if receipt.issuer.taxId != "" %}<p>{{ receipt.issuer.taxId }}</p>{% endif %}
+              {% if receipt.issuer.addressLine1 != "" %}<p>{{ receipt.issuer.addressLine1 }}, {{ receipt.issuer.city }}, {{ receipt.issuer.state }} {{ receipt.issuer.postalCode }}, {{ receipt.issuer.country }}</p>{% endif %}
+              <p class="sub">{{ receipt.issuer.email }}{% if receipt.issuer.website != "" %} &middot; {{ receipt.issuer.website }}{% endif %}</p>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th class="num">Qty</th>
+                <th class="num">Unit price</th>
+                <th class="num">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="item-name">{{ receipt.description }}</div>
+                  <div class="item-desc">{{ receipt.issuer.name }} subscription</div>
+                </td>
+                <td class="num">{% if receipt.quantity != "" %}{{ receipt.quantity }}{% else %}1{% endif %}</td>
+                <td class="num">{% if receipt.unitPrice != "" %}{{ receipt.unitPrice }} {{ receipt.currency }}{% else %}{{ receipt.price }} {{ receipt.currency }}{% endif %}</td>
+                <td class="num">{{ receipt.price }} {{ receipt.currency }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <div class="r"><span>Subtotal</span><span>{{ receipt.price }} {{ receipt.currency }}</span></div>
+            <div class="r grand"><span>Total paid</span><span class="g">{{ receipt.price }} {{ receipt.currency }}</span></div>
+          </div>
+
+          <div class="details">
+            <div class="h">Payment details</div>
+            <div class="grid">
+              <div class="cell"><div class="k">Payment date</div><div class="v">{{ receipt.paidAt }}</div></div>
+              <div class="cell"><div class="k">Transaction reference</div><div class="v"><code>{{ receipt.transactionReferenceMask }}</code></div></div>
+              <div class="cell"><div class="k">Status</div><div class="v" style="color:#15803d;">Confirmed</div></div>
+            </div>
+          </div>
+
+          <div class="foot">
+            <div class="legal">
+              <b>{{ receipt.issuer.name }}</b> issues this receipt for a payment that has already been confirmed. No further action is required. Please keep this document for your records.{% if receipt.issuer.email != "" %} Questions? {{ receipt.issuer.email }}.{% endif %}
+            </div>
+            <div class="verify">
+              Transaction ref.<br />
+              <span class="hash">{{ receipt.transactionReferenceMask }}</span>
+            </div>
+          </div>
+        </body>
+        </html>
+        """;
+
     private const string OnboardingReceiptV1 = """
         <!DOCTYPE html>
         <html lang="en">

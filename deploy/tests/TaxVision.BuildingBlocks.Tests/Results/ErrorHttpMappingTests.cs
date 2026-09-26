@@ -22,6 +22,11 @@ public sealed class ErrorHttpMappingTests
     [InlineData("Auth.HandoffInvalid", StatusCodes.Status401Unauthorized)]
     [InlineData("File.Forbidden", StatusCodes.Status403Forbidden)]
     [InlineData("Auth.SubscriptionInactive", StatusCodes.Status403Forbidden)]
+    [InlineData("Folder.NotDeleted", StatusCodes.Status404NotFound)]
+    [InlineData("TenantEmailAccount.NotFound", StatusCodes.Status404NotFound)]
+    [InlineData("ShareLink.LinkSharingDisabled", StatusCodes.Status403Forbidden)]
+    [InlineData("ShareLink.PasswordRequiredForLinkShare", StatusCodes.Status400BadRequest)]
+    [InlineData("ShareLink.ShareLifetimeExceedsMax", StatusCodes.Status400BadRequest)]
     [InlineData("Role.NameConflict", StatusCodes.Status409Conflict)]
     [InlineData("Codes.CodeQuote.Expired", StatusCodes.Status410Gone)]
     [InlineData("File.ZipTooLarge", StatusCodes.Status413PayloadTooLarge)]
@@ -36,6 +41,17 @@ public sealed class ErrorHttpMappingTests
     [InlineData("Codigo.Que.Nadie.Mapeo")]
     [InlineData("")]
     public void UnCodigoDesconocido_CaeA400(string code) => Assert.Equal(StatusCodes.Status400BadRequest, Map(code));
+
+    // Throttles de cara al usuario que antes caían al 400 por defecto (o a 401 en el accept de
+    // invitación): con 429 el front sabe que es "espera y reintenta", no un error de datos.
+    [Theory]
+    [InlineData("Onboarding.OtpRateLimited")]
+    [InlineData("Onboarding.ResendCooldown")]
+    [InlineData("Signature.Signer.PinLocked")]
+    [InlineData("Signature.Signer.ChallengeCooldown")]
+    [InlineData("Auth.InvitationAcceptThrottled")]
+    public void ThrottlesDeUsuario_MapeanA429(string code) =>
+        Assert.Equal(StatusCodes.Status429TooManyRequests, Map(code));
 
     [Fact]
     public void ErrorNone_CaeA400_YNoRevienta() =>

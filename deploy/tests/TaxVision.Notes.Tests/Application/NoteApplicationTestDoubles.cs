@@ -19,7 +19,17 @@ internal sealed class FakeNoteRepository : INoteRepository
 {
     private readonly Dictionary<Guid, Note> _byId = [];
 
+    // P2 — asignaciones cliente↔actor que el fake reconoce (para el gate de GetNote). Vacío = nadie asignado.
+    public HashSet<(Guid CustomerId, Guid UserId)> Assignments { get; } = [];
+
     public void Seed(Note note) => _byId[note.Id] = note;
+
+    public Task<bool> IsCustomerAssignedAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid actorUserId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Assignments.Contains((customerId, actorUserId)));
 
     public Task<Note?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         Task.FromResult(_byId.TryGetValue(id, out var note) && note.TenantId == tenantId ? note : null);
@@ -37,6 +47,7 @@ internal sealed class FakeNoteRepository : INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     )
     {
@@ -75,6 +86,7 @@ internal sealed class FakeNoteRepository : INoteRepository
         bool actorHasViewAll,
         int page,
         int size,
+        Guid? assignedToUserId = null,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
@@ -139,6 +151,29 @@ internal sealed class FakeCustomerDirectoryRepository(bool exists = true) : ICus
         string displayName,
         CancellationToken ct = default
     ) => throw new NotImplementedException();
+}
+
+internal sealed class FakeOffboardedStaffRepository : IOffboardedStaffRepository
+{
+    private readonly Dictionary<(Guid TenantId, Guid UserId), OffboardedStaffProjection> _byKey = [];
+
+    public int AddCount { get; private set; }
+
+    public void MarkOffboarded(Guid tenantId, Guid userId) =>
+        _byKey[(tenantId, userId)] = OffboardedStaffProjection.Create(tenantId, userId, DateTime.UtcNow);
+
+    public Task<bool> IsOffboardedAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.ContainsKey((tenantId, userId)));
+
+    public Task<OffboardedStaffProjection?> GetAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.GetValueOrDefault((tenantId, userId)));
+
+    public Task AddAsync(OffboardedStaffProjection projection, CancellationToken ct = default)
+    {
+        _byKey[(projection.TenantId, projection.UserId)] = projection;
+        AddCount++;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class PassThroughHtmlSanitizer : IHtmlSanitizer

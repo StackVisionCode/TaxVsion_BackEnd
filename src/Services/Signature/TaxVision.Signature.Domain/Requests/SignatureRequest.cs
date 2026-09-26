@@ -30,6 +30,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MinTitleLength = 3;
     public const int MaxTitleLength = 300;
     public const int MaxDescriptionLength = 2000;
+
+    /// <summary>Máximo del nombre de categoría (sistema o custom del tenant). Guardado como texto congelado.</summary>
+    public const int MaxCategoryLength = 64;
     public const int MinSigners = 1;
     public const int MaxSigners = 50;
 
@@ -40,13 +43,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MaxRemindersPerRequest = 20;
 
     private readonly List<Signer> _signers = [];
+    private readonly List<PreparerField> _preparerFields = [];
 
     private SignatureRequest() { }
 
     public Guid CreatedByUserId { get; private set; }
     public string Title { get; private set; } = default!;
     public string? Description { get; private set; }
-    public SignatureCategory Category { get; private set; }
+
+    /// <summary>Nombre de la categoría (de sistema o custom del tenant) congelado como texto en la solicitud.</summary>
+    public string Category { get; private set; } = default!;
     public SignatureRequestStatus Status { get; private set; }
 
     public Guid OriginalFileId { get; private set; }
@@ -95,6 +101,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public Guid? PreparerSignedByUserId { get; private set; }
     public DateTime? PreparerSignedAtUtc { get; private set; }
     public bool IsPreparerSigned => PreparerSignedByUserId is not null;
+
+    /// <summary>
+    /// Snapshot inmutable del FileId de la firma reutilizable elegida para estampar por el preparador.
+    /// Se congela al colocar/elegir (no un FK a SignatureProfile) para sobrevivir a renombrar/borrar el
+    /// perfil antes del sellado, que ocurre al completarse (posiblemente días después).
+    /// </summary>
+    public Guid? PreparerSignatureFileId { get; private set; }
+
+    /// <summary>Campos del preparador colocados sobre el documento (su firma se estampa al sellar).</summary>
+    public IReadOnlyList<PreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
     public int TokenExpirationHours { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
@@ -148,7 +164,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Guid createdByUserId,
         string title,
         string? description,
-        SignatureCategory category,
+        string category,
         Guid originalFileId,
         int tokenExpirationHours,
         bool requiresSequentialSigning,
@@ -171,6 +187,10 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (baseValidation.IsFailure)
             return Result.Failure<SignatureRequest>(baseValidation.Error);
 
+        var categoryCheck = ValidateCategory(category);
+        if (categoryCheck.IsFailure)
+            return Result.Failure<SignatureRequest>(categoryCheck.Error);
+
         var now = DateTime.UtcNow;
         var request = new SignatureRequest
         {
@@ -178,10 +198,11 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             CreatedByUserId = createdByUserId,
             Title = title.Trim(),
             Description = NormalizeDescription(description),
-            Category = category,
+            Category = category.Trim(),
             Status = SignatureRequestStatus.Draft,
             OriginalFileId = originalFileId,
             TokenExpirationHours = tokenExpirationHours,
+            // Provisional: el borrador no expira; Send lo recalcula desde la fecha de envío.
             ExpiresAtUtc = now.AddHours(tokenExpirationHours),
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
@@ -200,6 +221,58 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         };
         request.SetTenant(tenantId);
         return Result.Success(request);
+    }
+
+    // ------------------------------------------------------------------
+    // Edición de metadata del borrador (solo Draft/Ready)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Edita la metadata del borrador: título, descripción, categoría y horas de expiración del token.
+    /// Solo en Draft/Ready. Las horas actualizan la expiración provisional; Send la recalcula desde el envío.
+    /// </summary>
+    public Result UpdateMetadata(string title, string? description, string category, int tokenExpirationHours)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (string.IsNullOrWhiteSpace(title))
+            return Result.Failure(new Error("Signature.Request.Title", "Title is required."));
+
+        var trimmedTitle = title.Trim();
+        if (trimmedTitle.Length is < MinTitleLength or > MaxTitleLength)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.Title",
+                    $"Title must be between {MinTitleLength} and {MaxTitleLength} characters."
+                )
+            );
+
+        if (description is not null && description.Length > MaxDescriptionLength)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.Description",
+                    $"Description cannot exceed {MaxDescriptionLength} characters."
+                )
+            );
+
+        if (tokenExpirationHours is < 1 or > 720)
+            return Result.Failure(
+                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
+            );
+
+        var categoryCheck = ValidateCategory(category);
+        if (categoryCheck.IsFailure)
+            return categoryCheck;
+
+        Title = trimmedTitle;
+        Description = NormalizeDescription(description);
+        Category = category.Trim();
+        TokenExpirationHours = tokenExpirationHours;
+        ExpiresAtUtc = DateTime.UtcNow.AddHours(tokenExpirationHours);
+        Touch();
+        return Result.Success();
     }
 
     // ------------------------------------------------------------------
@@ -478,6 +551,58 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     }
 
     // ------------------------------------------------------------------
+    // Preparer fields — placement del canal paralelo del preparador
+    // ------------------------------------------------------------------
+
+    /// <summary>Coloca un campo del preparador (solo Draft/Ready). Su firma se estampa al sellar.</summary>
+    public Result<PreparerField> PlacePreparerField(SignatureFieldKind kind, FieldPosition position, string? label)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return Result.Failure<PreparerField>(editable.Error);
+
+        var fieldResult = PreparerField.Create(Id, kind, position, label);
+        if (fieldResult.IsFailure)
+            return fieldResult;
+
+        _preparerFields.Add(fieldResult.Value);
+        Touch();
+        return fieldResult;
+    }
+
+    public Result RemovePreparerField(Guid fieldId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        var field = _preparerFields.Find(f => f.Id == fieldId);
+        if (field is null)
+            return Result.Failure(
+                new Error("Signature.PreparerField.NotFound", "The preparer field does not exist in this request.")
+            );
+
+        _preparerFields.Remove(field);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>Congela qué firma reutilizable se estampará por el preparador (solo Draft/Ready).</summary>
+    public Result SetPreparerSignature(Guid signatureFileId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (signatureFileId == Guid.Empty)
+            return Result.Failure(new Error("Signature.PreparerField.File", "A signature file is required."));
+
+        PreparerSignatureFileId = signatureFileId;
+        Touch();
+        return Result.Success();
+    }
+
+    // ------------------------------------------------------------------
     // Progresión de estado
     // ------------------------------------------------------------------
 
@@ -521,6 +646,8 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
         Status = SignatureRequestStatus.InProgress;
         SentAtUtc = sentAtUtc;
+        // El reloj de expiración corre desde el envío, no desde la creación: los borradores no expiran.
+        ExpiresAtUtc = sentAtUtc.AddHours(TokenExpirationHours);
         Touch();
         return Result.Success();
     }
@@ -1047,6 +1174,23 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>
+    /// Borrado permanente: sólo un borrador sin enviar (Draft o Ready). Una vez enviada la
+    /// solicitud se cancela, no se borra — hay firmantes, enlaces y auditoría de por medio.
+    /// </summary>
+    public Result EnsureCanBeDeleted()
+    {
+        if (Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready)
+            return Result.Success();
+
+        return Result.Failure(
+            new Error(
+                "Signature.Request.NotDeletable",
+                "Only an unsent draft can be deleted. Sent, completed, canceled or expired requests are kept for your records."
+            )
+        );
+    }
+
     // ------------------------------------------------------------------
     // Legal hold (Fase 9) — bloquea purga por retention hasta que se levante
     // ------------------------------------------------------------------
@@ -1277,6 +1421,19 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// enviada). Devuelve <see cref="Result.Failure"/> — NO lanza — para que la API responda 4xx en vez
     /// de 500 cuando el actor intenta editar una solicitud ya enviada/completada (p. ej. fijar el PIN).
     /// </summary>
+    // La existencia de la categoría (sistema o custom del tenant) la valida el handler contra el repo;
+    // aquí solo se guarda la forma (no vacía, dentro del largo).
+    private static Result ValidateCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return Result.Failure(new Error("Signature.Request.Category", "Category is required."));
+        if (category.Trim().Length > MaxCategoryLength)
+            return Result.Failure(
+                new Error("Signature.Request.Category", $"Category cannot exceed {MaxCategoryLength} characters.")
+            );
+        return Result.Success();
+    }
+
     private Result EnsureCanBeEdited() =>
         Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready
             ? Result.Success()

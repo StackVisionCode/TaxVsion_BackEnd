@@ -25,6 +25,7 @@ public static class PurchaseAddOnHandler
     public static async Task<Result<Guid>> Handle(
         PurchaseAddOnCommand command,
         ISubscriptionRepository subscriptions,
+        IPlanRepository plans,
         IAddOnDefinitionRepository addOnDefinitions,
         ISubscriptionTenantSettingsRepository settingsRepository,
         ITenantAddOnRepository tenantAddOns,
@@ -37,7 +38,17 @@ public static class PurchaseAddOnHandler
         CancellationToken ct
     )
     {
-        var validation = await ValidateRequestAsync(command, subscriptions, addOnDefinitions, settingsRepository, ct);
+        var validation = await AddOnPurchaseEligibility.EnsurePurchasableAsync(
+            command.TenantId,
+            command.AddOnCode,
+            command.Quantity,
+            subscriptions,
+            plans,
+            addOnDefinitions,
+            settingsRepository,
+            tenantAddOns,
+            ct
+        );
         if (validation.IsFailure)
             return Result.Failure<Guid>(validation.Error);
 
@@ -176,44 +187,4 @@ public static class PurchaseAddOnHandler
             }
         );
     }
-
-    private static async Task<
-        Result<(TenantSubscription Subscription, AddOnDefinition Definition)>
-    > ValidateRequestAsync(
-        PurchaseAddOnCommand command,
-        ISubscriptionRepository subscriptions,
-        IAddOnDefinitionRepository addOnDefinitions,
-        ISubscriptionTenantSettingsRepository settingsRepository,
-        CancellationToken ct
-    )
-    {
-        if (command.Quantity < 1)
-            return Fail("AddOn.InvalidQuantity", "Quantity must be at least 1.");
-
-        var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
-        if (subscription is null)
-            return Fail("Subscription.NotFound", "Subscription does not exist.");
-
-        if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
-            return Fail(
-                "Subscription.CannotPurchaseAddOns",
-                $"Cannot purchase add-ons while subscription is {subscription.Status}."
-            );
-
-        var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
-        if (settings is not null && !settings.AllowAddons)
-            return Fail("AddOn.NotAllowed", "This tenant does not allow add-on purchases.");
-
-        var definition = await addOnDefinitions.GetByCodeAsync(
-            command.AddOnCode?.Trim().ToLowerInvariant() ?? string.Empty,
-            ct
-        );
-        if (definition is null || definition.Status != AddOnDefinitionStatus.Published)
-            return Fail("AddOnDefinition.NotFound", "Add-on does not exist.");
-
-        return Result.Success((subscription, definition));
-    }
-
-    private static Result<(TenantSubscription, AddOnDefinition)> Fail(string code, string message) =>
-        Result.Failure<(TenantSubscription, AddOnDefinition)>(new Error(code, message));
 }

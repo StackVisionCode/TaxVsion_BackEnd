@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -10,6 +11,8 @@ using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Categories;
+using TaxVision.Signature.Application.Profiles.EffectiveSignature;
 using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
@@ -61,7 +64,13 @@ public static class DependencyInjection
         services.AddScoped<ISignatureRequestListCacheInvalidator>(sp =>
             (CachedSignatureRequestReadService)sp.GetRequiredService<ISignatureRequestReadService>()
         );
+        // Gate de visibilidad por asignación para el detalle (mismo criterio que el filtro de lista).
+        services.AddScoped<ISignatureRequestVisibilityGate, SignatureRequestVisibilityGate>();
         services.AddScoped<ISignatureTemplateRepository, SignatureTemplateRepository>();
+        services.AddScoped<ITenantSignatureCategoryRepository, TenantSignatureCategoryRepository>();
+        services.AddScoped<ISignatureCategoryResolver, SignatureCategoryResolver>();
+        services.AddScoped<ISignatureProfileRepository, SignatureProfileRepository>();
+        services.AddScoped<IEffectiveSignatureResolver, EffectiveSignatureResolver>();
         services.AddScoped<ISignatureTemplateReadService, SignatureTemplateReadService>();
         services.AddScoped<ISignatureAnalyticsRepository, SignatureAnalyticsRepository>();
         services.AddScoped<ISignatureAnalyticsReadService, SignatureAnalyticsReadService>();
@@ -113,6 +122,11 @@ public static class DependencyInjection
         services.AddHostedService<ReminderScheduler>();
         services.AddOptions<PurgeSchedulerOptions>().Bind(configuration.GetSection(PurgeSchedulerOptions.SectionName));
         services.AddHostedService<PurgeScheduler>();
+        // Retención de borradores sin enviar (default 30 días); los borradores no expiran por reloj de firma.
+        services
+            .AddOptions<DraftRetentionSchedulerOptions>()
+            .Bind(configuration.GetSection(DraftRetentionSchedulerOptions.SectionName));
+        services.AddHostedService<DraftRetentionScheduler>();
 
         // Distributed lock + cache (Redis). Si no hay connection string se degrada a no-op.
         var redisConnectionString = configuration.GetConnectionString("Redis");
@@ -132,6 +146,20 @@ public static class DependencyInjection
             services.AddDistributedMemoryCache();
         }
         services.AddScoped<ICustomerEmailProjectionRepository, CustomerEmailProjectionRepository>();
+
+        // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
+        // proyección sobre SignatureDbContext + reconciliación (siembra desde Customer con el token M2M de
+        // la PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<SignatureDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.SignaturePlatformTokenProvider>(configuration);
+        services
+            .AddOptions<TaxVision.Signature.Application.Abstractions.SignatureVisibilityOptions>()
+            .Bind(
+                configuration.GetSection(
+                    TaxVision.Signature.Application.Abstractions.SignatureVisibilityOptions.SectionName
+                )
+            );
+
         services.AddScoped<ITenantBrandingRefRepository, TenantBrandingRefRepository>();
         services.AddScoped<IFileMetadataRefRepository, FileMetadataRefRepository>();
         services.AddScoped<ISignerRoleAuditSnapshotRepository, SignerRoleAuditSnapshotRepository>();

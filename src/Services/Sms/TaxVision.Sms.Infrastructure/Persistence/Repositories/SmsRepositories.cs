@@ -31,6 +31,23 @@ public sealed class SmsMessageRepository(SmsDbContext db) : ISmsMessageRepositor
             .OrderByDescending(m => m.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<IReadOnlyList<SmsMessage>> GetStuckForReconciliationAsync(
+        Guid? tenantId,
+        DateTime olderThanUtc,
+        int limit,
+        CancellationToken ct = default
+    )
+    {
+        var query = db
+            .SmsMessages.IgnoreQueryFilters()
+            .Where(m =>
+                m.Status == SmsMessageStatus.Accepted && m.ProviderMessageId != null && m.UpdatedAtUtc < olderThanUtc
+            );
+        if (tenantId is { } t)
+            query = query.Where(m => m.TenantId == t);
+        return await query.OrderBy(m => m.UpdatedAtUtc).Take(limit).ToListAsync(ct);
+    }
+
     public async Task AddAsync(SmsMessage message, CancellationToken ct = default) =>
         await db.SmsMessages.AddAsync(message, ct);
 }

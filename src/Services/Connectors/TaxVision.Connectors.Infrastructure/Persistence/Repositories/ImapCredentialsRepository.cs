@@ -19,4 +19,6 @@ public sealed class ImapCredentialsRepository(ConnectorsDbContext dbContext) : I
             )
             : Result.Success(credentials);
     }
+
+    public void Remove(ImapCredentials credentials) => dbContext.ImapCredentials.Remove(credentials);
 }

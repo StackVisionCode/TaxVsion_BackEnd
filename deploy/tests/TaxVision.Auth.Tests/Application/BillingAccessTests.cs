@@ -162,6 +162,16 @@ public sealed class BillingAccessTests
     {
         public string? RevokedReason { get; private set; }
 
+        public Task<int> RevokeSurfaceTokensAsync(
+            Guid sessionId,
+            SessionSurface surface,
+            string reason,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default)
         {
             RevokedReason = reason;

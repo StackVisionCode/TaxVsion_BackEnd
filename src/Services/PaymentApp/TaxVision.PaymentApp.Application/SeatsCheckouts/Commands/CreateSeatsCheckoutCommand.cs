@@ -20,6 +20,10 @@ public sealed record CreateSeatsCheckoutCommand(
     string SuccessUrl,
     string CancelUrl,
     string IdempotencyKey,
+    /// <summary>Unidades y precio unitario del cobro, para el recibo. Opcionales: solo los llevan los
+    /// cobros que tienen algo que contar, y PaymentApp los descarta si no cuadran con el importe.</summary>
+    int? Quantity = null,
+    long? UnitAmountCents = null,
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
     PaymentMethodKind Method = PaymentMethodKind.Card
 );

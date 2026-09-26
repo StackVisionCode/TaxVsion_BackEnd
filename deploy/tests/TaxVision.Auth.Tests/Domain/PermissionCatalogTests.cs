@@ -11,6 +11,40 @@ namespace TaxVision.Auth.Tests.Domain;
 /// </summary>
 public sealed class PermissionCatalogTests
 {
+    [Fact]
+    public void Saas_payment_refund_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PaymentAppSaaSPaymentRefund);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(
+            new[] { UserActorType.PlatformAdmin },
+            Permission.InferAllowedActorTypes(false, definition.PlatformOnly)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
+    // RolePermissionGuard solo lee IsAssignableByTenant: esta regla es la que impide que un TA meta
+    // una permission de plataforma o peligrosa en un custom role.
+    [Fact]
+    public void Platform_only_and_dangerous_permissions_are_never_assignable_by_a_tenant()
+    {
+        var violations = PermissionCatalog
+            .All.Where(d => (d.PlatformOnly || d.IsDangerous) && d.IsAssignableByTenant)
+            .Select(d => d.Code)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
     [Theory]
     [InlineData(PermissionCatalog.BillingView)]
     [InlineData(PermissionCatalog.BillingManage)]
@@ -90,6 +124,20 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionCatalog.InventoryWrite, defaults);
         Assert.Contains(PermissionCatalog.InventoryAdjust, defaults);
         Assert.Contains(PermissionCatalog.SmsSend, defaults);
+    }
+
+    // connect_own = conectar/administrar el buzón PERSONAL propio (no el de oficina, que es write).
+    // Llega al empleado por defecto (para que pueda usar su propio correo sin depender del admin);
+    // el admin puede restringirlo por usuario desde Edit access. accounts.write NO llega al empleado.
+    [Fact]
+    public void Employee_defaults_include_connect_own_and_office_read_but_not_accounts_write()
+    {
+        var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsRead, defaults);
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsConnectOwn, defaults);
+        Assert.Contains(PermissionCatalog.ConnectorsAccountsOfficeRead, defaults);
+        Assert.DoesNotContain(PermissionCatalog.ConnectorsAccountsWrite, defaults);
     }
 
     /// <summary>

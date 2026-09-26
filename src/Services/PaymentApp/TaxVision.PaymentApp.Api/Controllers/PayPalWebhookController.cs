@@ -41,8 +41,10 @@ public sealed class PayPalWebhookController(IMessageBus bus) : ControllerBase
             ct
         );
 
-        return result.IsSuccess
-            ? Ok()
-            : StatusCode(result.Error.ToHttpStatusCode(), new { result.Error.Code, result.Error.Message });
+        if (result.IsSuccess)
+            return Ok();
+        if (ProviderWebhookThrottle.IsThrottled(result.Error))
+            return await ProviderWebhookThrottle.RespondAsync(HttpContext, ct);
+        return StatusCode(result.Error.ToHttpStatusCode(), new { result.Error.Code, result.Error.Message });
     }
 }

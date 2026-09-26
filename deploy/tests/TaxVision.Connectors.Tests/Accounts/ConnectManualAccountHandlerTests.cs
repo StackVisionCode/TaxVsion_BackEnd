@@ -167,6 +167,50 @@ public class ConnectManualAccountHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ReconnectDisconnectedImapMailbox_RevivesSameRowAndUpdatesCredentials()
+    {
+        // Reconexión: un buzón manual DESCONECTADO se revive (misma fila/Id) y sus credenciales se
+        // actualizan en sitio — antes esto devolvía AlreadyConnected y dejaba al usuario sin salida.
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var existing = TenantEmailAccount
+            .Create(tenantId, "office@example.com", ProviderCode.Imap, userId, Now, ownerUserId: userId)
+            .Value;
+        existing.Disconnect(Now);
+        fixture.AccountRepository.Accounts.Add(existing);
+        fixture.ImapCredentialsRepository.Credentials.Add(
+            ImapCredentials
+                .Create(existing.Id, "old.imap.example.com", 993, true, "old-user", Cipher(fixture, "old-pass"))
+                .Value
+        );
+        fixture.SmtpCredentialsRepository.Credentials.Add(
+            SmtpCredentials
+                .Create(existing.Id, "old.smtp.example.com", 587, true, "old-user", Cipher(fixture, "old-pass"))
+                .Value
+        );
+
+        var result = await HandleAsync(fixture, ValidCommand(tenantId, userId));
+
+        Assert.True(result.IsSuccess);
+        // Misma fila (no se creó otra) y quedó Active de nuevo.
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal(existing.Id, account.Id);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+        // Credenciales actualizadas en sitio (no duplicadas) con lo reingresado.
+        var imap = Assert.Single(fixture.ImapCredentialsRepository.Credentials);
+        Assert.Equal("imap.example.com", imap.Host);
+        Assert.Equal("imap-user", imap.Username);
+        var smtp = Assert.Single(fixture.SmtpCredentialsRepository.Credentials);
+        Assert.Equal("smtp.example.com", smtp.Host);
+        Assert.Equal("smtp-user", smtp.Username);
+    }
+
+    private static EncryptedSecret Cipher(Fixture fixture, string plaintext) =>
+        EncryptedSecret.Create(plaintext, fixture.Protector).Value;
+
+    [Fact]
     public async Task Handle_SameEmailInAnotherTenant_CreatesSeparateAccount()
     {
         // Per-tenant (igual que Auth): el mismo buzón en OTRO tenant no bloquea — se crea uno propio.
@@ -196,5 +240,42 @@ public class ConnectManualAccountHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("Connectors.EmailIdentity.Mismatch", result.Error.Code);
         Assert.Empty(fixture.AccountRepository.Accounts);
+    }
+
+    [Fact]
+    public async Task Handle_OfficeMailbox_AllowsEmailDifferentFromLogin_AndHasNoOwner()
+    {
+        // Buzón de OFICINA: el admin conecta office@… aunque su login sea otro (guard NO aplica).
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var adminUserId = Guid.NewGuid();
+        var cmd = ValidCommand(tenantId, adminUserId) with
+        {
+            EmailAddress = "office@taxpro.com",
+            InitiatorEmail = "admin@taxpro.com", // distinto del buzón
+            AsOffice = true,
+        };
+
+        var result = await HandleAsync(fixture, cmd);
+
+        Assert.True(result.IsSuccess);
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal("office@taxpro.com", account.EmailAddress);
+        Assert.True(account.IsOffice); // sin dueño → compartido
+    }
+
+    [Fact]
+    public async Task Handle_PersonalMailbox_SetsOwnerToTheConnectingUser()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var result = await HandleAsync(fixture, ValidCommand(tenantId, userId)); // AsOffice=false por default
+
+        Assert.True(result.IsSuccess);
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.False(account.IsOffice);
+        Assert.Equal(userId, account.OwnerUserId);
     }
 }

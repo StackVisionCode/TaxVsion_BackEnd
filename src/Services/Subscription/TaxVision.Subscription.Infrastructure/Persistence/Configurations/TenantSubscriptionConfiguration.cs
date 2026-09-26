@@ -23,6 +23,8 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
             .HasMaxLength(20)
             .IsRequired();
         builder.Property(subscription => subscription.CancellationReason).HasMaxLength(500);
+        builder.Property(subscription => subscription.CancelAtPeriodEnd).IsRequired();
+        builder.Property(subscription => subscription.CancellationScheduledAtUtc);
         builder.Property(subscription => subscription.SuspensionReason).HasMaxLength(500);
         builder.Property(subscription => subscription.RowVersion).IsRowVersion();
         builder.Property(subscription => subscription.OnboardingId);

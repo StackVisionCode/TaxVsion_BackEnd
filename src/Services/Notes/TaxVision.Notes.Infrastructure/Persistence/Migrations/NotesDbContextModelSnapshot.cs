@@ -22,6 +22,34 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notes.Domain.Backfill.TenantBackfillState", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -220,6 +248,32 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_CustomerDirectoryEntries_TenantId_DisplayName");
 
                     b.ToTable("CustomerDirectoryEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Notes.Domain.Projections.OffboardedStaffProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("OffboardedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("OffboardedStaff", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Notes.Domain.RateLimiting.TenantPlanCodeProjection", b =>
