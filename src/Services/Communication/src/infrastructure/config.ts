@@ -163,6 +163,16 @@ const rawEnv = z
       .string()
       .default('false')
       .transform((value) => value === 'true'),
+
+    // portal.calls.use — la palanca por cliente del cajon de accesos. Default OFF a proposito: el
+    // permiso recien entra al bundle del rol "Customer Portal" con este despliegue, y hasta que Auth
+    // arranque, resincronice ese rol y las proyecciones de los 24 servicios converjan, NINGUN cliente
+    // existente lo tiene. Encenderlo antes les quita las llamadas a todos. Secuencia: desplegar Auth
+    // -> verificar la proyeccion -> encender esto.
+    COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .parse(process.env);
 
@@ -328,6 +338,9 @@ export const config = {
   },
   assignmentVisibility: {
     enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,
+  },
+  portalCallsPermission: {
+    enforce: rawEnv.COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE,
   },
 } as const;
 

@@ -46,7 +46,7 @@ public sealed class ContactsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<ContactResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int page, [FromQuery] int size, CancellationToken ct)

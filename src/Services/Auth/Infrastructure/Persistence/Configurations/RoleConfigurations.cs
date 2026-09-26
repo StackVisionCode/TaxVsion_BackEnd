@@ -21,6 +21,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.IsAssignableByTenant).IsRequired();
         builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.Property(permission => permission.IsDangerous).IsRequired();
+        builder.Property(permission => permission.IsReserved).IsRequired();
         builder.HasIndex(permission => permission.Code).IsUnique();
 
         // Mismo patrón que AddOnDefinitionConfiguration (Subscription) para List<BillingCycle>:
@@ -60,6 +61,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 AllowedActorTypes = definition.AllowedActorTypes
                     ?? Permission.InferAllowedActorTypes(definition.IsCustomerPortal, definition.PlatformOnly),
                 definition.IsDangerous,
+                definition.IsReserved,
             })
         );
     }

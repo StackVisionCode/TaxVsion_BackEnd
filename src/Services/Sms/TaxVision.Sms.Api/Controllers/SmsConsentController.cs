@@ -18,7 +18,10 @@ namespace TaxVision.Sms.Api.Controllers;
 [ApiController]
 [Route("sms")]
 [Authorize]
-[AllowActorTypes(ActorType.TenantAdmin)]
+// sms.manage es delegable y declara TenantEmployee: con el gate cerrado a TenantAdmin, un
+// empleado al que se le delegaba el permiso nunca podía usarlo. El permiso sigue siendo la
+// barrera — por defecto ningún empleado lo tiene.
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 [HasPermission(SmsPermissions.Manage)]
 public sealed class SmsConsentController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {

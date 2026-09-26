@@ -295,6 +295,133 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(PermissionCatalog.PortalFoldersView, defaults);
     }
 
+    // ---------- Fase A3: baseline del empleado, split de Campaigns y permisos reservados ----------
+
+    /// <summary>
+    /// El empleado recibía 403 en Notes, en la lista de plantillas de firma, al cancelar su propia
+    /// solicitud, al armar un grupo de chat y en todo Campaigns — trabajo diario, no administración.
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCatalog.NotesRead)]
+    [InlineData(PermissionCatalog.NotesManage)]
+    [InlineData(PermissionCatalog.SignatureRequestCancel)]
+    [InlineData(PermissionCatalog.CommunicationGroupCreate)]
+    [InlineData(PermissionCatalog.CampaignsView)]
+    [InlineData(PermissionCatalog.CampaignsManage)]
+    [InlineData(PermissionCatalog.CampaignsSend)]
+    public void Employee_defaults_include_the_daily_work_that_used_to_return_403(string code)
+    {
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+    }
+
+    /// <summary>Lo que sigue siendo administrativo no entra al bundle del empleado.</summary>
+    [Theory]
+    [InlineData(PermissionCatalog.CampaignsSendersManage)]
+    [InlineData(PermissionCatalog.InvoicingIssuerManage)]
+    [InlineData(PermissionCatalog.NotesViewAll)]
+    public void Employee_defaults_stay_out_of_the_administrative_permissions(string code)
+    {
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        Assert.DoesNotContain(code, employeeDefaults);
+        // Y el admin raíz sí las tiene: separar no es quitarle nada a nadie.
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    [Fact]
+    public void The_four_campaigns_permissions_share_the_module_and_the_pro_tier()
+    {
+        string[] codes =
+        [
+            PermissionCatalog.CampaignsView,
+            PermissionCatalog.CampaignsManage,
+            PermissionCatalog.CampaignsSend,
+            PermissionCatalog.CampaignsSendersManage,
+        ];
+
+        foreach (var code in codes)
+        {
+            var definition = PermissionCatalog.All.Single(d => d.Code == code);
+            Assert.Equal("campaigns", definition.Module);
+            Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier);
+            Assert.True(definition.IsAssignableByTenant);
+            Assert.False(definition.IsDangerous);
+        }
+    }
+
+    /// <summary>
+    /// §R.6: el permiso que el administrador reconoce en el cajón de accesos del cliente entra al
+    /// bundle del rol de portal. Sin esto, aplicarlo en las rutas de llamada dejaría sin llamadas a
+    /// todos los clientes que ya existen.
+    /// </summary>
+    [Fact]
+    public void Portal_calls_use_is_in_the_customer_portal_bundle()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PortalCallsUse);
+
+        Assert.True(definition.IsCustomerPortal);
+        Assert.False(definition.IsReserved);
+        Assert.Contains(
+            PermissionCatalog.PortalCallsUse,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
+        );
+    }
+
+    /// <summary>§R.6: no hay módulo de millas ni endpoint que lo exija, así que no se concede a nadie.</summary>
+    [Fact]
+    public void Portal_miles_use_is_reserved_and_reaches_no_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PortalMilesUse);
+
+        Assert.True(definition.IsReserved);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.DoesNotContain(
+            PermissionCatalog.PortalMilesUse,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
+        );
+        Assert.DoesNotContain(PermissionCatalog.PortalMilesUse, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    /// <summary>
+    /// Fitness: un permiso reservado no protege nada todavía, así que no puede ser asignable ni
+    /// aparecer en ningún bundle. Si alguien marca uno como reservado y se olvida del otro flag,
+    /// esto falla.
+    /// </summary>
+    [Fact]
+    public void A_reserved_permission_is_never_assignable_and_never_in_a_bundle()
+    {
+        var reserved = PermissionCatalog.All.Where(d => d.IsReserved).Select(d => d.Code).ToArray();
+
+        Assert.All(
+            reserved,
+            code =>
+                Assert.False(
+                    PermissionCatalog.All.Single(d => d.Code == code).IsAssignableByTenant,
+                    $"{code} está reservado pero sigue siendo asignable por el tenant."
+                )
+        );
+
+        string[] bundles = [Role.SystemTenantAdmin, Role.SystemEmployee, Role.SystemCustomerPortal];
+        foreach (var bundle in bundles)
+        {
+            var defaults = PermissionCatalog.SystemRoleDefaults(bundle);
+            foreach (var code in reserved)
+                Assert.DoesNotContain(code, defaults);
+        }
+
+        foreach (var code in reserved)
+            Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    [Fact]
+    public void The_catalog_has_no_duplicate_codes_or_ids()
+    {
+        var codes = PermissionCatalog.All.Select(d => d.Code).ToArray();
+        var ids = PermissionCatalog.All.Select(d => d.Id).ToArray();
+
+        Assert.Equal(codes.Length, codes.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(ids.Length, ids.Distinct().Count());
+    }
+
     [Fact]
     public void DmcaManage_is_platform_only_and_never_reaches_a_tenant_role()
     {

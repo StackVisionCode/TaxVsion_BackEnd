@@ -46,9 +46,11 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
         string? Website
     );
 
+    // El emisor legal cambia con qué identidad fiscal factura la oficina: no es trabajo diario del
+    // preparador, aunque emita las facturas. Sale de invoicing.manage a su propia permission.
     [HttpPut]
     [RateLimit("billing.g.issuer_profile_manage")]
-    [HasPermission(InvoicingPermissions.Manage)]
+    [HasPermission(InvoicingPermissions.IssuerManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Upsert(UpsertIssuerProfileRequest request, CancellationToken ct)
     {

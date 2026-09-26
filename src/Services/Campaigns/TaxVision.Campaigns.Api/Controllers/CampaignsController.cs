@@ -61,7 +61,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpGet]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<CampaignResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
@@ -82,7 +82,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpGet("{id:guid}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.get")]
     [ProducesResponseType<CampaignResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -195,7 +195,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpPost("{id:guid}/send-now")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.send")]
     [ProducesResponseType<CampaignRunResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> SendNow(Guid id, SendNowRequest request, CancellationToken ct)
@@ -218,7 +218,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
 
     /// <summary>Envío inmediato resolviendo la audiencia desde listas de contactos y/o entradas manuales (opt-out/dedupe aplicados).</summary>
     [HttpPost("{id:guid}/send-to-audience")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.send")]
     [ProducesResponseType<CampaignRunResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> SendToAudience(Guid id, SendToAudienceRequest request, CancellationToken ct)
@@ -248,7 +248,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
 
     /// <summary>Agenda la campaña (una vez o recurrente). La audiencia se resuelve en cada disparo desde las listas.</summary>
     [HttpPost("{id:guid}/schedule")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.send")]
     [ProducesResponseType<CampaignScheduleResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Schedule(Guid id, ScheduleCampaignRequest request, CancellationToken ct)
@@ -274,7 +274,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpGet("{id:guid}/schedules")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<CampaignScheduleResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListSchedules(
@@ -296,7 +296,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
 
     /// <summary>Pausa / reanuda / cancela un agendado. <paramref name="action"/> ∈ {pause, resume, cancel}.</summary>
     [HttpPost("schedules/{scheduleId:guid}/{action}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<CampaignScheduleResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SetScheduleState(Guid scheduleId, string action, CancellationToken ct)
@@ -317,7 +317,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpGet("{id:guid}/runs")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<CampaignRunResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListRuns(Guid id, [FromQuery] int page, [FromQuery] int size, CancellationToken ct)
@@ -333,7 +333,7 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     }
 
     [HttpGet("runs/{runId:guid}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.get")]
     [ProducesResponseType<CampaignRunResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetRun(Guid runId, CancellationToken ct)

@@ -13,7 +13,8 @@ namespace TaxVision.Auth.Application.Common;
 /// Regla de oro (Kubernetes RBAC / GitHub custom roles): un tenant nunca puede otorgar,
 /// a través de un rol que crea, un permiso que (a) está reservado a la plataforma
 /// (<see cref="Permission.IsAssignableByTenant"/> = false — billing, asientos, gestión
-/// de roles) o (b) su plan contratado no expone todavía (<see cref="Permission.MinPlanTier"/>).
+/// de roles), (b) su plan contratado no expone todavía (<see cref="Permission.MinPlanTier"/>)
+/// o (c) todavía no protege nada (<see cref="Permission.IsReserved"/>).
 ///
 /// Es una función pura (sin acceso a datos) para poder testearla sin mocks de
 /// infraestructura: recibe el catálogo y el tier ya resueltos.
@@ -41,7 +42,14 @@ public static class RolePermissionGuard
             if (!byId.TryGetValue(permissionId, out var permission))
                 continue;
 
-            if (!permission.IsAssignableByTenant || (int)tenantPlanTier < permission.MinPlanTier)
+            // Reservado = declarado pero sin ningún endpoint que lo exija todavía. Se rechaza
+            // explícito (no solo por IsAssignableByTenant) para que el motivo quede claro y para que
+            // marcar uno como reservado alcance, sin tener que acordarse de tocar el otro flag.
+            if (
+                permission.IsReserved
+                || !permission.IsAssignableByTenant
+                || (int)tenantPlanTier < permission.MinPlanTier
+            )
             {
                 rejected.Add(permission.Code);
                 continue;

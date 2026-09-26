@@ -28,6 +28,7 @@ public static class PermissionCatalog
     // Facturación tenant→cliente (servicio Billing: Invoices + IssuerProfile). Operativo, no peligroso.
     public const string InvoicingView = "invoicing.view";
     public const string InvoicingManage = "invoicing.manage";
+    public const string InvoicingIssuerManage = "invoicing.issuer.manage";
     public const string TenantDomainsManage = "tenant.domains.manage";
     public const string BrandingManage = TenantBrandingPermissions.Manage;
     public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
@@ -45,7 +46,10 @@ public static class PermissionCatalog
     public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
     public const string EmailUse = "email.use";
     public const string CommsCalls = "comms.calls";
-    public const string CampaignsManage = "campaigns.manage";
+    public const string CampaignsView = CampaignsPermissions.View;
+    public const string CampaignsManage = CampaignsPermissions.Manage;
+    public const string CampaignsSend = CampaignsPermissions.Send;
+    public const string CampaignsSendersManage = CampaignsPermissions.SendersManage;
     public const string ReportsView = "reports.view";
 
     // CloudStorage / Media Security Gateway
@@ -354,7 +358,10 @@ public static class PermissionCatalog
         // uso legítimo para un tenant, pero son de riesgo alto (auto-escalada, financiero, legal,
         // lock-out) y deben entrar por asignación explícita, no por el bundle automático. Ver
         // SystemRoleDefaults(SystemTenantAdmin) más abajo.
-        bool IsDangerous = false
+        bool IsDangerous = false,
+        // Declarado pero sin ningún endpoint que lo exija todavía: no se concede a nadie ni se
+        // ofrece en el cajón de accesos. Ver Permission.IsReserved.
+        bool IsReserved = false
     );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
@@ -445,7 +452,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000181"),
             InvoicingManage,
             "billing",
-            "Crear, emitir y gestionar facturas de clientes y los datos del emisor",
+            "Crear, emitir y gestionar facturas de clientes",
             false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
@@ -514,11 +521,51 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
-            // Módulo "campaigns" solo disponible desde el plan Pro.
+            // Módulo "campaigns" solo disponible desde el plan Pro. Los cuatro permisos del servicio
+            // separan ver, editar, enviar y administrar remitentes: antes uno solo cubría todo, así
+            // que delegar "que preparen la campaña" delegaba también "que la manden a la cartera".
             new Guid("a1000000-0000-0000-0000-000000000017"),
             CampaignsManage,
             "campaigns",
-            "Gestionar campañas",
+            "Crear y editar campañas, contactos y listas",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            // El emisor legal (razón social, RNC/EIN, dirección fiscal) sale de invoicing.manage:
+            // emitir una factura es trabajo diario del preparador, cambiar con qué identidad fiscal
+            // factura la oficina no lo es. Queda administrativo — fuera del bundle del empleado.
+            new Guid("a1000000-0000-0000-0000-000000000186"),
+            InvoicingIssuerManage,
+            "billing",
+            "Editar el emisor legal de las facturas del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000183"),
+            CampaignsView,
+            "campaigns",
+            "Ver campañas, contactos, listas, programaciones y corridas",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            // Disparar o programar un envío masivo es la acción irreversible del servicio: sale de
+            // campaigns.manage para poder delegar la preparación sin delegar el envío.
+            new Guid("a1000000-0000-0000-0000-000000000184"),
+            CampaignsSend,
+            "campaigns",
+            "Disparar o programar el envío de una campaña",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            // De quién sale el correo de la oficina es identidad, no contenido: queda administrativo
+            // (fuera del bundle del empleado), igual que postmaster.providers.write.
+            new Guid("a1000000-0000-0000-0000-000000000185"),
+            CampaignsSendersManage,
+            "campaigns",
+            "Administrar los perfiles de remitente de las campañas",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -532,6 +579,9 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Lo exigen las rutas de llamada de Communication solo para el actor CustomerPortal
+            // (equivalente en Node de HasPermissionForActor): es la palanca que el administrador
+            // reconoce en el cajón de accesos del cliente para quitarle las llamadas.
             new Guid("a1000000-0000-0000-0000-000000000019"),
             PortalCallsUse,
             "portal",
@@ -539,11 +589,16 @@ public static class PermissionCatalog
             true
         ),
         new(
+            // Reservado: no existe módulo "miles" ni ningún endpoint que lo exija. Se deja declarado
+            // (la fila ya está sembrada en producción) pero sin concederse a nadie hasta que la
+            // función exista — un permiso que no protege nada solo ensucia el cajón de accesos.
             new Guid("a1000000-0000-0000-0000-000000000020"),
             PortalMilesUse,
             "portal",
             "El cliente puede usar el módulo de millas",
-            true
+            true,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000021"),
@@ -2033,11 +2088,13 @@ public static class PermissionCatalog
                 // share.manage, reservado a TenantAdmin (ver PermissionDefinition).
                 CloudStorageShareCreate,
                 CloudStorageShareRevoke,
-                // Signature: el empleado prepara solicitudes y consulta resultados.
-                // No incluye cancel/expire/settings (reservados a TenantAdmin).
+                // Signature: el empleado prepara solicitudes y consulta resultados. Cancelar entra:
+                // quien la mandó es quien se da cuenta de que salió mal, y el ownership del handler
+                // ya lo limita a las suyas. Fuera quedan expire/settings (reservados a TenantAdmin).
                 SignatureRequestCreate,
                 SignatureRequestRead,
                 SignatureRequestResend,
+                SignatureRequestCancel,
                 SignatureDocumentPrepare,
                 SignatureDocumentSign,
                 SignatureDocumentView,
@@ -2047,6 +2104,9 @@ public static class PermissionCatalog
                 // para el rol "Employee" — nunca host de settings/analytics/moderate/record.
                 CommunicationChatStart,
                 CommunicationChatReply,
+                // Armar un grupo con dos colegas para coordinar un caso es trabajo diario; quedan
+                // fuera moderate y group.manage_members, que son gobernanza del chat.
+                CommunicationGroupCreate,
                 CommunicationSupportOpen,
                 CommunicationCallStart,
                 CommunicationVideoCallStart,
@@ -2155,6 +2215,18 @@ public static class PermissionCatalog
                 // no billing de suscripción (eso es billing.*, peligroso/admin-only, aparte a propósito).
                 InvoicingView,
                 InvoicingManage,
+                // Campaigns: el preparador arma y manda las campañas de su firma. Fuera queda
+                // senders.manage (la identidad del remitente de la oficina es configuración).
+                // El módulo "campaigns" es de plan Pro: el gate de módulo lo filtra por plan.
+                CampaignsView,
+                CampaignsManage,
+                CampaignsSend,
+                // Notes: una nota es del propio autor (el handler lo impone con
+                // CreatedByUserId == actorUserId), igual que un recordatorio. Sin estos dos el
+                // empleado no podía ni escribirse una nota sobre el caso que está preparando — el
+                // servicio le quedaba inservible. Fuera queda notes.view_all, que es gobernanza.
+                NotesRead,
+                NotesManage,
             ],
             Role.SystemCustomerPortal =>
             [
@@ -2176,6 +2248,11 @@ public static class PermissionCatalog
                 // portal (antes solo podía recibir). Gated por MinPlanTier=Pro como el staff.
                 CommunicationCallStart,
                 CommunicationVideoCallStart,
+                // portal.calls.use es la palanca que el administrador ve en el cajón de accesos del
+                // cliente ("quitarle las llamadas a este cliente"). Va al bundle ANTES de que las
+                // rutas la exijan: sin esto, aplicarla dejaría sin llamadas a todos los clientes
+                // que ya existen.
+                PortalCallsUse,
                 CommunicationMeetingJoin,
                 CommunicationScreenshotCreate,
                 CommunicationNotificationRead,

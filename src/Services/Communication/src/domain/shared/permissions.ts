@@ -43,6 +43,13 @@ export const CommunicationPermissions = {
 
   SettingsManage: 'communication.settings.manage',
   AnalyticsRead: 'communication.analytics.read',
+
+  /**
+   * Palanca del portal: es la que el administrador reconoce en el cajon de accesos del cliente
+   * ("quitarle las llamadas a este cliente"). Se exige SOLO al actor CustomerPortal — equivalente
+   * en Node de [HasPermissionForActor] del lado .NET: apilarla para todos dejaria al staff afuera.
+   */
+  PortalCallsUse: 'portal.calls.use',
 } as const;
 
 export type CommunicationPermission =
@@ -174,6 +181,22 @@ export function permissionCheckHttpStatus(result: Extract<PermissionCheckResult,
  */
 export function isPlatformAdmin(actorType: string): boolean {
   return actorType === 'PlatformAdmin';
+}
+
+/**
+ * Chequea un permiso SOLO si el caller es de un actor type concreto; para los demas pasa. Es el
+ * equivalente en Node de `[HasPermissionForActor(actorType, code)]` del lado .NET, y existe por el
+ * mismo motivo: en un endpoint compartido entre staff y portal, exigirle a todos un permiso que solo
+ * el portal tiene deja al staff afuera.
+ */
+export async function checkPermissionForActor(
+  subject: PermissionSubject,
+  actorType: string,
+  required: CommunicationPermission,
+  projectionRepo: UserPermissionsProjectionRepository,
+): Promise<PermissionCheckResult> {
+  if (subject.actorType !== actorType) return { allowed: true };
+  return checkPermission(subject, required, projectionRepo);
 }
 
 /**

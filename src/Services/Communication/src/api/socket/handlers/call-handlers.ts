@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  checkPermissionForActor,
+  CommunicationPermissions,
+} from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import type {
   CommunicationIoServer,
@@ -118,6 +122,21 @@ function wireCallSocket(
     if (!permCheck.allowed) {
       ack?.({ ok: false, code: permCheck.code, message: permCheck.message });
       return;
+    }
+    // Y para un cliente del portal, tambien portal.calls.use: es la palanca por cliente que el
+    // administrador maneja desde el cajon de accesos. Al staff no se le exige. Detras de un flag
+    // apagado por default: hasta que Auth resincronice el rol del portal, ningun cliente la tiene.
+    if (config.portalCallsPermission.enforce) {
+      const portalCheck = await checkPermissionForActor(
+        principal,
+        'CustomerPortal',
+        CommunicationPermissions.PortalCallsUse,
+        container.userPermissions,
+      );
+      if (!portalCheck.allowed) {
+        ack?.({ ok: false, code: portalCheck.code, message: portalCheck.message });
+        return;
+      }
     }
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.CallInitiate,

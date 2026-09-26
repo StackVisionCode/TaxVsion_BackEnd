@@ -252,6 +252,12 @@ public static class CreateInvitationHandler
                         or UserActorType.TenantEmployee
                         or UserActorType.CustomerPortal,
 
+            // Un empleado con users.invite delegada da de alta compañeros y clientes, nunca otro
+            // administrador: delegar el alta de personal es el caso de uso real de ese permiso.
+            UserActorType.TenantEmployee => inviter.TenantId == command.TenantId
+                && command.TenantId != PlatformTenant.Id
+                && command.ActorType is UserActorType.TenantEmployee or UserActorType.CustomerPortal,
+
             _ => false,
         };
 }
