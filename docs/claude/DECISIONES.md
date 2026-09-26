@@ -396,3 +396,76 @@ diagnóstico usan) y avisa a los titulares conectados; los códigos efectivos lo
 `auth.user.roles_changed.v1`, que es el fan-out por titular que Auth publica desde A2.
 **Reversible:** sí, pero no debería revertirse: el test que afirmaba el comportamiento viejo se
 reescribió para afirmar el nuevo, con el deny en el set para que la regresión falle.
+
+## 2026-09-26 — El preparer se liga a un usuario, porque no existe el "perfil con PTIN" que el plan supone
+
+**Contexto:** A1 pide "ligar `preparer/sign` al usuario del JWT (PTIN/EFIN del perfil del caller)".
+Busqué ese perfil: **no existe**. `PTIN` aparece solo en Signature, dentro de `PreparerInfo`, que es un
+value object del propio request; `SignatureProfile` es la imagen de la firma, no la credencial
+profesional. No hay de dónde leer el PTIN del caller.
+**Opciones:** dejar el hallazgo abierto · crear un registro de PTIN por usuario (nuevo agregado, nueva
+API, nuevo CRUD) · ligar el hueco del preparer a un usuario concreto.
+**Elección:** la tercera. `PreparerInfo.UserId` (columna nullable nueva); `SetPreparer` lo toma del JWT,
+nunca del cuerpo; `MarkPreparerSigned` exige que quien firma sea ese usuario.
+**Por qué:** el riesgo real no es que el PTIN sea inventado —eso lo valida el formato y, en última
+instancia, el IRS— sino que **un empleado firme con el PTIN de un colega**. Ligar el hueco al usuario lo
+cierra con una columna, sin inventar un agregado ni una pantalla que nadie pidió. Crear el registro de
+PTIN es una decisión de producto (¿lo administra el dueño? ¿se verifica?), no de esta fase.
+**Reversible:** sí, y el default es seguro: `UserId` nulo (todos los requests que ya existen) conserva
+exactamente el comportamiento anterior. Sin eso, una firma en curso quedaría imposible de completar.
+
+## 2026-09-26 — La dependencia entre tareas se valida sobre la sucesora, no sobre las dos
+
+**Contexto:** agregar o quitar una dependencia toca dos tareas: la sucesora (la bloqueada) y la
+predecesora (la que bloquea).
+**Opciones:** exigir permiso de mutación sobre las dos · solo sobre la sucesora.
+**Elección:** solo sobre la sucesora.
+**Por qué:** `TaskAccessPolicy` ya establece la regla del servicio — "leerlas es de toda la firma,
+moverlas no". La predecesora no cambia: nadie le mueve el estado, la fecha ni el responsable; solo se la
+lee para saber si está cerrada. La que cambia —y la que puede quedar trabada para siempre— es la
+sucesora. Exigir permiso sobre las dos impediría el caso normal: "mi tarea espera a que termine la de
+otro", que es la razón de existir de la feature.
+**Reversible:** sí, es una llamada más al mismo guard.
+
+## 2026-09-26 — Borrar una carpeta con contenido exige el permiso de borrar archivos
+
+**Contexto:** `DELETE /folders/{id}` pedía solo `cloudstorage.folder.manage` y mandaba a la papelera
+**todos** los archivos del subárbol.
+**Opciones:** dejarlo como está · pedir `file.delete` siempre · pedirlo solo si hay archivos dentro.
+**Elección:** la tercera.
+**Por qué:** "administrar carpetas" era un borrado de archivos encubierto: con un permiso de
+organización se podía vaciar el contenido de la oficina. Pero exigir `file.delete` también para una
+carpeta **vacía** rompería el caso legítimo de quien solo ordena el árbol y no puede borrar nada de
+nadie — y no hay nada que proteger ahí. El chequeo cuelga de si hay archivos, que es exactamente la
+condición que hace peligrosa la operación.
+**Reversible:** sí. El comando recibe el permiso ya resuelto con `CanDeleteFiles = true` por defecto, así
+que un llamador que no lo informe se comporta como antes.
+
+## 2026-09-26 — El schedule de campaña congela la visibilidad, y las filas existentes quedan abiertas
+
+**Contexto:** el scheduler dispara con un actor de sistema, así que cada corrida agendada corría con
+`CanViewAllCustomers = true`: un preparador que solo ve sus clientes asignados agendaba una campaña y el
+envío salía a la cartera completa de la oficina (§20, "P2 evadido").
+**Opciones:** resolver la visibilidad en cada disparo (pedirla a Auth por el creador) · congelarla al
+agendar.
+**Elección:** congelarla, junto con el `CreatedByUserId`.
+**Por qué:** la decisión de audiencia se toma al agendar; el disparo solo la ejecuta. Resolverla en cada
+corrida haría que una campaña recurrente cambiara de audiencia en silencio cuando al creador le tocan los
+permisos —o que dejara de enviarse si el creador se va de la oficina—, y metería una llamada a Auth en un
+job de fondo.
+**Reversible:** sí, son dos columnas aditivas.
+**Detalle importante:** el scaffolding de EF generó `defaultValue: false` para
+`CreatorCanViewAllCustomers` (el default del tipo `bool`). **Lo cambié a mano a `true`.** Con `false`,
+cada campaña recurrente ya agendada pasaría de golpe a enviarse a menos clientes: un cambio de a quién se
+le manda un correo, en silencio y sin que nadie lo pidiera (§R.7).
+
+## 2026-09-26 — Un borrador ajeno responde 404, no 403
+
+**Contexto:** leer y listar borradores no filtraba por autor. Un borrador es un correo a medio escribir.
+**Opciones:** 403 (existe pero no es tuyo) · 404 (como si no existiera).
+**Elección:** 404, y el listado simplemente no lo incluye.
+**Por qué:** el 403 confirma que ese id existe en el tenant y, con el `customerId` de la URL, sobre qué
+cliente está escribiendo un colega. Es el mismo criterio que el servicio ya aplica a
+`ClientRequest.NotFound` y `Reminder.NotFound`. El filtro del listado va en la **consulta**, no después
+de paginar: filtrar en memoria dejaría los totales y las páginas mintiendo.
+**Reversible:** sí; el filtro es un parámetro opcional del repositorio.

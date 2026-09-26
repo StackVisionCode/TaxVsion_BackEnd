@@ -2,13 +2,20 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Dependencies;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Dependencies.Commands;
 
-public sealed record AddDependencyCommand(Guid TenantId, Guid TaskId, Guid DependsOnTaskId, Guid ByUserId);
+public sealed record AddDependencyCommand(
+    Guid TenantId,
+    Guid TaskId,
+    Guid DependsOnTaskId,
+    Guid ByUserId,
+    bool HasManageAll = false
+);
 
 /// <summary>
 /// Sin el <c>UPDLOCK</c>, dos requests que crean A→B y B→A validan contra un grafo sin ciclo y pasan
@@ -33,10 +40,10 @@ public static class AddDependencyHandler
         await using var transaction = await scope.BeginAsync(ct);
         await dependencies.LockTenantEdgesAsync(command.TenantId, ct);
 
-        var successorResult = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
-        var predecessorResult = await tasks.GetByIdAsync(command.TenantId, command.DependsOnTaskId, ct);
-        if (successorResult.IsFailure || predecessorResult.IsFailure)
-            return Result.Failure(TaskErrors.Dependency.CrossTenant);
+        var endpoints = await LoadAuthorizedEndpointsAsync(command, tasks, ct);
+        if (endpoints.IsFailure)
+            return Result.Failure(endpoints.Error);
+        var (successor, predecessor) = endpoints.Value;
 
         var check = await EnsureEdgeIsAllowedAsync(command, tasks, dependencies, ct);
         if (check.IsFailure)
@@ -50,12 +57,34 @@ public static class AddDependencyHandler
         dependencies.Add(dependencyResult.Value);
 
         // Sumar por una predecesora ya cerrada dejaría a la sucesora trabada para siempre.
-        if (!IsClosed(predecessorResult.Value))
-            successorResult.Value.RegisterBlockerAdded();
+        if (!IsClosed(predecessor))
+            successor.RegisterBlockerAdded();
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Las dos tareas del borde, ya validadas. A1 — la que cambia es la SUCESORA: gana un bloqueador y
+    /// puede quedar trabada. Leer la predecesora es de toda la firma, así que solo se valida quién puede
+    /// mutar la sucesora.
+    /// </summary>
+    private static async Task<Result<(TaskItem Successor, TaskItem Predecessor)>> LoadAuthorizedEndpointsAsync(
+        AddDependencyCommand command,
+        ITaskRepository tasks,
+        CancellationToken ct
+    )
+    {
+        var successor = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
+        var predecessor = await tasks.GetByIdAsync(command.TenantId, command.DependsOnTaskId, ct);
+        if (successor.IsFailure || predecessor.IsFailure)
+            return Result.Failure<(TaskItem, TaskItem)>(TaskErrors.Dependency.CrossTenant);
+
+        if (!TaskAccessPolicy.CanMutate(successor.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<(TaskItem, TaskItem)>(TaskErrors.Forbidden);
+
+        return Result.Success((successor.Value, predecessor.Value));
     }
 
     private static Result<TaskDependency> NewEdge(AddDependencyCommand command) =>

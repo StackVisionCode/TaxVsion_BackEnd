@@ -8,7 +8,7 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | Fase | Estado | Rama | Commits | Tests agregados | Verificación | Pendientes |
 |---|---|---|---|---|---|---|
 | A0 — Hotfixes de seguridad | **C** | `claude/great-heisenberg-j7fnkh` | `7a85c03`, `4caa3fd` | 63 (.NET) + 20 (Node) | build Release · gate de CI 4835/4835 · `npm run typecheck` + 446/446 de Communication · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | Solo queda el **scope** M2M de `internal/stock/commit-sale`: preparado y documentado, sin activar (ver `DECISIONES.md`) |
-| A1 — Ownership de recurso | **NI** | — | — | — | — | Signature (14 sub-recursos), Tasks, Correspondence, Customer, CloudStorage, Campaigns |
+| A1 — Ownership de recurso | **P** | `claude/great-heisenberg-j7fnkh` | `PENDIENTE_A1` | 22 | build Release · gate de CI 4951/4951 · `csharpier` de los archivos de la fase | **Criterio de aceptación cumplido** (§20 sin "Ownership faltante" en Signature, Tasks y Correspondence) + CloudStorage y Campaigns. Faltan los de otros servicios: mutaciones y reveal de Customer, `ReferralsController` (attributions), `terms/publish`, mappings de Notification, P2 en `sms/messages` y en las escrituras de Billing, e indicadores de socket de Communication (§20 lo marca "bajo"). Dos migraciones **generadas, no aplicadas** |
 | A2 — Deny layer y propagación | **C** | `claude/great-heisenberg-j7fnkh` | `8004694` | 15 | build Release · gate de CI 4850/4850 · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | El fallback pre-RBAC de `UserAccessResolver` se dejó como está: ya exige `activeCustomRoles.Count == 0` (G2 cerrado) y quitarlo dejaría sin permisos a los usuarios creados antes del modelo. Ver `DECISIONES.md` |
 | A3 — Baseline y catálogo | **P** | `claude/great-heisenberg-j7fnkh` | `01a0859` | 21 (.NET) + 6 (Node) | build Release · gate de CI 4865/4865 · `npm test` 452/452 · migración aplicada a SQL Server 2022 real | Falta **A3.4 primera mitad**: el endpoint `POST billing/invoices/{id}/email` no se construyó (necesita una plantilla de correo y registrar a Billing como cliente M2M de Notification en la configuración de producción). Ver `DECISIONES.md`. A3.3 (`correspondence.organize`, COULD) tampoco |
 | A4 — Techo y API de roles | **P** | `claude/great-heisenberg-j7fnkh` | `574e0e6` | 31 | build Debug · gate de CI 4896/4896 · `csharpier` de los archivos de la fase | La migración `AddRoleTargetActorType` está **generada, no aplicada** (el usuario pidió no aplicar migraciones ni usar Docker en esta sesión), así que **falta la integración de Auth**. Duplicar rol (COULD) no se hizo. La dirección inversa del fitness (todo código del catálogo se exige o es `IsReserved`) queda para A7 |
@@ -52,6 +52,36 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | Jerarquía en la baja | `UserManagementCommands.cs` (`DeactivateUserCommand.CallerActorType`), `UsersController.cs` | `UserManagementCommandsTests` (5) |
 | Invitaciones | `CreateInvitation.cs`, `AcceptInvitation.cs` | `AcceptInvitationHandlerTests` (2) |
 | Denies con razón y vencimiento | `UserPermissionDeny.cs`, `RoleConfigurations.cs`, `RoleRepository.cs`, `SetUserPermissionOverridesCommand.cs`, `UsersController.cs`, `ExpiredPermissionDeniesService.cs` (nuevo), migración `AddUserPermissionDenyReasonAndExpiry` | `SetUserPermissionOverridesHandlerTests` (2) |
+
+### A1 — parcial, 2026-09-26
+
+| Sub | Estado | Qué se hizo |
+|---|---|---|
+| Signature: 14 sub-recursos | **C** | `CheckOwnershipAsync` (que ya existía tras el flag, aplicado solo en 5 endpoints) ahora corre en los 14 que le faltaban: signers, fields, preparer-fields, preparer-signature, resend, practitioner-pin, preparer y preparer/sign |
+| Signature: preparer ligado al usuario | **C** | `PreparerInfo.UserId` (columna nueva, nullable) + `SetPreparer` lo toma del JWT + `MarkPreparerSigned` exige que quien firma SEA el preparer. Es el hallazgo **(alto)** de §20 |
+| Tasks: dependencias | **C** | `TaskAccessPolicy` en agregar y quitar, sobre la **sucesora** (la que gana o pierde el bloqueador) |
+| Tasks: adjuntos | **C** | `TaskAccessPolicy` en enlazar, subir y desenlazar |
+| Tasks: series | **C** | `TaskSeriesAccessPolicy` (nuevo) en pausar, reanudar y terminar |
+| Correspondence: `AccountId` | **C** | `SendingAccountGuard` (nuevo) en crear borrador y en arrancar un reply: no se redacta desde el buzón de un colega |
+| Correspondence: borradores propios | **C** | Leer uno, listarlos (filtro en la consulta, no después de paginar) y el get-or-create del reply |
+| Correspondence: buzón en adjuntos | **C** | El gate de buzón que ya tenían el cuerpo y el listado ahora corre también en la descarga y en la URL firmada |
+| CloudStorage: borrar carpeta | **C** | Borrar una carpeta **con contenido** exige `cloudstorage.file.delete`; una vacía sigue bastando con `folder.manage` |
+| Campaigns: schedule | **C** | El schedule congela quién lo creó y su visibilidad de clientes; el disparo la hereda en vez de correr abierto |
+| Customer, Referrals, terms/publish, Notification mappings, Sms, Billing | **NI** | Fuera del criterio de aceptación de la fase; quedan para una segunda pasada de A1 |
+
+**Lo que A1 deliberadamente NO cambió:** el flag `Authorization:ResourceOwnership:Enabled` sigue en
+`false` por defecto. Los 14 endpoints nuevos de Signature respetan ese flag igual que los 5 que ya
+estaban, así que **encender el ownership sigue siendo una decisión de operación** (y el rollback, apagarlo).
+Lo que NO depende del flag —porque no es ownership de recurso sino permiso o identidad— es el preparer
+ligado al usuario, el guard de buzón, los de Tasks y el de borrar carpetas con contenido.
+
+**Secuencia de despliegue de A1:**
+
+1. Aplicar las dos migraciones (`AddPreparerUserId` en Signature, `AddScheduleCreatorVisibility` en
+   Campaigns). Las dos son aditivas; la de Campaigns lleva `defaultValue: true` **a mano** para no
+   cambiar a quién se le envían las campañas ya agendadas.
+2. Desplegar los servicios. Los chequeos nuevos entran al instante: son 403 donde antes había 200, que
+   es el efecto buscado, pero conviene avisar a la oficina piloto.
 
 ### A5 — completa, 2026-09-26
 

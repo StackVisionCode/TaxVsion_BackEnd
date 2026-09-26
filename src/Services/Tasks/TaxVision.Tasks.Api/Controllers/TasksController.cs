@@ -506,7 +506,7 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new AddDependencyCommand(tenantId, id, request.DependsOnTaskId, userId),
+            new AddDependencyCommand(tenantId, id, request.DependsOnTaskId, userId, await HasManageAllAsync(ct)),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -518,10 +518,13 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RemoveDependency(Guid id, Guid dependsOnTaskId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new RemoveDependencyCommand(tenantId, id, dependsOnTaskId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveDependencyCommand(tenantId, id, dependsOnTaskId, userId, await HasManageAllAsync(ct)),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

@@ -189,6 +189,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var cmd = new AddSignerCommand(
             tenantId,
             id,
@@ -216,6 +220,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new RemoveSignerCommand(tenantId, id, signerId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -235,6 +243,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new ReorderSignersCommand(tenantId, id, body.OrderedSignerIds), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -253,6 +265,10 @@ public sealed class SignatureRequestsController(
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var cmd = new PlaceFieldCommand(
             tenantId,
@@ -289,6 +305,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new RemoveFieldCommand(tenantId, id, signerId, fieldId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -308,6 +328,10 @@ public sealed class SignatureRequestsController(
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var cmd = new PlacePreparerFieldCommand(
             tenantId,
@@ -341,6 +365,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new RemovePreparerFieldCommand(tenantId, id, fieldId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -360,6 +388,10 @@ public sealed class SignatureRequestsController(
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
         var result = await bus.InvokeAsync<Result>(
@@ -514,6 +546,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new ResendSignerInvitationCommand(tenantId, id, signerId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -533,6 +569,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new SetPractitionerPinCommand(tenantId, id, userId, body.Pin), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -547,6 +587,10 @@ public sealed class SignatureRequestsController(
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result>(new ClearPractitionerPinCommand(tenantId, id), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -598,11 +642,17 @@ public sealed class SignatureRequestsController(
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        // A1 — el preparer es quien declara su PTIN/EFIN, y eso sale del JWT, nunca del cuerpo: si
+        // viniera del body, cualquiera podría declarar a otro y después firmar en su nombre.
         var result = await bus.InvokeAsync<Result>(
-            new SetPreparerCommand(tenantId, id, body.PtinOrEfin, body.DisplayName, body.TitleLabel),
+            new SetPreparerCommand(tenantId, id, body.PtinOrEfin, body.DisplayName, body.TitleLabel, userId),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -619,6 +669,10 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
         var result = await bus.InvokeAsync<Result>(new ClearPreparerCommand(tenantId, id), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -633,6 +687,10 @@ public sealed class SignatureRequestsController(
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();

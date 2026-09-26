@@ -519,7 +519,12 @@ public sealed record DeleteFolderCommand(
     Guid ActorId,
     StorageActorScope Scope,
     Guid FolderId,
-    RequestAuditContext Audit
+    RequestAuditContext Audit,
+    // A1 — si el caller tiene cloudstorage.file.delete. Borrar una carpeta manda TODOS sus archivos a la
+    // papelera, así que con folder.manage a secas se podía borrar el contenido de la oficina entera sin
+    // tener el permiso de borrar archivos. El default true conserva el comportamiento anterior para
+    // cualquier llamador que todavía no lo informe.
+    bool CanDeleteFiles = true
 );
 
 public static class DeleteFolderHandler
@@ -564,6 +569,12 @@ public static class DeleteFolderHandler
         // Fail-closed: no se borra una carpeta con archivos en retención legal (sin borrado parcial).
         if (filesInside.Any(f => f.IsLegalHeld))
             return Result.Failure(FolderErrors.HasLegalHold);
+
+        // A1 — borrar la carpeta borra su contenido: eso exige el permiso de borrar archivos, no solo el
+        // de administrar carpetas. Una carpeta VACÍA se sigue borrando con folder.manage a secas: no hay
+        // nada de nadie que se pierda.
+        if (filesInside.Count > 0 && !command.CanDeleteFiles)
+            return Result.Failure(FolderErrors.FileDeletePermissionRequired);
 
         var now = clock.UtcNow;
         var retention = TimeSpan.FromDays(options.Value.RecycleBinRetentionDays);

@@ -105,11 +105,20 @@ public sealed class DraftsController(
         CancellationToken ct
     )
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
+        // A1 — el listado de borradores mostraba los de TODOS los usuarios del tenant. Mismo criterio
+        // que la lectura de uno: el propio, salvo que vea el buzón de la oficina.
+        var canSeeOthers = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct) is null;
         var result = await bus.InvokeAsync<PagedResult<DraftListItem>>(
-            new ListDraftsQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size)),
+            new ListDraftsQuery(
+                tenantId,
+                customerId,
+                NormalizePage(page),
+                NormalizeSize(size),
+                canSeeOthers ? null : userId
+            ),
             ct
         );
         return Ok(result);
@@ -208,8 +217,10 @@ public sealed class DraftsController(
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
+        // A1 — de qué buzón se redacta: el AccountId venía del cuerpo y nadie lo validaba.
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new CreateDraftCommand(tenantId, body.CustomerId, body.AccountId, userId),
+            new CreateDraftCommand(tenantId, body.CustomerId, body.AccountId, userId, visible),
             ct
         );
         return result.IsSuccess
@@ -222,10 +233,16 @@ public sealed class DraftsController(
     [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result<DraftDetail>>(new GetDraftQuery(tenantId, id), ct);
+        // A1 — un borrador es un correo a medio escribir. Lo lee su autor; el resto solo si ve el buzón
+        // de la oficina, que es la misma señal (visible == null) que ya gobierna la lectura del correo.
+        var canReadOthers = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct) is null;
+        var result = await bus.InvokeAsync<Result<DraftDetail>>(
+            new GetDraftQuery(tenantId, id, userId, canReadOthers),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

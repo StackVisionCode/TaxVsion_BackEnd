@@ -258,6 +258,8 @@ public static class ErrorHttpMapping
             or "IncomingEmailAttachment.Blocked"
             or "File.Forbidden"
             or "Folder.Forbidden"
+            // A1 — borrar una carpeta con contenido exige el permiso de borrar archivos.
+            or "Folder.FileDeletePermissionRequired"
             or "EmailConfiguration.Forbidden"
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
@@ -280,6 +282,10 @@ public static class ErrorHttpMapping
             or "Onboarding.SessionChallengeMismatch"
             or "Onboarding.SessionOnboardingMismatch"
             or "Onboarding.PayerEmailMismatch"
+            // A1 — firmar como preparer con el PTIN/EFIN de otro no es un error de forma, es una
+            // denegación: el que firma tiene que ser el preparer asignado a la solicitud.
+            or "Signature.Request.PreparerNotSelf"
+            or "SignatureRequest.NotOwner"
             or "Signature.Profile.Forbidden"
             or "Signature.Profile.NotVisible"
             or "Signature.Profile.OwnSignatureDisabled" => StatusCodes.Status403Forbidden,

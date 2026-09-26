@@ -100,7 +100,7 @@ public sealed class AddDependencyHandlerTests
         await fixture.AddAsync(successor.Id, predecessor.Id);
 
         var result = await RemoveDependencyHandler.Handle(
-            new RemoveDependencyCommand(TenantId, successor.Id, predecessor.Id),
+            new RemoveDependencyCommand(TenantId, successor.Id, predecessor.Id, UserId),
             fixture.Tasks,
             fixture.Dependencies,
             fixture.Scope,
@@ -120,7 +120,7 @@ public sealed class AddDependencyHandlerTests
         var fixture = new Fixture(predecessor, successor);
 
         var result = await RemoveDependencyHandler.Handle(
-            new RemoveDependencyCommand(TenantId, successor.Id, predecessor.Id),
+            new RemoveDependencyCommand(TenantId, successor.Id, predecessor.Id, UserId),
             fixture.Tasks,
             fixture.Dependencies,
             fixture.Scope,
@@ -148,6 +148,78 @@ public sealed class AddDependencyHandlerTests
                 new RecordingTaskMetrics(),
                 CancellationToken.None
             );
+    }
+
+    // ---------------------------------------------------------------------
+    // A1 — ownership: la dependencia cambia la SUCESORA, así que se valida sobre ella
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_stranger_cannot_block_someone_elses_task()
+    {
+        var predecessor = NewTask();
+        var successor = NewTask();
+        var fixture = new Fixture(predecessor, successor);
+
+        var result = await AddDependencyHandler.Handle(
+            new AddDependencyCommand(TenantId, successor.Id, predecessor.Id, Guid.NewGuid()),
+            fixture.Tasks,
+            fixture.Dependencies,
+            fixture.Scope,
+            fixture.UnitOfWork,
+            new RecordingTaskMetrics(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Task.Forbidden", result.Error.Code);
+        Assert.False(successor.IsBlocked);
+    }
+
+    [Fact]
+    public async Task A_stranger_cannot_unblock_someone_elses_task()
+    {
+        var predecessor = NewTask();
+        var successor = NewTask();
+        var fixture = new Fixture(predecessor, successor);
+        await fixture.AddAsync(successor.Id, predecessor.Id);
+
+        var result = await RemoveDependencyHandler.Handle(
+            new RemoveDependencyCommand(TenantId, successor.Id, predecessor.Id, Guid.NewGuid()),
+            fixture.Tasks,
+            fixture.Dependencies,
+            fixture.Scope,
+            fixture.UnitOfWork,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Task.Forbidden", result.Error.Code);
+        // Sigue bloqueada: el guard corre ANTES de quitar el borde.
+        Assert.True(successor.IsBlocked);
+    }
+
+    /// <summary>El override de supervisión (tasks.manage_all) sí puede: es el caso del preparador
+    /// senior reorganizando el trabajo del equipo.</summary>
+    [Fact]
+    public async Task The_supervision_override_can_block_a_task_it_does_not_own()
+    {
+        var predecessor = NewTask();
+        var successor = NewTask();
+        var fixture = new Fixture(predecessor, successor);
+
+        var result = await AddDependencyHandler.Handle(
+            new AddDependencyCommand(TenantId, successor.Id, predecessor.Id, Guid.NewGuid(), HasManageAll: true),
+            fixture.Tasks,
+            fixture.Dependencies,
+            fixture.Scope,
+            fixture.UnitOfWork,
+            new RecordingTaskMetrics(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.True(successor.IsBlocked);
     }
 
     private static TaskItem NewTask(Guid? tenantId = null) =>

@@ -253,8 +253,12 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     [ProducesResponseType<CampaignScheduleResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Schedule(Guid id, ScheduleCampaignRequest request, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+
+        // A1 — se congela quién agenda y qué clientes ve: el disparo corre con actor de sistema y, sin
+        // esto, con la visibilidad abierta. Mismo permiso que la ruta interactiva de arriba.
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
 
         var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
             new ScheduleCampaignCommand(
@@ -264,7 +268,9 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 request.RunAtUtc,
                 request.IntervalMinutes,
                 request.ContactListIds ?? [],
-                request.IncludeCustomers
+                request.IncludeCustomers,
+                userId,
+                canViewAllCustomers
             ),
             ct
         );

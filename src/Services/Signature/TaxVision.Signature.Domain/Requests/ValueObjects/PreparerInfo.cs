@@ -25,14 +25,38 @@ public sealed record PreparerInfo
     public string DisplayName { get; }
     public string? TitleLabel { get; }
 
-    private PreparerInfo(string ptinOrEfin, string displayName, string? titleLabel)
+    /// <summary>
+    /// El usuario del staff que ES este preparer, o <c>null</c> en las solicitudes creadas antes de que
+    /// la identidad se ligara (fase A1).
+    ///
+    /// <para>
+    /// Sin esto, el PTIN/EFIN era un dato suelto en el cuerpo del request: cualquier empleado
+    /// con <c>signature.document.sign</c> podía firmar como preparer bajo la credencial profesional de un
+    /// colega, y el PDF sellado salía con el PTIN de esa otra persona. El PTIN identifica a un
+    /// profesional ante el IRS (Pub. 1345, §6109(a)(4)); firmar con el ajeno no es un detalle de
+    /// permisos, es suplantación.
+    /// </para>
+    /// <para>
+    /// <c>null</c> conserva el comportamiento anterior para los datos ya existentes — ver
+    /// <c>SignatureRequest.MarkPreparerSigned</c>.
+    /// </para>
+    /// </summary>
+    public Guid? UserId { get; }
+
+    private PreparerInfo(string ptinOrEfin, string displayName, string? titleLabel, Guid? userId)
     {
         PtinOrEfin = ptinOrEfin;
         DisplayName = displayName;
         TitleLabel = titleLabel;
+        UserId = userId;
     }
 
-    public static Result<PreparerInfo> Create(string? ptinOrEfin, string? displayName, string? titleLabel)
+    public static Result<PreparerInfo> Create(
+        string? ptinOrEfin,
+        string? displayName,
+        string? titleLabel,
+        Guid? userId = null
+    )
     {
         var idResult = ValidateIdentifier(ptinOrEfin);
         if (idResult.IsFailure)
@@ -46,7 +70,10 @@ public sealed record PreparerInfo
         if (titleResult.IsFailure)
             return Result.Failure<PreparerInfo>(titleResult.Error);
 
-        return Result.Success(new PreparerInfo(idResult.Value, nameResult.Value, titleResult.Value));
+        if (userId == Guid.Empty)
+            return Result.Failure<PreparerInfo>(new Error("Signature.Preparer.User", "Preparer user is invalid."));
+
+        return Result.Success(new PreparerInfo(idResult.Value, nameResult.Value, titleResult.Value, userId));
     }
 
     private static Result<string> ValidateIdentifier(string? candidate)

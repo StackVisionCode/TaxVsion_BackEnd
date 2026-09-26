@@ -64,6 +64,12 @@ public static class FolderErrors
         "Folder.HasLegalHold",
         "This folder contains files on legal hold and cannot be deleted."
     );
+
+    /// <summary>A1 — borrar una carpeta con archivos dentro es borrar esos archivos.</summary>
+    public static readonly Error FileDeletePermissionRequired = new(
+        "Folder.FileDeletePermissionRequired",
+        "This folder is not empty: deleting it also deletes its files, which requires the file-delete permission."
+    );
     public static readonly Error AlreadyDeleted = new(
         "Folder.AlreadyDeleted",
         "The folder is already in the recycle bin."

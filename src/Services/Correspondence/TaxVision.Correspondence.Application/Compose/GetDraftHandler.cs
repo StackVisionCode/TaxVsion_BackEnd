@@ -18,6 +18,12 @@ public static class GetDraftHandler
     )
     {
         var draft = await drafts.GetByIdAsync(query.TenantId, query.DraftId, ct);
+
+        // A1 — el borrador de un colega responde igual que uno inexistente: un 403 le confirmaría que ese
+        // id existe y sobre qué cliente está escribiendo.
+        if (draft is not null && !query.CanReadOtherUsersDrafts && draft.CreatedByUserId != query.RequestingUserId)
+            draft = null;
+
         return draft is null
             ? Result.Failure<DraftDetail>(new Error("Draft.NotFound", "The draft was not found for this tenant."))
             : Result.Success(ToDetail(draft));

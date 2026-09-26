@@ -1,10 +1,16 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Series.Commands;
 
-public sealed record PauseTaskSeriesCommand(Guid TenantId, Guid SeriesId);
+public sealed record PauseTaskSeriesCommand(
+    Guid TenantId,
+    Guid SeriesId,
+    Guid ByUserId = default,
+    bool HasManageAll = false
+);
 
 /// <summary>
 /// Pausar no toca la instancia abierta: la tarea que ya está en la lista de alguien sigue ahí. Lo que
@@ -22,6 +28,11 @@ public static class PauseTaskSeriesHandler
         var found = await seriesRepository.GetByIdAsync(command.TenantId, command.SeriesId, ct);
         if (found.IsFailure)
             return Result.Failure<TaskSeriesResponse>(found.Error);
+
+        // A1 — pausar la serie de otro le hace desaparecer las tareas siguientes sin explicación. Antes
+        // alcanzaba con tasks.write.
+        if (!TaskSeriesAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<TaskSeriesResponse>(TaskErrors.Forbidden);
 
         var paused = found.Value.Pause();
         if (paused.IsFailure)

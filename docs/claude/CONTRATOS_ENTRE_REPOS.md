@@ -61,6 +61,11 @@ Forma plana de `BuildingBlocks.Results.Error`, serializada en camelCase:
 | `Role.PermissionNotAssignable` | 400 | Alguno de los permisos pedidos está fuera del techo del tenant (de plataforma, peligroso, reservado, o fuera del plan) | Error en el picker, nombrando los códigos que vienen en el mensaje. Con `grantable` de `GET /auth/permissions` no debería llegar a pasar |
 | `Role.NotAssignableToActorType` | 400 | El rol mezcla permisos de actor types incompatibles, o el permiso no es válido para los titulares del rol | Error en el picker. Filtrar por `allowedActorTypes` del catálogo |
 | `Role.AlreadyActive` | 400 | Se intentó reactivar un rol que ya está activo | No ofrecer la acción cuando `isActive` es true |
+| `Signature.Request.PreparerNotSelf` | 403 | Se intentó firmar como preparer una solicitud cuyo preparer es otra persona (A1) | "Solo {nombre} puede firmar como preparador". No ofrecer el botón si el preparer no es el usuario actual |
+| `SignatureRequest.NotOwner` | 403 | La solicitud de firma es de otro y no tenés `signature.request.manage` (A1) | "Solo quien creó la solicitud puede hacer esto". Solo aparece con el flag de ownership encendido |
+| `Task.Forbidden` | 403 | La tarea es de otro y no tenés `tasks.manage_all` (A1: ahora también en dependencias, adjuntos y series) | No ofrecer la acción sobre tareas ajenas |
+| `Draft.AccountNotVisible` | 400 | Se intentó redactar desde un buzón al que no tenés acceso (A1) | Ofrecer en el selector de remitente **solo** los buzones visibles |
+| `Folder.FileDeletePermissionRequired` | 403 | La carpeta no está vacía: borrarla borra sus archivos, y eso exige `cloudstorage.file.delete` (A1) | "Esta carpeta tiene archivos. Pedí permiso para borrar archivos o vaciala primero" |
 | `Chat.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó abrir un chat con otro cliente | Portal: no ofrecer esa acción. Si llega, mensaje "solo puedes escribirle a tu oficina" |
 | `Call.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó llamar a otro cliente | Igual que el anterior, en la llamada |
 | `Authz.PermissionDenied` | 403 | Sin el permiso que el endpoint exige | Pantalla "acceso restringido". Trae `permission` cuando el endpoint lo declara |
@@ -232,6 +237,28 @@ combinación de `GET /auth/me` + `GET /auth/me/effective-access` + `GET /subscri
 2. **Un permiso dormido no es un error.** Es uno que el rol ya tenía y que hoy tiene `grantable:
    false` por plan o módulo. Muéstralo como "Inactive — requires {gateModule}", no como inválido, y
    déjalo marcado.
+
+### Ownership de recurso: qué cambió en A1
+
+Algunas acciones que antes devolvían 200 ahora devuelven 403 o 404. **Es el efecto buscado**, no una
+regresión:
+
+| Recurso | Regla nueva |
+|---|---|
+| Solicitud de firma (14 sub-recursos: signers, fields, preparer, PIN…) | Su creador, o `signature.request.manage`. **Solo con el flag de ownership encendido** |
+| Firmar como preparer | Solo el usuario asignado como preparer. No depende de ningún flag |
+| Tarea: dependencias, adjuntos, series | Quien la creó o la tiene asignada, o `tasks.manage_all` |
+| Borrador de correo | Su autor, o quien ve el buzón de la oficina. El ajeno responde **404** |
+| Buzón de envío de un borrador | Solo un buzón visible para el caller |
+| Adjunto de un correo entrante (descarga y URL) | El gate de buzón que ya regía el cuerpo del mensaje |
+| Borrar carpeta con archivos dentro | Exige `cloudstorage.file.delete` además de `folder.manage` |
+
+**Dos cosas para la UI:**
+
+1. **El selector de remitente** al redactar tiene que ofrecer solo los buzones visibles del usuario; si
+   manda otro, llega `Draft.AccountNotVisible`.
+2. **El botón "firmar como preparador"** solo va si el preparer asignado es el usuario actual. El
+   endpoint responde `Signature.Request.PreparerNotSelf` a cualquier otro.
 
 ## 6. Módulos y entitlements
 
