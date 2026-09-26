@@ -7,7 +7,7 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 
 | Fase | Estado | Rama | Commits | Tests agregados | Verificación | Pendientes |
 |---|---|---|---|---|---|---|
-| A0 — Hotfixes de seguridad | **P** | — | — | — | — | A0.4 (refund) ya estaba **C**. Abiertas: A0.1 bypass de rol en **3 sitios**, A0.2 nombres reservados, A0.5 DMCA, A0.6 IDOR de llamadas, A0.7 broadcasts, A0.8 private links, A0.9 M2M |
+| A0 — Hotfixes de seguridad | **C** | `claude/great-heisenberg-j7fnkh` | `7a85c03`, `4caa3fd` | 63 (.NET) + 20 (Node) | build Release · gate de CI 4835/4835 · `npm run typecheck` + 446/446 de Communication · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | Solo queda el **scope** M2M de `internal/stock/commit-sale`: preparado y documentado, sin activar (ver `DECISIONES.md`) |
 | A1 — Ownership de recurso | **NI** | — | — | — | — | Signature (14 sub-recursos), Tasks, Correspondence, Customer, CloudStorage, Campaigns |
 | A2 — Deny layer y propagación | **P** | — | — | — | — | G2 ya estaba **C** (`UserAccessResolver.cs:31-32`). Abiertas: fan-out por titular, consumidores de `RolePermissionsChanged`, jerarquía en deactivate, `Reason`/`ExpiresAtUtc` |
 | A3 — Baseline y catálogo | **NI** | — | — | — | — | Employee (75 permissions) sigue sin Campaigns ni Notes |
@@ -26,9 +26,38 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 5. La migración de la fase **aplicada**, no solo creada.
 6. El test de regresión que demuestra que ningún rol existente perdió accesos (§R.7 del PLAN).
 
+## Mini plan por fase
+
+### A0 — cerrada el 2026-09-26
+
+| Sub | Archivos tocados | Tests |
+|---|---|---|
+| A0.1 | `BuildingBlocks/ActorTypeAuthorization/ClaimsPrincipalExtensions.cs`, `Growth.Api/Common/ClaimsPrincipalExtensions.cs`, `Tenant.Api/Program.cs` | `ClaimsPrincipalExtensionsTests`, `ControllerIdentityExtensionsTests` |
+| A0.2 | `Auth/Domain/Roles/ReservedRoleNames.cs` (nuevo), `Role.cs` | `ReservedRoleNamesTests`, `RoleTests` |
+| A0.5 | `CloudStoragePermissions.cs`, `PermissionCatalog.cs`, `LegalController.cs`, migración `AddCloudStorageDmcaManagePermission` | `PermissionCatalogTests` (DMCA PlatformOnly + regresión de legal hold) |
+| A0.6 | Communication: `calls.route.ts`, `initiate-call.ts`, `call-handlers.ts`, `start-direct-conversation.ts`, `join-meeting.ts`, `auth.plugin.ts`; y los 6 `offboarding-impact` de Calendar, Customer, Connectors, CloudStorage, Correspondence y Tasks | `customer-call-history-route`, `initiate-call`, `start-direct-conversation`, `meeting-invitations-flow`, `auth-plugin-user-rate-limit` |
+| A0.7 | `realtime-emitter.ts`, `socket-realtime-emitter.ts`, `build-io.ts`, `correspondence-consumers.ts`, `customer-consumers.ts`, `signature-consumers.ts` | `correspondence-consumers`, `customer-consumers` |
+| A0.8 | `ShareResolutionQueries.cs` | `ShareLinkHandlerTests` (TenantOnly y TenantCustomers) |
+| A0.9 | `InternalAccountsController.cs`, `MessagesController.cs` | `InternalTenantBoundaryTests` |
+
+**Lo que NO se pudo verificar en A0:** los tests de integración de Tenant, Postmaster, CloudStorage y
+PaymentApp (CloudStorage necesita MinIO, cuya imagen no se puede descargar desde este entorno). Los de
+Auth sí corrieron (6/6) contra SQL Server 2022 + Redis + RabbitMQ reales.
+
+## Entorno de esta sesión
+
+- **.NET SDK 10.0.112** (archivo de Ubuntu 24.04). `global.json` pide 10.0.300 y **no se tocó**: los
+  comandos se lanzan con el cwd fuera del repo y la ruta absoluta de la solución. Ver `DECISIONES.md`.
+- **SQL Server 2022** en Docker (`deploy/docker/docker-compose.claude.yml`, servicio `sqlserver`).
+  **Redis** y **RabbitMQ** instalados con `apt` (las imágenes de Docker Hub están bloqueadas en este
+  entorno; `mcr.microsoft.com` sí se alcanza). **MinIO no está disponible.**
+- Variables de entorno de ejemplo para los tests de integración: `ConnectionStrings__Default`,
+  `ConnectionStrings__Redis`, `RabbitMq__Uri`, `Encryption__MasterKey`.
+
 ## Bloqueos
 
-*(ninguno registrado todavía)*
+- **MinIO no disponible** en este entorno (la imagen sale de Docker Hub, bloqueado). Los tests de
+  integración de CloudStorage quedan fuera de lo verificable desde la sesión.
 
 ## Notas del estado inicial
 

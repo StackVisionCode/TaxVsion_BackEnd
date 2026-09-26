@@ -18,7 +18,7 @@ todavía **no existe** está marcado `[POR CREAR]`.
 | Claim | Valores | Notas |
 |---|---|---|
 | `actor_type` | `TenantEmployee` · `TenantAdmin` · `CustomerPortal` · `PlatformAdmin` · `Service` | **Inmutable**, se fija al registrar el usuario. Es el eje de autorización de la capa 2 y **el único** discriminador válido de PlatformAdmin |
-| `role` (`ClaimTypes.Role`) | pseudo-rol del actor type + nombres de los custom roles activos | **No es fiable para autorizar**: un custom role puede llamarse igual que el pseudo-rol. Solo para mostrar |
+| `role` (`ClaimTypes.Role`) | pseudo-rol del actor type + nombres de los custom roles activos | **No es fiable para autorizar**: un custom role puede llamarse igual que el pseudo-rol. Solo para mostrar. El backend ya no lo mira para decidir si alguien es PlatformAdmin (A0.1), y `Role.Create`/`Role.Update` rechazan los nombres reservados con comparación normalizada (A0.2) |
 | `perm_v` | entero | Versión de permisos. Si la proyección local del servicio está por delante → `401 Auth.TokenStale` |
 | `sid` | GUID | Id de sesión. Base de la denylist por Redis |
 | `tenant_id` | GUID | Tenant del token |
@@ -53,6 +53,9 @@ Forma plana de `BuildingBlocks.Results.Error`, serializada en camelCase:
 | `RateLimit.Exceeded` | 429 | Límite de tasa | Leer `retryAfterSeconds` / `Retry-After` y mostrar cuenta atrás |
 | `Authz.ModuleUnavailable` | 403 | El plan del tenant no incluye el módulo | Pantalla "no incluido en tu plan". **Distinto** de "sin permiso" |
 | `SubscriptionInactive` | 403 | La suscripción de la oficina no está activa | Portal → `office-inactive`. **Nunca** a login |
+| `Role.NameReserved` | 400 | El nombre del rol colisiona con uno reservado por la plataforma | Error en el campo del nombre, en el formulario de rol. No es un fallo de permisos |
+| `Chat.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó abrir un chat con otro cliente | Portal: no ofrecer esa acción. Si llega, mensaje "solo puedes escribirle a tu oficina" |
+| `Call.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó llamar a otro cliente | Igual que el anterior, en la llamada |
 | *(sin código)* | 403 | Sin permiso | Pantalla "acceso restringido" |
 
 **Regla dura, en los dos frontends:** un **403 nunca cierra la sesión**. Solo un refresh rechazado
@@ -113,6 +116,13 @@ el código.
 `portal.miles.use`. Ver §R.6 del plan: hoy **no los tiene ningún cliente y no los exige ningún
 endpoint**. No se asuma que existen.
 
+### Cambios del catálogo en A0 (ninguno visible para los dos frontends)
+
+| Permission | Qué cambió |
+|---|---|
+| `cloudstorage.dmca.manage` | **Nueva**, PlatformOnly y no asignable: registrar y cerrar takedowns DMCA. Ningún rol de tenant la recibe |
+| `cloudstorage.legal.manage` | Ya no cubre el DMCA. Queda solo el legal hold sobre archivos del propio tenant (peligroso, no delegable, sigue en el rol raíz del admin) |
+
 ## 6. Módulos y entitlements
 
 - `plan.enabledModules` llega en `GET /auth/me` como lista de códigos de módulo.
@@ -128,6 +138,17 @@ endpoint**. No se asuma que existen.
 ## 7. Realtime
 
 - Socket.IO en Communication. Un token con claim `surface` es rechazado.
+- Las rutas HTTP de Communication rechazan un token M2M (`actor_type=Service`) con
+  `403 Auth.Forbidden`.
+- **Dos ámbitos de broadcast por tenant** (A0.7):
+
+| Ámbito | Quién lo recibe | Qué va por ahí |
+|---|---|---|
+| `t:{tenant}` | todo el tenant, clientes del portal e invitados de meeting incluidos | `chat.presence.changed` |
+| `t:{tenant}:staff` | solo empleados y admins de la oficina | `mail.incoming`, `customer.changed`, `signature.request.changed` |
+
+  El portal **no** debe suscribirse a los tres del segundo grupo: nombran clientes, correos y
+  solicitudes de firma de la oficina y ya no le llegan.
 - `access.changed` `[POR CREAR]` (A5): señal para que el frontend refresque su bootstrap.
 - `session.revoked` `[POR CREAR]` (A5): la sesión murió en otro sitio.
 - Respaldo sin realtime, ya válido hoy: refetch en `focus` / `visibilitychange`, y tras un 403.
