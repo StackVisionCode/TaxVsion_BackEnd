@@ -53,6 +53,9 @@ Forma plana de `BuildingBlocks.Results.Error`, serializada en camelCase:
 | `RateLimit.Exceeded` | 429 | Límite de tasa | Leer `retryAfterSeconds` / `Retry-After` y mostrar cuenta atrás |
 | `Authz.ModuleUnavailable` | 403 | El plan del tenant no incluye el módulo | Pantalla "no incluido en tu plan". **Distinto** de "sin permiso" |
 | `SubscriptionInactive` | 403 | La suscripción de la oficina no está activa | Portal → `office-inactive`. **Nunca** a login |
+| `UserPermissionDeny.ExpiryInPast` | 400 | La fecha de vencimiento de un deny ya pasó | Error en el campo de la fecha, en el drawer de accesos |
+| `User.Hierarchy` | 403 | Un empleado intentó dar de baja a un administrador | Mensaje "solo un administrador puede hacerlo". No ofrecer la acción |
+| `User.LastAdmin` | 400 | Es el último administrador activo de la oficina | Mensaje "la oficina necesita al menos un administrador" |
 | `Role.NameReserved` | 400 | El nombre del rol colisiona con uno reservado por la plataforma | Error en el campo del nombre, en el formulario de rol. No es un fallo de permisos |
 | `Chat.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó abrir un chat con otro cliente | Portal: no ofrecer esa acción. Si llega, mensaje "solo puedes escribirle a tu oficina" |
 | `Call.CustomerToCustomerNotAllowed` | 400 | Un cliente del portal intentó llamar a otro cliente | Igual que el anterior, en la llamada |
@@ -72,7 +75,7 @@ frontend lo trata por el status.
 | `GET /auth/me` | CRM y Portal | Usuario, tenant, roles, `plan.enabledModules` |
 | `GET /auth/me/effective-access` | CRM y Portal | Permissions efectivas por módulo, con la marca de denegado, y `permissionsVersion` |
 | `GET /auth/users/{id}/effective-access` | CRM (admin) | Lo mismo, para otro usuario. Gateado por `roles.manage` |
-| `PUT /auth/users/{id}/permission-overrides` | CRM (admin) | Reemplaza el set completo de denies. Gateado por `roles.manage` |
+| `PUT /auth/users/{id}/permission-overrides` | CRM (admin) | Reemplaza el set completo de denies. Gateado por `roles.manage`. Acepta **dos formas** del cuerpo: `deniedPermissionIds` (ids planos, la forma que ya usa el CRM desplegado) o `denies` (`[{ permissionId, reason?, expiresAtUtc? }]`, con razón y vencimiento). Si viene `denies`, manda ese |
 | `GET /auth/permissions` | CRM (admin) | Catálogo con `{ id, code, module, description, isCustomerPortal }` |
 | `GET /auth/me/access` | ambos | `[POR CREAR]` (A5). Bootstrap único: `effectivePermissions`, `modules`, `permissionsVersion`, `entitlementsRevision`, `subscription.state`, `canManageBilling`, con ETag. **Debe ser consciente de la superficie** y su forma para `CustomerPortal` **no lleva semántica comercial** |
 
@@ -159,5 +162,9 @@ endpoint**. No se asuma que existen.
 2. Cambiar algo aquí obliga a actualizar este archivo **en los tres repos**, en el mismo PR.
 3. Un permission nuevo se agrega en `PermissionCatalog` (código) + migración `HasData` **solo** para la
    fila, y se propaga por el sync al arrancar Auth. **Nunca** se concede por INSERT de migración.
+   Cuando cambian los permisos de un rol, Auth publica **dos** señales: `RolePermissionsChanged`
+   (qué tiene el rol) y un `UserRolesChanged` **por titular** con sus códigos ya efectivos
+   (roles − denies). Una proyección local **no** debe recomponer la unión de un usuario a partir de
+   la primera: los denies por usuario viven solo en Auth.
 4. Un endpoint nuevo declara siempre `[AllowActorTypes]` (fail-closed) y, si lo alcanza el Account del
    Landing, `[AllowSurface]`.

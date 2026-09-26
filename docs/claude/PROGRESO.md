@@ -9,7 +9,7 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 |---|---|---|---|---|---|---|
 | A0 — Hotfixes de seguridad | **C** | `claude/great-heisenberg-j7fnkh` | `7a85c03`, `4caa3fd` | 63 (.NET) + 20 (Node) | build Release · gate de CI 4835/4835 · `npm run typecheck` + 446/446 de Communication · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | Solo queda el **scope** M2M de `internal/stock/commit-sale`: preparado y documentado, sin activar (ver `DECISIONES.md`) |
 | A1 — Ownership de recurso | **NI** | — | — | — | — | Signature (14 sub-recursos), Tasks, Correspondence, Customer, CloudStorage, Campaigns |
-| A2 — Deny layer y propagación | **P** | — | — | — | — | G2 ya estaba **C** (`UserAccessResolver.cs:31-32`). Abiertas: fan-out por titular, consumidores de `RolePermissionsChanged`, jerarquía en deactivate, `Reason`/`ExpiresAtUtc` |
+| A2 — Deny layer y propagación | **C** | `claude/great-heisenberg-j7fnkh` | `8004694` | 15 | build Release · gate de CI 4850/4850 · migración aplicada a SQL Server 2022 real · integración de Auth 6/6 | El fallback pre-RBAC de `UserAccessResolver` se dejó como está: ya exige `activeCustomRoles.Count == 0` (G2 cerrado) y quitarlo dejaría sin permisos a los usuarios creados antes del modelo. Ver `DECISIONES.md` |
 | A3 — Baseline y catálogo | **NI** | — | — | — | — | Employee (75 permissions) sigue sin Campaigns ni Notes |
 | A4 — Techo y API de roles | **NI** | — | — | — | — | `Grantable(...)` unificado, `GET /auth/roles/{id}/users`, reactivar rol |
 | A5 — Bootstrap, errores, realtime | **NI** | — | — | — | — | Sin `/auth/me/access`, sin `access.changed`, sin `IAuthorizationMiddlewareResultHandler`. **Debe nacer consciente de la superficie** (§R.4.1) |
@@ -39,6 +39,21 @@ Estados: **NI** no iniciada · **EN CURSO** · **P** parcial · **C** completa �
 | A0.7 | `realtime-emitter.ts`, `socket-realtime-emitter.ts`, `build-io.ts`, `correspondence-consumers.ts`, `customer-consumers.ts`, `signature-consumers.ts` | `correspondence-consumers`, `customer-consumers` |
 | A0.8 | `ShareResolutionQueries.cs` | `ShareLinkHandlerTests` (TenantOnly y TenantCustomers) |
 | A0.9 | `InternalAccountsController.cs`, `MessagesController.cs` | `InternalTenantBoundaryTests` |
+
+### A2 — cerrada el 2026-09-26
+
+| Sub | Archivos tocados | Tests |
+|---|---|---|
+| Fan-out por titular | `Auth/Application/Common/RolePermissionsFanOut.cs` (nuevo), `RoleCommands.cs`, `SystemRolePermissionsSyncService.cs`, `IUserRepository`/`IRoleRepository` + sus implementaciones | `RolePermissionsFanOutTests` (6) |
+| Consumidores | los 24 `RolePermissionsChanged…Consumer` dejan de recomponer la unión del usuario | los 9 tests de unión reescritos al contrato nuevo |
+| Jerarquía en la baja | `UserManagementCommands.cs` (`DeactivateUserCommand.CallerActorType`), `UsersController.cs` | `UserManagementCommandsTests` (5) |
+| Invitaciones | `CreateInvitation.cs`, `AcceptInvitation.cs` | `AcceptInvitationHandlerTests` (2) |
+| Denies con razón y vencimiento | `UserPermissionDeny.cs`, `RoleConfigurations.cs`, `RoleRepository.cs`, `SetUserPermissionOverridesCommand.cs`, `UsersController.cs`, `ExpiredPermissionDeniesService.cs` (nuevo), migración `AddUserPermissionDenyReasonAndExpiry` | `SetUserPermissionOverridesHandlerTests` (2) |
+
+**Lo que NO se pudo verificar en A2:** el barrido de denies vencidos
+(`ExpiredPermissionDeniesService`) no tiene test propio — es un `BackgroundService` con
+`PeriodicTimer`; lo que sí está cubierto es la consulta que lo alimenta y el fan-out que usa. Los
+tests de integración de los 24 consumidores tampoco (necesitan cada servicio levantado).
 
 **Lo que NO se pudo verificar en A0:** los tests de integración de Tenant, Postmaster, CloudStorage y
 PaymentApp (CloudStorage necesita MinIO, cuya imagen no se puede descargar desde este entorno). Los de

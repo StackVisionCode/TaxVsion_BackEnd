@@ -167,3 +167,26 @@ y la ruta absoluta de la solución (`dotnet build /ruta/TaxVision.slnx`), que es
 entorno de la sesión sería un cambio invisible y de alcance global.
 **Reversible:** n/a, no se cambió nada del repo.
 
+## 2026-09-26 — El fallback pre-RBAC de `UserAccessResolver` se queda
+
+**Contexto:** A2 pedía «fallback solo para usuarios pre-RBAC marcados, o eliminarlo».
+**Opciones:** marcarlos con una bandera nueva y limitar el fallback a esos · eliminarlo · dejarlo.
+**Elección:** dejarlo como está.
+**Por qué:** el agujero real (G2: el fallback ignoraba los denies) ya está cerrado — hoy exige
+`permissions.Count == 0 && activeCustomRoles.Count == 0`, así que un usuario con roles y todo
+denegado se queda vacío, que es lo correcto. Lo que queda es un usuario **sin ningún rol**, y para
+él el fallback es lo único que le da acceso: quitarlo lo deja fuera del sistema. Marcar quiénes son
+«pre-RBAC» exige una migración de datos que solo el humano puede validar contra producción.
+**Reversible:** n/a, no se cambió nada.
+
+## 2026-09-26 — `PUT /auth/users/{id}/permission-overrides` acepta dos formas del cuerpo
+
+**Contexto:** los denies ganaron razón y vencimiento, y el contrato actual del endpoint es una lista
+plana de ids que el CRM desplegado ya usa.
+**Opciones:** cambiar la forma del cuerpo · aceptar las dos.
+**Elección:** aceptar las dos: `deniedPermissionIds` (ids, sin metadata) y `denies`
+(`{permissionId, reason?, expiresAtUtc?}`). Si viene `denies`, manda ese.
+**Por qué:** cambiar la forma rompe el CRM que hay hoy en producción, y el drawer que va a usar la
+forma nueva es B9, que todavía no existe. Dos formas es fea pero es la única que no rompe nada.
+**Reversible:** sí; cuando B9 esté desplegado se puede retirar `deniedPermissionIds`.
+
