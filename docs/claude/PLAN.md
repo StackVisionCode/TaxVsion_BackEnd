@@ -3986,7 +3986,7 @@ flowchart LR
 
 ## TRACK C — CLIENTTAXPROFRONTEND (Portal, Angular 19)
 
-> **Coordinación:** el rediseño `CLIENTREDESIGN` (copia del Portal en curso con Claude cloud, rama `claude-trabajo`) toca los mismos archivos (B-1, guards, sidebar). Hay que decidir en qué repo se implementa el Track C (**D-A12**) para no duplicar trabajo.
+> **Coordinación — resuelto en la Revisión 2026-09-26 (§R.1, D-A12):** el Track C se implementa en **`CLIENTREDESIGN`**, rama `claude-trabajo`. Su rediseño de UX/UI **ya está terminado y mergeado** (13 fases, PRs #1–#13): no es trabajo pendiente y no se rehace. Su documentación (`docs/especificaciones.md`, `docs/mockups/`) es el **contrato de diseño** que este track respeta. `CLIENTTAXPROFRONTEND` queda fuera y no se toca.
 
 ### C0 — Fixes independientes
 - **Objetivo:** corregir defectos que no dependen del backend.
