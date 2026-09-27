@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;

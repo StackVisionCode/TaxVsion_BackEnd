@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using BuildingBlocks.Authorization;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.Deploy;
@@ -103,6 +104,43 @@ public sealed class ModuleGateDeployWiringTests
         Assert.True(
             moduleCount >= enforceCount,
             $"Hay {enforceCount} servicios con Enforce y solo {moduleCount} entradas de módulo."
+        );
+    }
+
+    [Fact]
+    public void Every_module_the_gate_knows_is_enforced_by_some_service()
+    {
+        // 🔴 El fallo que este test existe para atrapar: se separó `meetings` de `comms`, se metió en
+        // los planes y se puso a la venta a 29 USD… y no quedó en la lista de NINGÚN servicio, así que
+        // el gate nunca lo habría aplicado. Un módulo que se cobra y no se hace cumplir es peor que no
+        // tenerlo: el tenant paga por algo que ya podía usar.
+        //
+        // Se excluyen los módulos que a propósito no gatean nada — no tienen endpoints detrás — y que
+        // por eso tampoco se venden (ver ModuleAddOnCatalog.NotBuilt).
+        string[] withoutEndpoints = ["reports", "marketing", "builder", "irs", "miles"];
+
+        var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
+        var enforcedSomewhere = Regex
+            .Matches(
+                compose,
+                @"(?:Authorization__ModuleGate__EnforcedModules__\d+|COMMUNICATION_MODULE_GATE_ENFORCED_MODULES):\s*(?<value>[^
+#]+)"
+            )
+            .SelectMany(match => match.Groups["value"].Value.Split(','))
+            .Select(module => module.Trim())
+            .Where(module => module.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var orphans = PermissionModuleMap
+            .KnownModules.Where(module => !withoutEndpoints.Contains(module, StringComparer.OrdinalIgnoreCase))
+            .Where(module => !enforcedSomewhere.Contains(module))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            orphans.Count == 0,
+            "Estos módulos existen en el mapa y se venden, pero ningún servicio los aplicaría: "
+                + string.Join(", ", orphans)
         );
     }
 

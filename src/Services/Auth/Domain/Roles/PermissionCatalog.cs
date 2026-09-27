@@ -441,13 +441,7 @@ public static class PermissionCatalog
         // peligroso), esto es trabajo operativo diario: emitir/leer facturas y configurar los datos del
         // emisor. No peligroso, asignable, desde Starter — llega al TenantAdmin por el bundle automático
         // y al empleado por su array explícito. AllowedActorTypes=null infiere staff (no portal).
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000180"),
-            InvoicingView,
-            "billing",
-            "View client invoices",
-            false
-        ),
+        new(new Guid("a1000000-0000-0000-0000-000000000180"), InvoicingView, "billing", "View client invoices", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000181"),
             InvoicingManage,
@@ -985,13 +979,7 @@ public static class PermissionCatalog
         // caller M2M lo lleva como claim "perm" vía ServiceAuth:Clients (config, no rol). El
         // endpoint "POST /sms/messages" toma el TenantId del TOKEN (no del body), así que no aplica
         // el riesgo cross-tenant que obligó a marcar ScribeRender como PlatformOnly.
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000158"),
-            SmsSend,
-            "sms",
-            "Send SMS and MMS messages",
-            false
-        ),
+        new(new Guid("a1000000-0000-0000-0000-000000000158"), SmsSend, "sms", "Send SMS and MMS messages", false),
         // Lectura del historial de SMS y opt-outs desde el CRM (endpoints GET). Humano-asignable
         // (TenantAdmin/TenantEmployee vía defaults). Mismo módulo "sms" (para el gate de addon, F2).
         new(
@@ -2057,13 +2045,7 @@ public static class PermissionCatalog
         // Reminder — sin AllowedActorTypes explícito a propósito: la inferencia por defecto de
         // Permission da [TenantEmployee, TenantAdmin, PlatformAdmin], que es exactamente lo que
         // pide el diseño. Marcarlo a mano sería duplicar la regla y arriesgarse a que se desincronice.
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000165"),
-            RemindersRead,
-            "reminders",
-            "View your reminders",
-            false
-        ),
+        new(new Guid("a1000000-0000-0000-0000-000000000165"), RemindersRead, "reminders", "View your reminders", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000166"),
             RemindersWrite,

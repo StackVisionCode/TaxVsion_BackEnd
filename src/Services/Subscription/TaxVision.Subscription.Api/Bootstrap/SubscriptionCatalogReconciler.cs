@@ -143,9 +143,7 @@ public sealed class SubscriptionCatalogReconciler(
 
             if (existing is null)
             {
-                db.AddOnDefinitions.Add(
-                    SubscriptionAddOnCatalogSeeder.BuildDefinition(catalogEntry, DateTime.UtcNow)
-                );
+                db.AddOnDefinitions.Add(SubscriptionAddOnCatalogSeeder.BuildDefinition(catalogEntry, DateTime.UtcNow));
                 added.Add(catalogEntry.Code);
                 continue;
             }

@@ -303,6 +303,7 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(1, secondary.SendAsyncCallCount);
         Assert.Equal("p2", h.Messages.Added[0].ProviderCode);
     }
+
     // ---------- A1: visibilidad por asignación ----------
 
     [Fact]
@@ -371,5 +372,4 @@ public sealed class SendSmsBatchHandlerTests
         Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
         Assert.False(h.Assignments.WasAsked);
     }
-
 }

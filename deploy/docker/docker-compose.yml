@@ -2081,7 +2081,10 @@ services:
       # El escalon por modulo. Literal y no variable, por el mismo motivo que en los servicios .NET:
       # una lista vacia hace que se apliquen TODOS los modulos de golpe, asi que un secret vacio
       # saltaria el escalon completo en silencio.
-      COMMUNICATION_MODULE_GATE_ENFORCED_MODULES: comms
+      # Los DOS módulos que emite este servicio. Si aquí solo va `comms`, las reuniones nunca se
+      # aplican: sus permisos son `communication.meeting.*` y ningún otro servicio los exige, así que
+      # `meetings` se quedaría en log-only para siempre — vendido a 29 USD y sin hacerse cumplir.
+      COMMUNICATION_MODULE_GATE_ENFORCED_MODULES: comms,meetings
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}
