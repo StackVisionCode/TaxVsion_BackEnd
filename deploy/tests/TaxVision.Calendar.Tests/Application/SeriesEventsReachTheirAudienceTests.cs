@@ -46,7 +46,8 @@ public sealed class SeriesEventsReachTheirAudienceTests
                 _organizer,
                 EditScope.ThisOccurrence,
                 SecondOccurrence,
-                "feriado"
+                "feriado",
+                false
             ),
             new SingleAppointmentRepository(series),
             new NoOpUnitOfWork(),
@@ -91,7 +92,8 @@ public sealed class SeriesEventsReachTheirAudienceTests
                 new TimeOnly(11, 0),
                 TimeSpan.FromHours(1),
                 NewYork,
-                "FREQ=WEEKLY;BYDAY=MO"
+                "FREQ=WEEKLY;BYDAY=MO",
+                false
             ),
             new SingleAppointmentRepository(series),
             new NoOpUnitOfWork(),
@@ -131,7 +133,12 @@ public sealed class SeriesEventsReachTheirAudienceTests
             )
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, timing, _organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            timing,
+            _organizer,
+            canManageAll: false
+        );
         series.AddAttendee(
             AttendeeKind.Customer,
             null,
@@ -139,7 +146,8 @@ public sealed class SeriesEventsReachTheirAudienceTests
             AttendeeSnapshot.Create("Amanda", "cliente@example.com").Value,
             isRequired: true,
             _organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         return series;

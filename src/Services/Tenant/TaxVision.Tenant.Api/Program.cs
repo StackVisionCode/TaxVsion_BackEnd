@@ -89,7 +89,10 @@ builder
         "TenantRegistration",
         policy =>
             policy.RequireAssertion(context =>
-                context.User.HasClaim("purpose", "tenant-registration") || context.User.IsInRole("PlatformAdmin")
+                // PlatformAdmin se reconoce por el claim actor_type (inmutable), no por el nombre
+                // del rol: ahí también viajan los custom roles del tenant.
+                context.User.HasClaim("purpose", "tenant-registration")
+                || context.User.HasClaim("actor_type", "PlatformAdmin")
             )
     )
     // PayFlow (Fase 14) — M2M desde Auth para chequear disponibilidad de subdominio

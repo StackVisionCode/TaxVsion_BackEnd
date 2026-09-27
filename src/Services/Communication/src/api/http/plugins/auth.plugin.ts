@@ -33,6 +33,11 @@ export interface AuthPluginOptions {
  * NUNCA lee actor/rol del body/query — solo del JWT firmado por Auth (JWKS).
  * Cierra CRIT-18 del legacy (`isDepartmentMember` desde query).
  *
+ * Rechaza `actor_type=Service`: todas las rutas de este servicio son de un actor humano y
+ * resuelven datos a partir del `sub` del token. Un token M2M trae un `sub` sintetico derivado del
+ * clientId y permisos estaticos del registro en Auth, asi que entraria a rutas de usuario con una
+ * identidad que no corresponde a nadie. Communication no expone rutas M2M.
+ *
  * Tambien aplica la cuota HTTP por usuario. Va aca y no en el onRequest global porque recien aca
  * la identidad esta verificada: con el `sub` sin verificar, cualquiera podria forjarlo y agotarle
  * el cupo a otro usuario. El limite global por IP sigue cubriendo el trafico anonimo.
@@ -57,6 +62,12 @@ async function authPlugin(app: FastifyInstance, options: AuthPluginOptions): Pro
         }
         request.log.error({ err }, 'Unexpected auth error');
         await reply.code(401).send({ code: 'Auth.InvalidToken', message: 'Access token could not be verified.' });
+        return;
+      }
+      if (principal.actorType === 'Service') {
+        await reply
+          .code(403)
+          .send({ code: 'Auth.Forbidden', message: 'Machine-to-machine tokens cannot call this API.' });
         return;
       }
       request.principal = principal;

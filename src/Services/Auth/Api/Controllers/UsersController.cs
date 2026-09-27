@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Permissions.Commands;
 using TaxVision.Auth.Application.Permissions.Queries;
 using TaxVision.Auth.Application.Tenants.Queries;
@@ -73,7 +74,10 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var requesterId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new DeactivateUserCommand(tenantId, userId, requesterId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new DeactivateUserCommand(tenantId, userId, requesterId, CallerActorType()),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -159,7 +163,18 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record SetPermissionOverridesRequest(IReadOnlyList<Guid> DeniedPermissionIds);
+    /// <summary>Un deny con su razón y su expiración. Ambas opcionales; sin expiración es indefinido.</summary>
+    public sealed record PermissionDenyRequest(Guid PermissionId, string? Reason, DateTime? ExpiresAtUtc);
+
+    /// <summary>
+    /// Dos formas del mismo set, por compatibilidad: <c>deniedPermissionIds</c> es el contrato que ya
+    /// consume el CRM desplegado; <c>denies</c> es el que además lleva razón y expiración. Si viene
+    /// <c>denies</c>, manda ese.
+    /// </summary>
+    public sealed record SetPermissionOverridesRequest(
+        IReadOnlyList<Guid>? DeniedPermissionIds,
+        IReadOnlyList<PermissionDenyRequest>? Denies
+    );
 
     /// <summary>Replaces the target user's per-user deny set (the RBAC deny layer). Deny-only: to grant a
     /// permission you assign a role. Idempotent — the given set fully replaces the previous one (an empty
@@ -179,8 +194,14 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var requesterId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
+        var denies = request.Denies is { Count: > 0 }
+            ? request
+                .Denies.Select(deny => new PermissionDenyInput(deny.PermissionId, deny.Reason, deny.ExpiresAtUtc))
+                .ToList()
+            : (request.DeniedPermissionIds ?? []).Select(id => new PermissionDenyInput(id)).ToList();
+
         var result = await bus.InvokeAsync<Result>(
-            new SetUserPermissionOverridesCommand(tenantId, userId, request.DeniedPermissionIds ?? [], requesterId),
+            new SetUserPermissionOverridesCommand(tenantId, userId, denies, requesterId),
             ct
         );
 
@@ -229,4 +250,18 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>
+    /// Actor type del caller tal como lo trae el JWT, traducido al enum de Auth. <c>null</c> si el
+    /// claim falta o no matchea (fail-closed: los guards de jerarquía tratan null como "no admin").
+    /// </summary>
+    private UserActorType? CallerActorType() =>
+        User.GetActorType() switch
+        {
+            ActorType.TenantEmployee => UserActorType.TenantEmployee,
+            ActorType.TenantAdmin => UserActorType.TenantAdmin,
+            ActorType.CustomerPortal => UserActorType.CustomerPortal,
+            ActorType.PlatformAdmin => UserActorType.PlatformAdmin,
+            _ => null,
+        };
 }

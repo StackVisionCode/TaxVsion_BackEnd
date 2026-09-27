@@ -76,17 +76,6 @@ public sealed class AuthzUserPermissionsProjection : TenantEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    /// <summary>
-    /// RolePermissionsChangedIntegrationEvent para UNO de los roles de este usuario: recompone
-    /// la unión de permisos de todos sus roles cacheados, sin tocar PermissionsVersion (el
-    /// cambio no vino de una reasignación de roles del propio usuario) ni RoleIds.
-    /// </summary>
-    public void ReapplyPermissionsUnion(IReadOnlyCollection<string> unionOfPermissionCodes)
-    {
-        PermissionCodesJson = SerializeCodes(unionOfPermissionCodes);
-        UpdatedAtUtc = DateTime.UtcNow;
-    }
-
     public IReadOnlyList<string> PermissionCodes() => DeserializeCodes(PermissionCodesJson);
 
     public IReadOnlyList<Guid> RoleIds() => DeserializeRoleIds(RoleIdsJson);

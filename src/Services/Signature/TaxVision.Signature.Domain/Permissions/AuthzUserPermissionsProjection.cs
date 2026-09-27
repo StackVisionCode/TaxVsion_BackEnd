@@ -73,17 +73,6 @@ public sealed class AuthzUserPermissionsProjection : TenantEntity
     }
 
     /// <summary>
-    /// RolePermissionsChangedIntegrationEvent para UNO de los roles de este usuario: recompone
-    /// la unión de permisos de todos sus roles cacheados, sin tocar PermissionsVersion (el
-    /// cambio no vino de una reasignación de roles del propio usuario) ni RoleIds.
-    /// </summary>
-    public void ReapplyPermissionsUnion(IReadOnlyCollection<string> unionOfPermissionCodes)
-    {
-        PermissionCodesJson = SerializeCodes(unionOfPermissionCodes);
-        UpdatedAtUtc = DateTime.UtcNow;
-    }
-
-    /// <summary>
     /// El usuario fue desactivado o retirado en Auth: deja la proyección fail-closed (la lectura de
     /// permisos filtra por <c>IsActive</c>). No toca permisos ni versión — el evento no los trae. Idempotente.
     /// </summary>

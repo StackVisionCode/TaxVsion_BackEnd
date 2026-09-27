@@ -45,6 +45,7 @@ public static class DependencyInjection
         // proyección sobre SmsDbContext + reconciliación (siembra desde Customer con el token M2M de la
         // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
         services.AddCustomerVisibilityProjection<SmsDbContext>();
+        services.AddScoped<ISmsCustomerAssignmentReader, Customers.SmsCustomerAssignmentReader>();
         services.AddCustomerVisibilityReconciliation<Reconciliation.SmsPlatformTokenProvider>(configuration);
         services.AddOptions<SmsVisibilityOptions>().Bind(configuration.GetSection(SmsVisibilityOptions.SectionName));
 

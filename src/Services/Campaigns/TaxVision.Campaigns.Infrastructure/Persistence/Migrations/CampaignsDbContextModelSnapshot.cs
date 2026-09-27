@@ -510,6 +510,12 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("CreatorCanViewAllCustomers")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IncludeCustomers")
                         .HasColumnType("bit");
 

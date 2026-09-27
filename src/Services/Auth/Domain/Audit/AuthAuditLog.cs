@@ -96,6 +96,10 @@ public static class AuthAuditAction
     public const string RoleUpdated = "auth.role.updated";
     public const string RoleDeactivated = "auth.role.deactivated";
 
+    // A4 — reactivar un rol es su propia acción, no un RoleUpdated con detalles: devuelve acceso a
+    // todos sus titulares y hay que poder auditarlo por separado (mismo criterio que UserReactivated).
+    public const string RoleReactivated = "auth.role.reactivated";
+
     // Fase A6 — ciclo de vida de dominios (TargetType="TenantDomain", TargetId=domain.Id).
     // Detalles de Cloudflare (status/sslStatus/error) van en DetailsJson: son un detalle
     // de implementación detrás del ACL, no vocabulario propio de auditoría.

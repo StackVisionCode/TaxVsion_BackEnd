@@ -65,15 +65,6 @@ public sealed class PermissionsProjectionTests
     }
 
     [Fact]
-    public void UserProjection_ReapplyPermissionsUnion_keeps_version()
-    {
-        var p = UserPermissionsProjection.Create(Tenant, User, 7, ["a"], [RoleA]);
-        p.ReapplyPermissionsUnion(["catalog.read", "catalog.write"]);
-        Assert.Equal(7, p.PermissionsVersion);
-        Assert.Contains("catalog.write", p.PermissionCodes());
-    }
-
-    [Fact]
     public void RoleProjection_ApplyIfNewer_respects_version()
     {
         var role = RolePermissionsProjection.Create(Tenant, RoleA, "Tenant Admin", 1, ["a"]);

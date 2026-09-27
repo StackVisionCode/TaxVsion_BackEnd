@@ -229,6 +229,54 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// Bootstrap de acceso (A5): permisos efectivos, módulos del plan, las dos versiones para detectar
+    /// que quedó viejo y, solo para el staff, el estado comercial de la oficina. Con esto —y nada más—
+    /// el CRM arma sidebar, guards y botones, y el Portal sus áreas.
+    ///
+    /// <para>
+    /// **Sin `[AllowSurface]` a propósito** (§R.4.1): un token del Account del Landing no obtiene el
+    /// bootstrap del CRM. <c>SurfaceAuthorizationFilter</c> lo rechaza antes del handler con
+    /// <c>Auth.SurfaceNotAllowed</c>.
+    /// </para>
+    ///
+    /// Responde 304 si el <c>If-None-Match</c> coincide, así el frontend puede pedirlo en cada
+    /// navegación sin costo.
+    /// </summary>
+    [HttpGet("me/access")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [RateLimit("auth.f.me_read")]
+    [ProducesResponseType<MyAccessResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status304NotModified)]
+    public async Task<IActionResult> MyAccess(CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<MyAccessResponse>>(
+            new GetMyAccessQuery(userId, User.GetSurface()),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        // El ETag va siempre, también en el 304: es el contrato de revalidación. Private porque el
+        // contenido es por usuario — ninguna caché compartida puede servirlo a otro.
+        Response.Headers.ETag = result.Value.ETag;
+        Response.Headers.CacheControl = "private, no-cache";
+
+        if (Request.Headers.IfNoneMatch.Any(tag => tag == result.Value.ETag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return Ok(result.Value);
+    }
+
     /// <summary>Debugging (Fase 7): el acceso efectivo del usuario actual — por permiso, su módulo y si
     /// es efectivo (transversal o módulo habilitado). Responde "por qué 403" sin leer logs.</summary>
     [HttpGet("me/effective-access")]

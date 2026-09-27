@@ -47,6 +47,33 @@ public sealed class ShareLinkHandlerTests
         return file;
     }
 
+    /// <summary>Archivo del cajón de un cliente concreto — lo que un actor de portal sí puede alcanzar.</summary>
+    private static FileObject AvailableCustomerFile(Guid tenantId, Guid customerId)
+    {
+        var key = ObjectKey.Create($"tenants/{tenantId:N}/customer/documents/2025/{Guid.NewGuid():N}.pdf").Value;
+        var file = FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Customer,
+                customerId,
+                FolderType.Documents,
+                2025,
+                key,
+                "return.pdf",
+                "application/pdf",
+                10,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(24)
+            )
+            .Value;
+        file.MarkPendingScan();
+        file.MarkScanning();
+        file.MarkAvailable(ChecksumSha256.Create(new string('a', 64)).Value, "application/pdf", DateTime.UtcNow);
+        return file;
+    }
+
     private static IOptions<CloudStorageOptions> Options() =>
         Microsoft.Extensions.Options.Options.Create(new CloudStorageOptions());
 
@@ -1203,7 +1230,7 @@ public sealed class ShareLinkHandlerTests
     }
 
     [Fact]
-    public async Task ResolvePrivate_allows_TenantOnly_for_any_authenticated_actor_of_the_same_tenant()
+    public async Task ResolvePrivate_allows_TenantOnly_for_the_staff_of_the_same_tenant()
     {
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
@@ -1230,6 +1257,40 @@ public sealed class ShareLinkHandlerTests
         var result = await ResolvePrivate(token, tenantId, Guid.NewGuid(), TenantScope, shares, files);
 
         Assert.Equal(ShareAccessOutcome.Redirect, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ResolvePrivate_denies_TenantOnly_to_a_customer_portal_actor_of_the_same_tenant()
+    {
+        // "Solo el tenant" es el personal de la oficina. Un cliente del portal es del mismo tenant y
+        // entraba con cualquier token válido, sin ser destinatario de nada.
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var file = AvailableCustomerFile(tenantId, customerId);
+        var (link, token) = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.TenantOnly,
+                SharePermission.View,
+                null,
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var portalScope = new StorageActorScope(true, customerId);
+        var result = await ResolvePrivate(token, tenantId, Guid.NewGuid(), portalScope, shares, files);
+
+        Assert.Equal(ShareAccessOutcome.Denied, result.Outcome);
     }
 
     [Fact]
@@ -1335,9 +1396,50 @@ public sealed class ShareLinkHandlerTests
         Assert.Equal(ShareAccessOutcome.Denied, notACustomer.Outcome);
     }
 
+    /// <summary>
+    /// Sin destinatarios el link no dice a qué cliente va, así que la decisión se cae al scope del
+    /// recurso: el dueño entra, cualquier otro cliente del tenant no. Antes entraba cualquiera.
+    /// </summary>
     [Fact]
-    public async Task ResolvePrivate_TenantCustomers_open_to_all_when_it_has_no_recipients()
+    public async Task ResolvePrivate_TenantCustomers_without_recipients_falls_back_to_the_resource_scope()
     {
+        var tenantId = Guid.NewGuid();
+        var ownerCustomerId = Guid.NewGuid();
+        var file = AvailableCustomerFile(tenantId, ownerCustomerId);
+        var (link, token) = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.TenantCustomers,
+                SharePermission.View,
+                null,
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var ownerScope = new StorageActorScope(true, ownerCustomerId);
+        var otherCustomerScope = new StorageActorScope(true, Guid.NewGuid());
+
+        var owner = await ResolvePrivate(token, tenantId, Guid.NewGuid(), ownerScope, shares, files);
+        var other = await ResolvePrivate(token, tenantId, Guid.NewGuid(), otherCustomerScope, shares, files);
+
+        Assert.Equal(ShareAccessOutcome.Redirect, owner.Outcome);
+        Assert.Equal(ShareAccessOutcome.Denied, other.Outcome);
+    }
+
+    [Fact]
+    public async Task ResolvePrivate_TenantCustomers_without_recipients_denies_a_tenant_owned_file()
+    {
+        // Un archivo del cajón de la oficina no es de ningún cliente: ningún actor de portal entra.
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
         var (link, token) = ShareLink
@@ -1363,7 +1465,7 @@ public sealed class ShareLinkHandlerTests
         var anyCustomerScope = new StorageActorScope(true, Guid.NewGuid());
         var result = await ResolvePrivate(token, tenantId, Guid.NewGuid(), anyCustomerScope, shares, files);
 
-        Assert.Equal(ShareAccessOutcome.Redirect, result.Outcome);
+        Assert.Equal(ShareAccessOutcome.Denied, result.Outcome);
     }
 
     // ---------- ListShareLinksForFileHandler / ListSharedWithMeHandler ----------

@@ -40,6 +40,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         Guid customerId,
         int page,
         int size,
+        Guid? ownerUserId = null,
         CancellationToken ct = default
     )
     {
@@ -48,6 +49,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
         var filtered = _store
             .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Draft)
+            .Where(x => ownerUserId is null || x.CreatedByUserId == ownerUserId)
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
 

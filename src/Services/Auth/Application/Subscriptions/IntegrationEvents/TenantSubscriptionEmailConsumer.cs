@@ -103,9 +103,15 @@ public static class TenantSubscriptionEmailConsumer
         && ScheduledCancellationReasons.Contains(reason);
 
     private static bool ShouldNotify(string status, string reason) =>
-        IsScheduledCancellation(status, reason)
-        || string.Equals(status, "GracePeriod", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, "Suspended", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase)
-        || (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) && RecoveryReasons.Contains(reason));
+        // A6 — un re-anuncio del job de anti-entropía no es una transición y no se le avisa a nadie:
+        // si no, un tenant vencido recibiría el correo de "tu suscripción venció" CADA día que corra
+        // el job. Va primero porque `Expired`/`Suspended` notifican sin mirar el motivo.
+        !string.Equals(reason, nameof(SubscriptionChangeReason.Reconciliation), StringComparison.OrdinalIgnoreCase)
+        && (
+            IsScheduledCancellation(status, reason)
+            || string.Equals(status, "GracePeriod", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Suspended", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase)
+            || (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) && RecoveryReasons.Contains(reason))
+        );
 }

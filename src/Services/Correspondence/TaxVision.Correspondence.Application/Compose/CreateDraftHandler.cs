@@ -20,6 +20,11 @@ public static class CreateDraftHandler
         CancellationToken ct
     )
     {
+        // A1 — antes que nada: de qué buzón se está redactando.
+        var accountCheck = SendingAccountGuard.Validate(command.AccountId, command.VisibleAccountIds);
+        if (accountCheck.IsFailure)
+            return Result.Failure<Guid>(accountCheck.Error);
+
         var draftResult = Draft.CreateNew(command.TenantId, command.CustomerId, command.AccountId, command.ActorId);
         if (draftResult.IsFailure)
             return Result.Failure<Guid>(draftResult.Error);

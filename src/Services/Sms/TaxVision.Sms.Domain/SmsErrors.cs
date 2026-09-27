@@ -13,6 +13,11 @@ public static class SmsErrors
     public static Error InvalidBody => new("sms.invalidBody", "Message body is required.");
     public static Error InvalidIdempotencyKey => new("sms.invalidIdempotencyKey", "IdempotencyKey is invalid.");
 
+    // Visibilidad por asignación: el cliente no es de quien envía. Se rechaza el item, no el lote —
+    // mismo criterio que el resto de las validaciones de entrada.
+    public static Error CustomerNotAssigned =>
+        new("sms.customerNotAssigned", "The customer is not assigned to the sender.");
+
     // Media (estables, agnósticos del proveedor)
     public static Error MediaNotSupported => new("mediaNotSupported", "The selected provider does not support media.");
     public static Error MultipleMediaNotSupported =>

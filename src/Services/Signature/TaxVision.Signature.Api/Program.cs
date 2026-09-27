@@ -64,11 +64,11 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, piloto) — opt-in de Signature: el hook de PermissionPolicyProvider
-// resuelve esta fuente por request y loguea allow/deny por módulo SIN bloquear (nunca 403 en esta
-// fase). Solo Signature la registra por ahora; los demás servicios se suman en el fan-out. El lector
-// concreto (ITenantEntitlementModulesReader) lo registra la Infrastructure.
-builder.Services.AddScoped<ITenantModuleEntitlementsSource, TenantModuleEntitlementsSource>();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+builder.Services.AddModuleGate(builder.Configuration);
 
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase

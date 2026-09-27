@@ -177,7 +177,7 @@ public sealed class GetMyEffectiveAccessHandlerTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;

@@ -90,6 +90,8 @@ class FakeEmitter implements RealtimeEmitter {
   emitToMeeting(): void {}
   emitToUser(): void {}
   emitToTenant(): void {}
+  emitToTenantStaff(): void {}
+  emitToTenantMembers(): void {}
 }
 
 function activeCallWithTwoParticipants() {

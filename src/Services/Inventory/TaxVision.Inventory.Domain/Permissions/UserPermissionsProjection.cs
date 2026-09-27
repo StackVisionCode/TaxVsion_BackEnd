@@ -55,12 +55,6 @@ public sealed class UserPermissionsProjection : TenantEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public void ReapplyPermissionsUnion(IReadOnlyCollection<string> unionOfPermissionCodes)
-    {
-        PermissionCodesJson = SerializeCodes(unionOfPermissionCodes);
-        UpdatedAtUtc = DateTime.UtcNow;
-    }
-
     public IReadOnlyList<string> PermissionCodes() => DeserializeCodes(PermissionCodesJson);
 
     public IReadOnlyList<Guid> RoleIds() => DeserializeRoleIds(RoleIdsJson);

@@ -33,17 +33,64 @@ namespace TaxVision.Subscription.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Suscripción base del tenant autenticado (plan, límites, renovación, estado).
-    /// Los asientos (seats) se consultan por separado — ver /seats.</summary>
+    /// <summary>
+    /// Suscripción base del tenant autenticado (plan, límites, renovación, estado). Los asientos (seats)
+    /// se consultan por separado — ver /seats.
+    ///
+    /// <para>
+    /// A5 (A6.4) — los campos comerciales (plan, precio, límites, motivo de suspensión, fallo de cobro)
+    /// solo salen con <c>billing.view</c>. Sin el permiso la respuesta conserva la misma forma con esos
+    /// campos vacíos, en vez de un 403: el shell del CRM pide este endpoint con cualquier token de staff
+    /// y un 403 le apagaría el banner de ciclo de vida a todos los empleados. Para el banner, usar
+    /// <c>GET subscriptions/me/status</c>, que no lleva nada comercial.
+    /// </para>
+    /// </summary>
     [HttpGet("me")]
     [RateLimit("subscription.f.subscription_read")]
     [ProducesResponseType<MySubscriptionResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetMySubscription(CancellationToken ct)
+    public async Task<IActionResult> GetMySubscription(
+        [FromServices] IUserPermissionsSource permissions,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<MySubscriptionResponse>>(new GetMySubscriptionQuery(tenantId), ct);
+        // IUserPermissionsSource, no ClaimsPrincipal.HasPermission: el claim `perm` dejó de emitirse
+        // (RBAC Fase 7.5.9) y la fuente de verdad es la proyección local, que además resta los denies.
+        var canViewBilling = await permissions.HasPermissionAsync(User, SubscriptionPermissions.BillingView, ct);
+
+        var result = await bus.InvokeAsync<Result<MySubscriptionResponse>>(
+            new GetMySubscriptionQuery(tenantId, canViewBilling),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Estado de la suscripción para el banner de ciclo de vida: si el acceso está cortado, hasta cuándo
+    /// y si este usuario puede arreglarlo. **Sin ningún dato comercial** — ni plan, ni precio, ni
+    /// límites—, así que cualquier empleado lo puede pedir sin exponer la facturación de la oficina.
+    /// </summary>
+    [HttpGet("me/status")]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<MySubscriptionStatusResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetMySubscriptionStatus(
+        [FromServices] IUserPermissionsSource permissions,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        // Poder gestionar, no poder ver: cambiar el plan es plan.change; billing.view solo lee.
+        var canManageBilling = await permissions.HasPermissionAsync(User, SubscriptionPermissions.PlanChange, ct);
+
+        var result = await bus.InvokeAsync<Result<MySubscriptionStatusResponse>>(
+            new GetMySubscriptionStatusQuery(tenantId, canManageBilling),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -237,8 +284,13 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Cambio de plan pendiente (diferido a fin de período), si existe alguno.</summary>
+    /// <summary>
+    /// Cambio de plan pendiente (diferido a fin de período), si existe alguno. A5 (A6.4) — pasa a exigir
+    /// <c>billing.view</c>: nombra el plan destino y su precio, y ningún frontend lo consume todavía, así
+    /// que cerrarlo no le quita acceso a nadie.
+    /// </summary>
     [HttpGet("plan-change")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
     [RateLimit("subscription.f.subscription_read")]
     [ProducesResponseType<PendingPlanChangeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPendingPlanChange(CancellationToken ct)

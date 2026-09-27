@@ -432,6 +432,31 @@ jobs:
           TASKS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.TASKS_ASSIGNMENT_VISIBILITY_ENABLED }}
           COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED }}
 
+          # ---------- A6: gate de módulo (Entitlements en runtime) — flags por servicio ----------
+          # Espejo de Authorization__ModuleGate__Enforce (y COMMUNICATION_MODULE_GATE_ENFORCE) en
+          # docker-compose.yml, todos con default false via ${VAR:-false}. La LISTA de módulos de cada
+          # servicio es literal en el compose, no un secret: con Enforce en true y la lista vacía el gate
+          # aplicaría TODOS los módulos de golpe, así que el único grado de libertad es este booleano.
+          #
+          # Rollout: se despliega con todos en "false" (el gate mide y registra sin bloquear, y cada
+          # servicio deja su modo en el log al arrancar); luego se pone en "true" el secret del servicio
+          # verificado y se redespliega. Secret ausente o vacío = false. Orden previsto:
+          # campaigns -> email -> comms -> los módulos de Starter (customers/documents/planner/signatures).
+          CAMPAIGNS_MODULE_GATE_ENFORCE=${{ secrets.CAMPAIGNS_MODULE_GATE_ENFORCE }}
+          CONNECTORS_MODULE_GATE_ENFORCE=${{ secrets.CONNECTORS_MODULE_GATE_ENFORCE }}
+          CORRESPONDENCE_MODULE_GATE_ENFORCE=${{ secrets.CORRESPONDENCE_MODULE_GATE_ENFORCE }}
+          POSTMASTER_MODULE_GATE_ENFORCE=${{ secrets.POSTMASTER_MODULE_GATE_ENFORCE }}
+          COMMUNICATION_MODULE_GATE_ENFORCE=${{ secrets.COMMUNICATION_MODULE_GATE_ENFORCE }}
+          CUSTOMER_MODULE_GATE_ENFORCE=${{ secrets.CUSTOMER_MODULE_GATE_ENFORCE }}
+          SIGNATURE_MODULE_GATE_ENFORCE=${{ secrets.SIGNATURE_MODULE_GATE_ENFORCE }}
+          CLOUDSTORAGE_MODULE_GATE_ENFORCE=${{ secrets.CLOUDSTORAGE_MODULE_GATE_ENFORCE }}
+          DOCUMENTS_MODULE_GATE_ENFORCE=${{ secrets.DOCUMENTS_MODULE_GATE_ENFORCE }}
+          SCRIBE_MODULE_GATE_ENFORCE=${{ secrets.SCRIBE_MODULE_GATE_ENFORCE }}
+          CALENDAR_MODULE_GATE_ENFORCE=${{ secrets.CALENDAR_MODULE_GATE_ENFORCE }}
+          NOTES_MODULE_GATE_ENFORCE=${{ secrets.NOTES_MODULE_GATE_ENFORCE }}
+          REMINDER_MODULE_GATE_ENFORCE=${{ secrets.REMINDER_MODULE_GATE_ENFORCE }}
+          TASKS_MODULE_GATE_ENFORCE=${{ secrets.TASKS_MODULE_GATE_ENFORCE }}
+
           # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
           TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
           EOF

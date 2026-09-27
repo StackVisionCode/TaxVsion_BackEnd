@@ -58,11 +58,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tasks-service
 // Autorización por permiso: [HasPermission("tasks.read")]. Los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo (LOG-ONLY, opt-in).
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // Revienta al arrancar si hay endpoints con [HasPermission] y la config no pide "Projection".
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());

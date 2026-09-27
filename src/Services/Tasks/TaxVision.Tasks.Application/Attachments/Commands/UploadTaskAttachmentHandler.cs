@@ -1,7 +1,9 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
 
 namespace TaxVision.Tasks.Application.Attachments.Commands;
@@ -13,7 +15,8 @@ public sealed record UploadTaskAttachmentCommand(
     Guid FileId,
     string? DisplayName,
     string? ContentType,
-    long SizeBytes
+    long SizeBytes,
+    bool HasManageAll = false
 );
 
 /// <summary>
@@ -34,6 +37,10 @@ public static class UploadTaskAttachmentHandler
         var found = await tasks.GetByIdWithAttachmentsAsync(command.TenantId, command.TaskId, ct);
         if (found.IsFailure)
             return Result.Failure<TaskAttachmentResponse>(found.Error);
+
+        // A1 — mismo criterio que al enlazar un archivo existente.
+        if (!TaskAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<TaskAttachmentResponse>(TaskErrors.Forbidden);
 
         var attached = found.Value.AttachUploadedFile(
             command.FileId,

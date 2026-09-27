@@ -10,4 +10,11 @@ public static class InvoicingPermissions
 {
     public const string View = "invoicing.view";
     public const string Manage = "invoicing.manage";
+
+    /// <summary>
+    /// Editar el emisor legal de las facturas (razón social, RNC/EIN, dirección fiscal). Sale de
+    /// <see cref="Manage"/> porque no es trabajo de facturación diaria: cambia con qué identidad
+    /// fiscal factura la oficina, y eso lo decide el dueño, no el preparador que emite la factura.
+    /// </summary>
+    public const string IssuerManage = "invoicing.issuer.manage";
 }

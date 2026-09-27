@@ -1,8 +1,11 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Sessions.Commands;
+using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.Mfa;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -129,6 +132,8 @@ public sealed class SessionTakeoverTests
             new FakeRoles(),
             new FakeIssuer(),
             sessions,
+            new FakeMfa(),
+            new FakeSecureTokens(),
             new RecordingDenylist(),
             new RecordingRevocationPublisher(),
             new FakeAuthAuditWriter(),
@@ -155,6 +160,8 @@ public sealed class SessionTakeoverTests
             new FakeRoles(),
             new FakeIssuer(),
             new FakeSessions(),
+            new FakeMfa(),
+            new FakeSecureTokens(),
             new RecordingDenylist(),
             new RecordingRevocationPublisher(),
             new FakeAuthAuditWriter(),
@@ -190,6 +197,8 @@ public sealed class SessionTakeoverTests
             new FakeRoles(),
             issuer,
             sessions,
+            new FakeMfa(),
+            new FakeSecureTokens(),
             denylist,
             publisher,
             new FakeAuthAuditWriter(),
@@ -207,7 +216,136 @@ public sealed class SessionTakeoverTests
         Assert.Equal(2, publisher.Published.Count); // aviso en tiempo real a ambas
     }
 
+    // ---- "no volver a pedirme el código" cuando hubo interstitial ----
+
+    [Fact]
+    public async Task The_remembered_device_survives_the_takeover()
+    {
+        // Se marca la casilla ANTES del interstitial, cuando todavía no hay sesión donde colgar el
+        // dispositivo. Antes el pedido se perdía en silencio: el usuario confirmaba, entraba, y el
+        // login siguiente le volvía a pedir el código sin explicación.
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var mfa = new FakeMfa();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd", "otp"], null, RememberDevice: true),
+        };
+
+        var result = await Confirm(store, user, sessions, mfa);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("token", result.Value.Tokens!.DeviceToken);
+        var device = Assert.Single(mfa.Added);
+        Assert.Equal(user.Id, device.UserId);
+    }
+
+    [Fact]
+    public async Task Without_the_request_the_takeover_marks_no_device()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var mfa = new FakeMfa();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd", "otp"], null),
+        };
+
+        var result = await Confirm(store, user, sessions, mfa);
+
+        Assert.Null(result.Value.Tokens!.DeviceToken);
+        Assert.Empty(mfa.Added);
+    }
+
+    private static Task<Result<LoginResponse>> Confirm(
+        FakeTakeoverStore store,
+        User user,
+        FakeSessions sessions,
+        FakeMfa mfa
+    ) =>
+        TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid()),
+            store,
+            new StubUsers(user),
+            new StubTenants(BuildTenant()),
+            new FakeRoles(),
+            new FakeIssuer(),
+            sessions,
+            mfa,
+            new FakeSecureTokens(),
+            new RecordingDenylist(),
+            new RecordingRevocationPublisher(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
     // ---- dobles ----
+
+    /// <summary>Solo lo que toca el takeover: la política del tenant y el alta del dispositivo.</summary>
+    private sealed class FakeMfa : IMfaRepository
+    {
+        public List<TrustedDevice> Added { get; } = [];
+
+        public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<TenantMfaPolicy?>(null);
+
+        public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default)
+        {
+            Added.Add(device);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<MfaMethod>> GetMethodsAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaMethod?> GetMethodAsync(Guid userId, MfaMethodType type, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaMethod?> GetMethodByIdAsync(Guid methodId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddMethodAsync(MfaMethod method, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public void RemoveMethod(MfaMethod method) => throw new NotSupportedException();
+
+        public Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddRecoveryCodesAsync(IEnumerable<RecoveryCode> codes, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public void RemoveRecoveryCodes(IEnumerable<RecoveryCode> codes) => throw new NotSupportedException();
+
+        public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(
+            string deviceTokenHash,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FakeSecureTokens : ISecureTokenService
+    {
+        public string GenerateToken(int byteLength = 32) => "token";
+
+        public string GenerateNumericCode(int digits = 6) => "123456";
+
+        public string Hash(string rawToken) => rawToken;
+    }
 
     private sealed class FakeSessions : ISessionRepository
     {
@@ -372,7 +510,7 @@ public sealed class SessionTakeoverTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;

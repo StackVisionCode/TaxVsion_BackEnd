@@ -35,6 +35,7 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindCorrespondenceConsumers } from './application/event-handlers/correspondence-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
+import { shouldEnforceModule } from './domain/shared/module-gate-settings.js';
 import { moduleFor } from './domain/shared/permission-module-map.js';
 import { configureModuleGate } from './domain/shared/permissions.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
@@ -166,6 +167,7 @@ async function main(): Promise<void> {
     userDirectory: container.userDirectory,
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
+    emitter,
   });
   // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
   bindOffboardingConsumers(consumers.register.bind(consumers), {
@@ -180,24 +182,54 @@ async function main(): Promise<void> {
     limits: container.limits,
     planCodeCache: container.planCodeCache,
     modulesCache: container.tenantModulesCache,
+    emitter,
   });
 
-  // Gate de modulo (Entitlements en runtime), modo LOG-ONLY — espejo del hook de
-  // PermissionPolicyProvider.cs (.NET). Tras conceder un permiso, observa si el tenant tiene el
-  // modulo del permiso y lo loguea SIN bloquear. PlatformAdmin ya bypasea en checkPermission; aca se
-  // bypasea el actor Service (M2M). `null` del reader = sin proyeccion aun -> no gatea.
+  // Gate de modulo (Entitlements en runtime) — espejo del hook de PermissionPolicyProvider.cs (.NET).
+  // Tras conceder un permiso, comprueba si el tenant tiene el modulo al que pertenece. PlatformAdmin
+  // ya bypasea en checkPermission; aca se bypasea el actor Service (M2M), que no esta sujeto al plan
+  // de ningun tenant.
+  //
+  // Las dos respuestas posibles del lector NO significan lo mismo, y confundirlas es el bug que le
+  // daria acceso completo a un tenant vencido:
+  //   `null`  = todavia no llego la proyeccion de entitlements  -> no gatear (consistencia eventual)
+  //   `[]`    = se sabe que no tiene ningun modulo habilitado    -> gatear
+  //
+  // `denied` solo se devuelve con el escalon encendido; apagado registra y deja pasar. La decision de
+  // enforzar vive aca y no en checkPermission a proposito (ver ModuleGate en permissions.ts).
+  // Misma linea que el lado .NET (ModuleGateRegistration.Announce): el escalon se sube por
+  // configuracion, asi que sin esto la unica forma de saber en que modo quedo un despliegue es
+  // provocar un 403 en produccion.
+  logger.info(
+    {
+      mode: config.moduleGate.enforce ? 'ENFORCING' : 'log-only',
+      modules: config.moduleGate.enforcedModules.length > 0 ? config.moduleGate.enforcedModules : 'all',
+    },
+    'Module gate registered',
+  );
   configureModuleGate(async (subject, required) => {
-    if (subject.actorType === 'Service') return;
+    if (subject.actorType === 'Service') return { denied: false };
     const module = moduleFor(required);
-    if (!module) return;
+    if (!module) return { denied: false };
     const enabledModules = await container.tenantModulesCache.getEnabledModules(subject.tenantId);
-    if (enabledModules === null) return;
-    if (!enabledModules.includes(module)) {
+    if (enabledModules === null) return { denied: false };
+    if (enabledModules.includes(module)) return { denied: false };
+
+    // El escalon se decide POR MODULO (ver `shouldEnforceModule`): con la lista vacia se aplican
+    // todos, y con modulos listados solo esos — el resto sigue midiendose.
+    if (shouldEnforceModule(config.moduleGate, module)) {
       logger.info(
         { permission: required, module, tenantId: subject.tenantId },
-        'Module gate (log-only): permiso pertenece a un modulo NO habilitado para el tenant; seria 403 al enforzar',
+        'Module gate: 403 — el plan del tenant no incluye el modulo de este permiso',
       );
+      return { denied: true, module };
     }
+
+    logger.info(
+      { permission: required, module, tenantId: subject.tenantId },
+      'Module gate (log-only): permiso pertenece a un modulo NO habilitado para el tenant; seria 403 al enforzar',
+    );
+    return { denied: false };
   });
   bindCloudStorageConsumers(consumers.register.bind(consumers), {
     attachmentTracking: container.attachmentTracking,

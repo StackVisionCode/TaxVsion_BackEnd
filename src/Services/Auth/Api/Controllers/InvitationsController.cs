@@ -23,7 +23,10 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
     [HasPermission(PermissionCatalog.UsersInvite)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    // users.invite es delegable y declara TenantEmployee: el gate cerrado lo volvía inusable.
+    // Quién puede invitar A QUIÉN lo sigue decidiendo CreateInvitationHandler.CanInvite, y
+    // invitar a un administrador además exige roles.manage efectiva.
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType<CreateInvitationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -108,7 +111,10 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invitationId:guid}/resend")]
     [HasPermission(PermissionCatalog.UsersInvite)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    // users.invite es delegable y declara TenantEmployee: el gate cerrado lo volvía inusable.
+    // Quién puede invitar A QUIÉN lo sigue decidiendo CreateInvitationHandler.CanInvite, y
+    // invitar a un administrador además exige roles.manage efectiva.
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -124,7 +130,10 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invitationId:guid}/cancel")]
     [HasPermission(PermissionCatalog.UsersInvite)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    // users.invite es delegable y declara TenantEmployee: el gate cerrado lo volvía inusable.
+    // Quién puede invitar A QUIÉN lo sigue decidiendo CreateInvitationHandler.CanInvite, y
+    // invitar a un administrador además exige roles.manage efectiva.
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

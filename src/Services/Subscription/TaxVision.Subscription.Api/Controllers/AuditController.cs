@@ -15,8 +15,11 @@ namespace TaxVision.Subscription.Api.Controllers;
 [ApiController]
 [Route("audit")]
 [Authorize]
+// audit.view es delegable y declara TenantEmployee: el gate cerrado a TenantAdmin volvía el
+// permiso inusable para quien se lo delegaban. El permiso sigue siendo la barrera — no está en el
+// bundle por defecto del empleado.
 [HasPermission(SubscriptionPermissions.AuditView)]
-[AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AuditController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]

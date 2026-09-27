@@ -126,17 +126,4 @@ public sealed class PermissionsProjectionTests
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid User = Guid.NewGuid();
     private static readonly Guid Role = Guid.NewGuid();
-
-    [Fact]
-    public void ApplyIfNewer_and_union()
-    {
-        var p = UserPermissionsProjection.Create(Tenant, User, 1, ["old"], [Role]);
-        p.ApplyIfNewer(2, ["inventory.read"], [Role]);
-        Assert.Contains("inventory.read", p.PermissionCodes());
-        p.ApplyIfNewer(1, ["stale"], [Role]);
-        Assert.DoesNotContain("stale", p.PermissionCodes());
-        p.ReapplyPermissionsUnion(["inventory.read", "inventory.adjust"]);
-        Assert.Equal(2, p.PermissionsVersion);
-        Assert.Contains("inventory.adjust", p.PermissionCodes());
-    }
 }

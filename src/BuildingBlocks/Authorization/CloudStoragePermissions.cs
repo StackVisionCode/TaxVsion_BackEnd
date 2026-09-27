@@ -16,8 +16,11 @@ public static class CloudStoragePermissions
     /// <summary>Otorga Upload/EditMetadata al crear un link y habilita cambiar expiracion de cualquier link del tenant.</summary>
     public const string ShareManage = "cloudstorage.share.manage";
 
-    /// <summary>Fase L1.2/L1.3 — legal hold + DMCA takedown/reinstate. Platform-only, nunca asignable por tenant.</summary>
+    /// <summary>Fase L1.2 — legal hold sobre archivos del propio tenant. Peligroso (solo el admin raiz), nunca delegable.</summary>
     public const string LegalManage = "cloudstorage.legal.manage";
+
+    /// <summary>Registrar y cerrar takedowns DMCA. Solo el equipo legal de la plataforma; un tenant nunca los ejerce.</summary>
+    public const string DmcaManage = "cloudstorage.dmca.manage";
 
     /// <summary>Fase L1.3 — presentar contranotificacion DMCA sobre un archivo propio. Tenant-side (asignable normalmente), a diferencia de LegalManage.</summary>
     public const string DmcaCounterNotice = "cloudstorage.file.dmca_counternotice";

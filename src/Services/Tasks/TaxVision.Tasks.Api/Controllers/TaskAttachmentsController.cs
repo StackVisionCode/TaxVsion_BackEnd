@@ -21,7 +21,7 @@ namespace TaxVision.Tasks.Api.Controllers;
 [ApiController]
 [Route("tasks/{taskId:guid}/attachments")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class TaskAttachmentsController(IMessageBus bus) : ControllerBase
+public sealed class TaskAttachmentsController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     /// <summary>El caso dominante: el archivo ya está en CloudStorage y ya fue escaneado.</summary>
     [HttpPost("link")]
@@ -44,7 +44,8 @@ public sealed class TaskAttachmentsController(IMessageBus bus) : ControllerBase
                 request.FileId,
                 request.DisplayName,
                 request.ContentType,
-                request.SizeBytes
+                request.SizeBytes,
+                await HasManageAllAsync(ct)
             ),
             ct
         );
@@ -72,7 +73,8 @@ public sealed class TaskAttachmentsController(IMessageBus bus) : ControllerBase
                 request.FileId,
                 request.DisplayName,
                 request.ContentType,
-                request.SizeBytes
+                request.SizeBytes,
+                await HasManageAllAsync(ct)
             ),
             ct
         );
@@ -86,10 +88,13 @@ public sealed class TaskAttachmentsController(IMessageBus bus) : ControllerBase
     [RateLimit("task.h.attachments_write")]
     public async Task<IActionResult> Detach(Guid taskId, Guid fileId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result>(new DetachTaskAttachmentCommand(tenantId, taskId, fileId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new DetachTaskAttachmentCommand(tenantId, taskId, fileId, userId, await HasManageAllAsync(ct)),
+            ct
+        );
 
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : NoContent();
     }
@@ -113,4 +118,9 @@ public sealed class TaskAttachmentsController(IMessageBus bus) : ControllerBase
 
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
+
+    /// <summary>A1 — el override de supervisión, igual que en TasksController: quien lo tiene puede
+    /// tocar lo de cualquiera dentro de su tenant.</summary>
+    private Task<bool> HasManageAllAsync(CancellationToken ct) =>
+        permissions.HasPermissionAsync(User, TasksPermissions.ManageAll, ct);
 }

@@ -75,7 +75,12 @@ public sealed class PermissionsProjectionConsumerTests
     }
 
     [Fact]
-    public async Task RolePermissionsChanged_recomputes_union_for_multi_role_user()
+    /// <summary>
+    /// Contrato nuevo: este consumer solo cachea rol → permisos. La unión del usuario la manda Auth
+    /// por titular (<c>UserRolesChanged</c>) con los denies ya restados; recomponerla acá resucitaba
+    /// un permiso denegado.
+    /// </summary>
+    public async Task RolePermissionsChanged_leaves_the_user_projection_untouched()
     {
         var users = new FakeUserPermissionsProjectionRepository();
         users.Seed(UserPermissionsProjection.Create(Tenant, User, 5, ["stale"], [RoleAdmin, RoleOther]));
@@ -95,17 +100,16 @@ public sealed class PermissionsProjectionConsumerTests
         await RolePermissionsChangedPermissionsProjectionConsumer.Handle(
             evt,
             roles,
-            users,
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             NullLogger<RolePermissionsProjection>.Instance,
             CancellationToken.None
         );
 
+        var storedRole = await roles.GetAsync(Tenant, RoleAdmin);
+        Assert.Equal(["sms.send"], storedRole!.PermissionCodes());
+
         var stored = await users.GetAsync(Tenant, User);
-        // Union of the changed RoleAdmin (sms.send) and the untouched RoleOther (other.perm).
-        Assert.Contains("sms.send", stored!.PermissionCodes());
-        Assert.Contains("other.perm", stored.PermissionCodes());
-        Assert.DoesNotContain("stale", stored.PermissionCodes());
+        Assert.Equal(["stale"], stored!.PermissionCodes());
     }
 }

@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -61,21 +62,31 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
             };
 
             ctx.Response.StatusCode = status;
-            await ctx.Response.WriteAsJsonAsync(
-                new ProblemDetails
+            var problem = new ProblemDetails
+            {
+                Status = status,
+                Title = title,
+                Detail = detail,
+                Extensions =
                 {
-                    Status = status,
-                    Title = title,
-                    Detail = detail,
-                    Extensions =
-                    {
-                        ["code"] = code,
-                        ["correlationId"] =
-                            ctx.Response.Headers[CorrelationIdMiddleware.Header].FirstOrDefault()
-                            ?? ctx.Request.Headers[CorrelationIdMiddleware.Header].FirstOrDefault(),
-                    },
-                }
-            );
+                    ["code"] = code,
+                    ["correlationId"] =
+                        ctx.Response.Headers[CorrelationIdMiddleware.Header].FirstOrDefault()
+                        ?? ctx.Request.Headers[CorrelationIdMiddleware.Header].FirstOrDefault(),
+                },
+            };
+
+            // A5 — el 403 del gate de módulo cierra el mismo contrato que las capas 1 y 2: `reason` para
+            // que el frontend elija la pantalla, y `module` para poder nombrarlo sin mantener su propia
+            // copia del mapa permiso → módulo.
+            if (ex is ModuleUnavailableException moduleDenied)
+            {
+                problem.Extensions["reason"] = AuthorizationDenialReasons.Module;
+                if (moduleDenied.Module is not null)
+                    problem.Extensions["module"] = moduleDenied.Module;
+            }
+
+            await ctx.Response.WriteAsJsonAsync(problem);
         }
     }
 }

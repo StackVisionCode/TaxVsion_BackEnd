@@ -73,8 +73,10 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<IssueInvoiceResult>>(
-            new IssueInvoiceCommand(tenantId, invoiceId, actorId),
+            new IssueInvoiceCommand(tenantId, invoiceId, actorId, canViewAll),
             ct
         );
 
@@ -116,6 +118,8 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<RecordManualPaymentResult>>(
             new RecordManualPaymentCommand(
                 tenantId,
@@ -123,7 +127,8 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
                 request.Method,
                 request.AmountCents,
                 request.PaidAtUtc,
-                actorId
+                actorId,
+                canViewAll
             ),
             ct
         );
@@ -186,6 +191,8 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<EditInvoiceResult>>(
             new EditInvoiceCommand(
                 tenantId,
@@ -194,7 +201,8 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
                 request.Customer,
                 request.Currency,
                 request.Lines,
-                request.Notes
+                request.Notes,
+                canViewAll
             ),
             ct
         );
@@ -212,7 +220,12 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new DeleteInvoiceCommand(tenantId, invoiceId, actorId), ct);
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result>(
+            new DeleteInvoiceCommand(tenantId, invoiceId, actorId, canViewAll),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -229,8 +242,10 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result>(
-            new VoidInvoiceCommand(tenantId, invoiceId, actorId, request.Reason),
+            new VoidInvoiceCommand(tenantId, invoiceId, actorId, request.Reason, canViewAll),
             ct
         );
 

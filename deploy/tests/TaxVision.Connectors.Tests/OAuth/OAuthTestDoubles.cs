@@ -21,8 +21,11 @@ internal sealed class FakeMessageBus : IMessageBus
     public List<object> Published { get; } = [];
     public List<object> Invoked { get; } = [];
 
-    /// <summary>Resultado devuelto por InvokeAsync&lt;Result&gt; — único tipo genérico que este fake soporta, porque es el único que los handlers de Connectors invocan vía bus.</summary>
+    /// <summary>Resultado devuelto por InvokeAsync&lt;Result&gt;, el tipo que invocan los handlers de Connectors.</summary>
     public Result InvokeResult { get; set; } = Result.Success();
+
+    /// <summary>Resultado para cualquier otro tipo de retorno (lo usan los tests de controllers M2M).</summary>
+    public object? InvokeAnyResult { get; set; }
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
@@ -82,6 +85,9 @@ internal sealed class FakeMessageBus : IMessageBus
 
         if (typeof(T) == typeof(Result))
             return Task.FromResult((T)(object)InvokeResult);
+
+        if (InvokeAnyResult is T typed)
+            return Task.FromResult(typed);
 
         throw new NotImplementedException();
     }

@@ -54,6 +54,25 @@ public sealed class CampaignSchedule : TenantEntity
     public Guid? LeaseToken { get; private set; }
     public DateTime? LeasedUntilUtc { get; private set; }
 
+    /// <summary>
+    /// Quién agendó la campaña, y si en ese momento podía ver a TODOS los clientes de la oficina
+    /// (<c>customers.view_all</c>).
+    ///
+    /// <para>
+    /// A1 — el scheduler es un actor de sistema, así que disparaba cada corrida con la visibilidad
+    /// abierta: un preparador que solo ve sus clientes asignados agendaba una campaña y el envío salía a
+    /// la cartera completa de la oficina. La decisión de audiencia se toma al agendar; el disparo solo la
+    /// ejecuta, así que la visibilidad se congela acá.
+    /// </para>
+    /// <para>
+    /// <c>CreatorCanViewAllCustomers</c> es <c>true</c> para los schedules creados antes de esta fase: no
+    /// hay forma de saber qué veía su creador, y asumir lo contrario cambiaría a quién se le envía un
+    /// correo ya agendado (§R.7 del plan).
+    /// </para>
+    /// </summary>
+    public Guid? CreatedByUserId { get; private set; }
+    public bool CreatorCanViewAllCustomers { get; private set; } = true;
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -62,7 +81,9 @@ public sealed class CampaignSchedule : TenantEntity
         Guid campaignId,
         DateTime runAtUtc,
         IReadOnlyCollection<Guid> contactListIds,
-        bool includeCustomers = false
+        bool includeCustomers = false,
+        Guid? createdByUserId = null,
+        bool creatorCanViewAllCustomers = true
     )
     {
         var guard = BaseGuards(tenantId, campaignId);
@@ -72,7 +93,17 @@ public sealed class CampaignSchedule : TenantEntity
             return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.RunAtRequired);
 
         return Result.Success(
-            New(tenantId, campaignId, ScheduleKind.OneTime, runAtUtc, null, contactListIds, includeCustomers)
+            New(
+                tenantId,
+                campaignId,
+                ScheduleKind.OneTime,
+                runAtUtc,
+                null,
+                contactListIds,
+                includeCustomers,
+                createdByUserId,
+                creatorCanViewAllCustomers
+            )
         );
     }
 
@@ -82,7 +113,9 @@ public sealed class CampaignSchedule : TenantEntity
         DateTime firstRunAtUtc,
         int intervalMinutes,
         IReadOnlyCollection<Guid> contactListIds,
-        bool includeCustomers = false
+        bool includeCustomers = false,
+        Guid? createdByUserId = null,
+        bool creatorCanViewAllCustomers = true
     )
     {
         var guard = BaseGuards(tenantId, campaignId);
@@ -101,7 +134,9 @@ public sealed class CampaignSchedule : TenantEntity
                 firstRunAtUtc,
                 intervalMinutes,
                 contactListIds,
-                includeCustomers
+                includeCustomers,
+                createdByUserId,
+                creatorCanViewAllCustomers
             )
         );
     }
@@ -219,7 +254,9 @@ public sealed class CampaignSchedule : TenantEntity
         DateTime nextFireAtUtc,
         int? intervalMinutes,
         IReadOnlyCollection<Guid> contactListIds,
-        bool includeCustomers
+        bool includeCustomers,
+        Guid? createdByUserId,
+        bool creatorCanViewAllCustomers
     )
     {
         var now = DateTime.UtcNow;
@@ -233,6 +270,8 @@ public sealed class CampaignSchedule : TenantEntity
             IntervalMinutes = intervalMinutes,
             ContactListIdsCsv = string.Join(",", contactListIds.Where(g => g != Guid.Empty).Distinct()),
             IncludeCustomers = includeCustomers,
+            CreatedByUserId = createdByUserId,
+            CreatorCanViewAllCustomers = creatorCanViewAllCustomers,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };

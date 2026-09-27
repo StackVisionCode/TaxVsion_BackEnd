@@ -8,6 +8,9 @@ vi.mock('../../src/infrastructure/jwks/jwt-verifier.js', () => ({
     code = 'Auth.InvalidToken';
   },
   verifyAccessToken: async (token: string) => {
+    if (token === 'service') {
+      return { userId: 'svc-1', tenantId: 'tenant-1', actorType: 'Service', permissions: [], permissionVersion: 1 };
+    }
     if (token !== 'valid') throw new Error('invalid');
     return { userId: 'user-1', tenantId: 'tenant-1', actorType: 'TenantEmployee', permissions: [], permissionVersion: 1 };
   },
@@ -65,6 +68,23 @@ describe('authenticate — per-user HTTP rate limit', () => {
     const response = await app.inject({ method: 'GET', url: '/private', headers: { authorization: 'Bearer forged' } });
 
     expect(response.statusCode).toBe(401);
+    expect(keys).toEqual([]);
+  });
+});
+
+/**
+ * Communication no expone rutas M2M: un token de servicio trae un `sub` sintetico del clientId, asi
+ * que entraria a rutas de usuario con una identidad que no es de nadie.
+ */
+describe('authenticate — tokens de servicio', () => {
+  it('rechaza un token con actor_type=Service y no le cuenta cuota', async () => {
+    const { limiter, keys } = fakeLimiter({ allowed: true, retryAfterSeconds: 0 });
+    const app = await buildApp(limiter);
+
+    const response = await app.inject({ method: 'GET', url: '/private', headers: { authorization: 'Bearer service' } });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'Auth.Forbidden' });
     expect(keys).toEqual([]);
   });
 });

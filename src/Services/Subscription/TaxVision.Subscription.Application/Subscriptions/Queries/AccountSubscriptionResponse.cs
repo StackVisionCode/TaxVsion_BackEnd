@@ -75,9 +75,18 @@ public static class AddOnEligibility
 /// add-on no tiene precio para el ciclo de facturación del tenant; los campos del final solo vienen con
 /// <see cref="AddOnEligibility.Active"/>.
 /// </summary>
+/// <param name="Modules">
+/// Los <c>module.*</c> que habilita este add-on, para que el frontend lo NOMBRE con el mismo
+/// diccionario que usa la pantalla de Plan (`MODULE_LABELS`, con es/en) en vez de con
+/// <paramref name="Name"/>, que viene del catálogo en la base y solo existe en español.
+///
+/// Tener dos fuentes de nombre para lo mismo hacía que el Account mostrara "Correo" en Add-ons y
+/// "Integrated email" en Plan, para el MISMO módulo.
+/// </param>
 public sealed record AccountAddOnView(
     string Code,
     string Name,
+    IReadOnlyList<string> Modules,
     string Description,
     string Category,
     string Eligibility,

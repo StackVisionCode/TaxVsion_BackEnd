@@ -24,7 +24,9 @@ import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/e
  *   3. La conversation es unique por (tenantId, direct:userA:userB ordenado).
  *   4. El display name del destinatario se resuelve por el caller (viene del
  *      read-model de usuarios); el use case NO consulta Auth.
- *   5. Fase B5 / P2.5 — si el tenant tiene restrictCustomerChatToAssignedPreparer,
+ *   5. Un cliente del portal nunca abre un chat con otro cliente del portal: la
+ *      oficina es el unico interlocutor. No depende de ningun flag.
+ *   6. Fase B5 / P2.5 — si el tenant tiene restrictCustomerChatToAssignedPreparer,
  *      un chat que involucra a un customer solo se permite si el lado staff esta
  *      asignado a ese customer en la proyeccion M:N (CustomerAssignmentProjection)
  *      — CUALQUIER staff asignado, no solo el primary — o si ve a todos los clientes
@@ -139,6 +141,14 @@ export async function startDirectConversation(
         'Chat.EmployeeToEmployeeDisabled',
         'Employee-to-employee chat is disabled for this tenant.',
       ),
+    );
+  }
+
+  // Cliente <-> cliente: nunca. Va antes del gate por asignacion porque no es una politica del
+  // tenant ni depende de un flag — dos clientes de la oficina no se conocen entre si.
+  if (command.initiator.actorType === 'CustomerPortal' && command.recipient.actorType === 'CustomerPortal') {
+    return Result.fail(
+      makeError('Chat.CustomerToCustomerNotAllowed', 'Clients can only chat with the office.'),
     );
   }
 

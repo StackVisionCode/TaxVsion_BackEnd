@@ -16,7 +16,9 @@ import { CallEventTypes, type CallStartedEvent } from '../../contracts/events/ca
  *      cuando el settings-provider los agregue (Fase 6). Fase 2 usa Chat como
  *      guarda unica para no bloquear el flujo.
  *   2. Caller != callee.
- *   3. Publica CallStarted.
+ *   3. Un cliente del portal nunca llama a otro cliente del portal: la oficina es
+ *      el unico interlocutor, igual que en el chat directo.
+ *   4. Publica CallStarted.
  */
 
 export interface InitiateCallCommand {
@@ -24,8 +26,10 @@ export interface InitiateCallCommand {
   readonly correlationId: string;
   readonly clientKey: string;
   readonly kind: CallKind;
-  readonly caller: { userId: string; displayName: string };
-  readonly callee: { userId: string; displayName: string };
+  readonly caller: { userId: string; displayName: string; actorType: string };
+  // actorType null = el destinatario todavia no esta en el directorio local: no se puede
+  // demostrar que no es otro cliente, asi que la llamada se rechaza (fail-closed).
+  readonly callee: { userId: string; displayName: string; actorType: string | null };
   readonly conversationId?: string | null;
   readonly recordingRequested?: boolean;
 }
@@ -51,6 +55,13 @@ export async function initiateCall(
     return Result.fail(makeError('Call.Disabled', 'Communication is disabled for this tenant.'));
   }
 
+  if (command.caller.actorType === 'CustomerPortal' && command.callee.actorType !== 'TenantEmployee'
+    && command.callee.actorType !== 'TenantAdmin' && command.callee.actorType !== 'PlatformAdmin') {
+    return Result.fail(
+      makeError('Call.CustomerToCustomerNotAllowed', 'Clients can only call the office.'),
+    );
+  }
+
   const reservation = await deps.idempotency.tryReserve<InitiateCallResult>({
     tenantId: command.tenantId,
     userId: command.caller.userId,
@@ -63,8 +74,8 @@ export async function initiateCall(
   const callResult = Call.initiate({
     tenantId: command.tenantId,
     kind: command.kind,
-    caller: command.caller,
-    callee: command.callee,
+    caller: { userId: command.caller.userId, displayName: command.caller.displayName },
+    callee: { userId: command.callee.userId, displayName: command.callee.displayName },
     conversationId: command.conversationId ?? null,
     recordingRequested: command.recordingRequested ?? false,
   });

@@ -37,6 +37,53 @@ public sealed class GetAccountSubscriptionHandlerTests
         Assert.False(result.Value.Plan.BillingAccessBlocked);
     }
 
+    /// <summary>
+    /// El precio se congela con lo firmado; los MÓDULOS no. Los módulos los decide
+    /// <c>EntitlementSnapshotBuilder</c>, que lee la versión PUBLICADA — o sea que al revisar un plan
+    /// el tenant recibe el módulo nuevo de verdad (el gate le deja entrar).
+    ///
+    /// Antes esta pantalla leía los módulos de la versión contratada y el sistema se contradecía: el
+    /// backend concedía `meetings` a Enterprise mientras la pantalla de Plan no lo listaba y el add-on
+    /// de reuniones aparecía EN VENTA para quien ya lo tenía incluido.
+    /// </summary>
+    [Fact]
+    public async Task The_price_stays_contracted_but_the_modules_follow_the_published_version()
+    {
+        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["comms"]);
+        var contracted = plan.GetPublishedVersion()!;
+        var subscription = ActiveSubscription(plan, contracted);
+        PublishNewerVersionWithModules(plan, monthlyPrice: 299m, seatsMax: 25, modules: ["comms", "meetings"]);
+
+        var result = await HandleAsync(plan, subscription);
+
+        Assert.True(result.IsSuccess);
+        // El precio, el firmado.
+        Assert.Equal(19900, result.Value.Plan.CurrentCyclePriceCents);
+        // Los módulos, los vigentes.
+        Assert.Contains("meetings", result.Value.Plan.EnabledModules);
+        Assert.Contains("comms", result.Value.Plan.EnabledModules);
+    }
+
+    [Fact]
+    public async Task An_add_on_for_a_module_the_revised_plan_now_includes_is_not_for_sale()
+    {
+        // El síntoma exacto que se vio en el Account: "Reuniones" ofrecido a un Enterprise que ya las
+        // tiene. Vender eso le cobraría al tenant por algo que ya está usando.
+        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["comms"]);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        PublishNewerVersionWithModules(plan, monthlyPrice: 199m, seatsMax: 25, modules: ["comms", "meetings"]);
+
+        var result = await HandleAsync(
+            plan,
+            subscription,
+            addOns: [ModuleAddOn("addon-meetings", "meetings", monthly: 29m)]
+        );
+
+        Assert.True(result.IsSuccess);
+        var meetings = result.Value.AddOns.Single(addOn => addOn.Code == "addon-meetings");
+        Assert.NotEqual("Available", meetings.Eligibility);
+    }
+
     // Aceptación de la fase: en un plan que ya trae el módulo, el add-on no se ofrece.
     [Fact]
     public async Task An_add_on_whose_modules_the_plan_already_has_is_included()
@@ -182,11 +229,19 @@ public sealed class GetAccountSubscriptionHandlerTests
         return plan;
     }
 
-    private static void PublishNewerVersion(SubscriptionPlan plan, decimal monthlyPrice, int seatsMax)
+    private static void PublishNewerVersion(SubscriptionPlan plan, decimal monthlyPrice, int seatsMax) =>
+        PublishNewerVersionWithModules(plan, monthlyPrice, seatsMax, modules: []);
+
+    private static void PublishNewerVersionWithModules(
+        SubscriptionPlan plan,
+        decimal monthlyPrice,
+        int seatsMax,
+        string[] modules
+    )
     {
         var nowUtc = DateTime.UtcNow;
         var version = SubscriptionPlanVersion.Create(plan.Id, 2, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
-        AddEntitlements(version, monthlyPrice, seatsMax, modules: []);
+        AddEntitlements(version, monthlyPrice, seatsMax, modules);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
     }

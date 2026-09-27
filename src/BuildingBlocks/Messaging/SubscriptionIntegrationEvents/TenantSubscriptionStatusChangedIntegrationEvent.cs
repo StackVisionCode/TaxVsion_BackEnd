@@ -30,6 +30,18 @@ public enum SubscriptionChangeReason
     AdminSuspended,
     AdminReactivated,
     SelfServiceRenewed,
+
+    /// <summary>
+    /// A6 — **no es una transición**: es el job de anti-entropía re-anunciando el estado ACTUAL para
+    /// que los servicios que guardan su consecuencia (Auth y su <c>BillingAccessBlocked</c>) converjan
+    /// tras un evento perdido.
+    ///
+    /// Los consumidores que producen efectos hacia fuera —correos, métricas de transición— DEBEN
+    /// ignorarlo: re-anunciar un <c>Expired</c> a diario le mandaría al tenant el correo de
+    /// "tu suscripción venció" todos los días, y contaría una transición que no ocurrió. Los que solo
+    /// derivan estado (el corte de acceso) sí deben procesarlo: es justo para ellos.
+    /// </summary>
+    Reconciliation,
 }
 
 /// <summary>

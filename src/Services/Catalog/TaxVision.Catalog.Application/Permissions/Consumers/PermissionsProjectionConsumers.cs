@@ -55,12 +55,17 @@ public static class UserRolesChangedPermissionsProjectionConsumer
     }
 }
 
+/// <summary>
+/// Cachea rol → permisos. **No** recompone la unión de permisos de los usuarios del rol: Auth publica
+/// <c>UserRolesChangedIntegrationEvent</c> por cada titular con sus códigos ya efectivos. La capa de
+/// denies por usuario vive solo en Auth, así que recomponer la unión acá resucitaba un permiso
+/// denegado en cuanto cambiaban los permisos de alguno de sus roles.
+/// </summary>
 public static class RolePermissionsChangedPermissionsProjectionConsumer
 {
     public static async Task Handle(
         RolePermissionsChangedIntegrationEvent evt,
         IRolePermissionsProjectionRepository roleRepository,
-        IUserPermissionsProjectionRepository userRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<RolePermissionsProjection> logger,
@@ -73,22 +78,14 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
             )
         )
         {
-            var roleProjection = await UpsertRoleProjectionAsync(evt, roleRepository, ct);
+            await UpsertRoleProjectionAsync(evt, roleRepository, ct);
 
-            var affectedUsers = await userRepository.FindActiveByTenantAndRoleIdAsync(evt.TenantId, evt.RoleId, ct);
-            if (affectedUsers.Count == 0)
-            {
-                await unitOfWork.SaveChangesAsync(ct);
-                return;
-            }
-
-            await ReapplyPermissionsUnionAsync(evt.TenantId, roleProjection, affectedUsers, roleRepository, ct);
             await unitOfWork.SaveChangesAsync(ct);
 
             logger.LogInformation(
-                "RolePermissionsChanged: recomputed union for {Count} affected user(s) of role {RoleId}.",
-                affectedUsers.Count,
-                evt.RoleId
+                "RolePermissionsChanged: role {RoleId} cached at version {Version}.",
+                evt.RoleId,
+                evt.PermissionsVersion
             );
         }
     }
@@ -115,39 +112,5 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
 
         existing.ApplyIfNewer(evt.RoleName, evt.PermissionsVersion, evt.PermissionCodes);
         return existing;
-    }
-
-    private static async Task ReapplyPermissionsUnionAsync(
-        Guid tenantId,
-        RolePermissionsProjection changedRole,
-        IReadOnlyList<UserPermissionsProjection> affectedUsers,
-        IRolePermissionsProjectionRepository roleRepository,
-        CancellationToken ct
-    )
-    {
-        var otherRoleIds = affectedUsers
-            .SelectMany(user => user.RoleIds())
-            .Where(roleId => roleId != changedRole.Id)
-            .Distinct()
-            .ToList();
-        var otherRoles =
-            otherRoleIds.Count == 0 ? [] : await roleRepository.FindByRoleIdsAsync(tenantId, otherRoleIds, ct);
-
-        var rolesById = otherRoles.ToDictionary(role => role.Id, role => role);
-        rolesById[changedRole.Id] = changedRole;
-
-        foreach (var user in affectedUsers)
-        {
-            var union = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var roleId in user.RoleIds())
-            {
-                if (rolesById.TryGetValue(roleId, out var role))
-                {
-                    foreach (var code in role.PermissionCodes())
-                        union.Add(code);
-                }
-            }
-            user.ReapplyPermissionsUnion(union);
-        }
     }
 }

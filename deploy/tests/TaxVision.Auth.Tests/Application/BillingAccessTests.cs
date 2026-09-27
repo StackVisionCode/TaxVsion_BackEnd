@@ -50,6 +50,8 @@ public sealed class BillingAccessTests
             StatusEvent(tenantId, "Expired"),
             tenants,
             sessions,
+            new QuietDenylist(),
+            new QuietSessionRevocationPublisher(),
             audit,
             metrics,
             new FakeUnitOfWork(),
@@ -76,6 +78,8 @@ public sealed class BillingAccessTests
             StatusEvent(tenantId, "Active"),
             tenants,
             sessions,
+            new QuietDenylist(),
+            new QuietSessionRevocationPublisher(),
             new FakeAuthAuditWriter(),
             new FakeSubscriptionAccessMetrics(),
             new FakeUnitOfWork(),
@@ -98,6 +102,8 @@ public sealed class BillingAccessTests
             StatusEvent(Guid.NewGuid(), "PastDue"),
             tenants,
             sessions,
+            new QuietDenylist(),
+            new QuietSessionRevocationPublisher(),
             new FakeAuthAuditWriter(),
             new FakeSubscriptionAccessMetrics(),
             new FakeUnitOfWork(),
@@ -235,5 +241,26 @@ public sealed class BillingAccessTests
 
             public void Dispose() { }
         }
+    }
+
+    /// <summary>A5 (G10) — el corte de acceso ahora denylistea y anuncia, no solo revoca en la base.</summary>
+    private sealed class QuietDenylist : IAccessTokenDenylist
+    {
+        public Task DenySessionAsync(Guid sessionId, TimeSpan ttl, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task<bool> IsSessionDeniedAsync(Guid sessionId, CancellationToken ct = default) =>
+            Task.FromResult(false);
+    }
+
+    private sealed class QuietSessionRevocationPublisher : ISessionRevocationPublisher
+    {
+        public Task PublishRevokedAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            string reason,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
     }
 }

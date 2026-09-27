@@ -143,8 +143,9 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<DownloadAttachmentResult>>(
-            new DownloadAttachmentCommand(tenantId, id, attachmentId, userId),
+            new DownloadAttachmentCommand(tenantId, id, attachmentId, userId, visible),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -159,8 +160,9 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<AttachmentDownloadUrlResult>>(
-            new GetAttachmentDownloadUrlQuery(tenantId, id, attachmentId),
+            new GetAttachmentDownloadUrlQuery(tenantId, id, attachmentId, visible),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -174,13 +176,11 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
     /// <see cref="StartReplyResult"/> (Fase 10) para pre-poblar el composer del frontend.
     ///
     /// <para>
-    /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — deliberadamente SIN chequeo de resource ownership acá
-    /// (a diferencia de <see cref="DraftsController"/>): este endpoint es get-or-create, no una
-    /// mutación directa sobre un draft ya identificado — no se sabe de antemano si va a reutilizar
-    /// un draft existente de OTRO colega o crear uno nuevo hasta que <c>StartReplyHandler</c> ya
-    /// resolvió cuál es. Reutilizar el reply abierto de un colega sobre el MISMO hilo (mismo tenant,
-    /// mismo customer) es un riesgo mucho menor que los casos que sí motivan la Fase 4 (revocar
-    /// el share de otro, cancelar la firma de otro) — no estaba en el alcance que pidió el plan.
+    /// Fase A1 — cerrado lo que la Fase 4 de RBAC había dejado fuera de alcance. Sigue sin chequeo de
+    /// resource ownership sobre un draft identificado (es get-or-create: no hay id todavía), pero ahora
+    /// <c>StartReplyHandler</c> reutiliza solo el borrador PROPIO y valida el buzón de envío. Antes
+    /// reutilizaba el reply abierto de cualquier colega sobre el mismo hilo: el segundo en responder
+    /// terminaba editando —y enviando— el texto a medio escribir del primero.
     /// </para>
     /// </summary>
     [HttpPost("{id:guid}/reply/draft")]
@@ -191,8 +191,9 @@ public sealed class MessagesController(IMessageBus bus, IMailboxVisibilityResolv
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
+        var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<Result<StartReplyResult>>(
-            new StartReplyCommand(tenantId, id, body.AccountId, userId),
+            new StartReplyCommand(tenantId, id, body.AccountId, userId, visible),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

@@ -106,6 +106,7 @@ public sealed class DiscoverLoginHandlerTests
                 new NoMfaRepository(),
                 Sessions,
                 Tickets,
+                new PredictableTokenService(),
                 new PermissiveLoginThrottler(),
                 World.Audit,
                 World.Request,

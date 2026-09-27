@@ -48,6 +48,18 @@ public interface ISubscriptionRepository
         int batchSize,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Suscripciones en cualquiera de esos estados, paginadas por id para poder recorrerlas enteras.
+    /// Lo usa el job de anti-entropía: no busca una transición pendiente sino el estado ACTUAL, para
+    /// volver a anunciarlo y que los demás servicios converjan.
+    /// </summary>
+    Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
+        IReadOnlyCollection<SubscriptionStatus> statuses,
+        Guid afterTenantId,
+        int batchSize,
+        CancellationToken ct = default
+    );
     Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
         DateTime nowUtc,
         int batchSize,

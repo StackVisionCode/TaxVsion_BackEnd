@@ -131,9 +131,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success(appointment);
     }
 
-    public Result Reschedule(EventTiming timing, Guid actingUserId, DateTime nowUtc)
+    public Result Reschedule(EventTiming timing, Guid actingUserId, bool canManageAll, DateTime nowUtc)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -151,12 +151,12 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public Result Cancel(Guid actingUserId, string? reason, DateTime nowUtc)
+    public Result Cancel(Guid actingUserId, bool canManageAll, string? reason, DateTime nowUtc)
     {
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.AlreadyCancelled);
 
-        if (actingUserId != OrganizerUserId)
+        if (!canManageAll && actingUserId != OrganizerUserId)
             return Result.Failure(AppointmentErrors.NotTheOrganizer);
 
         Status = AppointmentStatus.Cancelled;
@@ -189,9 +189,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public Result ChangeTitle(AppointmentTitle title, Guid actingUserId)
+    public Result ChangeTitle(AppointmentTitle title, Guid actingUserId, bool canManageAll)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -199,9 +199,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public Result ChangeLocation(Location? location, Guid actingUserId)
+    public Result ChangeLocation(Location? location, Guid actingUserId, bool canManageAll)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -216,10 +216,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         AttendeeSnapshot snapshot,
         bool isRequired,
         Guid actingUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool canManageAll
     )
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return Result.Failure<AppointmentAttendee>(allowed.Error);
 
@@ -237,9 +238,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success(attendee);
     }
 
-    public Result RemoveAttendee(Guid attendeeId, Guid actingUserId)
+    public Result RemoveAttendee(Guid attendeeId, Guid actingUserId, bool canManageAll)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -291,9 +292,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     // ── Serie ────────────────────────────────────────────────────────────────────────────────────
 
-    public Result MakeRecurring(RecurrenceRule recurrence, EventTiming timing, Guid actingUserId)
+    public Result MakeRecurring(RecurrenceRule recurrence, EventTiming timing, Guid actingUserId, bool canManageAll)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -308,9 +309,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     }
 
     /// <summary>Cancela una ocurrencia sin tocar el resto de la serie.</summary>
-    public Result CancelOccurrence(DateTime originalStartUtc, Guid actingUserId, DateTime nowUtc)
+    public Result CancelOccurrence(DateTime originalStartUtc, Guid actingUserId, bool canManageAll, DateTime nowUtc)
     {
-        var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId);
+        var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -331,10 +332,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         string? newTitle,
         string? newLocation,
         Guid actingUserId,
+        bool canManageAll,
         DateTime nowUtc
     )
     {
-        var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId);
+        var allowed = EnsureCanEditOccurrence(originalStartUtc, actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -373,9 +375,15 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     /// Edita la serie entera. Las excepciones existentes <b>se conservan</b>: siguen apuntando a las
     /// mismas ocurrencias por su <c>OriginalStartUtc</c>, que no cambia.
     /// </summary>
-    public Result EditEntireSeries(EventTiming timing, RecurrenceRule recurrence, Guid actingUserId, DateTime nowUtc)
+    public Result EditEntireSeries(
+        EventTiming timing,
+        RecurrenceRule recurrence,
+        Guid actingUserId,
+        bool canManageAll,
+        DateTime nowUtc
+    )
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -410,10 +418,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         EventTiming newTiming,
         RecurrenceRule newRecurrence,
         Guid actingUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool canManageAll
     )
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return Result.Failure<Appointment>(allowed.Error);
 
@@ -483,9 +492,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public bool IsFirstOccurrence(DateTime originalStartUtc) => OccurrenceExpander.FirstStart(this) == originalStartUtc;
 
-    private Result EnsureCanEditOccurrence(DateTime originalStartUtc, Guid actingUserId)
+    private Result EnsureCanEditOccurrence(DateTime originalStartUtc, Guid actingUserId, bool canManageAll)
     {
-        var allowed = EnsureOrganizer(actingUserId);
+        var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
 
@@ -527,12 +536,19 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return null;
     }
 
-    private Result EnsureOrganizer(Guid actingUserId)
+    /// <summary>
+    /// El organizador manda sobre su cita. <paramref name="canManageAll"/> es el override de la oficina
+    /// (permiso <c>calendar.manage_all</c>): sin él, una cita queda congelada cuando su organizador se
+    /// enferma o se va, y nadie puede cancelarla ni moverla — ni el dueño de la oficina.
+    /// </summary>
+    private Result EnsureOrganizer(Guid actingUserId, bool canManageAll)
     {
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.CancelledIsFinal);
 
-        return actingUserId == OrganizerUserId ? Result.Success() : Result.Failure(AppointmentErrors.NotTheOrganizer);
+        return canManageAll || actingUserId == OrganizerUserId
+            ? Result.Success()
+            : Result.Failure(AppointmentErrors.NotTheOrganizer);
     }
 
     private AppointmentAttendee? Find(Guid? userId, Guid? customerId, string? email)

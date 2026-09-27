@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { listNotifications, markNotificationRead } from '../../../application/use-cases/notification-queries.js';
+import {
+  listNotifications,
+  markNotificationRead,
+} from '../../../application/use-cases/notification-queries.js';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const ListQuery = z.object({
@@ -11,29 +16,40 @@ const ListQuery = z.object({
 
 const IdParams = z.object({ id: z.string().uuid() });
 
-export async function registerNotificationRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
-  app.get('/communication/notifications', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const query = ListQuery.parse(request.query);
-    const result = await listNotifications(
-      {
-        tenantId: principal.tenantId,
-        userId: principal.userId,
-        page: query.page,
-        size: query.size,
-        ...(query.unreadOnly !== undefined ? { unreadOnly: query.unreadOnly } : {}),
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.send(result.value);
-  });
+export async function registerNotificationRoutes(
+  app: FastifyInstance,
+  container: AppContainer,
+): Promise<void> {
+  app.get(
+    '/communication/notifications',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.NotificationRead)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const query = ListQuery.parse(request.query);
+      const result = await listNotifications(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          page: query.page,
+          size: query.size,
+          ...(query.unreadOnly !== undefined ? { unreadOnly: query.unreadOnly } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   app.get(
     '/communication/notifications/unread-count',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.NotificationRead)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const count = await container.notifications.countUnread(principal.tenantId, principal.userId);
@@ -43,7 +59,9 @@ export async function registerNotificationRoutes(app: FastifyInstance, container
 
   app.post(
     '/communication/notifications/:id/read',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.NotificationRead)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = IdParams.parse(request.params);

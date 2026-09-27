@@ -16,7 +16,13 @@ public static class AddContactPointHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        if (
+            customer is null
+            || customer.TenantId != cmd.TenantId
+            // Visibilidad por asignación: un cliente que no le toca se comporta como inexistente,
+            // igual que en la lectura. Un 403 confirmaría que ese id existe.
+            || !CustomerAccessPolicy.CanAccess(customer, cmd.ModifiedByUserId, cmd.CallerCanViewAllCustomers)
+        )
             return Result.Failure<ContactPointResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         string normalizedValue;

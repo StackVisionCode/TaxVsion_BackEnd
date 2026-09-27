@@ -46,7 +46,10 @@ public static class CampaignSmsDispatchConsumer
                         // (webhook infobip → SmsMessageDelivered) de vuelta a la unidad de campaña.
                         SourceContext: $"campaign:{evt.DispatchId}"
                     ),
-                ]
+                ],
+                // Actor de sistema: no hay usuario cuyo alcance medir.
+                ActorUserId: null,
+                CanViewAll: false
             ),
             ct
         );

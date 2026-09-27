@@ -53,17 +53,24 @@ public static class GetMySubscriptionHandler
         // cuando la suscripción está Suspended o Expired.
         var billingAccessBlocked = subscription.Status is SubscriptionStatus.Suspended or SubscriptionStatus.Expired;
 
+        // A5 (A6.4) — sin billing.view se responde el mismo contrato sin los datos comerciales. Lo que
+        // queda es exactamente lo que el banner de ciclo de vida necesita: el estado, si el acceso está
+        // cortado, las fechas del lapso y los módulos (que el shell usa para el menú, no son un precio).
+        var canViewBilling = query.CanViewBilling;
+
         return Result.Success(
             new MySubscriptionResponse(
-                plan.Code.Value,
-                plan.Name,
+                canViewBilling ? plan.Code.Value : string.Empty,
+                canViewBilling ? plan.Name : string.Empty,
                 subscription.Status.ToString(),
-                subscription.BillingCycle.ToString(),
-                PlanVersionEntitlements.GetMonthlyPriceUsd(planVersion),
-                currentCyclePriceUsd,
-                PlanVersionEntitlements.GetInt(planVersion, "seats.max", fallback: 0),
-                PlanVersionEntitlements.GetInt(planVersion, "invitations.max_pending", fallback: 0),
-                PlanVersionEntitlements.GetLong(planVersion, "storage.max_bytes", fallback: 0),
+                canViewBilling ? subscription.BillingCycle.ToString() : string.Empty,
+                canViewBilling ? PlanVersionEntitlements.GetMonthlyPriceUsd(planVersion) : 0m,
+                canViewBilling ? currentCyclePriceUsd : 0m,
+                canViewBilling ? PlanVersionEntitlements.GetInt(planVersion, "seats.max", fallback: 0) : 0,
+                canViewBilling
+                    ? PlanVersionEntitlements.GetInt(planVersion, "invitations.max_pending", fallback: 0)
+                    : 0,
+                canViewBilling ? PlanVersionEntitlements.GetLong(planVersion, "storage.max_bytes", fallback: 0) : 0,
                 PlanVersionEntitlements.GetEnabledModules(planVersion),
                 subscription.TrialEndsAtUtc,
                 subscription.CurrentPeriodStartUtc,
@@ -73,8 +80,8 @@ public static class GetMySubscriptionHandler
                 subscription.GracePeriodEndsAtUtc,
                 subscription.SuspendedAtUtc,
                 subscription.ExpiredAtUtc,
-                subscription.SuspensionReason,
-                lastPaymentFailure,
+                canViewBilling ? subscription.SuspensionReason : null,
+                canViewBilling ? lastPaymentFailure : null,
                 billingAccessBlocked
             )
         );

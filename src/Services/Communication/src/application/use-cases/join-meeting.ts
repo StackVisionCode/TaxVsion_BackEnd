@@ -61,14 +61,32 @@ export async function joinMeeting(
   command: JoinMeetingCommand,
   deps: JoinMeetingDeps,
 ): Promise<Result<JoinMeetingResult>> {
-  const meeting = await deps.meetings.findById(command.tenantId, command.meetingId);
+  // `meetingId` puede venir como id real o como CODIGO CORTO: el camino "entrar con un codigo"
+  // (§5.2 camino 1) no tiene forma de conocer el id, porque `GET /meetings/by-code/:code` devuelve
+  // titulo y host a proposito, nunca el id. Sin esta resolucion ese camino respondia
+  // `Meeting.NotFound` SIEMPRE — `findByShortCode` estaba implementado pero no lo llamaba nadie.
+  //
+  // El fallback es tenant-scoped igual que la busqueda por id, asi que un codigo de otra oficina
+  // sigue sin entrar. Y no abre nada por si solo: lock, passcode e invitacion se comprueban despues,
+  // sobre la reunion ya resuelta.
+  const meeting =
+    (await deps.meetings.findById(command.tenantId, command.meetingId)) ??
+    (await deps.meetings.findByShortCode(command.tenantId, command.meetingId));
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
+
+  // A partir de aca SIEMPRE el id real: `command.meetingId` puede ser un codigo corto, y usarlo
+  // publicaria eventos y creraria la conversacion del chat con una clave que no es la del meeting,
+  // ademas de rechazar invitaciones validas.
+  const meetingId = meeting.toSnapshot().id;
 
   let invitationValid = false;
   if (command.invitationToken) {
     const hash = MeetingInvitation.hash(command.invitationToken);
     const invitation = await deps.meetings.findInvitationByHash(hash);
-    if (invitation) {
+    // La invitacion se resuelve por el hash del token, no por el meeting: sin estas dos
+    // comprobaciones un token de un meeting servia para entrar a cualquier otro, y un token
+    // dirigido a una persona servia a cualquiera que lo tuviera en la mano.
+    if (invitation && isInvitationForThisJoin(invitation, command, meetingId)) {
       const validation = invitation.validateForUse({
         plainToken: command.invitationToken,
         now: new Date(),
@@ -81,7 +99,9 @@ export async function joinMeeting(
     }
   } else if (command.guestInvitationId) {
     const invitation = await deps.meetings.findInvitationById(command.tenantId, command.guestInvitationId);
-    if (!invitation) {
+    // Mismo motivo: el ticket de guest lleva el meeting para el que se emitio, pero el meetingId
+    // del join lo manda el cliente.
+    if (!invitation || invitation.toSnapshot().meetingId !== meetingId) {
       return Result.fail(makeError('Meeting.Invitation.NotFound', 'Invitation not found.'));
     }
     const consumeResult = invitation.consumeForGuestJoin(new Date());
@@ -122,7 +142,7 @@ export async function joinMeeting(
       tenantId: command.tenantId,
       correlationId: command.correlationId,
       occurredOnUtc: now.toISOString(),
-      meetingId: command.meetingId,
+      meetingId,
       participantUserId: command.user.userId,
       joinedAtUtc: now.toISOString(),
     };
@@ -135,7 +155,7 @@ export async function joinMeeting(
       {
         tenantId: command.tenantId,
         correlationId: command.correlationId,
-        meetingId: command.meetingId,
+        meetingId,
         meetingTitle: snapshot.title,
         member: {
           userId: command.user.userId,
@@ -161,4 +181,20 @@ export async function joinMeeting(
   const iceServers = iceResult.isSuccess ? iceResult.value : { iceServers: [], expiresAtUtc: new Date().toISOString() };
 
   return Result.ok({ snapshot: dto, requiresAdmission, iceServers });
+}
+
+/**
+ * La invitacion tiene que ser de ESTE meeting y, si fue dirigida a un usuario concreto, de ESE
+ * usuario. Una invitacion abierta (solo por email, sin userId) no ata al portador: el email no se
+ * verifica en este flujo, asi que exigirlo dejaria fuera a invitados legitimos.
+ */
+function isInvitationForThisJoin(
+  invitation: MeetingInvitation,
+  command: JoinMeetingCommand,
+  meetingId: string,
+): boolean {
+  const snapshot = invitation.toSnapshot();
+  if (snapshot.meetingId !== meetingId) return false;
+  if (snapshot.inviteeUserId !== null && snapshot.inviteeUserId !== command.user.userId) return false;
+  return true;
 }

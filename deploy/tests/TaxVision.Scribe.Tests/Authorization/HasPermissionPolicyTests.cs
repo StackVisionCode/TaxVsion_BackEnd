@@ -110,9 +110,9 @@ public sealed class HasPermissionPolicyTests
     }
 
     [Fact]
-    public async Task PlatformAdmin_role_is_authorized_for_TemplatesWrite_without_any_perm_claim()
+    public async Task PlatformAdmin_actor_type_is_authorized_for_TemplatesWrite_without_any_perm_claim()
     {
-        var principal = PrincipalWith(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+        var principal = PrincipalWith(new Claim("actor_type", "PlatformAdmin"));
 
         Assert.True(await IsAuthorizedAsync(principal, ScribePermissions.TemplatesWrite));
     }

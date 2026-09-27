@@ -55,7 +55,14 @@ public static class RevealTaxIdentifierHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        return customer is null || customer.TenantId != cmd.TenantId ? null : customer;
+        if (customer is null || customer.TenantId != cmd.TenantId)
+            return null;
+
+        // Visibilidad por asignación: revelar el tax id de un cliente que no le toca es la fuga más
+        // cara del servicio. Se comporta como inexistente, igual que la lectura del detalle.
+        return CustomerAccessPolicy.CanAccess(customer, cmd.RequestedByUserId, cmd.CallerCanViewAllCustomers)
+            ? customer
+            : null;
     }
 
     // ============== Fase 2: desencriptar y formatear segun SubjectKind ==============

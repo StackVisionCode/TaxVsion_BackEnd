@@ -109,6 +109,7 @@ builder.Services.AddHostedService<PermissionsBackfillService>();
 builder.Services.AddHostedService<PermissionsReconciliationService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();
+builder.Services.AddHostedService<ExpiredPermissionDeniesService>();
 builder.Services.AddHostedService<OnboardingRetryScheduler>();
 builder.Services.AddHostedService<OnboardingRegistrationReminderScheduler>();
 

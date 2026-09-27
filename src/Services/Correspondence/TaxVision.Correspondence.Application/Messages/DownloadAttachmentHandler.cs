@@ -23,6 +23,7 @@ public static class DownloadAttachmentHandler
     public static async Task<Result<DownloadAttachmentResult>> Handle(
         DownloadAttachmentCommand command,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         IConnectorsClient connectorsClient,
         ICorrespondenceTempBucketUploader tempBucketUploader,
         IMessageBus bus,
@@ -31,7 +32,7 @@ public static class DownloadAttachmentHandler
         CancellationToken ct
     )
     {
-        var loadResult = await LoadAsync(command, incomingEmails, ct);
+        var loadResult = await LoadAsync(command, incomingEmails, emailThreads, ct);
         if (loadResult.IsFailure)
             return Result.Failure<DownloadAttachmentResult>(loadResult.Error);
         var (email, attachment) = loadResult.Value;
@@ -81,11 +82,27 @@ public static class DownloadAttachmentHandler
     private static async Task<Result<(IncomingEmail Email, IncomingEmailAttachment Attachment)>> LoadAsync(
         DownloadAttachmentCommand command,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         CancellationToken ct
     )
     {
         var email = await incomingEmails.GetByIdAsync(command.TenantId, command.IncomingEmailId, ct);
         if (email is null)
+            return Result.Failure<(IncomingEmail, IncomingEmailAttachment)>(
+                new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
+
+        // A1 — mismo gate y misma respuesta que el cuerpo del mensaje: si el buzón no es visible, el
+        // adjunto "no existe". Un 403 confirmaría que ese correo está en el tenant.
+        if (
+            !await MailboxVisibility.CanSeeMessageAsync(
+                command.VisibleAccountIds,
+                command.TenantId,
+                email,
+                emailThreads,
+                ct
+            )
+        )
             return Result.Failure<(IncomingEmail, IncomingEmailAttachment)>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
             );

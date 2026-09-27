@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
@@ -31,6 +32,8 @@ public static class TakeoverSessionHandler
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
         ISessionRepository sessions,
+        IMfaRepository mfa,
+        ISecureTokenService secureTokens,
         IAccessTokenDenylist denylist,
         ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
@@ -96,6 +99,19 @@ public static class TakeoverSessionHandler
             ),
             ct
         );
+        // "No volver a pedirme el código" se resolvió antes del interstitial, pero no había sesión donde
+        // colgar el dispositivo: el pedido viajó en el vale y se cumple recién acá.
+        var deviceToken = await TrustedDeviceIssuer.IssueIfRequestedAsync(
+            payload.RememberDevice,
+            user,
+            mfa,
+            secureTokens,
+            audit,
+            request,
+            correlation,
+            ct
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
 
         // Post-commit: avisar en tiempo real a los dispositivos revocados (best-effort).
@@ -110,7 +126,9 @@ public static class TakeoverSessionHandler
 
         return Result.Success(
             LoginResponse.ForTokens(
-                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds),
+                // El dispositivo viaja DENTRO de los tokens, que es donde ya lo busca el frontend tras
+                // el segundo factor: el takeover no es un caso aparte para quien lo consume.
+                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken),
                 mfaSetupRequired: payload.MustEnrollMfa
             )
         );

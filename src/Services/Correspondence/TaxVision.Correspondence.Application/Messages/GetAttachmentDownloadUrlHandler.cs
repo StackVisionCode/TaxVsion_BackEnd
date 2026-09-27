@@ -17,11 +17,12 @@ public static class GetAttachmentDownloadUrlHandler
     public static async Task<Result<AttachmentDownloadUrlResult>> Handle(
         GetAttachmentDownloadUrlQuery query,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         ICloudStorageClient cloudStorageClient,
         CancellationToken ct
     )
     {
-        var attachmentResult = await LoadReadyAttachmentAsync(query, incomingEmails, ct);
+        var attachmentResult = await LoadReadyAttachmentAsync(query, incomingEmails, emailThreads, ct);
         if (attachmentResult.IsFailure)
             return Result.Failure<AttachmentDownloadUrlResult>(attachmentResult.Error);
         var attachment = attachmentResult.Value;
@@ -45,11 +46,26 @@ public static class GetAttachmentDownloadUrlHandler
     private static async Task<Result<IncomingEmailAttachment>> LoadReadyAttachmentAsync(
         GetAttachmentDownloadUrlQuery query,
         IIncomingEmailRepository incomingEmails,
+        IEmailThreadRepository emailThreads,
         CancellationToken ct
     )
     {
         var email = await incomingEmails.GetByIdAsync(query.TenantId, query.IncomingEmailId, ct);
         if (email is null)
+            return Result.Failure<IncomingEmailAttachment>(
+                new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
+            );
+
+        // A1 — gate de buzón, igual que en la descarga: mismo error que un mensaje inexistente.
+        if (
+            !await MailboxVisibility.CanSeeMessageAsync(
+                query.VisibleAccountIds,
+                query.TenantId,
+                email,
+                emailThreads,
+                ct
+            )
+        )
             return Result.Failure<IncomingEmailAttachment>(
                 new Error("IncomingEmail.NotFound", "The message was not found for this tenant.")
             );

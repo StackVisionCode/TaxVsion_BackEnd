@@ -40,4 +40,13 @@ public interface ISessionRepository
 
     /// <summary>Revoca todas las sesiones activas del tenant (suspensión).</summary>
     Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// Las sesiones vivas del tenant. Hace falta ANTES de revocarlas: <see cref="RevokeAllForTenantAsync"/>
+    /// solo devuelve un contador, y para cortar el acceso de verdad hay que denylistear cada sid y
+    /// anunciarlo (A5, G10 del plan — hasta ahora la suspensión y el bloqueo por facturación revocaban
+    /// solo en la base, así que el access token seguía sirviendo hasta 15 minutos).
+    /// </summary>
+    Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<UserSession>>([]);
 }

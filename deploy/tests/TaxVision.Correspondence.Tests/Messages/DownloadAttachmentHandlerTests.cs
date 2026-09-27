@@ -49,6 +49,7 @@ public sealed class DownloadAttachmentHandlerTests
     private static async Task<(
         IncomingEmail Email,
         FakeIncomingEmailRepository Repo,
+        Ingest.FakeEmailThreadRepository Threads,
         FakeConnectorsClient Connectors,
         FakeTempBucketUploader Uploader,
         FakeMessageBus Bus,
@@ -62,6 +63,7 @@ public sealed class DownloadAttachmentHandlerTests
         return (
             email,
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             new FakeConnectorsClient(),
             new FakeTempBucketUploader(),
             new FakeMessageBus(),
@@ -78,7 +80,7 @@ public sealed class DownloadAttachmentHandlerTests
         var accountId = Guid.NewGuid();
         var actorId = Guid.NewGuid();
         var receivedAt = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc);
-        var (email, repo, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
             tenantId,
             customerId,
             accountId,
@@ -89,6 +91,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, actorId),
             repo,
+            threads,
             connectors,
             uploader,
             bus,
@@ -134,7 +137,7 @@ public sealed class DownloadAttachmentHandlerTests
         var tenantId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
         var actorId = Guid.NewGuid();
-        var (email, repo, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
             tenantId,
             Guid.NewGuid(),
             accountId,
@@ -148,6 +151,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, actorId),
             repo,
+            threads,
             connectors,
             uploader,
             bus,
@@ -170,7 +174,7 @@ public sealed class DownloadAttachmentHandlerTests
         var tenantId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
         var actorId = Guid.NewGuid();
-        var (email, repo, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
             tenantId,
             Guid.NewGuid(),
             accountId,
@@ -184,6 +188,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, actorId),
             repo,
+            threads,
             connectors,
             uploader,
             bus,
@@ -207,7 +212,7 @@ public sealed class DownloadAttachmentHandlerTests
         var tenantId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
         var actorId = Guid.NewGuid();
-        var (email, repo, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
             tenantId,
             Guid.NewGuid(),
             accountId,
@@ -221,6 +226,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(tenantId, email.Id, attachment.Id, actorId),
             repo,
+            threads,
             connectors,
             uploader,
             bus,
@@ -244,6 +250,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             new FakeConnectorsClient(),
             new FakeTempBucketUploader(),
             new FakeMessageBus(),
@@ -260,7 +267,7 @@ public sealed class DownloadAttachmentHandlerTests
     public async Task Handle_WithUnknownAttachment_ReturnsNotFound()
     {
         var tenantId = Guid.NewGuid();
-        var (email, repo, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
             tenantId,
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -270,6 +277,7 @@ public sealed class DownloadAttachmentHandlerTests
         var result = await DownloadAttachmentHandler.Handle(
             new DownloadAttachmentCommand(tenantId, email.Id, Guid.NewGuid(), Guid.NewGuid()),
             repo,
+            threads,
             connectors,
             uploader,
             bus,

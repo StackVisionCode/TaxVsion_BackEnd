@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
@@ -48,6 +49,7 @@ public static class ReauthenticateHandler
         IRoleRepository roles,
         IPasswordHasher hasher,
         IMfaRepository mfa,
+        IOptions<MfaOptions> mfaOptions,
         ITotpService totp,
         ISecretProtector protector,
         ISecureTokenService tokens,
@@ -87,8 +89,17 @@ public static class ReauthenticateHandler
         if (!hasher.Verify(command.Password, user.PasswordHash))
             return await FailAsync(user, "bad_password", audit, request, correlation, unitOfWork, bus, now, ct);
 
+        // El step-up sigue la MISMA regla que el login (`MfaRequirement`), incluido el interruptor
+        // `Mfa:Enforced`. Antes miraba solo si el usuario tenía un TOTP confirmado, ignorando el
+        // interruptor: en desarrollo local se entraba sin código pero era IMPOSIBLE completar un
+        // step-up, y el 400 no decía por qué. En producción `Enforced` es true, así que para quien
+        // tiene TOTP confirmado no cambia nada.
+        var mfaApplies =
+            await MfaRequirement.EvaluateAsync(user, mfa, ct, mfaOptions.Value.Enforced)
+            && await MfaCodeVerifier.HasConfirmedTotpAsync(user.Id, mfa, ct);
+
         string[] authMethods = ["pwd"];
-        if (await MfaCodeVerifier.HasConfirmedTotpAsync(user.Id, mfa, ct))
+        if (mfaApplies)
         {
             // Sin código no se cuenta como fallo: el cliente todavía no mostró el campo.
             if (string.IsNullOrWhiteSpace(command.MfaCode))

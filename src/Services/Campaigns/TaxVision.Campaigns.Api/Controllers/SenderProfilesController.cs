@@ -30,7 +30,7 @@ public sealed class SenderProfilesController(IMessageBus bus) : ControllerBase
     private const int DefaultSize = 20;
 
     [HttpPost]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.SendersManage)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<SenderProfileResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateSenderProfileRequest request, CancellationToken ct)
@@ -48,7 +48,7 @@ public sealed class SenderProfilesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<SenderProfileResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
@@ -69,7 +69,7 @@ public sealed class SenderProfilesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.get")]
     [ProducesResponseType<SenderProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -82,7 +82,7 @@ public sealed class SenderProfilesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.SendersManage)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<SenderProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, UpdateSenderProfileRequest request, CancellationToken ct)
@@ -98,7 +98,7 @@ public sealed class SenderProfilesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{id:guid}/status")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.SendersManage)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<SenderProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SetStatus(Guid id, SetSenderProfileStatusRequest request, CancellationToken ct)

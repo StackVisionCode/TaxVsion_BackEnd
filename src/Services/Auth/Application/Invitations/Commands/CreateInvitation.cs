@@ -10,6 +10,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -76,6 +77,23 @@ public static class CreateInvitationHandler
         {
             return Result.Failure<CreateInvitationResponse>(
                 new Error("Invitation.Forbidden", "This actor cannot create the requested invitation.")
+            );
+        }
+
+        // Invitar a otro administrador es delegar el control del tenant: exige roles.manage
+        // EFECTIVA (roles menos denies), no solo ser TenantAdmin. Sin esto, un admin al que le
+        // quitaron roles.manage se lo devolvía a sí mismo invitando una segunda cuenta de admin.
+        if (
+            command.ActorType == UserActorType.TenantAdmin
+            && inviter.ActorType != UserActorType.PlatformAdmin
+            && !(await roles.GetEffectivePermissionCodesAsync(inviter.Id, ct)).Contains(
+                PermissionCatalog.RolesManage,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
+        {
+            return Result.Failure<CreateInvitationResponse>(
+                new Error("Invitation.Forbidden", "Inviting an administrator requires the roles.manage permission.")
             );
         }
 
@@ -153,6 +171,13 @@ public static class CreateInvitationHandler
             var actorTypeGuard = ActorTypeRoleGuard.ValidateRolesForActorType(command.ActorType, tenantRoles, catalog);
             if (actorTypeGuard.IsFailure)
                 return Result.Failure<CreateInvitationResponse>(actorTypeGuard.Error);
+
+            // A4 (§27) — mismo techo duro que al asignar roles: invitar era el otro camino que no lo
+            // revalidaba, y una invitación puede aceptarse días después. Solo la mitad dura (no el
+            // plan): la configuración dormida por un downgrade no debe bloquear el alta.
+            var ceilingGuard = PermissionCeiling.ValidateRolesNeverGrantable(tenantRoles, catalog);
+            if (ceilingGuard.IsFailure)
+                return Result.Failure<CreateInvitationResponse>(ceilingGuard.Error);
 
             roleIdsJson = JsonSerializer.Serialize(requestedIds);
         }
@@ -233,6 +258,12 @@ public static class CreateInvitationHandler
                     is UserActorType.TenantAdmin
                         or UserActorType.TenantEmployee
                         or UserActorType.CustomerPortal,
+
+            // Un empleado con users.invite delegada da de alta compañeros y clientes, nunca otro
+            // administrador: delegar el alta de personal es el caso de uso real de ese permiso.
+            UserActorType.TenantEmployee => inviter.TenantId == command.TenantId
+                && command.TenantId != PlatformTenant.Id
+                && command.ActorType is UserActorType.TenantEmployee or UserActorType.CustomerPortal,
 
             _ => false,
         };

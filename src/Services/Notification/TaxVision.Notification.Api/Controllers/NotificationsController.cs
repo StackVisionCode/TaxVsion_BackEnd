@@ -20,8 +20,10 @@ public sealed class NotificationsController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Historial de notificaciones del tenant (email/SMS/in-app) para auditoría y soporte.</summary>
     [HttpGet]
+    // notification.log.view es delegable y declara TenantEmployee: el gate cerrado lo volvía
+    // inusable para un empleado de soporte al que se le delegaba.
     [HasPermission(NotificationPermissions.LogView)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("notification.f.list")]
     [ProducesResponseType<PagedResult<NotificationResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetNotifications(

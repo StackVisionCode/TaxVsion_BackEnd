@@ -35,12 +35,17 @@ public sealed class AccountSessionController(IMessageBus bus, IOptions<RefreshTo
     public sealed record TicketRequest(Guid Ticket, string? DeviceName = null);
 
     /// <summary>Tokens del Account. Si hace falta confirmar el takeover, viene el vale en vez del token.</summary>
+    /// <param name="DeviceToken">
+    /// Dispositivo de confianza recién creado, solo cuando el usuario lo pidió al resolver el segundo
+    /// factor. El Landing lo guarda y lo reenvía en el próximo <c>discover-login</c>. Null en el resto.
+    /// </param>
     public sealed record AccountSessionResponse(
         string? AccessToken,
         int ExpiresInSeconds,
         bool TakeoverRequired = false,
         string? TakeoverTicket = null,
-        int? TakeoverTicketExpiresInSeconds = null
+        int? TakeoverTicketExpiresInSeconds = null,
+        string? DeviceToken = null
     );
 
     /// <summary>CRM → vale de un solo uso para abrir el Account con la misma sesión.</summary>
@@ -114,7 +119,8 @@ public sealed class AccountSessionController(IMessageBus bus, IOptions<RefreshTo
         }
 
         return SessionStarted(
-            new AuthTokensResponse(outcome.AccessToken!, outcome.RefreshToken!, outcome.ExpiresInSeconds)
+            new AuthTokensResponse(outcome.AccessToken!, outcome.RefreshToken!, outcome.ExpiresInSeconds),
+            outcome.DeviceToken
         );
     }
 
@@ -136,7 +142,7 @@ public sealed class AccountSessionController(IMessageBus bus, IOptions<RefreshTo
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
         // El takeover siempre termina en tokens: la política del Account ya descartó el enrolamiento de MFA.
-        return SessionStarted(result.Value.Tokens!);
+        return SessionStarted(result.Value.Tokens!, result.Value.Tokens!.DeviceToken);
     }
 
     /// <summary>Rota el refresh de la cookie. Un 401 borra la cookie: la sesión del Account terminó.</summary>
@@ -185,13 +191,13 @@ public sealed class AccountSessionController(IMessageBus bus, IOptions<RefreshTo
         "Refresh token is invalid or expired."
     );
 
-    private OkObjectResult SessionStarted(AuthTokensResponse tokens)
+    private OkObjectResult SessionStarted(AuthTokensResponse tokens, string? deviceToken = null)
     {
         AccountSessionCookie.Append(
             Response,
             tokens.RefreshToken,
             DateTime.UtcNow.AddDays(refreshOptions.Value.ExpirationDays)
         );
-        return Ok(new AccountSessionResponse(tokens.AccessToken, tokens.ExpiresInSeconds));
+        return Ok(new AccountSessionResponse(tokens.AccessToken, tokens.ExpiresInSeconds, DeviceToken: deviceToken));
     }
 }

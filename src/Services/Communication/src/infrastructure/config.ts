@@ -87,7 +87,11 @@ const rawEnv = z
     // "grabando nota de voz…": el cliente re-emite start cada ~12-15s mientras graba; un poco mas
     // holgado que typing para no toparse con el heartbeat.
     COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_MAX: z.coerce.number().int().positive().default(30),
-    COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60),
     // F11 QA gap — build-server.ts (limite HTTP global) y meeting-invitations.route.ts
     // (join-by-token/by-code, publicos) tenian estos numeros literales inline pese a que
     // el docblock de la ruta ya afirmaba que salian de config.rateLimit. Mismos defaults
@@ -103,14 +107,15 @@ const rawEnv = z
     // la discrepancia (Node ten a 5, .NET tenia 20) se detecto al espejar el
     // catalogo en rate-limit-policies.ts; 20 es el valor de negocio correcto.
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX: z.coerce.number().int().positive().default(20),
-    COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+    COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 
-    COMMUNICATION_PLATFORM_TENANT_ID: z
-      .string()
-      .uuid()
-      .default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
+    COMMUNICATION_PLATFORM_TENANT_ID: z.string().uuid().default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
 
     // Fase Backend 5 — invitaciones a meetings. Secreto local HS256, propio de
     // Communication, para el shortLivedJoinTicket del guest (nada que ver con
@@ -163,6 +168,42 @@ const rawEnv = z
       .string()
       .default('false')
       .transform((value) => value === 'true'),
+
+    // portal.calls.use — la palanca por cliente del cajon de accesos. Default OFF a proposito: el
+    // permiso recien entra al bundle del rol "Customer Portal" con este despliegue, y hasta que Auth
+    // arranque, resincronice ese rol y las proyecciones de los 24 servicios converjan, NINGUN cliente
+    // existente lo tiene. Encenderlo antes les quita las llamadas a todos. Secuencia: desplegar Auth
+    // -> verificar la proyeccion -> encender esto.
+    COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    // A6 — gate de modulo: con ON, un tenant cuyo plan no incluye el modulo del permiso recibe 403
+    // Authz.ModuleUnavailable. Con OFF (default) el gate sigue midiendo y registrando sin bloquear.
+    //
+    // Este servicio emite permisos de DOS modulos: `comms` (chat, llamadas, video) y `meetings`
+    // (reuniones, que se venden aparte). Por eso hay ademas una lista, espejo del
+    // `Authorization:ModuleGate:EnforcedModules` de .NET — sin ella el interruptor encenderia los dos
+    // a la vez y no se podria subir el escalon de uno en uno, que es justo lo que pide el plan.
+    //
+    // Lista vacia = se aplican TODOS los modulos (estado final), igual que en .NET. Las exenciones
+    // (notificaciones y soporte) viven en `permission-module-map.ts`, no aca.
+    //
+    // Rollback: poner el booleano en false y reiniciar; no hace falta redespliegue de codigo.
+    COMMUNICATION_MODULE_GATE_ENFORCE: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_MODULE_GATE_ENFORCED_MODULES: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((module) => module.trim().toLowerCase())
+          .filter((module) => module.length > 0),
+      ),
   })
   .parse(process.env);
 
@@ -301,6 +342,11 @@ export const config = {
 
   platformTenantId: rawEnv.COMMUNICATION_PLATFORM_TENANT_ID.toLowerCase(),
 
+  moduleGate: {
+    enforce: rawEnv.COMMUNICATION_MODULE_GATE_ENFORCE,
+    enforcedModules: rawEnv.COMMUNICATION_MODULE_GATE_ENFORCED_MODULES,
+  },
+
   meetingInvitations: {
     frontendBaseUrl: rawEnv.COMMUNICATION_FRONTEND_BASE_URL,
     joinTicketSecret: rawEnv.COMMUNICATION_JOIN_TICKET_SECRET,
@@ -328,6 +374,9 @@ export const config = {
   },
   assignmentVisibility: {
     enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,
+  },
+  portalCallsPermission: {
+    enforce: rawEnv.COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE,
   },
 } as const;
 

@@ -64,11 +64,11 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 // Autorización por permiso humano ([HasPermission("documents.*")]). Resuelve las políticas perm:* .
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // Endpoints M2M internos: solo tokens de servicio (actor_type=Service). Mismo patrón que Customer.
 builder

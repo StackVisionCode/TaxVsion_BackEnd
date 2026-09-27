@@ -9,6 +9,8 @@ import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-att
 import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
 import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
@@ -66,29 +68,37 @@ export async function registerConversationRoutes(
   container: AppContainer,
 ): Promise<void> {
   // GET /communication/conversations
-  app.get('/communication/conversations', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const query = ListQuerySchema.parse(request.query);
-    const result = await listConversations(
-      {
-        tenantId: principal.tenantId,
-        userId: principal.userId,
-        page: query.page,
-        size: query.size,
-        includeArchived: query.includeArchived ?? false,
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.send(result.value);
-  });
+  app.get(
+    '/communication/conversations',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const query = ListQuerySchema.parse(request.query);
+      const result = await listConversations(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          page: query.page,
+          size: query.size,
+          includeArchived: query.includeArchived ?? false,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // GET /communication/conversations/:id/messages
   app.get(
     '/communication/conversations/:id/messages',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
@@ -114,7 +124,9 @@ export async function registerConversationRoutes(
   // POST /communication/conversations/:id/read
   app.post(
     '/communication/conversations/:id/read',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
@@ -140,7 +152,9 @@ export async function registerConversationRoutes(
   // docblock en searchMessages y en PrismaMessageRepository.searchByBody).
   app.get(
     '/communication/conversations/:id/messages/search',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = ConversationIdParams.parse(request.params);
@@ -167,7 +181,9 @@ export async function registerConversationRoutes(
   // de escaneo de un adjunto, autorizado por membresia de conversacion.
   app.get(
     '/communication/conversations/:id/attachments/:fileId',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = AttachmentParams.parse(request.params);
@@ -194,7 +210,9 @@ export async function registerConversationRoutes(
   // URL presignada que se devuelve.
   app.post(
     '/communication/conversations/:id/attachments/upload',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ScreenshotCreate)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = ConversationParam.parse(request.params);
@@ -236,7 +254,9 @@ export async function registerConversationRoutes(
   // la subida (verifica tamano + dispara escaneo).
   app.post(
     '/communication/conversations/:id/attachments/:fileId/complete',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ScreenshotCreate)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = AttachmentParams.parse(request.params);
@@ -264,7 +284,9 @@ export async function registerConversationRoutes(
   // por-dueno de CloudStorage no le entregaria a un CustomerPortal.
   app.post(
     '/communication/conversations/:id/attachments/:fileId/download-url',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatReply)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = AttachmentParams.parse(request.params);

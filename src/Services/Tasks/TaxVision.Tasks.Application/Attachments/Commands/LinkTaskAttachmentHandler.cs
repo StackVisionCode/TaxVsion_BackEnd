@@ -2,7 +2,9 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
 
 namespace TaxVision.Tasks.Application.Attachments.Commands;
@@ -14,7 +16,8 @@ public sealed record LinkTaskAttachmentCommand(
     Guid FileId,
     string? DisplayName,
     string? ContentType,
-    long SizeBytes
+    long SizeBytes,
+    bool HasManageAll = false
 );
 
 /// <summary>
@@ -35,6 +38,11 @@ public static class LinkTaskAttachmentHandler
         var found = await tasks.GetByIdWithAttachmentsAsync(command.TenantId, command.TaskId, ct);
         if (found.IsFailure)
             return Result.Failure<TaskAttachmentResponse>(found.Error);
+
+        // A1 — adjuntar a la tarea de otro es mutarla: el adjunto queda visible para quien la tenga
+        // asignada y cuenta contra su límite. Antes alcanzaba con tasks.write.
+        if (!TaskAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<TaskAttachmentResponse>(TaskErrors.Forbidden);
 
         var linked = found.Value.LinkExistingFile(
             command.FileId,

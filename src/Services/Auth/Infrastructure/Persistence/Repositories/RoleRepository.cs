@@ -79,8 +79,12 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     {
         // Per-user deny layer: subtract the permissions this user is explicitly denied from the union of
         // their role permissions. Kept as a subquery so the subtraction runs in SQL (NOT IN), not in memory.
+        // Un deny con fecha ya pasada no resta: sigue en la tabla como rastro, pero dejó de aplicar.
+        var now = DateTime.UtcNow;
         var deniedPermissionIds = db
-            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+            .UserPermissionDenies.Where(deny =>
+                deny.UserId == userId && (deny.ExpiresAtUtc == null || deny.ExpiresAtUtc > now)
+            )
             .Select(deny => deny.PermissionId);
 
         return await db
@@ -123,17 +127,118 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
             await db.UserRoles.AddAsync(UserRole.Create(userId, roleId, assignedByUserId), ct);
     }
 
-    public async Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default) =>
-        await db
-            .UserPermissionDenies.Where(deny => deny.UserId == userId)
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Role>>> GetRolesByUsersAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken ct = default
+    )
+    {
+        if (userIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Role>>();
+
+        // Mismo criterio que GetUserRolesAsync: el UserId del link es el límite real, así que el
+        // filtro ambiental de tenant sobre Role es redundante y rompe en scopes sin ITenantContext.
+        var pairs = await db
+            .UserRoles.Where(link => userIds.Contains(link.UserId))
+            .Join(
+                db.Roles.IgnoreQueryFilters().Include(role => role.Permissions),
+                link => link.RoleId,
+                role => role.Id,
+                (link, role) => new { link.UserId, Role = role }
+            )
+            .ToListAsync(ct);
+
+        return pairs
+            .GroupBy(pair => pair.UserId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<Role>)group.Select(pair => pair.Role).ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetDeniedPermissionIdsByUsersAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken ct = default
+    )
+    {
+        if (userIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var now = DateTime.UtcNow;
+        var rows = await db
+            .UserPermissionDenies.Where(deny =>
+                userIds.Contains(deny.UserId) && (deny.ExpiresAtUtc == null || deny.ExpiresAtUtc > now)
+            )
+            .Select(deny => new { deny.UserId, deny.PermissionId })
+            .ToListAsync(ct);
+
+        return rows.GroupBy(row => row.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<Guid>)group.Select(row => row.PermissionId).ToList()
+            );
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetDeniedPermissionIdsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        return await db
+            .UserPermissionDenies.Where(deny =>
+                deny.UserId == userId && (deny.ExpiresAtUtc == null || deny.ExpiresAtUtc > now)
+            )
             .Select(deny => deny.PermissionId)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<UserPermissionDeny>> GetActiveDeniesAsync(
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        var now = DateTime.UtcNow;
+        return await db
+            .UserPermissionDenies.AsNoTracking()
+            .Where(deny => deny.UserId == userId && (deny.ExpiresAtUtc == null || deny.ExpiresAtUtc > now))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<(Guid UserId, Guid TenantId)>> GetUsersWithExpiredDeniesAsync(
+        DateTime nowUtc,
+        int take,
+        CancellationToken ct = default
+    )
+    {
+        var rows = await db
+            .UserPermissionDenies.Where(deny => deny.ExpiresAtUtc != null && deny.ExpiresAtUtc <= nowUtc)
+            .Join(
+                db.Users.IgnoreQueryFilters(),
+                deny => deny.UserId,
+                user => user.Id,
+                (deny, user) => new { user.Id, user.TenantId }
+            )
+            .Distinct()
+            .OrderBy(row => row.Id)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return rows.Select(row => (row.Id, row.TenantId)).ToList();
+    }
+
+    public async Task<int> RemoveExpiredDeniesAsync(Guid userId, DateTime nowUtc, CancellationToken ct = default)
+    {
+        var expired = await db
+            .UserPermissionDenies.Where(deny =>
+                deny.UserId == userId && deny.ExpiresAtUtc != null && deny.ExpiresAtUtc <= nowUtc
+            )
+            .ToListAsync(ct);
+        if (expired.Count == 0)
+            return 0;
+
+        db.UserPermissionDenies.RemoveRange(expired);
+        return expired.Count;
+    }
 
     /// <summary>Replaces the user's full deny set with the given permission ids. Mirrors
     /// <see cref="ReplaceUserRolesAsync"/>.</summary>
     public async Task ReplaceUserDeniesAsync(
         Guid userId,
-        IReadOnlyCollection<Guid> permissionIds,
+        IReadOnlyCollection<PermissionDenyInput> denies,
         Guid? deniedByUserId,
         CancellationToken ct = default
     )
@@ -141,8 +246,13 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
         var existing = await db.UserPermissionDenies.Where(deny => deny.UserId == userId).ToListAsync(ct);
         db.UserPermissionDenies.RemoveRange(existing);
 
-        foreach (var permissionId in permissionIds.Distinct())
-            await db.UserPermissionDenies.AddAsync(UserPermissionDeny.Create(userId, permissionId, deniedByUserId), ct);
+        foreach (var deny in denies.GroupBy(entry => entry.PermissionId).Select(group => group.First()))
+        {
+            await db.UserPermissionDenies.AddAsync(
+                UserPermissionDeny.Create(userId, deny.PermissionId, deniedByUserId, deny.Reason, deny.ExpiresAtUtc),
+                ct
+            );
+        }
     }
 
     /// <summary>Crea los roles de sistema del tenant (Admin, Empleado, Portal Cliente) que aún no existan, con sus permisos por defecto.</summary>

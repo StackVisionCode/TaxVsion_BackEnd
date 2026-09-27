@@ -1348,6 +1348,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                                 .HasColumnType("nvarchar(100)")
                                 .HasColumnName("Preparer_TitleLabel");
 
+                            b1.Property<Guid?>("UserId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("Preparer_UserId");
+
                             b1.HasKey("SignatureRequestId");
 
                             b1.ToTable("SignatureRequests");

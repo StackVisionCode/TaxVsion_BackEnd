@@ -52,7 +52,14 @@ public static class ClaimsPrincipalExtensions
         return Guid.TryParse(raw, out sessionId);
     }
 
-    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
+    /// <summary>
+    /// Se decide por el claim <c>actor_type</c>, que es inmutable y lo fija Auth al registrar al
+    /// usuario. Nunca por el claim de rol: ahí conviven el pseudo-rol del actor type y los nombres
+    /// de los custom roles del tenant, así que un rol de tenant llamado <c>PlatformAdmin</c>
+    /// habilitaba el bypass de plataforma.
+    /// </summary>
+    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) =>
+        principal.GetActorType() == ActorType.PlatformAdmin;
 
     // TenantAdmin no tiene bypass acá — depende del claim "perm" real (PermissionCatalog computa
     // su set completo al login, excluyendo lo marcado Permission.PlatformOnly). PlatformAdmin sí

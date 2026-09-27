@@ -6,5 +6,6 @@ public sealed record RevealTaxIdentifierCommand(
     Guid RequestedByUserId,
     string CorrelationId,
     string? IpAddress,
-    string? UserAgent
+    string? UserAgent,
+    bool CallerCanViewAllCustomers
 );

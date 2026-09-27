@@ -32,7 +32,10 @@ public static class SmsSendRequestedConsumer
                         IdempotencyKey: evt.IdempotencyKey,
                         SourceContext: evt.SourceContext
                     ),
-                ]
+                ],
+                // Actor de sistema: no hay usuario cuyo alcance medir.
+                ActorUserId: null,
+                CanViewAll: false
             ),
             ct
         );

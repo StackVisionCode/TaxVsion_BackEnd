@@ -37,14 +37,40 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Devuelve el catálogo global de permisos disponibles para asignar a roles.</summary>
+    /// <summary>
+    /// Devuelve el catálogo global de permisos con las banderas del techo de delegación (§27) y, para
+    /// el tenant del token, si hoy es concedible (<c>grantable</c>) — así el picker de la UI puede
+    /// mostrar el motivo en vez de que el TA lo descubra con un 400 al guardar.
+    /// </summary>
     [HttpGet("/auth/permissions")]
     [RateLimit("auth.f.role_read")]
     [ProducesResponseType<IReadOnlyList<PermissionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPermissionsCatalog(CancellationToken ct)
     {
+        // El catálogo es global: sin tenant en el token se responde igual, solo sin la mitad
+        // comercial del techo (un PlatformAdmin consultando fuera de un tenant).
+        var tenantId = User.TryGetTenantId(out var resolvedTenantId) ? resolvedTenantId : (Guid?)null;
+
         var result = await bus.InvokeAsync<Result<IReadOnlyList<PermissionResponse>>>(
-            new GetPermissionsCatalogQuery(),
+            new GetPermissionsCatalogQuery(tenantId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Lista los usuarios activos que tienen asignado el rol.</summary>
+    [HttpGet("{roleId:guid}/users")]
+    [RateLimit("auth.f.role_read")]
+    [ProducesResponseType<IReadOnlyList<RoleUserResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetRoleUsers(Guid roleId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<RoleUserResponse>>>(
+            new GetRoleUsersQuery(tenantId, roleId),
             ct
         );
 
@@ -126,6 +152,21 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
             new SetRolePermissionsCommand(tenantId, roleId, userId, request.PermissionIds),
             ct
         );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Vuelve a poner en servicio un rol desactivado.</summary>
+    [HttpPost("{roleId:guid}/reactivate")]
+    [RateLimit("auth.g.role_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Reactivate(Guid roleId, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new ReactivateRoleCommand(tenantId, roleId, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

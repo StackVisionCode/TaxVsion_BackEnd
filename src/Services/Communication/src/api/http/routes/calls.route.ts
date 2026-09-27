@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { issueIceCredentials } from '../../../application/use-cases/issue-ice-credentials.js';
+import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
+import { isStaffActor } from '../../../domain/shared/permissions.js';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const IceQuerySchema = z.object({
@@ -16,6 +20,11 @@ const CustomerCallsParamsSchema = z.object({
   customerId: z.string().uuid(),
 });
 
+const STAFF_ONLY = {
+  code: 'Auth.Forbidden',
+  message: 'Client call history is staff-only.',
+} as const;
+
 const CustomerCallsQuerySchema = z.object({
   // Historial por cliente: por defecto traemos hasta 100 (los volúmenes por cliente son bajos) para
   // poder calcular stats exactas (total/completed/missed/avg) sobre el conjunto devuelto.
@@ -24,114 +33,155 @@ const CustomerCallsQuerySchema = z.object({
 
 export async function registerCallRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   // GET /communication/webrtc/ice
-  app.get('/communication/webrtc/ice', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const query = IceQuerySchema.parse(request.query);
-    const result = issueIceCredentials(
-      {
-        tenantId: principal.tenantId,
-        userId: principal.userId,
-        ...(query.ttl !== undefined ? { ttlSeconds: query.ttl } : {}),
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.send(result.value);
-  });
+  app.get(
+    '/communication/webrtc/ice',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.CallStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const query = IceQuerySchema.parse(request.query);
+      const result = issueIceCredentials(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          ...(query.ttl !== undefined ? { ttlSeconds: query.ttl } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // GET /communication/calls
-  app.get('/communication/calls', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const query = HistoryQuerySchema.parse(request.query);
-    const [items, totalCount] = await Promise.all([
-      container.calls.listRecentForUser({
-        tenantId: principal.tenantId,
-        userId: principal.userId,
-        take: query.size,
-        skip: (query.page - 1) * query.size,
-      }),
-      container.calls.countRecentForUser(principal.tenantId, principal.userId),
-    ]);
-    return reply.send({
-      items: items.map((snapshot) => ({
-        id: snapshot.id,
-        kind: snapshot.kind,
-        status: snapshot.status,
-        callerUserId: snapshot.callerUserId,
-        calleeUserId: snapshot.calleeUserId,
-        conversationId: snapshot.conversationId,
-        ringingAtUtc: snapshot.ringingAtUtc.toISOString(),
-        endedAtUtc: snapshot.endedAtUtc ? snapshot.endedAtUtc.toISOString() : null,
-        durationSeconds: snapshot.durationSeconds,
-        recordingFileId: snapshot.recordingFileId,
-        endReason: snapshot.endReason,
-      })),
-      page: query.page,
-      size: query.size,
-      totalCount,
-    });
-  });
+  app.get(
+    '/communication/calls',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.CallStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const query = HistoryQuerySchema.parse(request.query);
+      const [items, totalCount] = await Promise.all([
+        container.calls.listRecentForUser({
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          take: query.size,
+          skip: (query.page - 1) * query.size,
+        }),
+        container.calls.countRecentForUser(principal.tenantId, principal.userId),
+      ]);
+      return reply.send({
+        items: items.map((snapshot) => ({
+          id: snapshot.id,
+          kind: snapshot.kind,
+          status: snapshot.status,
+          callerUserId: snapshot.callerUserId,
+          calleeUserId: snapshot.calleeUserId,
+          conversationId: snapshot.conversationId,
+          ringingAtUtc: snapshot.ringingAtUtc.toISOString(),
+          endedAtUtc: snapshot.endedAtUtc ? snapshot.endedAtUtc.toISOString() : null,
+          durationSeconds: snapshot.durationSeconds,
+          recordingFileId: snapshot.recordingFileId,
+          endReason: snapshot.endReason,
+        })),
+        page: query.page,
+        size: query.size,
+        totalCount,
+      });
+    },
+  );
 
   // GET /communication/customers/:customerId/calls
   // Historial de llamadas IN-APP de un cliente concreto (perfil de cliente → Activity → Call history).
   // Puente: la Call no tiene CustomerId; sus participantes son UserIds de Auth. Resolvemos el UserId del
   // PORTAL del cliente (proyección CustomerPortalAccount) y listamos las llamadas donde ese usuario
   // participó = las llamadas del cliente con la oficina. Tenant-scoped por el principal.
-  app.get('/communication/customers/:customerId/calls', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = CustomerCallsParamsSchema.parse(request.params);
-    const query = CustomerCallsQuerySchema.parse(request.query);
+  //
+  // Solo staff: antes estaba solo `authenticate`, así que un cliente del portal podía pedir el
+  // customerId de OTRO cliente y leerle el historial completo de llamadas. Además, cuando la
+  // visibilidad por asignación está activa, un empleado que no ve a todos los clientes solo ve el
+  // historial de los que tiene asignados — mismo criterio que el picker de clientes.
+  app.get(
+    '/communication/customers/:customerId/calls',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.CallStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
+      const params = CustomerCallsParamsSchema.parse(request.params);
+      const query = CustomerCallsQuerySchema.parse(request.query);
 
-    const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(params.customerId);
-    // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber llamadas.
-    if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
-      return reply.send({ items: [], stats: { total: 0, completed: 0, missed: 0, avgDurationSeconds: null }, hasPortalAccount: false });
-    }
+      const settings = await container.settings.get(principal.tenantId);
+      const restrictToAssigned =
+        container.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer;
+      if (restrictToAssigned && !(await seesAllCustomers(principal, container.userPermissions))) {
+        const isAssigned = await container.customerAssignments.isAssigned(
+          principal.tenantId,
+          params.customerId,
+          principal.userId,
+        );
+        if (!isAssigned) return reply.code(403).send(STAFF_ONLY);
+      }
 
-    const clientUserId = portalAccount.userId;
-    const snapshots = await container.calls.listRecentForUser({
-      tenantId: principal.tenantId,
-      userId: clientUserId,
-      take: query.size,
-      skip: 0,
-    });
+      const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(params.customerId);
+      // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber llamadas.
+      if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
+        return reply.send({
+          items: [],
+          stats: { total: 0, completed: 0, missed: 0, avgDurationSeconds: null },
+          hasPortalAccount: false,
+        });
+      }
 
-    const items = snapshots.map((s) => ({
-      id: s.id,
-      kind: s.kind,
-      status: s.status,
-      // Dirección relativa a la OFICINA: si el cliente inició, es entrante; si no, saliente.
-      direction: s.callerUserId === clientUserId ? 'incoming' : 'outgoing',
-      conversationId: s.conversationId,
-      ringingAtUtc: s.ringingAtUtc.toISOString(),
-      endedAtUtc: s.endedAtUtc ? s.endedAtUtc.toISOString() : null,
-      durationSeconds: s.durationSeconds,
-      recordingFileId: s.recordingFileId,
-      endReason: s.endReason,
-    }));
+      const clientUserId = portalAccount.userId;
+      const snapshots = await container.calls.listRecentForUser({
+        tenantId: principal.tenantId,
+        userId: clientUserId,
+        take: query.size,
+        skip: 0,
+      });
 
-    const completedCalls = snapshots.filter((s) => s.status === 'Ended');
-    const completedWithDuration = completedCalls.filter((s) => (s.durationSeconds ?? 0) > 0);
-    const avgDurationSeconds =
-      completedWithDuration.length > 0
-        ? Math.round(
-            completedWithDuration.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0) / completedWithDuration.length,
-          )
-        : null;
+      const items = snapshots.map((s) => ({
+        id: s.id,
+        kind: s.kind,
+        status: s.status,
+        // Dirección relativa a la OFICINA: si el cliente inició, es entrante; si no, saliente.
+        direction: s.callerUserId === clientUserId ? 'incoming' : 'outgoing',
+        conversationId: s.conversationId,
+        ringingAtUtc: s.ringingAtUtc.toISOString(),
+        endedAtUtc: s.endedAtUtc ? s.endedAtUtc.toISOString() : null,
+        durationSeconds: s.durationSeconds,
+        recordingFileId: s.recordingFileId,
+        endReason: s.endReason,
+      }));
 
-    return reply.send({
-      items,
-      stats: {
-        total: snapshots.length,
-        completed: completedCalls.length,
-        missed: snapshots.filter((s) => s.status === 'MissedCall').length,
-        avgDurationSeconds,
-      },
-      hasPortalAccount: true,
-      // UserId del portal del cliente — permite iniciar una llamada (audio/video) al cliente desde su perfil.
-      clientUserId,
-    });
-  });
+      const completedCalls = snapshots.filter((s) => s.status === 'Ended');
+      const completedWithDuration = completedCalls.filter((s) => (s.durationSeconds ?? 0) > 0);
+      const avgDurationSeconds =
+        completedWithDuration.length > 0
+          ? Math.round(
+              completedWithDuration.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0) /
+                completedWithDuration.length,
+            )
+          : null;
+
+      return reply.send({
+        items,
+        stats: {
+          total: snapshots.length,
+          completed: completedCalls.length,
+          missed: snapshots.filter((s) => s.status === 'MissedCall').length,
+          avgDurationSeconds,
+        },
+        hasPortalAccount: true,
+        // UserId del portal del cliente — permite iniciar una llamada (audio/video) al cliente desde su perfil.
+        clientUserId,
+      });
+    },
+  );
 }

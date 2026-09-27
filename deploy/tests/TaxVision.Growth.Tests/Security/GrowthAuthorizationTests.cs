@@ -74,7 +74,7 @@ public sealed class GrowthAuthorizationTests
         var servicePolicy = await provider.GetPolicyAsync(
             HasServiceScopeAttribute.PolicyPrefix + GrowthServiceScopes.CodesCommit
         );
-        var administrator = Principal(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+        var administrator = Principal(new Claim("actor_type", "PlatformAdmin"));
 
         Assert.NotNull(permissionPolicy);
         Assert.NotNull(servicePolicy);
