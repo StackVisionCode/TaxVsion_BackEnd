@@ -135,7 +135,8 @@ public sealed class ProjectionPermissionsSourceTests
         new(
             reader,
             new MemoryCache(new MemoryCacheOptions()),
-            logger ?? new RecordingLogger<ProjectionPermissionsSource>()
+            logger ?? new RecordingLogger<ProjectionPermissionsSource>(),
+            new AuthorizationMetrics()
         );
 
     private static ClaimsPrincipal BuildPrincipal(

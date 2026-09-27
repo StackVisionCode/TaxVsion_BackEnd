@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
@@ -24,6 +25,11 @@ public sealed record ExchangeHandoffTicketCommand(
 /// enrolar MFA (política sin método), el frontend usa el flag para forzar el setup, igual que el
 /// desenlace del login directo.
 /// </summary>
+/// <param name="DeviceToken">
+/// Token del dispositivo de confianza recién creado, solo cuando el usuario lo pidió al resolver el
+/// segundo factor. El navegador lo guarda y lo reenvía en el próximo <c>discover-login</c> para no
+/// volver a pedir el código. Null en cualquier otro caso.
+/// </param>
 public sealed record HandoffSessionResponse(
     string? AccessToken,
     string? RefreshToken,
@@ -31,15 +37,17 @@ public sealed record HandoffSessionResponse(
     bool MfaSetupRequired,
     bool TakeoverRequired = false,
     string? TakeoverTicket = null,
-    int? TakeoverTicketExpiresInSeconds = null
+    int? TakeoverTicketExpiresInSeconds = null,
+    string? DeviceToken = null
 )
 {
     public static HandoffSessionResponse ForTokens(
         string accessToken,
         string refreshToken,
         int expiresInSeconds,
-        bool mfaSetupRequired
-    ) => new(accessToken, refreshToken, expiresInSeconds, mfaSetupRequired);
+        bool mfaSetupRequired,
+        string? deviceToken = null
+    ) => new(accessToken, refreshToken, expiresInSeconds, mfaSetupRequired, DeviceToken: deviceToken);
 
     // Sesión única: el usuario ya tenía una sesión activa. No hay tokens todavía — el portal muestra
     // el interstitial y canjea el vale en POST /auth/session/takeover si confirma.
@@ -71,6 +79,8 @@ public static class ExchangeHandoffTicketHandler
         IAuthSessionIssuer issuer,
         ISessionRepository sessions,
         ISessionTakeoverTicketStore takeoverTickets,
+        IMfaRepository mfa,
+        ISecureTokenService secureTokens,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -118,7 +128,8 @@ public static class ExchangeHandoffTicketHandler
             issuer,
             sessions,
             takeoverTickets,
-            ct
+            ct,
+            payload.RememberDevice
         );
 
         if (outcome.TakeoverRequired)
@@ -165,6 +176,19 @@ public static class ExchangeHandoffTicketHandler
             ),
             ct
         );
+        // Dispositivo de confianza: se crea acá y no al emitir el vale porque el token tiene que
+        // nacer junto a los de la sesión — lo guarda el mismo origen que después lo reenviará.
+        var deviceToken = await TrustedDeviceIssuer.IssueIfRequestedAsync(
+            payload.RememberDevice,
+            user,
+            mfa,
+            secureTokens,
+            audit,
+            request,
+            correlation,
+            ct
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
@@ -172,7 +196,8 @@ public static class ExchangeHandoffTicketHandler
                 issued.AccessToken,
                 issued.RefreshToken,
                 issued.ExpiresInSeconds,
-                payload.MustEnrollMfa
+                payload.MustEnrollMfa,
+                deviceToken
             )
         );
     }

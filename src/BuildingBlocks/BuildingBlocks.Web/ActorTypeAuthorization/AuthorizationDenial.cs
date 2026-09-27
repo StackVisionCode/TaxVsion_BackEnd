@@ -1,7 +1,10 @@
 using System.Text.Json;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Web.Middleware;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
@@ -108,6 +111,8 @@ public sealed record AuthorizationDenial(
     /// </summary>
     public ProblemDetails ToProblemDetails(HttpContext context)
     {
+        Observe(context);
+
         var problem = new ProblemDetails
         {
             Type = "https://taxvision.dev/problems/authorization",
@@ -142,6 +147,49 @@ public sealed record AuthorizationDenial(
         await context.Response.WriteAsync(
             JsonSerializer.Serialize(ToProblemDetails(context), ProblemJsonOptions),
             context.RequestAborted
+        );
+    }
+
+    /// <summary>
+    /// Deja rastro de POR QUÉ se denegó. Un 403 solo dejaba en el log la línea de ASP.NET
+    /// ("Authorization failed") y el status: para explicar uno en producción había que reconstruirlo
+    /// a mano contra el código y la base. Va acá porque es el único punto por el que pasan las cuatro
+    /// capas. Nivel Information salvo <c>not_declared</c>, que es un endpoint mal declarado — un bug
+    /// del backend, no del caller. El usuario y el tenant van al log (sirven para investigar) pero
+    /// NUNCA a la métrica: ahí serían cardinalidad y dato sensible.
+    /// </summary>
+    private void Observe(HttpContext context)
+    {
+        var services = context.RequestServices;
+        if (services is null)
+            return;
+
+        services.GetService<AuthorizationMetrics>()?.RecordDenialReason(Reason);
+
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger("BuildingBlocks.Web.Authorization");
+        if (logger is null)
+            return;
+
+        var level = Reason == AuthorizationDenialReasons.NotDeclared ? LogLevel.Warning : LogLevel.Information;
+        if (!logger.IsEnabled(level))
+            return;
+
+        context.User.TryGetUserId(out var userId);
+        context.User.TryGetTenantId(out var tenantId);
+
+        logger.Log(
+            level,
+            "Authorization denied ({Reason}) on {Method} {Path}: code {Code}, permission {Permission}, "
+                + "module {Module}, actor {ActorType}, user {UserId}, tenant {TenantId}.",
+            Reason,
+            context.Request.Method,
+            context.Request.Path.Value,
+            Code,
+            Permission ?? "-",
+            Module ?? "-",
+            context.User.GetActorType()?.ToString() ?? "-",
+            userId,
+            tenantId
         );
     }
 

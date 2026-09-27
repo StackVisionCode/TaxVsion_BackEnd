@@ -23,7 +23,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
         string Email,
         string Password,
         string? DeviceName = null,
-        UserAccountKind? AccountKind = null
+        UserAccountKind? AccountKind = null,
+        string? DeviceToken = null
     );
 
     /// <summary>Paso 1: password contra cada oficina. Devuelve vale directo (1 oficina, sin MFA) o selector.</summary>
@@ -40,7 +41,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
             request.Email,
             request.Password,
             request.DeviceName,
-            request.AccountKind
+            request.AccountKind,
+            request.DeviceToken
         );
         var result = await bus.InvokeAsync<Result<DiscoverLoginResponse>>(command, ct);
 
@@ -51,7 +53,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
         Guid DiscoverySessionRef,
         Guid ChosenTenantId,
         string? MfaCode = null,
-        UserAccountKind? AccountKind = null
+        UserAccountKind? AccountKind = null,
+        bool RememberDevice = false
     );
 
     /// <summary>Paso 2 (solo con selector/MFA): elige oficina, resuelve MFA y emite el vale.</summary>
@@ -68,7 +71,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
             request.DiscoverySessionRef,
             request.ChosenTenantId,
             request.MfaCode,
-            request.AccountKind
+            request.AccountKind,
+            request.RememberDevice
         );
         var result = await bus.InvokeAsync<Result<HandoffTicketView>>(command, ct);
 

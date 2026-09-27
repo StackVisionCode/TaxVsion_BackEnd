@@ -127,7 +127,11 @@ describe('GET /communication/customers/:customerId/calls', () => {
   });
 
   it('deja pasar al personal de la oficina con la visibilidad por asignacion apagada', async () => {
-    const response = await get(fakeContainer({}), principal('TenantEmployee', u()));
+    const employeeUserId = u();
+    const response = await get(
+      fakeContainer({ permissionsByUserId: { [employeeUserId]: ['communication.call.start'] } }),
+      principal('TenantEmployee', employeeUserId),
+    );
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ hasPortalAccount: true });
@@ -146,7 +150,11 @@ describe('GET /communication/customers/:customerId/calls', () => {
   it('con la visibilidad por asignacion encendida, deja pasar al empleado asignado', async () => {
     const employeeUserId = u();
     const response = await get(
-      fakeContainer({ assignmentVisibilityEnabled: true, assignedUserIds: [employeeUserId] }),
+      fakeContainer({
+        assignmentVisibilityEnabled: true,
+        assignedUserIds: [employeeUserId],
+        permissionsByUserId: { [employeeUserId]: ['communication.call.start'] },
+      }),
       principal('TenantEmployee', employeeUserId),
     );
 
@@ -159,11 +167,29 @@ describe('GET /communication/customers/:customerId/calls', () => {
       fakeContainer({
         assignmentVisibilityEnabled: true,
         assignedUserIds: [],
-        permissionsByUserId: { [adminUserId]: ['customers.view_all'] },
+        permissionsByUserId: { [adminUserId]: ['customers.view_all', 'communication.call.start'] },
       }),
       principal('TenantAdmin', adminUserId),
     );
 
     expect(response.statusCode).toBe(200);
+  });
+
+  it('A6/A5.4 — al empleado asignado SIN el permiso de llamadas tambien se le niega', async () => {
+    // La capa de permiso es independiente de la de asignacion: estar asignado al cliente no
+    // sustituye a poder usar llamadas. Es la comprobacion de la que cuelga el gate de modulo, asi
+    // que sin ella un tenant cuyo plan no incluye `comms` seguia leyendo el historial por HTTP.
+    const employeeUserId = u();
+    const response = await get(
+      fakeContainer({
+        assignmentVisibilityEnabled: true,
+        assignedUserIds: [employeeUserId],
+        permissionsByUserId: { [employeeUserId]: ['customers.view'] },
+      }),
+      principal('TenantEmployee', employeeUserId),
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: 'Auth.Forbidden' });
   });
 });

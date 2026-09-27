@@ -70,9 +70,12 @@ public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> opti
                             metrics.RecordModuleDecision(moduleEnabled, module);
                             if (!moduleEnabled)
                             {
-                                var enforce = httpContext
-                                    .RequestServices.GetRequiredService<IConfiguration>()
-                                    .GetValue("Authorization:ModuleGate:Enforce", false);
+                                // A6 — el escalón se decide POR MÓDULO, no por servicio: ver
+                                // ModuleGateSettings. Un módulo fuera del escalón sigue en log-only.
+                                var enforce = ModuleGateSettings.ShouldEnforce(
+                                    httpContext.RequestServices.GetRequiredService<IConfiguration>(),
+                                    module
+                                );
                                 if (enforce)
                                 {
                                     var denial = AuthorizationDenial.ForModule(module);

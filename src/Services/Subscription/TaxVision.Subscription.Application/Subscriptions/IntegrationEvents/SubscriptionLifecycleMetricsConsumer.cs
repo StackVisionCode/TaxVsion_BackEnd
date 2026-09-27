@@ -14,6 +14,17 @@ public static class SubscriptionLifecycleMetricsConsumer
 {
     public static Task Handle(TenantSubscriptionStatusChangedIntegrationEvent evt, ISubscriptionMetrics metrics)
     {
+        // A6 — el re-anuncio del job de anti-entropía no es una transición: contarlo inventaría
+        // movimiento del ciclo de vida que no ocurrió y ensuciaría el tablero.
+        if (
+            string.Equals(
+                evt.Reason,
+                nameof(SubscriptionChangeReason.Reconciliation),
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+            return Task.CompletedTask;
+
         metrics.RecordStatusTransition(evt.PreviousStatus, evt.Status, evt.Reason);
         return Task.CompletedTask;
     }

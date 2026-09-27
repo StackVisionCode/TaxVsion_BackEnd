@@ -201,6 +201,69 @@ public sealed class CentralLoginHandlersTests
         Assert.False(world.Sessions.Contains(sessionRef));
     }
 
+    // --- dispositivo de confianza en el login central ---
+
+    /// <summary>
+    /// El recorrido completo: se marca el equipo al resolver el código, el canje devuelve el token,
+    /// y en el siguiente login ese token evita el segundo factor. Antes esto solo existía en el
+    /// login clásico, que el CRM dejó de usar.
+    /// </summary>
+    [Fact]
+    public async Task Remembering_the_device_returns_a_token_that_skips_mfa_next_time()
+    {
+        var world = new World();
+        var admin = world.AddOffice("acme", UserActorType.TenantAdmin, enrollTotp: true);
+        var discover = await Discover(world, "user@example.com", GoodPassword);
+        var handoff = await Handoff(
+            world,
+            discover.Value.DiscoverySessionRef!.Value,
+            admin,
+            mfaCode: "valid-totp",
+            rememberDevice: true
+        );
+
+        var session = await FromTicket(world, handoff.Value.Ticket);
+
+        Assert.True(session.IsSuccess);
+        Assert.False(string.IsNullOrWhiteSpace(session.Value.DeviceToken));
+        Assert.Single(world.Mfa.AddedDevices);
+
+        // Segundo login desde el mismo navegador: una sola oficina y ya sin reto → vale directo.
+        var again = await Discover(world, "user@example.com", GoodPassword, session.Value.DeviceToken);
+
+        Assert.NotNull(again.Value.Ticket);
+        Assert.Null(again.Value.DiscoverySessionRef);
+    }
+
+    [Fact]
+    public async Task Without_remembering_no_device_is_created()
+    {
+        var world = new World();
+        var admin = world.AddOffice("acme", UserActorType.TenantAdmin, enrollTotp: true);
+        var discover = await Discover(world, "user@example.com", GoodPassword);
+
+        var handoff = await Handoff(world, discover.Value.DiscoverySessionRef!.Value, admin, mfaCode: "valid-totp");
+        var session = await FromTicket(world, handoff.Value.Ticket);
+
+        Assert.Null(session.Value.DeviceToken);
+        Assert.Empty(world.Mfa.AddedDevices);
+    }
+
+    [Fact]
+    public async Task An_unknown_device_token_does_not_skip_mfa()
+    {
+        // Un token inventado no puede saltarse el segundo factor: si lo hiciera, bastaría con
+        // mandar cualquier cosa en el campo.
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantAdmin, enrollTotp: true);
+
+        var discover = await Discover(world, "user@example.com", GoodPassword, "no-existe");
+
+        Assert.Null(discover.Value.Ticket);
+        Assert.NotNull(discover.Value.DiscoverySessionRef);
+        Assert.True(discover.Value.Offices!.Single().MfaRequired);
+    }
+
     // --- from-ticket ---
 
     [Fact]
@@ -251,16 +314,18 @@ public sealed class CentralLoginHandlersTests
     private static Task<BuildingBlocks.Results.Result<DiscoverLoginResponse>> Discover(
         World world,
         string email,
-        string password
+        string password,
+        string? deviceToken = null
     ) =>
         DiscoverLoginHandler.Handle(
-            new DiscoverLoginCommand(email, password),
+            new DiscoverLoginCommand(email, password, DeviceToken: deviceToken),
             world.Users,
             world.Tenants,
             world.Hasher,
             world.Mfa,
             world.Sessions,
             world.Tickets,
+            world.SecureTokens,
             world.Throttler,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
@@ -274,10 +339,11 @@ public sealed class CentralLoginHandlersTests
         World world,
         Guid sessionRef,
         Guid chosenTenantId,
-        string? mfaCode = null
+        string? mfaCode = null,
+        bool rememberDevice = false
     ) =>
         IssueHandoffTicketHandler.Handle(
-            new IssueHandoffTicketCommand(sessionRef, chosenTenantId, mfaCode),
+            new IssueHandoffTicketCommand(sessionRef, chosenTenantId, mfaCode, RememberDevice: rememberDevice),
             world.Sessions,
             world.Tickets,
             world.Tenants,
@@ -302,6 +368,8 @@ public sealed class CentralLoginHandlersTests
             world.Issuer,
             new EmptyUserSessionRepository(),
             new NoopSessionTakeoverTicketStore(),
+            world.Mfa,
+            world.SecureTokens,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
@@ -670,16 +738,25 @@ public sealed class CentralLoginHandlersTests
 
         public void RemoveRecoveryCodes(IEnumerable<RecoveryCode> codes) => throw new NotSupportedException();
 
+        /// <summary>Dispositivos de confianza en memoria, indexados por hash como en la base.</summary>
+        private readonly Dictionary<string, TrustedDevice> _devices = [];
+
+        /// <summary>Los que se crearon durante el escenario, para poder afirmar sobre ellos.</summary>
+        public IReadOnlyCollection<TrustedDevice> AddedDevices => _devices.Values;
+
         public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(
             string deviceTokenHash,
             CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        ) => Task.FromResult(_devices.TryGetValue(deviceTokenHash, out var device) ? device : null);
 
         public Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(Guid userId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+            Task.FromResult<IReadOnlyList<TrustedDevice>>(_devices.Values.Where(d => d.UserId == userId).ToList());
 
-        public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default)
+        {
+            _devices[device.DeviceTokenHash] = device;
+            return Task.CompletedTask;
+        }
 
         public Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default) =>
             throw new NotSupportedException();

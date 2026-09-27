@@ -366,13 +366,13 @@ public static class PermissionCatalog
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
     [
-        new(new Guid("a1000000-0000-0000-0000-000000000001"), UsersView, "users", "Ver usuarios del tenant", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000002"), UsersInvite, "users", "Invitar usuarios", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000001"), UsersView, "users", "View users", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000002"), UsersInvite, "users", "Invite users", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000003"),
             UsersManage,
             "users",
-            "Activar, desactivar y editar usuarios",
+            "Activate, deactivate and edit users",
             false
         ),
         new(
@@ -383,18 +383,18 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000004"),
             RolesManage,
             "users",
-            "Gestionar roles y permisos",
+            "Manage roles and permissions",
             false,
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "Consultar auditoría", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "View the audit log", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000006"),
             SettingsManage,
             "settings",
-            "Gestionar configuración del tenant",
+            "Manage office settings",
             false
         ),
         new(
@@ -407,7 +407,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000007"),
             BillingView,
             "billing",
-            "Ver facturación y suscripción",
+            "View billing and subscription",
             false,
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
@@ -418,7 +418,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000008"),
             BillingManage,
             "billing",
-            "Gestionar métodos de pago y facturación",
+            "Manage payment methods and billing",
             false,
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
@@ -431,7 +431,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000009"),
             SubscriptionManage,
             "billing",
-            "Cambiar plan y gestionar suscripción",
+            "Change plan and manage the subscription",
             false,
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
@@ -445,80 +445,111 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000180"),
             InvoicingView,
             "billing",
-            "Ver facturas de clientes del tenant",
+            "View client invoices",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000181"),
             InvoicingManage,
             "billing",
-            "Crear, emitir y gestionar facturas de clientes",
+            "Create, issue and manage client invoices",
             false
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "View clients", false),
         new(
             new Guid("a1000000-0000-0000-0000-0000000000c9"),
             CustomersViewAll,
             "customers",
-            "Ver TODOS los clientes del tenant (no solo los asignados)",
+            "View ALL clients, not only the assigned ones",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000011"),
             CustomersManage,
             "customers",
-            "Crear y editar clientes",
+            "Create and edit clients",
             false
         ),
         new(
-            // Importación masiva — antes admin-only vía [Authorize(Roles="TenantAdmin")]. Admin-only por
-            // defecto (no está en la lista de SystemEmployee); no confundir con CustomersManage (que el
-            // empleado sí tiene): importar en bloque es una operación administrativa.
+            // Importación masiva. NO viene en el bundle de SystemEmployee: por defecto solo el
+            // administrador lo tiene. Pero es concedible a un empleado con un rol custom, y desde
+            // entonces importa de verdad — `CustomerImportsController` admite TenantEmployee y deja
+            // la decisión en este permiso. No confundir con CustomersManage, que el empleado sí trae.
             new Guid("a1000000-0000-0000-0000-00000000009c"),
             CustomersImport,
             "customers",
-            "Importar clientes en bloque (CSV/Excel)",
+            "Bulk import clients (CSV/Excel)",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000012"),
+            // LEGACY. Lo reemplazó el set granular signature.request.* (create/read/cancel/resend/
+            // expire): este nunca gateó nada. No se borra porque la fila ya está sembrada en
+            // producción — se reserva, que es lo que lo saca del cajón de accesos.
             SignaturesRequest,
             "signatures",
-            "Solicitar firmas",
-            false
+            "Request signatures",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000013"), DocumentsView, "documents", "Ver documentos", false),
+        // El microservicio Documents no expone lectura de documentos: solo generación (M2M) y
+        // branding. Los archivos del cliente son CloudStorage, con cloudstorage.file.*. Reservado hasta
+        // que Documents tenga su propia superficie de usuario.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000013"),
+            DocumentsView,
+            "documents",
+            "View documents",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000014"),
+            // Idem view: fuera del branding —que ya tiene documents.branding.manage— no hay nada
+            // que gestionar todavía en Documents. Reservado.
             DocumentsManage,
             "documents",
-            "Gestionar documentos",
-            false
+            "Manage documents",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000152"),
             DocumentsBrandingManage,
             "documents",
-            "Configurar el branding de documentos del tenant",
+            "Configure document branding",
             false
         ),
         new(
             // Módulo "email" solo disponible desde el plan Pro (ver SubscriptionPlanCatalogSeeder).
             new Guid("a1000000-0000-0000-0000-000000000015"),
+            // Redundante: QUIEN puede usar el correo lo deciden los correspondence.* (leer, redactar,
+            // responder, enviar) y SI el plan lo incluye lo decide el gate del módulo "email" (Pro+).
             EmailUse,
             "email",
-            "Usar el módulo de correo",
+            "Use the email module",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
-            // Módulo "comms" solo disponible desde el plan Pro.
+            // MinPlanTier Pro es inerte acá: reservado + no asignable por el tenant = no gatea nada.
+            // (El módulo "comms" YA no es solo de Pro — chat, llamadas y vídeo van en todos los planes
+            // desde que se separó `meetings`; este permiso legacy se deja tal cual, no se toca.)
             new Guid("a1000000-0000-0000-0000-000000000016"),
+            // LEGACY. Lo reemplazaron communication.call.start, videocall.start y meeting.*: este
+            // nunca gateó nada. Mismo criterio que signatures.request — reservado, no borrado.
             CommsCalls,
             "comms",
-            "Realizar llamadas y meetings",
+            "Make calls and hold meetings",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // Módulo "campaigns" solo disponible desde el plan Pro. Los cuatro permisos del servicio
@@ -527,7 +558,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000017"),
             CampaignsManage,
             "campaigns",
-            "Crear y editar campañas, contactos y listas",
+            "Create and edit campaigns, contacts and lists",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -538,14 +569,14 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000186"),
             InvoicingIssuerManage,
             "billing",
-            "Editar el emisor legal de las facturas del tenant",
+            "Edit the legal issuer on the office's invoices",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000183"),
             CampaignsView,
             "campaigns",
-            "Ver campañas, contactos, listas, programaciones y corridas",
+            "View campaigns, contacts, lists, schedules and runs",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -555,7 +586,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000184"),
             CampaignsSend,
             "campaigns",
-            "Disparar o programar el envío de una campaña",
+            "Send or schedule a campaign",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -565,18 +596,22 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000185"),
             CampaignsSendersManage,
             "campaigns",
-            "Administrar los perfiles de remitente de las campañas",
+            "Manage campaign sender profiles",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
             // Módulo "reports" solo disponible desde el plan Pro.
             new Guid("a1000000-0000-0000-0000-000000000018"),
+            // Todavía no hay microservicio de reportes. El código queda declarado para cuando exista,
+            // pero reservado: hoy no protege nada y no debe ofrecerse como si lo hiciera.
             ReportsView,
             "reports",
-            "Ver dashboard y reportes",
+            "View the dashboard and reports",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // Lo exigen las rutas de llamada de Communication solo para el actor CustomerPortal
@@ -585,7 +620,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000019"),
             PortalCallsUse,
             "portal",
-            "El cliente puede realizar llamadas",
+            "The client can make calls",
             true
         ),
         new(
@@ -595,7 +630,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000020"),
             PortalMilesUse,
             "portal",
-            "El cliente puede usar el módulo de millas",
+            "The client can use mileage tracking",
             true,
             IsAssignableByTenant: false,
             IsReserved: true
@@ -604,7 +639,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000021"),
             PortalFoldersView,
             "portal",
-            "El cliente puede ver folders de su perfil",
+            "The client can see the folders on their profile",
             true
         ),
         new(
@@ -618,7 +653,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000023"),
             CloudStorageFileView,
             "cloudstorage",
-            "Ver metadatos de archivos",
+            "View file details",
             false,
             AllowedActorTypes:
             [
@@ -633,7 +668,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000024"),
             CloudStorageFileUpload,
             "cloudstorage",
-            "Subir archivos mediante el gateway seguro",
+            "Upload files through the secure gateway",
             false,
             AllowedActorTypes:
             [
@@ -648,7 +683,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000025"),
             CloudStorageFileDownload,
             "cloudstorage",
-            "Descargar archivos disponibles",
+            "Download available files",
             false,
             AllowedActorTypes:
             [
@@ -662,49 +697,49 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000026"),
             CloudStorageFileDelete,
             "cloudstorage",
-            "Eliminar archivos",
+            "Delete files",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000027"),
             CloudStorageSettingsManage,
             "cloudstorage",
-            "Gestionar políticas de almacenamiento",
+            "Manage storage policies",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000028"),
             CloudStorageAuditView,
             "cloudstorage",
-            "Consultar auditoría de archivos",
+            "View the file audit log",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000065"),
             CloudStorageRecycleBinManage,
             "cloudstorage",
-            "Restaurar y purgar archivos de la papelera",
+            "Restore and purge files from the recycle bin",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000066"),
             CloudStorageFolderManage,
             "cloudstorage",
-            "Crear, renombrar y mover carpetas de archivos",
+            "Create, rename and move folders",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000067"),
             CloudStorageShareCreate,
             "cloudstorage",
-            "Crear links para compartir archivos",
+            "Create share links for files",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000068"),
             CloudStorageShareRevoke,
             "cloudstorage",
-            "Revocar links de compartir existentes",
+            "Revoke existing share links",
             false
         ),
         new(
@@ -714,7 +749,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000069"),
             CloudStorageShareManage,
             "cloudstorage",
-            "Otorgar permisos elevados en links y gestionar su expiracion",
+            "Grant elevated access on share links and manage their expiry",
             false,
             IsAssignableByTenant: false
         ),
@@ -726,7 +761,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000070"),
             CloudStorageLegalManage,
             "cloudstorage",
-            "Gestionar legal hold sobre archivos del propio tenant",
+            "Place and lift legal holds on this office's files",
             false,
             IsAssignableByTenant: false,
             IsDangerous: true
@@ -739,7 +774,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000182"),
             CloudStorageDmcaManage,
             "cloudstorage",
-            "Registrar y cerrar takedowns DMCA de cualquier tenant",
+            "Record and close DMCA takedowns for any office",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -758,35 +793,35 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000071"),
             CloudStorageDmcaCounterNotice,
             "cloudstorage",
-            "Presentar contranotificacion DMCA sobre un archivo propio",
+            "File a DMCA counter-notice for one of this office's files",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000072"),
             CorrespondenceRead,
             "correspondence",
-            "Ver la bandeja de correspondencia con customers",
+            "View the client correspondence inbox",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000073"),
             CorrespondenceAttachmentDownload,
             "correspondence",
-            "Descargar adjuntos de la bandeja de correspondencia",
+            "Download attachments from the correspondence inbox",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000074"),
             CorrespondenceCompose,
             "correspondence",
-            "Crear, editar y descartar borradores de correspondencia",
+            "Create, edit and discard correspondence drafts",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000075"),
             CorrespondenceReply,
             "correspondence",
-            "Responder a un mensaje entrante de correspondencia",
+            "Reply to an incoming correspondence message",
             false
         ),
         new(
@@ -796,7 +831,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000076"),
             CorrespondenceSend,
             "correspondence",
-            "Enviar un borrador de correspondencia ya redactado",
+            "Send a correspondence draft that is ready to go",
             false
         ),
         new(
@@ -806,14 +841,14 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-00000000009a"),
             CorrespondenceManage,
             "correspondence",
-            "Archivar, enviar a papelera, restaurar y borrar definitivamente correspondencia",
+            "Archive, trash, restore and permanently delete correspondence",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000077"),
             ConnectorsAccountsRead,
             "connectors",
-            "Ver las cuentas de correo conectadas del tenant",
+            "View the office's connected email accounts",
             false
         ),
         new(
@@ -827,7 +862,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000078"),
             ConnectorsAccountsWrite,
             "connectors",
-            "Conectar, reconectar y desconectar cuentas de correo del tenant",
+            "Connect, reconnect and disconnect the office's email accounts",
             false
         ),
         new(
@@ -838,7 +873,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-0000000000c7"),
             ConnectorsAccountsConnectOwn,
             "connectors",
-            "Conectar y administrar el buzón de correo personal propio",
+            "Connect and manage your own personal mailbox",
             false
         ),
         new(
@@ -846,49 +881,53 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-0000000000c8"),
             ConnectorsAccountsOfficeRead,
             "connectors",
-            "Ver el buzón de correo de oficina y su correo",
+            "View the office mailbox and its mail",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000079"),
             ScribeTemplatesRead,
             "scribe",
-            "Ver templates de correo (System y del tenant)",
+            "View email templates (system and this office's)",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000080"),
             ScribeTemplatesWrite,
             "scribe",
-            "Crear, editar y publicar versiones de templates de correo",
+            "Create, edit and publish email template versions",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000081"),
+            // EmailLayoutsController solo expone escrituras (crear, versionar, publicar); no hay GET
+            // de layouts que gatear. Reservado hasta que exista.
             ScribeLayoutsRead,
             "scribe",
-            "Ver layouts de correo (System y del tenant)",
-            false
+            "View email layouts (system and this office's)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000082"),
             ScribeLayoutsWrite,
             "scribe",
-            "Crear, editar y publicar versiones de layouts de correo",
+            "Create, edit and publish email layout versions",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000083"),
             ScribeEventMappingsRead,
             "scribe",
-            "Ver las reglas de resolución evento→template",
+            "View the rules that resolve an event to a template",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000084"),
             ScribeEventMappingsWrite,
             "scribe",
-            "Crear, editar y borrar reglas de resolución evento→template",
+            "Create, edit and delete the rules that resolve an event to a template",
             false
         ),
         new(
@@ -901,17 +940,24 @@ public static class PermissionCatalog
             // por defecto a nadie (ver SystemRoleDefaults) hasta que exista un controller real que
             // lo exija.
             new Guid("a1000000-0000-0000-0000-000000000085"),
+            // Scribe no tiene superficie de campañas: son de su propio servicio, con campaigns.*.
+            // Reservado.
             ScribeCampaignsRead,
             "scribe",
-            "Ver campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
-            false
+            "View email campaigns built on templates (reserved, no endpoint yet)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000086"),
+            // Idem read: las campañas no viven en Scribe. Reservado.
             ScribeCampaignsWrite,
             "scribe",
-            "Gestionar campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
-            false
+            "Manage email campaigns built on templates (reserved, no endpoint yet)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // A diferencia de los 8 permisos anteriores de este bloque, ScribeRender no lo pide
@@ -929,7 +975,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000087"),
             ScribeRender,
             "scribe",
-            "Invocar el render de templates (M2M — Notification u otros servicios via token de servicio)",
+            "Render templates (service-to-service)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -943,7 +989,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000158"),
             SmsSend,
             "sms",
-            "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+            "Send SMS and MMS messages",
             false
         ),
         // Lectura del historial de SMS y opt-outs desde el CRM (endpoints GET). Humano-asignable
@@ -952,7 +998,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-0000000001F0"),
             SmsRead,
             "sms",
-            "Ver el historial de SMS, su estado y las bajas (opt-outs)",
+            "View the SMS history, its status and opt-outs",
             false
         ),
         // Gestión manual del consentimiento (baja/alta de un teléfono). Administración del tenant.
@@ -960,7 +1006,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-0000000001F1"),
             SmsManage,
             "sms",
-            "Gestionar manualmente las bajas de SMS (opt-out/opt-in)",
+            "Manually manage SMS opt-outs and opt-ins",
             false
         ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
@@ -968,21 +1014,21 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000159"),
             CatalogRead,
             "catalog",
-            "Ver el catálogo de productos/servicios",
+            "View the product and service catalog",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000160"),
             CatalogWrite,
             "catalog",
-            "Crear/editar productos, servicios y categorías",
+            "Create and edit products, services and categories",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000161"),
             CatalogDelete,
             "catalog",
-            "Borrar productos, servicios y categorías",
+            "Delete products, services and categories",
             false
         ),
         // Inventory
@@ -990,56 +1036,56 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000162"),
             InventoryRead,
             "inventory",
-            "Ver stock, proveedores y movimientos",
+            "View stock, suppliers and movements",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000163"),
             InventoryWrite,
             "inventory",
-            "Gestionar proveedores y umbrales de stock",
+            "Manage suppliers and stock thresholds",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000164"),
             InventoryAdjust,
             "inventory",
-            "Ajustar stock (registrar movimientos)",
+            "Adjust stock by recording movements",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
             SignatureRequestCreate,
             "signature",
-            "Crear solicitudes de firma electrónica",
+            "Create e-signature requests",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000030"),
             SignatureRequestRead,
             "signature",
-            "Consultar solicitudes de firma",
+            "View signature requests",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000031"),
             SignatureRequestCancel,
             "signature",
-            "Cancelar solicitudes de firma",
+            "Cancel signature requests",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000032"),
             SignatureRequestResend,
             "signature",
-            "Reenviar invitaciones a firmantes",
+            "Resend invitations to signers",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000033"),
             SignatureRequestExpire,
             "signature",
-            "Extender el vencimiento de solicitudes",
+            "Extend the expiry of signature requests",
             false
         ),
         new(
@@ -1051,7 +1097,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000142"),
             SignatureRequestManage,
             "signature",
-            "Gestionar solicitudes de firma creadas por otros usuarios del tenant",
+            "Manage signature requests created by other people in the office",
             false,
             IsAssignableByTenant: false
         ),
@@ -1059,29 +1105,37 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000034"),
             SignatureDocumentPrepare,
             "signature",
-            "Validar y preparar documentos para firma",
+            "Validate and prepare documents for signing",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000035"),
             SignatureDocumentSign,
             "signature",
-            "Aplicar firma del preparador al documento",
+            "Apply the preparer's signature to a document",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000036"),
+            // No hay endpoint: ver un documento firmado es GET signature/requests/{id}, que ya
+            // exige request.read. Reservado hasta que exista una vista de documentos propia.
             SignatureDocumentView,
             "signature",
-            "Ver documentos firmados y sus metadatos",
-            false
+            "View signed documents and their details",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000037"),
+            // No hay endpoint: el sellado vive en CloudStorage y se descarga con
+            // cloudstorage.file.download. Reservado para no prometer un control que no existe.
             SignatureDocumentDownload,
             "signature",
-            "Descargar sellado, original o certificado",
-            false
+            "Download the sealed file, the original or the certificate",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // Controla la ENTREGA hacia afuera (email/SMS del documento firmado y del certificado al
@@ -1090,15 +1144,19 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-0000000000a0"),
             SignatureDocumentSend,
             "signature",
-            "Entregar por email/SMS el documento firmado y el certificado a los firmantes",
+            "Email or text the signed document and certificate to the signers",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000038"),
+            // No hay endpoint de staff: el audit trail solo se consulta desde el enlace
+            // publico del firmante, que es anonimo por token. Reservado.
             SignatureDocumentAuditRead,
             "signature",
-            "Consultar el audit trail de una firma",
-            false
+            "View a signature's audit trail",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // Legal hold escribe estado (bloquea el borrado), no es una lectura del audit trail — por
@@ -1106,50 +1164,54 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-00000000009b"),
             SignatureLegalManage,
             "signature",
-            "Colocar y levantar retención legal (legal hold) sobre una firma",
+            "Place and lift legal holds on a signature",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000039"),
             SignatureTemplateCreate,
             "signature",
-            "Crear plantillas de firma reutilizables",
+            "Create reusable signature templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000040"),
             SignatureTemplateUpdate,
             "signature",
-            "Modificar plantillas de firma",
+            "Edit signature templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000041"),
             SignatureTemplateDelete,
             "signature",
-            "Eliminar plantillas de firma",
+            "Delete signature templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000042"),
             SignatureSettingsManage,
             "signature",
-            "Gestionar la configuración de firma del tenant",
+            "Manage the office's signature settings",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000043"),
             SignaturePreparerManage,
             "signature",
-            "Gestionar firmas persistentes del preparador",
+            "Manage the preparer's saved signatures",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000044"),
+            // Es un endpoint PÚBLICO (anónimo): no hay usuario a quien exigirle un permiso,
+            // así que este código nunca podrá aplicarse tal como esta. Reservado.
             SignatureCertificateVerify,
             "signature",
-            "Verificar certificados de firma (endpoint público)",
-            false
+            "Verify signature certificates (public endpoint)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             // Nunca asignable a un rol custom (escalada de billing/límites) NI al rol de sistema
@@ -1161,7 +1223,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000088"),
             SignaturePlanConstraintsManage,
             "signature",
-            "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
+            "Manage an office's Signature plan limits (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true,
@@ -1171,14 +1233,14 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000063"),
             CustomersFiscalProfileReveal,
             "customers",
-            "Revelar el SSN/ITIN/EIN completo de un customer",
+            "Reveal a client's full SSN/ITIN/EIN",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000141"),
             CustomersPreparerManage,
             "customers",
-            "Asignar o reasignar el preparador responsable de un customer",
+            "Assign or reassign a client's preparer",
             false
         ),
         new(
@@ -1190,7 +1252,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000064"),
             TenantDomainsManage,
             "domains",
-            "Gestionar dominios propios del tenant (custom hostnames)",
+            "Manage the office's own domains (custom hostnames)",
             false,
             MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
@@ -1209,9 +1271,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000045"),
             CommunicationChatStart,
             "communication",
-            "Iniciar conversaciones de chat",
+            "Start chat conversations",
             true,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1225,9 +1287,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000046"),
             CommunicationChatReply,
             "communication",
-            "Responder en conversaciones de chat",
+            "Reply in chat conversations",
             true,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1240,11 +1302,16 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000047"),
             CommunicationChatModerate,
             "communication",
-            "Moderar mensajes en conversaciones del tenant",
+            "Moderate messages in the office's conversations",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
+            // MinPlanTier Starter (no Pro) desde que `comms` entró en Starter: el techo de plan
+            // (§27) decide qué puede OTORGAR un tenant a un rol propio, así que dejarlo en Pro
+            // habría dado un Starter con chat incluido en el plan pero sin poder delegarlo. Los
+            // cuatro de `communication.meeting.*` sí se quedan en Pro — las reuniones se venden
+            // aparte (módulo `meetings`).
             // Explícito (no inferido): a diferencia de ChatStart/ChatReply arriba, este tiene
             // IsCustomerPortal=false (infiere staff-only), pero SystemRoleDefaults
             // (SystemCustomerPortal) también lo otorga — el cliente abre su propio chat de
@@ -1253,9 +1320,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000048"),
             CommunicationSupportOpen,
             "communication",
-            "Abrir chat de soporte hacia el PlatformTenant",
+            "Open a support chat with the platform",
             false,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1268,9 +1335,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000049"),
             CommunicationSupportAgent,
             "communication",
-            "Atender chats de soporte como agente (PlatformTenant)",
+            "Handle support chats as an agent (platform only)",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
             // Dual-use (staff Y cliente): el cliente ahora puede LLAMAR a su preparador desde el
@@ -1280,9 +1347,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000050"),
             CommunicationCallStart,
             "communication",
-            "Iniciar llamadas de audio 1:1",
+            "Start one-to-one audio calls",
             false,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1296,9 +1363,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000051"),
             CommunicationVideoCallStart,
             "communication",
-            "Iniciar llamadas de video 1:1",
+            "Start one-to-one video calls",
             false,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1311,15 +1378,15 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000052"),
             CommunicationCallRecord,
             "communication",
-            "Grabar llamadas 1:1 (con banner de disclosure)",
+            "Record one-to-one calls (with a disclosure banner)",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000053"),
             CommunicationMeetingCreate,
             "communication",
-            "Crear reuniones multi-party",
+            "Create multi-party meetings",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -1328,7 +1395,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000054"),
             CommunicationMeetingJoin,
             "communication",
-            "Unirse a reuniones (previa invitación válida)",
+            "Join meetings with a valid invitation",
             true,
             MinPlanTier: (int)PlanTier.Pro,
             AllowedActorTypes:
@@ -1343,7 +1410,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000055"),
             CommunicationMeetingHost,
             "communication",
-            "Actuar como host de reuniones (waiting room, mute all, transfer)",
+            "Host meetings (waiting room, mute all, transfer)",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -1351,7 +1418,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000056"),
             CommunicationMeetingRecord,
             "communication",
-            "Grabar reuniones (con banner de disclosure)",
+            "Record meetings (with a disclosure banner)",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
@@ -1360,9 +1427,9 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000057"),
             CommunicationScreenshotCreate,
             "communication",
-            "Adjuntar screenshots/voice/video en chat",
+            "Attach screenshots, voice notes and video in chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1375,26 +1442,26 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000058"),
             CommunicationGroupCreate,
             "communication",
-            "Crear grupos internos por tenant",
+            "Create internal groups",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000059"),
             CommunicationGroupManageMembers,
             "communication",
-            "Gestionar miembros de grupos internos",
+            "Manage internal group members",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
             // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000060"),
             CommunicationNotificationRead,
             "communication",
-            "Consultar notificaciones in-app propias",
+            "View your own in-app notifications",
             true,
-            MinPlanTier: (int)PlanTier.Pro,
+            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1407,52 +1474,52 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000061"),
             CommunicationSettingsManage,
             "communication",
-            "Gestionar la configuración de Communication del tenant",
+            "Manage the office's communication settings",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000062"),
             CommunicationAnalyticsRead,
             "communication",
-            "Consultar analytics de Communication del tenant",
+            "View the office's communication analytics",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Starter
         ),
         // Postmaster (ver comentario junto a los const de arriba).
         new(
             new Guid("a1000000-0000-0000-0000-000000000089"),
             PostmasterMessagesRead,
             "postmaster",
-            "Ver el historial de correos enviados del tenant",
+            "View the office's sent email history",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000090"),
             PostmasterSuppressionRead,
             "postmaster",
-            "Ver la suppression list (direcciones que rebotaron o se dieron de baja) del tenant",
+            "View the suppression list (addresses that bounced or unsubscribed)",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000091"),
             PostmasterSuppressionWrite,
             "postmaster",
-            "Agregar o quitar direcciones de la suppression list del tenant",
+            "Add or remove addresses from the suppression list",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000092"),
             PostmasterProvidersRead,
             "postmaster",
-            "Ver el proveedor de correo configurado para el tenant",
+            "View the office's configured email provider",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000093"),
             PostmasterProvidersWrite,
             "postmaster",
-            "Configurar el proveedor de correo (SMTP/API) del tenant",
+            "Configure the office's email provider (SMTP/API)",
             false
         ),
         // Notification (mismo hallazgo, ver comentario junto a los const de arriba).
@@ -1460,63 +1527,70 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000094"),
             NotificationSettingsManage,
             "notification",
-            "Gestionar la configuración SMTP/API de Notification del tenant",
+            "Manage the office's SMTP/API notification settings",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000095"),
             NotificationEmailSend,
             "notification",
-            "Enviar un correo puntual desde Notification",
+            "Send a one-off email",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000096"),
             NotificationEmailView,
             "notification",
-            "Ver el historial de correos enviados desde Notification",
+            "View the sent email history",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000097"),
             NotificationTemplateView,
             "notification",
-            "Ver los templates de correo del tenant",
+            "View the office's email templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000098"),
             NotificationTemplateManage,
             "notification",
-            "Crear, editar y publicar templates de correo del tenant",
+            "Create, edit and publish the office's email templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000099"),
             NotificationLayoutManage,
             "notification",
-            "Gestionar los layouts base de correo del tenant",
+            "Manage the office's base email layouts",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000100"),
+            // El motor de EmailCampaigns de Notification fue RETIRADO (ver EmailSendController): estos
+            // dos quedaron sin superficie. Las campañas son hoy el servicio Campaigns, con campaigns.*.
             NotificationCampaignView,
             "notification",
-            "Ver campañas de correo del tenant (reservado, sin controller aún)",
-            false
+            "View the office's email campaigns (reserved, no endpoint yet)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000101"),
+            // Idem view: resto del motor retirado. Reservado.
             NotificationCampaignManage,
             "notification",
-            "Gestionar campañas de correo del tenant (reservado, sin controller aún)",
-            false
+            "Manage the office's email campaigns (reserved, no endpoint yet)",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000102"),
             NotificationLogView,
             "notification",
-            "Ver el historial de notificaciones del tenant (email/SMS/in-app) para auditoría y soporte",
+            "View the notification history (email, SMS and in-app) for audit and support",
             false
         ),
         // PaymentApp (ver comentario junto a los const de arriba).
@@ -1524,7 +1598,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000103"),
             PaymentAppSaaSPaymentRead,
             "payment_app",
-            "Ver los pagos SaaS (suscripción/seats/add-ons) del propio tenant",
+            "View the office's own SaaS payments (subscription, seats and add-ons)",
             false
         ),
         new(
@@ -1532,7 +1606,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000104"),
             PaymentAppSaaSPaymentRefund,
             "payment_app",
-            "Reembolsar un pago SaaS de cualquier tenant (soporte de plataforma)",
+            "Refund a SaaS payment for any office (platform support)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1541,21 +1615,21 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000105"),
             PaymentAppProviderCustomerRead,
             "payment_app",
-            "Ver el método de pago guardado (provider customer) del propio tenant",
+            "View the office's saved payment method",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000106"),
             PaymentAppProviderCustomerManage,
             "payment_app",
-            "Gestionar el método de pago guardado del propio tenant",
+            "Manage the office's saved payment method",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000107"),
             PaymentAppAdminCrossTenant,
             "payment_app",
-            "Ver pagos SaaS de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
+            "View SaaS payments for ANY office, including suspended ones (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1565,98 +1639,102 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000108"),
             PaymentClientConfigRead,
             "payment_client",
-            "Ver la configuración de cobro (Stripe DirectApiKeys/Connect) del propio tenant",
+            "View the office's payment processing setup",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000109"),
             PaymentClientConfigManage,
             "payment_client",
-            "Configurar el modo/credenciales de cobro del propio tenant",
+            "Configure the office's payment processing mode and credentials",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000110"),
             PaymentClientPaymentRead,
             "payment_client",
-            "Ver los pagos que el tenant cobró a sus propios clientes",
+            "View the payments the office collected from its clients",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000111"),
             PaymentClientPaymentCharge,
             "payment_client",
-            "Cobrar un pago a un cliente del tenant",
+            "Charge a payment to one of the office's clients",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000112"),
+            // TenantPaymentsController solo cobra y consulta; no hay endpoint de reembolso. Reservado
+            // hasta que exista — y ojo: cuando exista, el plan lo marca IsDangerous.
             PaymentClientPaymentRefund,
             "payment_client",
-            "Reembolsar un pago cobrado a un cliente del tenant",
-            false
+            "Refund a payment collected from one of the office's clients",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000113"),
             PaymentClientPaymentLinkRead,
             "payment_client",
-            "Ver los links de pago del tenant",
+            "View the office's payment links",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000114"),
             PaymentClientPaymentLinkManage,
             "payment_client",
-            "Crear y gestionar links de pago del tenant",
+            "Create and manage the office's payment links",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000115"),
             PaymentClientConnectAccountRead,
             "payment_client",
-            "Ver el estado de la cuenta Stripe Connect del tenant",
+            "View the status of the office's Stripe Connect account",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000116"),
             PaymentClientConnectAccountOnboard,
             "payment_client",
-            "Iniciar el onboarding de la cuenta Stripe Connect del tenant",
+            "Start onboarding for the office's Stripe Connect account",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000117"),
             PaymentClientPayoutRead,
             "payment_client",
-            "Ver los payouts programados del tenant",
+            "View the office's scheduled payouts",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000118"),
             PaymentClientPayoutManage,
             "payment_client",
-            "Gestionar el calendario de payouts del tenant",
+            "Manage the office's payout schedule",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000119"),
             PaymentClientRecurringRead,
             "payment_client",
-            "Ver los pagos recurrentes configurados del tenant",
+            "View the office's recurring payments",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000120"),
             PaymentClientRecurringManage,
             "payment_client",
-            "Crear y gestionar pagos recurrentes del tenant",
+            "Create and manage the office's recurring payments",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000121"),
             PaymentClientAdminCrossTenant,
             "payment_client",
-            "Ver pagos de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
+            "View payments for ANY office, including suspended ones (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1665,124 +1743,191 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000122"),
             BrandingManage,
             "branding",
-            "Gestionar el logo/branding del tenant",
+            "Manage the office's logo and branding",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000123"),
             GrowthCodesRead,
             "codes",
-            "Ver códigos del propio tenant",
+            "View the office's codes",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000124"),
             GrowthCodesManage,
             "codes",
-            "Gestionar códigos del propio tenant",
+            "Manage the office's codes",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000125"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthCodesIssue,
             "codes",
-            "Emitir códigos de beneficio",
-            false
+            "Issue benefit codes",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activar códigos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revocar códigos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activate codes", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revoke codes", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000128"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthCodesAuditRead,
             "codes",
-            "Consultar auditoría de códigos",
-            false
+            "View the code audit log",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000129"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthCodesRedemptionRead,
             "codes",
-            "Consultar redemptions",
-            false
+            "View code redemptions",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000130"),
+            // Compensar una redención YA está protegido, pero por el otro mecanismo: el endpoint es M2M y usa
+            // el scope de servicio growth.codes.compensate. No hay superficie humana. Reservado.
             GrowthCodesCompensationManage,
             "codes",
-            "Gestionar compensaciones promocionales",
+            "Manage promotional compensation",
             false,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000131"),
             GrowthReferralsOwnRead,
             "referrals",
-            "Ver referidos propios",
+            "View your own referrals",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000132"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsProgramRead,
             "referrals",
-            "Ver programas de referidos",
-            false
+            "View referral programs",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000133"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsProgramManage,
             "referrals",
-            "Gestionar programas de referidos",
-            false
+            "Manage referral programs",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000134"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsAttributionRead,
             "referrals",
-            "Consultar atribuciones",
-            false
+            "View referral attributions",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000135"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsFraudRead,
             "referrals",
-            "Consultar revisiones antifraude",
-            false
+            "View anti-fraud reviews",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000136"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsFraudManage,
             "referrals",
-            "Gestionar revisiones antifraude",
+            "Manage anti-fraud reviews",
             false,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000137"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsRewardRead,
             "referrals",
-            "Consultar rewards",
-            false
+            "View rewards",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000138"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsRewardManage,
             "referrals",
-            "Gestionar rewards no monetarios",
+            "Manage non-monetary rewards",
             false,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000139"),
+            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
+            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
+            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
+            // exista, para no ofrecer en el cajón de accesos un control que no existe.
             GrowthReferralsAuditRead,
             "referrals",
-            "Consultar auditoría de referidos",
-            false
+            "View the referral audit log",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000140"),
             GrowthAdminCrossTenant,
             "growth",
-            "Operar recursos Growth de cualquier tenant",
+            "Operate Growth resources for any office (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1792,7 +1937,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000143"),
             SubscriptionPlanChange,
             "subscription",
-            "Cambiar plan, activar, cancelar y gestionar el ciclo de vida de la suscripción del propio tenant",
+            "Change plan, activate, cancel and manage the office's subscription",
             false,
             IsAssignableByTenant: false
         ),
@@ -1800,7 +1945,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000144"),
             SubscriptionSuspend,
             "subscription",
-            "Suspender la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+            "Suspend any office's subscription (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1809,7 +1954,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000145"),
             SubscriptionReactivate,
             "subscription",
-            "Reactivar la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+            "Reactivate any office's subscription (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1818,7 +1963,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000146"),
             SubscriptionRenew,
             "subscription",
-            "Renovación manual de la suscripción de cualquier tenant, mientras no exista Billing (uso exclusivo de plataforma)",
+            "Manually renew any office's subscription (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1827,7 +1972,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000147"),
             SubscriptionAdminCrossTenant,
             "subscription",
-            "Consultar renovaciones próximas, seats vencidos y suscripciones en mora de CUALQUIER tenant, y forzar el recálculo de entitlements (uso exclusivo de plataforma)",
+            "View upcoming renewals, expired seats and past-due subscriptions for ANY office, and force an entitlements recalculation (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1836,7 +1981,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000148"),
             SeatsManage,
             "seats",
-            "Comprar, asignar, liberar, reasignar y renovar seats del propio tenant",
+            "Buy, assign, release, reassign and renew the office's seats",
             false,
             IsAssignableByTenant: false
         ),
@@ -1844,7 +1989,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000149"),
             AddOnsManage,
             "addons",
-            "Comprar, cancelar y renovar add-ons del propio tenant",
+            "Buy, cancel and renew the office's add-ons",
             false,
             IsAssignableByTenant: false
         ),
@@ -1853,7 +1998,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000150"),
             TenantStatusChange,
             "tenant",
-            "Cambiar el estado de cualquier tenant (uso exclusivo de plataforma)",
+            "Change any office's status (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1862,7 +2007,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000151"),
             TenantListView,
             "tenant",
-            "Listar todos los tenants de la plataforma (uso exclusivo de plataforma)",
+            "List every office on the platform (platform only)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -1871,12 +2016,12 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000153"),
             OnboardingAdminManage,
             "onboarding",
-            "Ver y administrar onboardings de PayFlow en ManualReview/ProvisioningFailed de cualquier tenant (resume, corrección, force-complete, cancelar y reembolsar)",
+            "Review and resolve onboardings stuck in manual review or provisioning failure for any office",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000154"), NotesRead, "notes", "Ver notas del tenant", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000154"), NotesRead, "notes", "View notes", false),
         new(
             // ADR-06: Manage cubre crear/editar/pin/color/visibilidad/adjuntar — la regla "solo
             // el propio autor" NO vive acá (Permission no modela ownership), la aplica el handler
@@ -1884,7 +2029,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000155"),
             NotesManage,
             "notes",
-            "Crear, editar, archivar/restaurar y adjuntar archivos a notas propias",
+            "Create, edit, archive, restore and attach files to your own notes",
             false
         ),
         new(
@@ -1895,7 +2040,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000156"),
             NotesViewAll,
             "notes",
-            "Ver, archivar y borrar notas de cualquier autor del tenant (gobernanza)",
+            "View, archive and delete notes from anyone in the office",
             false,
             AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
         ),
@@ -1906,7 +2051,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000157"),
             NotesPortalRead,
             "notes",
-            "El cliente puede ver sus notas marcadas como visibles para el cliente",
+            "The client can read the notes marked as visible to them",
             true
         ),
         // Reminder — sin AllowedActorTypes explícito a propósito: la inferencia por defecto de
@@ -1916,14 +2061,14 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000165"),
             RemindersRead,
             "reminders",
-            "Ver los recordatorios propios",
+            "View your reminders",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000166"),
             RemindersWrite,
             "reminders",
-            "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
+            "Create, reschedule, snooze, dismiss and cancel your reminders",
             false
         ),
         // Task — los cinco sin AllowedActorTypes explícito, incluido ManageAll. La inferencia por
@@ -1933,54 +2078,54 @@ public static class PermissionCatalog
         // tenant. Restringirlo a TenantAdmin dejaría al override sin poder otorgarse nunca a quien
         // de verdad lo ejerce. Lo que sí se hace es dejarlo FUERA del bundle por defecto del
         // empleado: se otorga por rol explícito.
-        new(new Guid("a1000000-0000-0000-0000-000000000167"), TasksRead, "tasks", "Ver las tareas del tenant", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000167"), TasksRead, "tasks", "View tasks", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000168"),
             TasksWrite,
             "tasks",
-            "Crear, editar, cerrar y reabrir tareas propias o asignadas a uno mismo",
+            "Create, edit, close and reopen your own or assigned tasks",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000169"),
             TasksAssign,
             "tasks",
-            "Asignar una tarea a otra persona del tenant (sin restricción de dirección)",
+            "Assign a task to someone else in the office",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000170"),
             TasksManageAll,
             "tasks",
-            "Cerrar, editar o reasignar la tarea de cualquier usuario del tenant (supervisión)",
+            "Close, edit or reassign anyone's task (supervision)",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000171"),
             TasksTemplatesManage,
             "tasks",
-            "Crear y editar las plantillas de tarea de la firma",
+            "Create and edit the firm's task templates",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000172"),
             TasksClientRequestsManage,
             "tasks",
-            "Pedirle documentacion al cliente y cerrar lo que mande",
+            "Ask clients for documents and close what they send",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000174"),
             CalendarRead,
             "calendar",
-            "Ver el calendario del tenant y consultar disponibilidad",
+            "View the calendar and check availability",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000175"),
             CalendarWrite,
             "calendar",
-            "Crear, mover y cancelar las citas propias",
+            "Create, move and cancel your own appointments",
             false
         ),
         // No anula ADR-C-09: el agregado sigue exigiendo organizador. Permite actuar como tal.
@@ -1988,22 +2133,26 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000176"),
             CalendarManageAll,
             "calendar",
-            "Reorganizar agendas ajenas actuando como organizador (supervision)",
+            "Reorganize other people's schedules as the organizer (supervision)",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000177"),
             CalendarTypesManage,
             "calendar",
-            "Definir los tipos de cita de la firma",
+            "Define the firm's appointment types",
             false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000178"),
+            // AvailabilityController solo expone GET, y ya pide calendar.read. No hay escritura de
+            // disponibilidad que gatear. Reservado.
             CalendarAvailabilityManage,
             "calendar",
-            "Definir horarios de atencion y bloqueos de agenda",
-            false
+            "Define working hours and calendar blocks",
+            false,
+            IsAssignableByTenant: false,
+            IsReserved: true
         ),
         // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
         // de pedidos, no la tarea interna de la que salieron.
@@ -2011,7 +2160,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000173"),
             TasksPortalClientRequests,
             "tasks",
-            "El cliente ve sus pedidos y registra lo que sube",
+            "The client sees their requests and uploads what they're asked for",
             true
         ),
         // Marca del SISTEMA: solo PlatformAdmin. PlatformOnly excluye este permiso del bundle del
@@ -2020,7 +2169,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000179"),
             PlatformBrandingManage,
             "branding",
-            "Gestionar la marca del sistema (colores/logo/favicon por defecto de la plataforma)",
+            "Manage the platform's own brand (default colors, logo and favicon)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
@@ -2060,8 +2209,13 @@ public static class PermissionCatalog
             // entrar por asignación explícita, no por el bundle automático. Antes de esta fase,
             // un permiso nuevo con IsCustomerPortal:false/PlatformOnly:false entraba
             // automáticamente al set del TenantAdmin sin importar su riesgo real.
+            // A7: IsReserved también se excluye. Un reservado no gatea nada todavía; concederlo por
+            // defecto lo haría aparecer como un acceso real que el administrador cree estar dando.
             Role.SystemTenantAdmin => All.Where(definition =>
-                    !definition.IsCustomerPortal && !definition.PlatformOnly && !definition.IsDangerous
+                    !definition.IsCustomerPortal
+                    && !definition.PlatformOnly
+                    && !definition.IsDangerous
+                    && !definition.IsReserved
                 )
                 .Select(definition => definition.Code)
                 .Concat(TenantAdminCommunicationExtras)
@@ -2071,12 +2225,6 @@ public static class PermissionCatalog
             [
                 CustomersView,
                 CustomersManage,
-                SignaturesRequest,
-                DocumentsView,
-                DocumentsManage,
-                EmailUse,
-                CommsCalls,
-                ReportsView,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
@@ -2090,15 +2238,22 @@ public static class PermissionCatalog
                 CloudStorageShareRevoke,
                 // Signature: el empleado prepara solicitudes y consulta resultados. Cancelar entra:
                 // quien la mandó es quien se da cuenta de que salió mal, y el ownership del handler
-                // ya lo limita a las suyas. Fuera quedan expire/settings (reservados a TenantAdmin).
+                // ya lo limita a las suyas. Fuera quedan settings, reservados a TenantAdmin.
                 SignatureRequestCreate,
                 SignatureRequestRead,
                 SignatureRequestResend,
+                // Extender el vencimiento ya lo venía haciendo el empleado: el endpoint pedía resend.
+                // Al darle su permiso propio se explicita quién puede, sin quitárselo a nadie.
+                SignatureRequestExpire,
                 SignatureRequestCancel,
+                // Su propia firma persistente. Antes bastaba con request.create, así que todo preparador
+                // ya la administraba; sin esto, "My Signature" dejaría de funcionar para el empleado.
+                SignaturePreparerManage,
                 SignatureDocumentPrepare,
                 SignatureDocumentSign,
-                SignatureDocumentView,
-                SignatureDocumentDownload,
+                // view/download salen del bundle al quedar reservados: no gatean nada (ver documento es
+                // request.read y el sellado se descarga con cloudstorage.file.download), y un reservado
+                // no puede venir concedido de fábrica.
                 SignatureDocumentSend,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Employee" — nunca host de settings/analytics/moderate/record.
@@ -2145,7 +2300,6 @@ public static class PermissionCatalog
                 // controller real todavía, ver PermissionDefinition), ni scribe.render (M2M-only,
                 // nunca un permiso humano — ver PermissionDefinition).
                 ScribeTemplatesRead,
-                ScribeLayoutsRead,
                 ScribeEventMappingsRead,
                 // Postmaster: el empleado puede ver el historial de envíos y la suppression list
                 // (diagnosticar por qué un correo no llegó) — no incluye providers.write ni
@@ -2197,7 +2351,6 @@ public static class PermissionCatalog
                 // manage_all y types.manage: configuracion de la firma.
                 CalendarRead,
                 CalendarWrite,
-                CalendarAvailabilityManage,
                 // Catalog (productos/servicios), Inventory y SMS son trabajo operativo diario de la firma
                 // (facturar servicios, ajustar stock, avisar por SMS), no configuración administrativa —
                 // mismo criterio que Reminders/Tasks/Calendar. Estaban en el catálogo (el TenantAdmin los
@@ -2278,7 +2431,7 @@ public static class PermissionCatalog
     /// excluyendo PlatformOnly e IsCustomerPortal, igual que <see cref="SystemRoleDefaults"/>.
     /// </summary>
     public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
-        All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
+        All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly && !definition.IsReserved)
             .Select(definition => definition.Code)
             .Concat(TenantAdminCommunicationExtras)
             .Distinct()

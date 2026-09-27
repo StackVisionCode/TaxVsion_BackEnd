@@ -14,11 +14,22 @@ namespace TaxVision.Signature.Tests.Integration;
 /// signing RS256 de Auth acá, se sobreescribe la config con un secreto HS256 generado en memoria
 /// SOLO para este proceso de test, nunca leído de ningún user-secret real ni escrito a disco.
 /// </summary>
-public sealed class SignatureApiFactory : WebApplicationFactory<Program>
+public class SignatureApiFactory : WebApplicationFactory<Program>
 {
     public string JwtSecret { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     public string JwtIssuer => "TaxVision.Auth";
     public string JwtAudience => "TaxVision.Services";
+
+    /// <summary>
+    /// A6 — el modo del gate de módulo se FIJA acá y no se hereda de <c>appsettings.Development.json</c>.
+    ///
+    /// Se fija porque ese fichero es donde se sube el escalón del despliegue: cuando `signatures` pasó a
+    /// enforce en desarrollo, el test de log-only empezó a recibir 403 y se rompió sin que nadie hubiera
+    /// tocado el gate. Un test que afirma un comportamiento tiene que configurar ese comportamiento; si
+    /// no, mide el ambiente. <see cref="SignatureApiEnforcingModuleGateFactory"/> es el mismo host con el
+    /// escalón encendido.
+    /// </summary>
+    protected virtual bool EnforceModuleGate => false;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -31,8 +42,16 @@ public sealed class SignatureApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        ["Authorization:ModuleGate:Enforce"] = EnforceModuleGate ? "true" : "false",
+                        ["Authorization:ModuleGate:EnforcedModules:0"] = "signatures",
                     }
                 )
         );
     }
+}
+
+/// <summary>El mismo host real con el gate de módulo APLICANDO sobre <c>signatures</c>.</summary>
+public sealed class SignatureApiEnforcingModuleGateFactory : SignatureApiFactory
+{
+    protected override bool EnforceModuleGate => true;
 }

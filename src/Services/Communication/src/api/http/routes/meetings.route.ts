@@ -1,11 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { checkPermission, permissionCheckHttpStatus, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  permissionCheckHttpStatus,
+  CommunicationPermissions,
+} from '../../../domain/shared/permissions.js';
 import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting.js';
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const CreateMeetingBody = z.object({
@@ -40,9 +45,15 @@ const UserIdParams = z.object({ userId: z.string().uuid() });
 export async function registerMeetingRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.post('/communication/meetings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const permCheck = await checkPermission(principal, CommunicationPermissions.MeetingCreate, container.userPermissions);
+    const permCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.MeetingCreate,
+      container.userPermissions,
+    );
     if (!permCheck.allowed) {
-      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
+      return reply
+        .code(permissionCheckHttpStatus(permCheck))
+        .send({ code: permCheck.code, message: permCheck.message });
     }
     const body = CreateMeetingBody.parse(request.body);
     // Nombre real del host (directorio, con fallback al email del JWT) — sin esto el participante del
@@ -70,63 +81,75 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     return reply.code(201).send(result.value);
   });
 
-  app.get('/communication/meetings', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const query = HistoryQuery.parse(request.query);
-    const listInput = {
-      tenantId: principal.tenantId,
-      userId: principal.userId,
-      take: query.size,
-      skip: (query.page - 1) * query.size,
-    };
-    const [items, totalCount] =
-      query.scope === 'past'
-        ? await Promise.all([
-            container.meetings.listPastForUser(listInput),
-            container.meetings.countPastForUser(principal.tenantId, principal.userId),
-          ])
-        : await Promise.all([
-            container.meetings.listUpcomingForUser(listInput),
-            container.meetings.countUpcomingForUser(principal.tenantId, principal.userId),
-          ]);
-    return reply.send({
-      items: items.map((snapshot) => ({
-        id: snapshot.id,
-        title: snapshot.title,
-        status: snapshot.status,
-        shortCode: snapshot.shortCode,
-        strategy: snapshot.strategy,
-        hostUserId: snapshot.hostUserId,
-        scheduledForUtc: snapshot.scheduledForUtc?.toISOString() ?? null,
-        startedAtUtc: snapshot.startedAtUtc?.toISOString() ?? null,
-        endedAtUtc: snapshot.endedAtUtc?.toISOString() ?? null,
-        joinedParticipantsCount: snapshot.participants.filter((p) => p.status === 'Joined').length,
-        // Fase Frontend 9 — el historial necesita saber si hay transcript
-        // disponible sin abrir cada meeting; el campo ya vivia en el
-        // aggregate/Prisma (Fase Transcript 5/6), solo faltaba exponerlo aca.
-        transcriptFileId: snapshot.transcriptFileId,
-      })),
-      page: query.page,
-      size: query.size,
-      totalCount,
-    });
-  });
+  app.get(
+    '/communication/meetings',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const query = HistoryQuery.parse(request.query);
+      const listInput = {
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        take: query.size,
+        skip: (query.page - 1) * query.size,
+      };
+      const [items, totalCount] =
+        query.scope === 'past'
+          ? await Promise.all([
+              container.meetings.listPastForUser(listInput),
+              container.meetings.countPastForUser(principal.tenantId, principal.userId),
+            ])
+          : await Promise.all([
+              container.meetings.listUpcomingForUser(listInput),
+              container.meetings.countUpcomingForUser(principal.tenantId, principal.userId),
+            ]);
+      return reply.send({
+        items: items.map((snapshot) => ({
+          id: snapshot.id,
+          title: snapshot.title,
+          status: snapshot.status,
+          shortCode: snapshot.shortCode,
+          strategy: snapshot.strategy,
+          hostUserId: snapshot.hostUserId,
+          scheduledForUtc: snapshot.scheduledForUtc?.toISOString() ?? null,
+          startedAtUtc: snapshot.startedAtUtc?.toISOString() ?? null,
+          endedAtUtc: snapshot.endedAtUtc?.toISOString() ?? null,
+          joinedParticipantsCount: snapshot.participants.filter((p) => p.status === 'Joined').length,
+          // Fase Frontend 9 — el historial necesita saber si hay transcript
+          // disponible sin abrir cada meeting; el campo ya vivia en el
+          // aggregate/Prisma (Fase Transcript 5/6), solo faltaba exponerlo aca.
+          transcriptFileId: snapshot.transcriptFileId,
+        })),
+        page: query.page,
+        size: query.size,
+        totalCount,
+      });
+    },
+  );
 
-  app.get('/communication/meetings/stats', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const tz = typeof principal.raw['zoneinfo'] === 'string' ? principal.raw['zoneinfo'] : 'UTC';
-    const now = new Date();
-    const { dayStartUtc, dayEndUtc, weekEndUtc } = userDayWindow(now, tz);
-    const stats = await container.meetings.getStatsForUser({
-      tenantId: principal.tenantId,
-      userId: principal.userId,
-      nowUtc: now,
-      dayStartUtc,
-      dayEndUtc,
-      weekEndUtc,
-    });
-    return reply.send(stats);
-  });
+  app.get(
+    '/communication/meetings/stats',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const tz = typeof principal.raw['zoneinfo'] === 'string' ? principal.raw['zoneinfo'] : 'UTC';
+      const now = new Date();
+      const { dayStartUtc, dayEndUtc, weekEndUtc } = userDayWindow(now, tz);
+      const stats = await container.meetings.getStatsForUser({
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        nowUtc: now,
+        dayStartUtc,
+        dayEndUtc,
+        weekEndUtc,
+      });
+      return reply.send(stats);
+    },
+  );
 
   // Pre-flight de impacto (punto 3.2): cuántas reuniones activas tiene como host el empleado a retirar.
   app.get(
@@ -142,110 +165,134 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
   );
 
-  app.post('/communication/meetings/:id/start', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = StartMeetingBody.parse(request.body ?? {});
-    const result = await startMeeting(
-      {
-        tenantId: principal.tenantId,
-        correlationId: request.id,
-        meetingId: params.id,
-        hostUserId: principal.userId,
-        ...(body.audioDefault !== undefined ? { audioDefault: body.audioDefault } : {}),
-        ...(body.videoDefault !== undefined ? { videoDefault: body.videoDefault } : {}),
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.send(result.value);
-  });
-
-  app.post('/communication/meetings/:id/cancel', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = CancelMeetingBody.parse(request.body ?? {});
-    if (!container.emitter) {
-      return reply.code(503).send({ code: 'Service.NotReady', message: 'Realtime emitter not wired.' });
-    }
-    const result = await cancelMeeting(
-      {
-        tenantId: principal.tenantId,
-        correlationId: request.id,
-        meetingId: params.id,
-        hostUserId: principal.userId,
-        ...(body.reason !== undefined ? { reason: body.reason } : {}),
-      },
-      { ...container, emitter: container.emitter },
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.code(204).send();
-  });
-
-  app.post('/communication/meetings/:id/reschedule', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = RescheduleMeetingBody.parse(request.body);
-    if (!container.emitter) {
-      return reply.code(503).send({ code: 'Service.NotReady', message: 'Realtime emitter not wired.' });
-    }
-    const result = await rescheduleMeeting(
-      {
-        tenantId: principal.tenantId,
-        correlationId: request.id,
-        meetingId: params.id,
-        hostUserId: principal.userId,
-        newScheduledForUtc: body.newScheduledForUtc,
-      },
-      { ...container, emitter: container.emitter },
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.code(204).send();
-  });
-
-  app.post('/communication/meetings/:id/end', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const result = await endMeeting(
-      {
-        tenantId: principal.tenantId,
-        correlationId: request.id,
-        meetingId: params.id,
-        byUserId: principal.userId,
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    // Libera el router SFU (transports/producers/consumers de todos los
-    // participantes) si el meeting tenia strategy 'Sfu' — no-op si nunca se
-    // creo router (meetings Mesh, o Sfu que nadie llego a usar via socket).
-    await container.sfu.closeMeeting(params.id);
-    // Fase A3 — este endpoint termina el meeting para TODOS sin pasar por el
-    // Leave individual de cada socket (mismo caso que el host se va sin
-    // cohost en meeting-handlers.ts) — hay que limpiar el "busy" de cada
-    // participante que quedo Left, o quedarian marcados Busy hasta el TTL
-    // de respaldo.
-    const endedMeeting = await container.meetings.findById(principal.tenantId, params.id);
-    if (endedMeeting) {
-      const participantUserIds = endedMeeting.toSnapshot().participants.map((p) => p.userId);
-      await Promise.all(
-        participantUserIds.map((participantUserId) =>
-          container.presence
-            .clearBusy({ tenantId: principal.tenantId, userId: participantUserId, sourceId: params.id })
-            .catch(() => undefined),
-        ),
+  app.post(
+    '/communication/meetings/:id/start',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = StartMeetingBody.parse(request.body ?? {});
+      const result = await startMeeting(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          hostUserId: principal.userId,
+          ...(body.audioDefault !== undefined ? { audioDefault: body.audioDefault } : {}),
+          ...(body.videoDefault !== undefined ? { videoDefault: body.videoDefault } : {}),
+        },
+        container,
       );
-    }
-    return reply.send(result.value);
-  });
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  app.post(
+    '/communication/meetings/:id/cancel',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = CancelMeetingBody.parse(request.body ?? {});
+      if (!container.emitter) {
+        return reply.code(503).send({ code: 'Service.NotReady', message: 'Realtime emitter not wired.' });
+      }
+      const result = await cancelMeeting(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          hostUserId: principal.userId,
+          ...(body.reason !== undefined ? { reason: body.reason } : {}),
+        },
+        { ...container, emitter: container.emitter },
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(204).send();
+    },
+  );
+
+  app.post(
+    '/communication/meetings/:id/reschedule',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = RescheduleMeetingBody.parse(request.body);
+      if (!container.emitter) {
+        return reply.code(503).send({ code: 'Service.NotReady', message: 'Realtime emitter not wired.' });
+      }
+      const result = await rescheduleMeeting(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          hostUserId: principal.userId,
+          newScheduledForUtc: body.newScheduledForUtc,
+        },
+        { ...container, emitter: container.emitter },
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(204).send();
+    },
+  );
+
+  app.post(
+    '/communication/meetings/:id/end',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const result = await endMeeting(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          byUserId: principal.userId,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      // Libera el router SFU (transports/producers/consumers de todos los
+      // participantes) si el meeting tenia strategy 'Sfu' — no-op si nunca se
+      // creo router (meetings Mesh, o Sfu que nadie llego a usar via socket).
+      await container.sfu.closeMeeting(params.id);
+      // Fase A3 — este endpoint termina el meeting para TODOS sin pasar por el
+      // Leave individual de cada socket (mismo caso que el host se va sin
+      // cohost en meeting-handlers.ts) — hay que limpiar el "busy" de cada
+      // participante que quedo Left, o quedarian marcados Busy hasta el TTL
+      // de respaldo.
+      const endedMeeting = await container.meetings.findById(principal.tenantId, params.id);
+      if (endedMeeting) {
+        const participantUserIds = endedMeeting.toSnapshot().participants.map((p) => p.userId);
+        await Promise.all(
+          participantUserIds.map((participantUserId) =>
+            container.presence
+              .clearBusy({ tenantId: principal.tenantId, userId: participantUserId, sourceId: params.id })
+              .catch(() => undefined),
+          ),
+        );
+      }
+      return reply.send(result.value);
+    },
+  );
 }
 
 /**

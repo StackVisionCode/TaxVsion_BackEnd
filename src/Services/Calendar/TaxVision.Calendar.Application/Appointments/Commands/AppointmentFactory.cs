@@ -90,7 +90,7 @@ internal static class AppointmentFactory
         if (rule.IsFailure)
             return Result.Failure<(Appointment, AppointmentType)>(rule.Error);
 
-        var applied = appointment.MakeRecurring(rule.Value, timing, command.OrganizerUserId);
+        var applied = appointment.MakeRecurring(rule.Value, timing, command.OrganizerUserId, canManageAll: false);
         return applied.IsFailure
             ? Result.Failure<(Appointment, AppointmentType)>(applied.Error)
             : Result.Success((appointment, type));

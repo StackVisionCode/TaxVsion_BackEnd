@@ -14,5 +14,6 @@ public sealed record UpdateAddressCommand(
     string? Region,
     string PostalCode,
     string CountryCode,
-    bool IsPrimary
+    bool IsPrimary,
+    bool CallerCanViewAllCustomers
 );

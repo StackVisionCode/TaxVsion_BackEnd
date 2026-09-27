@@ -74,7 +74,9 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
 
     // ---------- POST /signature/profiles ----------
     [HttpPost]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    // Las firmas persistentes del preparador son suyas, no un subproducto de crear solicitudes: por eso
+    // escribirlas tiene permiso propio. Leerlas sigue con el de lectura — quien prepara necesita verlas.
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType<SignatureProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -103,7 +105,7 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
 
     // ---------- PUT /signature/profiles/{id} ----------
     [HttpPut("{id:guid}")]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -125,7 +127,7 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
 
     // ---------- POST /signature/profiles/{id}/default ----------
     [HttpPost("{id:guid}/default")]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetDefault([FromRoute] Guid id, CancellationToken ct)
@@ -142,21 +144,21 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
 
     // ---------- POST /signature/profiles/{id}/archive ----------
     [HttpPost("{id:guid}/archive")]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public Task<IActionResult> Archive([FromRoute] Guid id, CancellationToken ct) => SetArchived(id, true, ct);
 
     // ---------- POST /signature/profiles/{id}/unarchive ----------
     [HttpPost("{id:guid}/unarchive")]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public Task<IActionResult> Unarchive([FromRoute] Guid id, CancellationToken ct) => SetArchived(id, false, ct);
 
     // ---------- DELETE /signature/profiles/{id} ----------
     [HttpDelete("{id:guid}")]
-    [HasPermission(SignaturePermissions.RequestCreate)]
+    [HasPermission(SignaturePermissions.PreparerManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)

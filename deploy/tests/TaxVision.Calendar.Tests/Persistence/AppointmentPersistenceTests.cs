@@ -55,7 +55,12 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
             )
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, timing, _organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            timing,
+            _organizer,
+            canManageAll: false
+        );
         return series;
     }
 
@@ -166,7 +171,8 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
                 original.Timing,
                 RecurrenceRule.Create("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO").Value,
                 _organizer,
-                Now
+                Now,
+                canManageAll: false
             )
             .Value;
 
@@ -196,7 +202,8 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
             AttendeeSnapshot.Create("Ana Preparadora", "ana@firma.test").Value,
             isRequired: true,
             _organizer,
-            Now
+            Now,
+            canManageAll: false
         );
         _context.Appointments.Add(original);
         await _context.SaveChangesAsync();
@@ -209,7 +216,8 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
                     .Value,
                 RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
                 _organizer,
-                Now
+                Now,
+                canManageAll: false
             )
             .Value;
 
@@ -233,7 +241,7 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
         // base. Solo el indice unico las separa — e InMemory no lo aplicaria.
         var series = WeeklySeries();
         var target = new DateTime(2026, 1, 19, 14, 0, 0, DateTimeKind.Utc);
-        series.CancelOccurrence(target, _organizer, Now);
+        series.CancelOccurrence(target, _organizer, canManageAll: false, Now);
 
         _context.Appointments.Add(series);
         await _context.SaveChangesAsync();
@@ -241,7 +249,7 @@ public sealed class AppointmentPersistenceTests : IAsyncLifetime
         await using var stale = SqlServerFixture.CreateContext(_tenant);
         var readBeforeTheOtherSaved = await stale.Appointments.FirstAsync(a => a.Id == series.Id);
 
-        Assert.True(readBeforeTheOtherSaved.CancelOccurrence(target, _organizer, Now).IsSuccess);
+        Assert.True(readBeforeTheOtherSaved.CancelOccurrence(target, _organizer, canManageAll: false, Now).IsSuccess);
 
         await Assert.ThrowsAnyAsync<Exception>(() => stale.SaveChangesAsync());
     }

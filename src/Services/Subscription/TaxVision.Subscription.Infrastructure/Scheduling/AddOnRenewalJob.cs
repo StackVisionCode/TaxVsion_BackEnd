@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Application.Subscriptions;
 using Wolverine;
 
@@ -58,7 +59,15 @@ public sealed class AddOnRenewalJob(
             if (decision == ExtraBillingDecision.Cancel)
             {
                 if (addOn.CancelActive(BaseEndedReason, actorUserId: Guid.Empty, nowUtc).IsSuccess)
+                {
                     await unitOfWork.SaveChangesAsync(ct);
+                    // A6/A5.7 — cancelar aquí y no recalcular dejaba el módulo del add-on en el
+                    // snapshot: era el único camino de cancelación que no lo hacía (CancelAddOnHandler
+                    // y AddOnExpirationJob sí). Hoy queda tapado porque la base terminal ya pone todos
+                    // los módulos en false, pero eso es un accidente: en cuanto la base se reactive, el
+                    // snapshot se reconstruye y la incoherencia se vuelve visible.
+                    await bus.RecalculateEntitlementsSafelyAsync(addOn.TenantId, logger, ct);
+                }
                 continue;
             }
 

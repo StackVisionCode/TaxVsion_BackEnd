@@ -11,11 +11,17 @@ namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
 /// <summary><see cref="AccountKind"/> desambigua cuando la persona tiene cuenta Staff y Portal en la misma
 /// oficina; sin indicarlo se toma la Staff.</summary>
+/// <param name="RememberDevice">
+/// El usuario pidió no volver a pedir el código en este navegador. Solo se honra si la oficina
+/// REALMENTE retó y el código fue TOTP: un código de recuperación es de un solo uso y de
+/// emergencia, así que no deja el equipo marcado (mismo criterio que el login clásico).
+/// </param>
 public sealed record IssueHandoffTicketCommand(
     Guid DiscoverySessionRef,
     Guid ChosenTenantId,
     string? MfaCode = null,
-    UserAccountKind? AccountKind = null
+    UserAccountKind? AccountKind = null,
+    bool RememberDevice = false
 );
 
 /// <summary>Subdominio destino + vale, para que el frontend arme la URL de <c>continue</c>.</summary>
@@ -64,11 +70,13 @@ public static class IssueHandoffTicketHandler
         if (office is null)
             return Result.Failure<HandoffTicketView>(invalid);
 
-        if (
-            office.ChallengeRequired
-            && await MfaCodeVerifier.VerifyAsync(office.UserId, command.MfaCode, mfa, totp, protector, tokens, ct)
-                == MfaCodeCheck.Invalid
-        )
+        // El resultado concreto importa: un código de recuperación NO marca el equipo como de
+        // confianza, así que hay que distinguirlo de un TOTP en vez de mirar solo si falló.
+        MfaCodeCheck? codeCheck = office.ChallengeRequired
+            ? await MfaCodeVerifier.VerifyAsync(office.UserId, command.MfaCode, mfa, totp, protector, tokens, ct)
+            : null;
+
+        if (office.ChallengeRequired && codeCheck == MfaCodeCheck.Invalid)
         {
             await audit.AddAsync(
                 AuthAuditLog.Record(
@@ -91,8 +99,9 @@ public static class IssueHandoffTicketHandler
             return Result.Failure<HandoffTicketView>(invalid);
 
         // Si retó y pasó, ya tiene método → no debe enrolar. Si no retaba, arrastra el flag de setup.
+        var rememberDevice = command.RememberDevice && codeCheck == MfaCodeCheck.Totp;
         var ticket = await tickets.IssueAsync(
-            new HandoffTicketPayload(office.TenantId, office.UserId, office.MustEnroll),
+            new HandoffTicketPayload(office.TenantId, office.UserId, office.MustEnroll, rememberDevice),
             ct
         );
         await sessions.ConsumeAsync(command.DiscoverySessionRef, ct);

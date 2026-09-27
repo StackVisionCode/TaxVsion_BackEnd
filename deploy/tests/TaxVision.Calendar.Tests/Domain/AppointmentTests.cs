@@ -46,7 +46,8 @@ public sealed class AppointmentTests
             AttendeeSnapshot.Create("Ana Preparadora", "ana@firma.test").Value,
             isRequired: true,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         Assert.True(added.IsSuccess);
@@ -69,7 +70,7 @@ public sealed class AppointmentTests
     {
         var appointment = ScheduledWithAttendee();
 
-        var result = appointment.Reschedule(Timing(16), Attendee, Now);
+        var result = appointment.Reschedule(Timing(16), Attendee, canManageAll: false, Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Calendar.Appointment.NotTheOrganizer", result.Error.Code);
@@ -93,7 +94,7 @@ public sealed class AppointmentTests
         var appointment = ScheduledWithAttendee();
         appointment.RespondAsAttendee(AttendeeResponse.Accepted, Attendee, null, null, Now);
 
-        var result = appointment.Reschedule(Timing(20), Organizer, Now);
+        var result = appointment.Reschedule(Timing(20), Organizer, canManageAll: false, Now);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(AttendeeResponse.NeedsAction, appointment.Attendees[0].Response);
@@ -105,8 +106,8 @@ public sealed class AppointmentTests
     {
         var appointment = ScheduledWithAttendee();
 
-        var byAttendee = appointment.Cancel(Attendee, "no puedo", Now);
-        var byOrganizer = appointment.Cancel(Organizer, "el cliente reprogramo", Now);
+        var byAttendee = appointment.Cancel(Attendee, canManageAll: false, "no puedo", Now);
+        var byOrganizer = appointment.Cancel(Organizer, canManageAll: false, "el cliente reprogramo", Now);
 
         Assert.True(byAttendee.IsFailure);
         Assert.True(byOrganizer.IsSuccess);
@@ -118,9 +119,9 @@ public sealed class AppointmentTests
     public void A_cancelled_appointment_cannot_be_moved()
     {
         var appointment = Scheduled();
-        appointment.Cancel(Organizer, null, Now);
+        appointment.Cancel(Organizer, canManageAll: false, null, Now);
 
-        var result = appointment.Reschedule(Timing(18), Organizer, Now);
+        var result = appointment.Reschedule(Timing(18), Organizer, canManageAll: false, Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Calendar.Appointment.CancelledIsFinal", result.Error.Code);
@@ -138,7 +139,8 @@ public sealed class AppointmentTests
             AttendeeSnapshot.Create("Ana Preparadora", "ana@firma.test").Value,
             isRequired: false,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         Assert.True(again.IsFailure);
@@ -168,12 +170,39 @@ public sealed class AppointmentTests
             AttendeeSnapshot.Create("Contador externo", "externo@otra.test").Value,
             isRequired: false,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         var result = appointment.RespondAsAttendee(AttendeeResponse.Tentative, null, null, "EXTERNO@OTRA.TEST", Now);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(AttendeeResponse.Tentative, appointment.Attendees[0].Response);
+    }
+
+    /// <summary>
+    /// A7 — `calendar.manage_all` existía en el catalogo sin gatear nada. Sin él, una cita
+    /// quedaba congelada cuando su organizador se iba o se enfermaba: ni el dueño de la oficina podía
+    /// cancelarla. El override AGREGA capacidad; el organizador sigue pudiendo con sus propias citas.
+    /// </summary>
+    [Fact]
+    public void The_office_override_cancels_an_appointment_of_someone_else()
+    {
+        var appointment = ScheduledWithAttendee();
+
+        var byAnotherUser = appointment.Cancel(Guid.NewGuid(), canManageAll: true, "el organizador no está", Now);
+
+        Assert.True(byAnotherUser.IsSuccess);
+        Assert.Equal(AppointmentStatus.Cancelled, appointment.Status);
+    }
+
+    [Fact]
+    public void Without_the_override_a_stranger_still_cannot_reschedule()
+    {
+        var appointment = Scheduled();
+
+        var moved = appointment.Reschedule(Timing(18), Guid.NewGuid(), canManageAll: false, Now);
+
+        Assert.True(moved.IsFailure);
     }
 }

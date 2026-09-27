@@ -95,10 +95,91 @@ public sealed class PermissionCatalogTests
             .ToList();
 
         Assert.Equal(expectedIds.OrderBy(id => id), actualIds);
-        Assert.All(
-            PermissionCatalog.All.Where(definition => definition.Module == "communication"),
-            definition => Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier)
+    }
+
+    /// <summary>
+    /// El techo de plan (§27) decide qué puede OTORGAR un tenant a un rol propio. Desde que `comms`
+    /// (chat, llamadas y vídeo) entró en Starter, dejar esos permisos en Pro daba un Starter con chat
+    /// incluido en el plan y sin poder delegarlo a nadie. Las reuniones se venden aparte, así que sus
+    /// cuatro permisos sí siguen en Pro.
+    /// </summary>
+    [Fact]
+    public void Only_the_meeting_permissions_still_require_the_pro_tier()
+    {
+        var communication = PermissionCatalog.All.Where(definition => definition.Module == "communication").ToList();
+
+        var proOnly = communication
+            .Where(definition => definition.MinPlanTier == (int)PlanTier.Pro)
+            .Select(definition => definition.Code)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                PermissionCatalog.CommunicationMeetingCreate,
+                PermissionCatalog.CommunicationMeetingHost,
+                PermissionCatalog.CommunicationMeetingJoin,
+                PermissionCatalog.CommunicationMeetingRecord,
+            ],
+            proOnly
         );
+
+        // El resto, alcanzable desde Starter.
+        Assert.All(
+            communication.Where(definition => !proOnly.Contains(definition.Code)),
+            definition => Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier)
+        );
+    }
+
+    /// <summary>
+    /// Las descripciones son texto de INTERFAZ: el cajón de accesos del CRM las pinta debajo del código
+    /// del permiso, y la regla del producto es que todo el copy que ve el usuario va en inglés.
+    ///
+    /// El test mira acentos y verbos españoles frecuentes, no traduce: basta para que una descripción
+    /// nueva escrita en español no llegue a producción sin que nadie lo note, que es exactamente lo que
+    /// pasó con las 194 originales.
+    /// </summary>
+    [Fact]
+    public void Every_description_is_written_in_english()
+    {
+        string[] spanishVerbs =
+        [
+            "Ver ",
+            "Gestionar",
+            "Crear",
+            "Consultar",
+            "Enviar",
+            "Eliminar",
+            "Borrar",
+            "Cambiar",
+            "Activar",
+            "Revocar",
+            "Asignar",
+            "Emitir",
+            "Definir",
+            "Abrir",
+            "Iniciar",
+            "Adjuntar",
+            "Responder",
+            "Archivar",
+            "Descargar",
+            "Subir",
+            "Restaurar",
+            "Editar",
+            "Invitar",
+            "Comprar",
+            "del tenant",
+        ];
+
+        var offenders = PermissionCatalog
+            .All.Where(definition =>
+                definition.Description.Any(character => "áéíóúñ¿¡".Contains(character, StringComparison.Ordinal))
+                || spanishVerbs.Any(verb => definition.Description.Contains(verb, StringComparison.OrdinalIgnoreCase))
+            )
+            .Select(definition => $"{definition.Code}: {definition.Description}")
+            .ToList();
+
+        Assert.True(offenders.Count == 0, "Descripciones que no están en inglés: " + string.Join(" | ", offenders));
     }
 
     [Fact]
@@ -628,5 +709,19 @@ public sealed class PermissionCatalogTests
             if (code.StartsWith("tasks.", StringComparison.Ordinal))
                 Assert.Equal(TasksPermissions.PortalClientRequests, code);
         }
+    }
+
+    /// <summary>
+    /// §R.7 — A1/A7 hicieron explícitos dos permisos de Signature que el empleado YA ejercia por otra
+    /// vía: "My Signature" bastaba con request.create y extender el vencimiento con request.resend. Si
+    /// el bundle no los trae, el día del despliegue todos los preparadores pierden las dos cosas.
+    /// </summary>
+    [Fact]
+    public void The_employee_keeps_the_signature_work_he_could_already_do()
+    {
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(SignaturePermissions.PreparerManage, employee);
+        Assert.Contains(SignaturePermissions.RequestExpire, employee);
     }
 }

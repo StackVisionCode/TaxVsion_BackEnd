@@ -3,10 +3,7 @@ import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
 import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
-import type {
-  CommunicationIoServer,
-  CommunicationSocket,
-} from '../../../infrastructure/socket/build-io.js';
+import type { CommunicationIoServer, CommunicationSocket } from '../../../infrastructure/socket/build-io.js';
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
@@ -56,7 +53,10 @@ import { joinMeeting, type JoinMeetingResult } from '../../../application/use-ca
 import { rejoinMeeting, type RejoinMeetingResult } from '../../../application/use-cases/rejoin-meeting.js';
 import { leaveMeeting } from '../../../application/use-cases/leave-meeting.js';
 import { relayMeetingSignal } from '../../../application/use-cases/relay-meeting-signal.js';
-import { updateMeetingMediaStatus, updateRaiseHand } from '../../../application/use-cases/update-meeting-media-status.js';
+import {
+  updateMeetingMediaStatus,
+  updateRaiseHand,
+} from '../../../application/use-cases/update-meeting-media-status.js';
 import {
   admitParticipant,
   muteAllInMeeting,
@@ -199,7 +199,12 @@ async function performLeaveAfterGrace(
     await container.sfu
       .closeMeeting(meetingId)
       .catch((err: unknown) => logger.warn({ err, meetingId }, 'sfu closeMeeting failed'));
-    await clearMeetingBusyFor(container, tenantId, meetingId, snap.participants.map((p) => p.userId));
+    await clearMeetingBusyFor(
+      container,
+      tenantId,
+      meetingId,
+      snap.participants.map((p) => p.userId),
+    );
   } else {
     await clearMeetingBusyFor(container, tenantId, meetingId, [userId]);
   }
@@ -216,7 +221,13 @@ async function performLeaveAfterGrace(
     }),
   });
   if (snap?.status === 'Ended') {
-    await emitMeetingEndedToLists(container, emitter, tenantId, meetingId, snap.participants.map((p) => p.userId));
+    await emitMeetingEndedToLists(
+      container,
+      emitter,
+      tenantId,
+      meetingId,
+      snap.participants.map((p) => p.userId),
+    );
   }
 }
 
@@ -271,16 +282,17 @@ function wireMeetingSocket(
         envelope: envelope(closedDto),
       });
     }
-    await container.sfu.closeParticipant(meetingId, leavingUserId).catch((err: unknown) =>
-      logger.warn({ err, meetingId, userId: leavingUserId }, 'sfu closeParticipant failed'),
-    );
+    await container.sfu
+      .closeParticipant(meetingId, leavingUserId)
+      .catch((err: unknown) =>
+        logger.warn({ err, meetingId, userId: leavingUserId }, 'sfu closeParticipant failed'),
+      );
   };
 
   socket.on(MeetingSocketEvents.Join, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<JoinMeetingResult>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<JoinMeetingResult>) => void) : undefined;
     const parsed = JoinMeetingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -296,21 +308,28 @@ function wireMeetingSocket(
     // porque sus permissions vacios hacen fallar hasPermission en esos handlers.
     const isGuest = principal.actorType === 'Guest';
     if (isGuest) {
-      const ticketMeetingId = typeof principal.raw['meeting_id'] === 'string' ? principal.raw['meeting_id'] : undefined;
+      const ticketMeetingId =
+        typeof principal.raw['meeting_id'] === 'string' ? principal.raw['meeting_id'] : undefined;
       if (!ticketMeetingId || ticketMeetingId !== parsed.data.meetingId) {
         ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Guest ticket is not scoped to this meeting.' });
         return;
       }
     } else {
-      const joinPermCheck = await checkPermission(principal, CommunicationPermissions.MeetingJoin, container.userPermissions);
+      const joinPermCheck = await checkPermission(
+        principal,
+        CommunicationPermissions.MeetingJoin,
+        container.userPermissions,
+      );
       if (!joinPermCheck.allowed) {
         ack?.({ ok: false, code: joinPermCheck.code, message: joinPermCheck.message });
         return;
       }
     }
 
-    const guestDisplayName = typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
-    const guestInvitationId = typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
+    const guestDisplayName =
+      typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
+    const guestInvitationId =
+      typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
     // Fallback legible cuando el directorio no tiene fila (owner viejo de onboarding / race): el email
     // del JWT, para que la tile del participante nunca muestre el GUID crudo.
     const selfEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
@@ -324,7 +343,9 @@ function wireMeetingSocket(
         meetingId: parsed.data.meetingId,
         user: { userId, displayName: selfDisplayName, actorType: principal.actorType },
         ...(parsed.data.passcode !== undefined ? { passcode: parsed.data.passcode } : {}),
-        ...(parsed.data.invitationToken !== undefined ? { invitationToken: parsed.data.invitationToken } : {}),
+        ...(parsed.data.invitationToken !== undefined
+          ? { invitationToken: parsed.data.invitationToken }
+          : {}),
         ...(isGuest && guestInvitationId !== undefined ? { guestInvitationId } : {}),
         ...(parsed.data.audioDefault !== undefined ? { audioDefault: parsed.data.audioDefault } : {}),
         ...(parsed.data.videoDefault !== undefined ? { videoDefault: parsed.data.videoDefault } : {}),
@@ -373,7 +394,8 @@ function wireMeetingSocket(
   // room `m:{meetingId}` para un participante YA admitido, SIN media ni admisión. La room de chat del
   // meeting la re-une el join-on-connect. Devuelve el snapshot para reconciliar participantes.
   socket.on(MeetingSocketEvents.Rejoin, async (...args: unknown[]) => {
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<RejoinMeetingResult>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<RejoinMeetingResult>) => void) : undefined;
     const parsed = RejoinMeetingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -409,7 +431,11 @@ function wireMeetingSocket(
       tenantId,
       meetingId: parsed.data.meetingId,
       event: MeetingSocketEvents.ParticipantChanged,
-      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
+      envelope: envelope({
+        meetingId: parsed.data.meetingId,
+        participant: result.value.participant,
+        sequence: 0,
+      }),
     });
     await socket.leave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
@@ -419,9 +445,11 @@ function wireMeetingSocket(
     const meetingAfterLeave = await container.meetings.findById(tenantId, parsed.data.meetingId);
     const snap = meetingAfterLeave?.toSnapshot();
     if (snap?.status === 'Ended') {
-      await container.sfu.closeMeeting(parsed.data.meetingId).catch((err: unknown) =>
-        logger.warn({ err, meetingId: parsed.data.meetingId }, 'sfu closeMeeting failed'),
-      );
+      await container.sfu
+        .closeMeeting(parsed.data.meetingId)
+        .catch((err: unknown) =>
+          logger.warn({ err, meetingId: parsed.data.meetingId }, 'sfu closeMeeting failed'),
+        );
       // El meeting termino en cascada (host se fue sin cohost disponible) —
       // TODOS los que estaban dentro quedan Left en la misma llamada de
       // dominio, sin que sus propios sockets disparen un Leave individual.
@@ -460,9 +488,8 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.Admit, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void) : undefined;
     const parsed = AdmitPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -505,7 +532,11 @@ function wireMeetingSocket(
       tenantId,
       meetingId: parsed.data.meetingId,
       event: MeetingSocketEvents.ParticipantChanged,
-      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
+      envelope: envelope({
+        meetingId: parsed.data.meetingId,
+        participant: result.value.participant,
+        sequence: 0,
+      }),
     });
     // El admitido recibe su snapshot completo (conversationId + participantes +
     // estrategia): al salir de la sala de espera no hay otro modo de conocerlos.
@@ -519,9 +550,8 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.Remove, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void) : undefined;
     const parsed = RemovePayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -567,7 +597,11 @@ function wireMeetingSocket(
       tenantId,
       meetingId: parsed.data.meetingId,
       event: MeetingSocketEvents.ParticipantChanged,
-      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
+      envelope: envelope({
+        meetingId: parsed.data.meetingId,
+        participant: result.value.participant,
+        sequence: 0,
+      }),
     });
   });
 
@@ -575,7 +609,13 @@ function wireMeetingSocket(
     const parsed = LockPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
     const result = await setMeetingLocked(
-      { tenantId, correlationId: socket.id, meetingId: parsed.data.meetingId, hostUserId: userId, locked: parsed.data.locked },
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        locked: parsed.data.locked,
+      },
       container,
     );
     if (!result.isSuccess) {
@@ -717,9 +757,8 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.PromoteCohost, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void) : undefined;
     const parsed = PromoteCohostPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -744,9 +783,8 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.DemoteCohost, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void) : undefined;
     const parsed = DemoteCohostPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -854,12 +892,25 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.AttachRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ meetingId: string; recordingFileId: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ meetingId: string; recordingFileId: string }>) => void)
+        : undefined;
     const parsed = AttachMeetingRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const attachRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.MeetingRecord,
+      container.userPermissions,
+    );
+    if (!attachRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: attachRecordingPermCheck.code, message: attachRecordingPermCheck.message });
       return;
     }
     const result = await attachMeetingRecording(
@@ -891,12 +942,31 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.RequestRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ meetingId: string; participantUserIds: readonly string[]; requestedAtUtc: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (
+            r: SocketAck<{
+              meetingId: string;
+              participantUserIds: readonly string[];
+              requestedAtUtc: string;
+            }>,
+          ) => void)
+        : undefined;
     const parsed = RequestMeetingRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const requestRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.MeetingRecord,
+      container.userPermissions,
+    );
+    if (!requestRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: requestRecordingPermCheck.code, message: requestRecordingPermCheck.message });
       return;
     }
     const result = await requestMeetingRecording(
@@ -918,9 +988,10 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.RespondRecordingConsent, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
+        : undefined;
     const parsed = RespondMeetingRecordingConsentPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -945,12 +1016,25 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.StopRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ meetingId: string; elapsedSeconds: number }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ meetingId: string; elapsedSeconds: number }>) => void)
+        : undefined;
     const parsed = StopMeetingRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const stopRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.MeetingRecord,
+      container.userPermissions,
+    );
+    if (!stopRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: stopRecordingPermCheck.code, message: stopRecordingPermCheck.message });
       return;
     }
     const result = await stopMeetingRecording(
@@ -991,7 +1075,10 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.ChatSend, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ message: MessageDto }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ message: MessageDto }>) => void)
+        : undefined;
     const parsed = MeetingChatSendPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -999,14 +1086,21 @@ function wireMeetingSocket(
     }
     const conversationId = await resolveMeetingConversationId(parsed.data.meetingId);
     if (!conversationId) {
-      ack?.({ ok: false, code: 'Meeting.Chat.NotStarted', message: 'Meeting chat has not been created yet.' });
+      ack?.({
+        ok: false,
+        code: 'Meeting.Chat.NotStarted',
+        message: 'Meeting chat has not been created yet.',
+      });
       return;
     }
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.MeetingChatSend,
       tenantId,
       userId,
-      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.meetingChatSend.maxPerWindow),
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(
+        tenantId,
+        config.rateLimit.meetingChatSend.maxPerWindow,
+      ),
       windowSeconds: config.rateLimit.meetingChatSend.windowSeconds,
     });
     if (!allowed) {
@@ -1041,7 +1135,10 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.ChatEdit, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ edited: MessageEditedDto }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ edited: MessageEditedDto }>) => void)
+        : undefined;
     const parsed = MeetingChatEditPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -1073,7 +1170,10 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.ChatDelete, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ deleted: MessageDeletedDto }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ deleted: MessageDeletedDto }>) => void)
+        : undefined;
     const parsed = MeetingChatDeletePayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -1110,7 +1210,10 @@ function wireMeetingSocket(
 
   socket.on(MeetingSocketEvents.ChatMarkRead, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ markedCount: number }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ markedCount: number }>) => void)
+        : undefined;
     const parsed = MeetingChatMarkReadPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
@@ -1118,7 +1221,11 @@ function wireMeetingSocket(
     }
     const conversationId = await resolveMeetingConversationId(parsed.data.meetingId);
     if (!conversationId) {
-      ack?.({ ok: false, code: 'Meeting.Chat.NotStarted', message: 'Meeting chat has not been created yet.' });
+      ack?.({
+        ok: false,
+        code: 'Meeting.Chat.NotStarted',
+        message: 'Meeting chat has not been created yet.',
+      });
       return;
     }
     const result = await markMessagesRead(
@@ -1235,7 +1342,9 @@ function wireMeetingSocket(
       kind: parsed.data.kind,
       source: parsed.data.source,
     };
-    socket.to(`t:${tenantId}:m:${parsed.data.meetingId}`).emit(MeetingSocketEvents.SfuNewProducer, envelope(newProducer));
+    socket
+      .to(`t:${tenantId}:m:${parsed.data.meetingId}`)
+      .emit(MeetingSocketEvents.SfuNewProducer, envelope(newProducer));
   });
 
   socket.on(MeetingSocketEvents.SfuConsume, async (...args: unknown[]) => {
@@ -1313,7 +1422,10 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
-    const result = await listSfuRemoteProducers({ tenantId, meetingId: parsed.data.meetingId, userId }, container);
+    const result = await listSfuRemoteProducers(
+      { tenantId, meetingId: parsed.data.meetingId, userId },
+      container,
+    );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;

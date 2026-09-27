@@ -57,10 +57,16 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
             .TrustedDevices.IgnoreQueryFilters()
             .FirstOrDefaultAsync(device => device.DeviceTokenHash == deviceTokenHash, ct);
 
+    // IgnoreQueryFilters(): era la ÚNICA lectura del repositorio sin él, y por eso la pantalla de
+    // seguridad decía "No trusted devices" con la fila en la base, y "Remove" contestaba
+    // Mfa.DeviceNotFound. Los handlers corren en el scope de DI que crea Wolverine, donde no se puede
+    // confiar en que llegue el TenantContext de la request (ver LocalCommandTenantMiddleware): el
+    // filtro fail-closed compara contra Guid.Empty y devuelve 0 filas. El userId ya acota a un solo
+    // usuario de un solo tenant — misma razón que GetMethodsAsync y GetRecoveryCodesAsync.
     public async Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(
         Guid userId,
         CancellationToken ct = default
-    ) => await db.TrustedDevices.Where(device => device.UserId == userId).ToListAsync(ct);
+    ) => await db.TrustedDevices.IgnoreQueryFilters().Where(device => device.UserId == userId).ToListAsync(ct);
 
     public async Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default) =>
         await db.TrustedDevices.AddAsync(device, ct);

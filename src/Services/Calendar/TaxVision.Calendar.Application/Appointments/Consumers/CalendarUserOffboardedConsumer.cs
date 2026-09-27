@@ -56,7 +56,7 @@ public static class CalendarUserOffboardedConsumer
         {
             if (successor is { } newOrganizer)
                 appointment.ReassignOrganizer(newOrganizer);
-            else if (appointment.Cancel(msg.UserId, CancelReason, now).IsSuccess)
+            else if (appointment.Cancel(msg.UserId, canManageAll: true, CancelReason, now).IsSuccess)
                 cancelled.Add(appointment);
         }
 

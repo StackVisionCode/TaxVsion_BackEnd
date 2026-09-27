@@ -24,8 +24,15 @@ namespace TaxVision.Customer.Api.Controllers;
 [ApiController]
 [Route("customers/imports")]
 [Authorize]
+// Quien decide es el PERMISO, no el tipo de cuenta. `customers.import` sigue fuera del bundle del
+// empleado —no lo trae por defecto—, pero un administrador puede concederlo con un rol custom y a
+// partir de ahí ese empleado importa. Antes el tipo de cuenta lo bloqueaba de todos modos: darle
+// el permiso no servía de nada y el 403 no explicaba por qué.
+//
+// El gate sigue siendo de clase a propósito: quien puede importar necesita además ver el estado y
+// el informe de SU importación, que son los otros endpoints de acá.
 [HasPermission(CustomersPermissions.Import)]
-[AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 {
     // ---------- POST /customers/imports ----------

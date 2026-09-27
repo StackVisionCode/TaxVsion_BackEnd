@@ -265,6 +265,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new UpdateCustomerCommand(
             tenantId,
             id,
@@ -285,7 +287,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.Dba,
             body.BusinessStructure,
             body.FormationDate,
-            body.PrincipalBusinessActivityId
+            body.PrincipalBusinessActivityId,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(cmd, ct);
@@ -309,6 +312,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new AddAddressCommand(
             tenantId,
             id,
@@ -320,7 +325,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.Region,
             body.PostalCode,
             body.CountryCode,
-            body.IsPrimary
+            body.IsPrimary,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result<AddressResponse>>(cmd, ct);
@@ -346,6 +352,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new UpdateAddressCommand(
             tenantId,
             id,
@@ -358,7 +366,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.Region,
             body.PostalCode,
             body.CountryCode,
-            body.IsPrimary
+            body.IsPrimary,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);
@@ -380,7 +389,12 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new RemoveAddressCommand(tenantId, id, addressId, userId), ct);
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveAddressCommand(tenantId, id, addressId, userId, canViewAll),
+            ct
+        );
 
         if (result.IsSuccess)
             return NoContent();
@@ -405,7 +419,18 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var cmd = new AddContactPointCommand(tenantId, id, userId, body.Type, body.Value, body.Label, body.IsPrimary);
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var cmd = new AddContactPointCommand(
+            tenantId,
+            id,
+            userId,
+            body.Type,
+            body.Value,
+            body.Label,
+            body.IsPrimary,
+            canViewAll
+        );
 
         var result = await bus.InvokeAsync<Result<ContactPointResponse>>(cmd, ct);
 
@@ -430,6 +455,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new UpdateContactPointCommand(
             tenantId,
             id,
@@ -438,7 +465,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.Type,
             body.Value,
             body.Label,
-            body.IsPrimary
+            body.IsPrimary,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);
@@ -460,8 +488,10 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result>(
-            new RemoveContactPointCommand(tenantId, id, contactPointId, userId),
+            new RemoveContactPointCommand(tenantId, id, contactPointId, userId, canViewAll),
             ct
         );
 
@@ -484,6 +514,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new AddRelationCommand(
             tenantId,
             id,
@@ -503,7 +535,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.AddressCity,
             body.AddressRegion,
             body.AddressPostalCode,
-            body.AddressCountryCode
+            body.AddressCountryCode,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result<RelationResponse>>(cmd, ct);
@@ -529,6 +562,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new UpdateRelationCommand(
             tenantId,
             id,
@@ -549,7 +584,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.AddressCity,
             body.AddressRegion,
             body.AddressPostalCode,
-            body.AddressCountryCode
+            body.AddressCountryCode,
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);
@@ -571,7 +607,12 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new RemoveRelationCommand(tenantId, id, relationId, userId), ct);
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveRelationCommand(tenantId, id, relationId, userId, canViewAll),
+            ct
+        );
 
         if (result.IsSuccess)
             return NoContent();
@@ -914,13 +955,16 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var cmd = new RevealTaxIdentifierCommand(
             tenantId,
             id,
             userId,
             HttpContext.TraceIdentifier,
             HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString()
+            Request.Headers.UserAgent.ToString(),
+            canViewAll
         );
 
         var result = await bus.InvokeAsync<Result<RevealedTaxIdentifierResponse>>(cmd, ct);

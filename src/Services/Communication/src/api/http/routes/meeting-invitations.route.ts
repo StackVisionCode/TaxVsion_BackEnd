@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../../infrastructure/config.js';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import { sendRateLimited } from '../../../infrastructure/http/rate-limit-rejection.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
@@ -50,50 +52,67 @@ const InviteeKindMap: Record<'employee' | 'customer' | 'external', MeetingInvite
  * (communication.d.meeting_join_by_token/by_code), cuotas en
  * `config.rateLimit.meetingJoinByToken/ByCode`.
  */
-export async function registerMeetingInvitationRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
-  app.post('/communication/meetings/:id/invitations', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = CreateInvitationsBody.parse(request.body);
+export async function registerMeetingInvitationRoutes(
+  app: FastifyInstance,
+  container: AppContainer,
+): Promise<void> {
+  app.post(
+    '/communication/meetings/:id/invitations',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = CreateInvitationsBody.parse(request.body);
 
-    const result = await createMeetingInvitations(
-      {
-        tenantId: principal.tenantId,
-        correlationId: request.id,
-        meetingId: params.id,
-        actorUserId: principal.userId,
-        invitees: body.invitees.map((invitee) => ({
-          kind: InviteeKindMap[invitee.kind],
-          ...(invitee.userId !== undefined ? { userId: invitee.userId } : {}),
-          ...(invitee.customerId !== undefined ? { customerId: invitee.customerId } : {}),
-          ...(invitee.email !== undefined ? { email: invitee.email } : {}),
-          ...(invitee.name !== undefined ? { name: invitee.name } : {}),
-        })),
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.code(201).send(result.value);
-  });
+      const result = await createMeetingInvitations(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          actorUserId: principal.userId,
+          invitees: body.invitees.map((invitee) => ({
+            kind: InviteeKindMap[invitee.kind],
+            ...(invitee.userId !== undefined ? { userId: invitee.userId } : {}),
+            ...(invitee.customerId !== undefined ? { customerId: invitee.customerId } : {}),
+            ...(invitee.email !== undefined ? { email: invitee.email } : {}),
+            ...(invitee.name !== undefined ? { name: invitee.name } : {}),
+          })),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(201).send(result.value);
+    },
+  );
 
-  app.get('/communication/meetings/:id/invitations', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const result = await listMeetingInvitations(
-      { tenantId: principal.tenantId, meetingId: params.id, actorUserId: principal.userId },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(400).send({ code: result.error.code, message: result.error.message });
-    }
-    return reply.send(result.value);
-  });
+  app.get(
+    '/communication/meetings/:id/invitations',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const result = await listMeetingInvitations(
+        { tenantId: principal.tenantId, meetingId: params.id, actorUserId: principal.userId },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   app.delete(
     '/communication/meetings/:id/invitations/:invitationId',
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingHost)],
+    },
     async (request, reply) => {
       const principal = request.principal!;
       const params = InvitationIdParams.parse(request.params);
@@ -127,7 +146,11 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
           windowSeconds: config.rateLimit.meetingJoinByToken.windowSeconds,
         });
         if (!decision.allowed) {
-          return sendRateLimited(reply, decision.retryAfterSeconds, CommunicationRateLimitPolicyNames.MeetingJoinByToken);
+          return sendRateLimited(
+            reply,
+            decision.retryAfterSeconds,
+            CommunicationRateLimitPolicyNames.MeetingJoinByToken,
+          );
         }
       },
     },
@@ -139,7 +162,9 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
       );
       if (!result.isSuccess) {
         // Anti-enumeracion: siempre 404, sin distinguir revoked/used/expired/not-found.
-        return reply.code(404).send({ code: 'Meeting.Invitation.NotFound', message: 'Invitation not found or no longer valid.' });
+        return reply
+          .code(404)
+          .send({ code: 'Meeting.Invitation.NotFound', message: 'Invitation not found or no longer valid.' });
       }
       return reply.send(result.value);
     },
@@ -157,7 +182,11 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
           windowSeconds: config.rateLimit.meetingJoinByCode.windowSeconds,
         });
         if (!decision.allowed) {
-          return sendRateLimited(reply, decision.retryAfterSeconds, CommunicationRateLimitPolicyNames.MeetingJoinByCode);
+          return sendRateLimited(
+            reply,
+            decision.retryAfterSeconds,
+            CommunicationRateLimitPolicyNames.MeetingJoinByCode,
+          );
         }
       },
     },

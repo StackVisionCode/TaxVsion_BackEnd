@@ -20,6 +20,55 @@ namespace TaxVision.Auth.Tests.Application;
 /// </summary>
 public sealed class TenantSubscriptionEmailConsumerTests
 {
+    // ---------- A6: el re-anuncio del job de anti-entropía NO avisa a nadie ----------
+
+    [Theory]
+    [InlineData("Expired")]
+    [InlineData("Suspended")]
+    [InlineData("Active")]
+    public async Task A_reconciliation_never_sends_an_email(string status)
+    {
+        // `Expired` y `Suspended` notifican SIN mirar el motivo, así que el job de anti-entropía —que
+        // re-anuncia el estado actual a diario para que Auth converja— le habría mandado al tenant el
+        // correo de "tu suscripción venció" todos los días.
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, status, nameof(SubscriptionChangeReason.Reconciliation)),
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task A_real_expiration_still_sends_the_email()
+    {
+        // La otra mitad: silenciar el re-anuncio no puede silenciar la transición de verdad.
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, "Expired", nameof(SubscriptionChangeReason.SuspensionTimeout)),
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Single(bus.Published);
+    }
+
     [Fact]
     public async Task GracePeriod_publishes_email_request_for_primary_admin_with_subdomain_url()
     {

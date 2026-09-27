@@ -93,7 +93,12 @@ public sealed class JobQueriesLoadWhatTheyReadTests : IAsyncLifetime
             .Schedule(_tenant, AppointmentTitle.Create("Serie").Value, timing, Guid.NewGuid(), _organizer, Now)
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, timing, _organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            timing,
+            _organizer,
+            canManageAll: false
+        );
         series.RequestReminder(15);
         series.AddAttendee(
             AttendeeKind.InternalUser,
@@ -102,13 +107,21 @@ public sealed class JobQueriesLoadWhatTheyReadTests : IAsyncLifetime
             AttendeeSnapshot.Create("Empleado", "empleado@example.com").Value,
             isRequired: true,
             _organizer,
-            Now
+            Now,
+            canManageAll: false
         );
         // 9 de marzo de 2026 es lunes y ya esta en horario de verano: 9:00 en Nueva York son las
         // 13:00Z, no las 14:00Z. Se comprueba el Result porque una hora que no es ocurrencia se
         // rechaza en silencio y el test pasaria sin excepcion que cargar.
         Assert.True(
-            series.CancelOccurrence(new DateTime(2026, 3, 9, 13, 0, 0, DateTimeKind.Utc), _organizer, Now).IsSuccess
+            series
+                .CancelOccurrence(
+                    new DateTime(2026, 3, 9, 13, 0, 0, DateTimeKind.Utc),
+                    _organizer,
+                    canManageAll: false,
+                    Now
+                )
+                .IsSuccess
         );
 
         _context.Appointments.Add(series);

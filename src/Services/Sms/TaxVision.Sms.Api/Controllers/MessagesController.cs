@@ -19,8 +19,12 @@ namespace TaxVision.Sms.Api.Controllers;
 [Route("sms")]
 [Authorize]
 [AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
-public sealed class MessagesController(IMessageBus bus, ITenantContext tenant, ICorrelationContext correlation)
-    : ControllerBase
+public sealed class MessagesController(
+    IMessageBus bus,
+    ITenantContext tenant,
+    ICorrelationContext correlation,
+    IUserPermissionsSource permissions
+) : ControllerBase
 {
     public sealed record MediaItemRequest(string Url, string ContentType, string? FileName, long? SizeBytes);
 
@@ -54,8 +58,16 @@ public sealed class MessagesController(IMessageBus bus, ITenantContext tenant, I
             ))
             .ToList();
 
+        // El endpoint lo comparten los servicios (M2M) y las personas. Solo a una persona se le mide el
+        // alcance: un servicio no tiene cartera de clientes, y la campaña que dispara el envío ya
+        // resolvió la suya.
+        Guid? actorUserId =
+            User.GetActorType() == ActorType.Service || !User.TryGetUserId(out var userId) ? null : userId;
+        var canViewAll =
+            actorUserId is not null && await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
         var result = await bus.InvokeAsync<Result<SendSmsBatchResponse>>(
-            new SendSmsBatchCommand(tenant.TenantId, correlation.CorrelationId, items),
+            new SendSmsBatchCommand(tenant.TenantId, correlation.CorrelationId, items, actorUserId, canViewAll),
             ct
         );
 

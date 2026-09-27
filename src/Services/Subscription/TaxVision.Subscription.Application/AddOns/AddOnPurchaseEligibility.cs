@@ -70,7 +70,15 @@ public static class AddOnPurchaseEligibility
         return Result.Success((subscription, definition));
     }
 
-    /// <summary>Módulos de la versión CONTRATADA del plan; si ya no está, la publicada.</summary>
+    /// <summary>
+    /// Módulos de la versión PUBLICADA del plan — la misma que usa <c>EntitlementSnapshotBuilder</c>,
+    /// que es la que concede el acceso de verdad.
+    ///
+    /// Antes leía la versión contratada, y eso vendía módulos que el tenant ya tenía: al revisar un
+    /// plan, el recálculo le daba el módulo nuevo (el gate lo dejaba entrar) pero este guard seguía
+    /// mirando la versión vieja y no veía el módulo, así que el add-on aparecía comprable. El tenant
+    /// habría pagado por algo que ya estaba usando.
+    /// </summary>
     private static async Task<IReadOnlyList<string>> EnabledModulesAsync(
         TenantSubscription subscription,
         IPlanRepository plans,
@@ -79,8 +87,8 @@ public static class AddOnPurchaseEligibility
     {
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var version =
-            plan?.Versions.FirstOrDefault(candidate => candidate.Id == subscription.PlanVersionId)
-            ?? plan?.GetPublishedVersion();
+            plan?.GetPublishedVersion()
+            ?? plan?.Versions.FirstOrDefault(candidate => candidate.Id == subscription.PlanVersionId);
         return version is null ? [] : PlanVersionEntitlements.GetEnabledModules(version);
     }
 

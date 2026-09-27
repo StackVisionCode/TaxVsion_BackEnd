@@ -670,6 +670,14 @@ services:
       Customer__Minio__TempBucket: taxvision-temp
       Customer__Minio__SourcePrefix: customer
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CUSTOMER_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: customers
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -869,6 +877,14 @@ services:
       SystemEmailProvider__FromAddressDefault: ${SYSTEM_EMAIL_FROM_ADDRESS:-}
       SystemEmailProvider__FromDisplayNameDefault: ${SYSTEM_EMAIL_FROM_NAME:-}
       SystemEmailProvider__DisplayName: ${SYSTEM_EMAIL_DISPLAY_NAME:-}
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${POSTMASTER_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: email
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -918,6 +934,14 @@ services:
       Scribe__Minio__SecretKey: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
       Scribe__Minio__TempBucket: taxvision-temp
       Scribe__Minio__SourcePrefix: scribe
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${SCRIBE_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: documents
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1004,6 +1028,14 @@ services:
       ServiceAuthClient__ClientId: ${CONNECTORS_SERVICE_CLIENT_ID:-connectors-worker}
       ServiceAuthClient__ClientSecret: ${CONNECTORS_SERVICE_CLIENT_SECRET:-}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CONNECTORS_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: email
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1056,6 +1088,14 @@ services:
       Correspondence__Minio__TempBucket: taxvision-temp
       Correspondence__Minio__SourcePrefix: correspondence
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CORRESPONDENCE_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: email
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1113,6 +1153,14 @@ services:
       ServiceAuthClient__ClientSecret: ${NOTES_SERVICE_CLIENT_SECRET:-}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${NOTES_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: planner
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1228,6 +1276,14 @@ services:
       # Ejecutor loopback de prueba (dev/E2E): responde Delivered sin proveedor real. Prod = false.
       Campaigns__LoopbackExecutor__Enabled: ${CAMPAIGNS_LOOPBACK:-false}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CAMPAIGNS_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: campaigns
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1345,6 +1401,14 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${REMINDER_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: planner
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1391,6 +1455,14 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CALENDAR_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: planner
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1438,6 +1510,14 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${TASKS_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: planner
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1501,6 +1581,14 @@ services:
       ServiceAuthClient__ClientId: ${CLOUDSTORAGE_SERVICE_CLIENT_ID:-cloudstorage-worker}
       ServiceAuthClient__ClientSecret: ${CLOUDSTORAGE_SERVICE_CLIENT_SECRET:-}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${CLOUDSTORAGE_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: documents
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1580,6 +1668,14 @@ services:
       Signature__Sealing__Cms__CertificatePath: /run/secrets/signature-sealing.pfx
       Signature__Sealing__Cms__CertificatePassword: ${SIGNATURE_PFX_PASSWORD:?Set SIGNATURE_PFX_PASSWORD in .env}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${SIGNATURE_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: signatures
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1879,6 +1975,14 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Para bajar el logo del tenant (marca de Company settings) y estamparlo en el PDF de factura.
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
+      # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
+      #
+      # La LISTA de módulos es literal a propósito, no una variable: con `Enforce` en true y la lista
+      # vacía, el gate pasa a aplicar TODOS los módulos de golpe — un secret mal puesto saltaría el
+      # escalón completo en silencio. Así el único grado de libertad es el booleano.
+      Authorization__ModuleGate__Enforce: ${DOCUMENTS_MODULE_GATE_ENFORCE:-false}
+      Authorization__ModuleGate__EnforcedModules__0: documents
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1970,6 +2074,14 @@ services:
       # redespliega → el picker de customers y el gate de chat pasan a filtrar por asignación en TODOS
       # los tenants. El setting por-tenant restrictCustomerChatToAssignedPreparer sigue como opt-in aparte.
       COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED: ${COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED:-false}
+      # A6 — gate de módulo. Booleano y no lista porque este servicio solo emite permisos
+      # `communication.*` -> módulo `comms`: la lista tendría siempre una sola entrada. Las exenciones
+      # (notificaciones in-app y chat de soporte) van en el código, no en la configuración.
+      COMMUNICATION_MODULE_GATE_ENFORCE: ${COMMUNICATION_MODULE_GATE_ENFORCE:-false}
+      # El escalon por modulo. Literal y no variable, por el mismo motivo que en los servicios .NET:
+      # una lista vacia hace que se apliquen TODOS los modulos de golpe, asi que un secret vacio
+      # saltaria el escalon completo en silencio.
+      COMMUNICATION_MODULE_GATE_ENFORCED_MODULES: comms
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}

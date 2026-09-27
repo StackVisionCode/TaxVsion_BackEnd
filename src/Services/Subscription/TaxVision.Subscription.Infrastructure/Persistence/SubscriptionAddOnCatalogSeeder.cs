@@ -6,43 +6,36 @@ using TaxVision.Subscription.Domain.ValueObjects;
 namespace TaxVision.Subscription.Infrastructure.Persistence;
 
 /// <summary>
-/// Siembra el catálogo de add-ons de módulo con precios armonizados a los planes (anual = mensual × 10,
+/// Siembra el catálogo de add-ons de módulo (<see cref="ModuleAddOnCatalog"/>) con precios armonizados
+/// a los planes (anual = mensual × 10,
 /// mismo criterio de "2 meses gratis"). Idempotente: no hace nada si ya existe un add-on. Construye vía
 /// la API de dominio (Seed/AddFeature/AddPriceTier/Publish). Precios de arranque — PlatformAdmin los edita
 /// por endpoint.
 /// </summary>
 public static class SubscriptionAddOnCatalogSeeder
 {
-    // (Id fijo, código, nombre, módulo que habilita, precio mensual USD). à la carte por encima del
-    // precio "por módulo" del bundle → incentiva el upgrade de plan.
-    private static readonly (Guid Id, string Code, string Name, string Module, decimal MonthlyUsd)[] AddOns =
-    [
-        (new Guid("d1000000-0000-0000-0000-000000000001"), "addon-email", "Correo", "email", 29m),
-        (new Guid("d1000000-0000-0000-0000-000000000002"), "addon-comms", "Comunicacion", "comms", 29m),
-        (new Guid("d1000000-0000-0000-0000-000000000003"), "addon-campaigns", "Campanas", "campaigns", 29m),
-        (new Guid("d1000000-0000-0000-0000-000000000004"), "addon-reports", "Reportes", "reports", 29m),
-        (new Guid("d1000000-0000-0000-0000-000000000005"), "addon-marketing", "Marketing", "marketing", 49m),
-        (new Guid("d1000000-0000-0000-0000-000000000006"), "addon-builder", "Builder", "builder", 49m),
-        (new Guid("d1000000-0000-0000-0000-000000000007"), "addon-irs", "IRS", "irs", 49m),
-        (new Guid("d1000000-0000-0000-0000-000000000008"), "addon-miles", "Millas", "miles", 49m),
-    ];
-
     public static async Task SeedAsync(SubscriptionDbContext db, CancellationToken ct)
     {
         if (await db.AddOnDefinitions.AnyAsync(ct))
             return;
 
         var nowUtc = DateTime.UtcNow;
-        foreach (var addOn in AddOns)
-            db.AddOnDefinitions.Add(Build(addOn, nowUtc));
+        // Se siembran TODOS, incluidos los que no se ofrecen: así una instalación nueva queda igual
+        // que una existente después de reconciliar, y el día que la feature exista solo hay que
+        // volver a publicarlo en vez de crear una definición nueva con otro id.
+        foreach (var addOn in ModuleAddOnCatalog.All)
+            db.AddOnDefinitions.Add(BuildDefinition(addOn, nowUtc));
 
         await db.SaveChangesAsync(ct);
     }
 
-    private static AddOnDefinition Build(
-        (Guid Id, string Code, string Name, string Module, decimal MonthlyUsd) addOn,
-        DateTime nowUtc
-    )
+    /// <summary>
+    /// Construye la definición desde la entrada del catálogo. Público porque lo necesita también el
+    /// reconciliador de arranque: un add-on NUEVO no llega nunca a una base ya sembrada (este seeder
+    /// solo actúa si la tabla está vacía), y duplicar la construcción sería la forma segura de que las
+    /// dos versiones acabaran con precios o features distintos.
+    /// </summary>
+    public static AddOnDefinition BuildDefinition(ModuleAddOnDefinition addOn, DateTime nowUtc)
     {
         var definition = AddOnDefinition
             .Seed(
@@ -84,7 +77,11 @@ public static class SubscriptionAddOnCatalogSeeder
                 )
                 .Value
         );
-        definition.Publish(Guid.Empty, nowUtc);
+        // Un add-on sin nada construido detrás se queda en Draft: nunca llega a la tienda. El caso
+        // contrario —una base donde YA se había publicado— lo resuelve el reconciliador de arranque.
+        if (addOn.Offered)
+            definition.Publish(Guid.Empty, nowUtc);
+
         return definition;
     }
 }

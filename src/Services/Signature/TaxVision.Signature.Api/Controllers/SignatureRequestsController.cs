@@ -507,7 +507,9 @@ public sealed class SignatureRequestsController(
 
     // ---------- POST /signature/requests/{id}/extend-expiration ----------
     [HttpPost("{id:guid}/extend-expiration")]
-    [HasPermission(SignaturePermissions.RequestResend)]
+    // Extender el vencimiento tiene su propio permiso: reenviarle el correo a un firmante y darle más
+    // días de validez a una solicitud no son la misma decisión.
+    [HasPermission(SignaturePermissions.RequestExpire)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

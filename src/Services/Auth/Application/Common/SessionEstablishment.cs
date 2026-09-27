@@ -35,6 +35,10 @@ public static class SessionEstablishment
     /// revoque las anteriores y cree la nueva. Sin sesiones previas, emite normal. Debe pasar por acá
     /// cada punto que iba a mintear una sesión ya autenticada (login directo, verificación MFA, canje
     /// de handoff), para que el gate sea único y no se pueda saltar por una rama.
+    /// <para>
+    /// <paramref name="rememberDevice"/> viaja en el vale porque el dispositivo de confianza no se puede
+    /// crear sin sesión: lo cumple <c>TakeoverSessionHandler</c> al confirmar.
+    /// </para>
     /// </summary>
     public static async Task<SessionOutcome> IssueOrRequireTakeoverAsync(
         User user,
@@ -47,7 +51,8 @@ public static class SessionEstablishment
         IAuthSessionIssuer issuer,
         ISessionRepository sessions,
         ISessionTakeoverTicketStore takeoverTickets,
-        CancellationToken ct
+        CancellationToken ct,
+        bool rememberDevice = false
     )
     {
         // IgnoreQueryFilters ya aplicado en el repo (guardrail #8): el login corre pre-JWT, sin tenant
@@ -62,7 +67,8 @@ public static class SessionEstablishment
                     [.. authMethods],
                     deviceName,
                     mustEnrollMfa,
-                    surface
+                    surface,
+                    rememberDevice
                 ),
                 ct
             );

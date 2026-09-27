@@ -26,8 +26,18 @@ public sealed record SmsSendItemDto(
     string? RecipientName = null
 );
 
-/// <summary>Envío de 1..N mensajes. TenantId y CorrelationId los pone el controller (JWT + header).</summary>
-public sealed record SendSmsBatchCommand(Guid TenantId, string CorrelationId, IReadOnlyList<SmsSendItemDto> Items);
+/// <summary>
+/// Envío de 1..N mensajes. TenantId y CorrelationId los pone el controller (JWT + header).
+/// <paramref name="ActorUserId"/> es null cuando quien envía es un servicio (M2M): no hay usuario cuyo
+/// alcance medir, y la campaña que dispara el envío ya resolvió su propia audiencia.
+/// </summary>
+public sealed record SendSmsBatchCommand(
+    Guid TenantId,
+    string CorrelationId,
+    IReadOnlyList<SmsSendItemDto> Items,
+    Guid? ActorUserId,
+    bool CanViewAll
+);
 
 public sealed record SmsSendItemResult(
     Guid? MessageId,
@@ -48,6 +58,8 @@ public static class SendSmsBatchHandler
         ISmsOptOutRepository optOuts,
         ISmsProviderRouter router,
         IOptions<SmsOptions> options,
+        IOptions<SmsVisibilityOptions> visibility,
+        ISmsCustomerAssignmentReader assignments,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<SendSmsBatchCommand> logger,
@@ -74,8 +86,22 @@ public static class SendSmsBatchHandler
 
         var results = new List<SmsSendItemResult>(command.Items.Count);
 
+        // Visibilidad por asignación: un preparador solo le escribe a sus clientes. Se resuelve el set
+        // una vez para todo el lote — no una consulta por item. Null = sin restricción: servicio M2M,
+        // `customers.view_all` o el flag apagado.
+        var assignedTo = visibility.Value.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
+        var allowedCustomers = assignedTo is { } sender
+            ? (await assignments.GetAssignedCustomerIdsAsync(command.TenantId, sender, ct)).ToHashSet()
+            : null;
+
         foreach (var item in command.Items)
         {
+            if (allowedCustomers is not null && !allowedCustomers.Contains(item.CustomerId))
+            {
+                results.Add(Failed(item, SmsErrors.CustomerNotAssigned.Code));
+                continue;
+            }
+
             var result = await ProcessItemAsync(
                 item,
                 command.TenantId,

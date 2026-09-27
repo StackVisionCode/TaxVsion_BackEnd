@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
@@ -71,6 +73,24 @@ public sealed class ReauthenticateHandlerTests
         Assert.Equal(0, world.Admin.FailedLoginCount);
     }
 
+    /// <summary>
+    /// El step-up sigue el MISMO interruptor que el login (`Mfa:Enforced`). Antes miraba solo si
+    /// había un TOTP confirmado: en desarrollo local, donde el login no pide segundo factor, el
+    /// step-up igual lo exigía y era imposible completarlo — el 400 llegaba como
+    /// `Auth.MfaCodeRequired` y la pantalla del Account lo mostraba como un error genérico.
+    /// </summary>
+    [Fact]
+    public async Task With_mfa_not_enforced_the_step_up_does_not_ask_for_a_code()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, _) = await world.StartWorkspaceSessionAsync();
+        var mfa = WithTotp(world);
+
+        var result = await HandleAsync(world, sessionId, Password, mfa: mfa, mfaEnforced: false);
+
+        Assert.True(result.IsSuccess);
+    }
+
     [Fact]
     public async Task With_an_authenticator_app_a_wrong_code_fails_and_the_right_one_elevates()
     {
@@ -111,7 +131,10 @@ public sealed class ReauthenticateHandlerTests
         string password,
         string? code = null,
         FakeMfaRepository? mfa = null,
-        SessionSurface surface = SessionSurface.Workspace
+        SessionSurface surface = SessionSurface.Workspace,
+        // El step-up sigue el mismo interruptor que el login. Por defecto EXIGIDO, que es como
+        // corre producción; los tests que prueban el apagado lo pasan en false.
+        bool mfaEnforced = true
     ) =>
         ReauthenticateHandler.Handle(
             new ReauthenticateCommand(world.Admin.Id, sessionId, surface, password, code),
@@ -121,6 +144,7 @@ public sealed class ReauthenticateHandlerTests
             world.Roles,
             new PrefixPasswordHasher(),
             mfa ?? new FakeMfaRepository([]),
+            Options.Create(new MfaOptions { Enforced = mfaEnforced }),
             new FixedTotpService(),
             new PlainSecretProtector(),
             world.TokenService,
@@ -204,8 +228,13 @@ public sealed class ReauthenticateHandlerTests
         public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        /// <summary>
+        /// Sin política propia del tenant: `MfaRequirement` cae entonces al default por actor type
+        /// (TenantAdmin/PlatformAdmin lo exigen). La consulta el step-up desde que respeta el mismo
+        /// interruptor que el login.
+        /// </summary>
         public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+            Task.FromResult<TenantMfaPolicy?>(null);
 
         public Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default) =>
             throw new NotSupportedException();

@@ -57,19 +57,6 @@ public sealed class AuthzPermissionsProjectionTests
     }
 
     [Fact]
-    public void AuthzUserPermissionsProjection_ReapplyPermissionsUnion_does_not_change_version_or_roles()
-    {
-        var roleId = Guid.NewGuid();
-        var projection = AuthzUserPermissionsProjection.Create(Guid.NewGuid(), Guid.NewGuid(), 5, ["a"], [roleId]);
-
-        projection.ReapplyPermissionsUnion(["a", "b", "c"]);
-
-        Assert.Equal(5, projection.PermissionsVersion);
-        Assert.Equal([roleId], projection.RoleIds());
-        Assert.Equal(["a", "b", "c"], projection.PermissionCodes());
-    }
-
-    [Fact]
     public void AuthzRolePermissionsProjection_Create_uses_the_role_id_as_the_entity_id()
     {
         var roleId = Guid.NewGuid();

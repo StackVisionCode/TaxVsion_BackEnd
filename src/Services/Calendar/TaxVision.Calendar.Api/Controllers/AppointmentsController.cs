@@ -220,6 +220,10 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        // Override de la oficina: sin esto una cita queda congelada si su organizador se va o
+        // se enferma — nadie más puede moverla ni cancelarla.
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+
         var result = await bus.InvokeAsync<Result<AppointmentResponse>>(
             new RescheduleAppointmentCommand(
                 tenantId,
@@ -233,7 +237,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.LocalStartTime,
                 request.Duration,
                 request.TimeZoneId,
-                request.RecurrenceRule
+                request.RecurrenceRule,
+                canManageAll
             ),
             ct
         );
@@ -253,6 +258,10 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        // Override de la oficina: sin esto una cita queda congelada si su organizador se va o
+        // se enferma — nadie más puede moverla ni cancelarla.
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+
         var result = await bus.InvokeAsync<Result>(
             new CancelAppointmentCommand(
                 tenantId,
@@ -260,7 +269,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 userId,
                 request.Scope,
                 request.OriginalStartUtc,
-                request.Reason
+                request.Reason,
+                canManageAll
             ),
             ct
         );
@@ -280,6 +290,10 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        // Override de la oficina: sin esto una cita queda congelada si su organizador se va o
+        // se enferma — nadie más puede moverla ni cancelarla.
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+
         var result = await bus.InvokeAsync<Result<AppointmentResponse>>(
             new AddAttendeeCommand(
                 tenantId,
@@ -290,7 +304,8 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
                 request.CustomerId,
                 request.DisplayName,
                 request.Email,
-                request.IsRequired
+                request.IsRequired,
+                canManageAll
             ),
             ct
         );
@@ -306,8 +321,12 @@ public sealed class AppointmentsController(IMessageBus bus, IUserPermissionsSour
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        // Override de la oficina: sin esto una cita queda congelada si su organizador se va o
+        // se enferma — nadie más puede moverla ni cancelarla.
+        var canManageAll = await permissionsSource.HasPermissionAsync(User, CalendarPermissions.ManageAll, ct);
+
         var result = await bus.InvokeAsync<Result>(
-            new RemoveAttendeeCommand(tenantId, appointmentId, attendeeId, userId),
+            new RemoveAttendeeCommand(tenantId, appointmentId, attendeeId, userId, canManageAll),
             ct
         );
 

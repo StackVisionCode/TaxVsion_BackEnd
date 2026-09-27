@@ -44,7 +44,10 @@ class FakeMeetingRepository implements MeetingRepository {
     const m = this.meetings.get(meetingId);
     return m && m.tenantId === tenantId ? m : null;
   }
-  async findByShortCode(): Promise<Meeting | null> {
+  async findByShortCode(tenantId: string, shortCode: string): Promise<Meeting | null> {
+    for (const m of this.meetings.values()) {
+      if (m.tenantId === tenantId && m.toSnapshot().shortCode === shortCode) return m;
+    }
     return null;
   }
   async findByShortCodeAnyTenant(): Promise<Meeting | null> {
@@ -547,6 +550,77 @@ describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado
       invitationId: created.value.invitations[0]!.id,
     };
   }
+
+  // ---------- Entrar con el codigo corto (hallazgo del QA de C9) ----------
+
+  it('unirse con el CODIGO CORTO funciona: es el unico dato que tiene quien lo recibe', async () => {
+    // `GET /meetings/by-code/:code` devuelve titulo y host, nunca el id, asi que el cliente manda el
+    // codigo como `meetingId`. `findByShortCode` existia pero no lo llamaba nadie: el join respondia
+    // `Meeting.NotFound` SIEMPRE y el camino entero estaba muerto.
+    const harness = buildHarness();
+    const tenantId = u();
+    const { meeting, host } = liveMeetingIn(tenantId);
+    await harness.meetings.save(meeting);
+
+    const joined = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: meeting.toSnapshot().shortCode,
+        user: { userId: host.userId, displayName: 'Host' },
+      },
+      harness,
+    );
+
+    expect(joined.isSuccess).toBe(true);
+  });
+
+  it('un codigo de OTRA oficina no entra', async () => {
+    // El fallback es tenant-scoped igual que la busqueda por id: el codigo es publico y compartible,
+    // pero no cruza oficinas.
+    const harness = buildHarness();
+    const mine = u();
+    const theirs = liveMeetingIn(u());
+    await harness.meetings.save(theirs.meeting);
+
+    const joined = await joinMeeting(
+      {
+        tenantId: mine,
+        correlationId: u(),
+        meetingId: theirs.meeting.toSnapshot().shortCode,
+        user: { userId: u(), displayName: 'Intruso' },
+      },
+      harness,
+    );
+
+    expect(joined.isSuccess).toBe(false);
+    if (!joined.isSuccess) expect(joined.error.code).toBe('Meeting.NotFound');
+  });
+
+  it('entrando por codigo, la invitacion se sigue comparando contra el id REAL', async () => {
+    // Si se comparara contra lo que mando el cliente (el codigo), toda invitacion valida seria
+    // rechazada al entrar por codigo.
+    const harness = buildHarness();
+    const tenantId = u();
+    const { meeting, host } = liveMeetingIn(tenantId);
+    // Bloqueada: asi el join SOLO pasa si la invitacion se valido. Sin esto el test seria vacuo.
+    meeting.setLocked({ hostUserId: host.userId, locked: true });
+    await harness.meetings.save(meeting);
+    const { token } = await invite(harness, meeting, host.userId, { kind: 'External', email: 'x@example.test' });
+
+    const joined = await joinMeeting(
+      {
+        tenantId,
+        correlationId: u(),
+        meetingId: meeting.toSnapshot().shortCode,
+        user: { userId: u(), displayName: 'Invitado' },
+        invitationToken: token,
+      },
+      harness,
+    );
+
+    expect(joined.isSuccess).toBe(true);
+  });
 
   it('un token emitido para un meeting no destraba otro meeting del mismo tenant', async () => {
     const harness = buildHarness();

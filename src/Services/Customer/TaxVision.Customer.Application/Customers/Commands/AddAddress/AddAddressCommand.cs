@@ -13,5 +13,6 @@ public sealed record AddAddressCommand(
     string? Region,
     string PostalCode,
     string CountryCode,
-    bool IsPrimary
+    bool IsPrimary,
+    bool CallerCanViewAllCustomers
 );

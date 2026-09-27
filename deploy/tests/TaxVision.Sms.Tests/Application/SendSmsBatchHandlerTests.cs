@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application;
+using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Messages.Commands;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Domain;
@@ -30,6 +31,11 @@ public sealed class SendSmsBatchHandlerTests
         /// <summary>Cadena de proveedores (failover). Vacía ⇒ solo <see cref="Provider"/>.</summary>
         public List<ISmsProvider> Order { get; } = [];
 
+        public SmsVisibilityOptions Visibility { get; } = new();
+
+        /// <summary>Clientes asignados al remitente; solo se consulta cuando el alcance aplica.</summary>
+        public FakeSmsCustomerAssignmentReader Assignments { get; } = new();
+
         public Task<BuildingBlocks.Results.Result<SendSmsBatchResponse>> Run(SendSmsBatchCommand command)
         {
             IReadOnlyList<ISmsProvider> order = Order.Count > 0 ? Order : [Provider];
@@ -39,6 +45,8 @@ public sealed class SendSmsBatchHandlerTests
                 OptOuts,
                 new FakeSmsProviderRouter(order),
                 Microsoft.Extensions.Options.Options.Create(Options),
+                Microsoft.Extensions.Options.Options.Create(Visibility),
+                Assignments,
                 UnitOfWork,
                 Bus,
                 NullLogger<SendSmsBatchCommand>.Instance,
@@ -54,7 +62,12 @@ public sealed class SendSmsBatchHandlerTests
         IReadOnlyList<SmsMediaDto>? media = null
     ) => new(Customer, to, message, media, idempotencyKey, "docs");
 
-    private static SendSmsBatchCommand Batch(params SmsSendItemDto[] items) => new(Tenant, "corr-1", items);
+    private static SendSmsBatchCommand Batch(params SmsSendItemDto[] items) =>
+        new(Tenant, "corr-1", items, ActorUserId: null, CanViewAll: false);
+
+    /// <summary>Lote enviado por una persona: es el único caso al que se le mide el alcance.</summary>
+    private static SendSmsBatchCommand BatchFrom(Guid sender, bool canViewAll, params SmsSendItemDto[] items) =>
+        new(Tenant, "corr-1", items, sender, canViewAll);
 
     [Fact]
     public async Task Empty_batch_fails()
@@ -290,4 +303,73 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(1, secondary.SendAsyncCallCount);
         Assert.Equal("p2", h.Messages.Added[0].ProviderCode);
     }
+    // ---------- A1: visibilidad por asignación ----------
+
+    [Fact]
+    public async Task A_preparer_cannot_text_a_customer_that_is_not_his()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+
+        var result = await h.Run(BatchFrom(Guid.NewGuid(), canViewAll: false, Item()));
+
+        Assert.True(result.IsSuccess);
+        var only = Assert.Single(result.Value.Results);
+        Assert.Equal(SmsErrors.CustomerNotAssigned.Code, only.ErrorCode);
+        Assert.Null(only.MessageId);
+        Assert.Empty(h.Messages.Added);
+    }
+
+    [Fact]
+    public async Task A_preparer_texts_his_own_customer()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+        h.Assignments.Assigned.Add(Customer);
+
+        var result = await h.Run(BatchFrom(Guid.NewGuid(), canViewAll: false, Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
+    }
+
+    [Fact]
+    public async Task View_all_lifts_the_scope_and_costs_no_query()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+
+        var result = await h.Run(BatchFrom(Guid.NewGuid(), canViewAll: true, Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
+        Assert.False(h.Assignments.WasAsked);
+    }
+
+    [Fact]
+    public async Task A_service_caller_is_never_scoped()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+
+        // ActorUserId null = M2M: la campaña ya resolvió su audiencia.
+        var result = await h.Run(Batch(Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
+        Assert.False(h.Assignments.WasAsked);
+    }
+
+    [Fact]
+    public async Task With_the_flag_off_nothing_changes()
+    {
+        var h = new Harness();
+
+        var result = await h.Run(BatchFrom(Guid.NewGuid(), canViewAll: false, Item()));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
+        Assert.False(h.Assignments.WasAsked);
+    }
+
 }

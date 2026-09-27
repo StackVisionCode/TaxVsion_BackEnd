@@ -7371,15 +7371,37 @@ módulo. No es RBAC: es **entitlement comercial**.
   solo se enciende si la base da acceso (estados {Trialing, Active, PastDue, GracePeriod}); en
   Suspended/Cancelled/Expired/Draft se apaga (fail-closed) — esto cierra el gap histórico *"el
   downgrade no revocaba el módulo"*.
-- **Propagación**: los **12+ servicios gateados** + Auth consumen el evento y derivan
+- **Propagación**: los **13 servicios gateados** + Auth consumen el evento y derivan
   `EnabledModules` con el mismo helper compartido (`TenantEntitlementModuleExtensions`,
   `bool.TryParse(value) && enabled`), persistido en su `TenantPlanCodeProjection` local. El gate de
   runtime niega el módulo entero cuando su valor está en `false` — sin llamada síncrona a
   Subscription (mismo criterio de proyección local que la Capa 1).
 - **Prefijo→módulo**: `PermissionModuleMap` (código, `BuildingBlocks.Authorization`) mapea el prefijo
-  de permiso (`email.` → `email`) al módulo. Un módulo nuevo exige agregar su línea + deploy.
+  de permiso (`email.` → `email`) al módulo. Se evalúa **en orden y gana el primero que calza**: hoy
+  el único par solapado es `communication.meeting.` (→ `meetings`) antes de `communication.` (→
+  `comms`), porque las reuniones se venden aparte del chat. Invertirlos no rompe la compilación —
+  manda las reuniones a `comms` en silencio.
+- **Exenciones** (`PermissionModuleMap.Exempt`): `communication.notification.read`,
+  `communication.support.open` y `communication.support.agent` caen bajo un prefijo con módulo **sin
+  ser** la feature que ese módulo vende. Las notificaciones in-app son transversales (avisan de
+  documentos, firmas y tareas) y soporte es la vía para SALIR de un problema de plan. Se resuelven en
+  el mapa y no en el gate, para que el gate en runtime, el techo de plan al otorgar permisos y el
+  bootstrap `/auth/me/access` coincidan sin coordinarse.
 - **Add-ons**: un add-on enciende un `module.*` igual que un plan; su facturación (dependiente,
-  co-terminada, prorrateada, absorbible) se documenta aparte — ver §32.1.
+  co-terminada, prorrateada, absorbible) se documenta aparte.
+- **Escalón de despliegue**: `Authorization:ModuleGate:Enforce` + `EnforcedModules` deciden si un
+  módulo DENIEGA o solo se registra, **módulo por módulo** (`ModuleGateSettings`). El registro
+  (`AddModuleGate`) valida la lista al arrancar: con el gate en enforce, un nombre mal escrito tira el
+  servicio en vez de dejarlo en log-only creyendo lo contrario. Cada servicio deja su modo en el log:
+  `Module gate registered: ENFORCING (modules: email).` Node tiene su par equivalente
+  (`COMMUNICATION_MODULE_GATE_ENFORCE` + `..._ENFORCED_MODULES`), porque emite permisos de dos módulos.
+- **`null` ≠ `[]`**: sin fila de proyección = todavía no se sabe → **no gatea**; lista vacía = se sabe
+  que no tiene ningún módulo (suscripción vencida) → **gatea**. Confundirlas da acceso completo a un
+  tenant vencido.
+
+> **Para cablear un módulo, un plan o un microservicio nuevo**, la guía paso a paso con los ficheros
+> exactos y las trampas ya encontradas está en
+> [`documents/architecture/Guia_Cablear_Modulo_Plan_Microservicio.md`](documents/architecture/Guia_Cablear_Modulo_Plan_Microservicio.md).
 
 Modelo completo de los **4 ejes** (Identidad/ActorType · Capacidad/RBAC · **Módulos/Entitlements** ·
 Propiedad/Ownership) con diagramas: [`Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md`](../../Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md).

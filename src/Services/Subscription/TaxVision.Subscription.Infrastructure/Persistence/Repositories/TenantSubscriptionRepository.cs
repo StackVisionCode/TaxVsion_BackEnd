@@ -65,6 +65,19 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
+        IReadOnlyCollection<SubscriptionStatus> statuses,
+        Guid afterTenantId,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s => statuses.Contains(s.Status) && s.TenantId.CompareTo(afterTenantId) > 0)
+            .OrderBy(s => s.TenantId)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
         DateTime cutoffUtc,
         int batchSize,

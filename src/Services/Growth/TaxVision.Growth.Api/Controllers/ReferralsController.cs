@@ -100,6 +100,10 @@ public sealed class ReferralsController(
 
     [HttpPost("attributions")]
     [RateLimit("growth.h.referral_attribution_create")]
+    // Declarar que a esta oficina la refirieron dispara un beneficio (ver TryIssueRefereeBenefitAsync):
+    // es una acción comercial de la oficina, no un trámite neutro, y hasta ahora no pedía permiso
+    // alguno. Se gatea con el mismo que su endpoint hermano (emitir el código propio).
+    [HasPermission(GrowthPermissions.ReferralsOwnRead)]
     [ProducesResponseType<CreateAttributionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateAttribution(
         CreateAttributionRequest request,

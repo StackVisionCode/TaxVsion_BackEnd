@@ -43,6 +43,7 @@ public sealed class ProjectionPermissionsSource(
     IUserPermissionsProjectionReader reader,
     IMemoryCache cache,
     ILogger<ProjectionPermissionsSource> logger,
+    AuthorizationMetrics metrics,
     IPermissionsSnapshotClient? snapshotClient = null,
     IUserPermissionsProjectionWriter? projectionWriter = null
 ) : IUserPermissionsSource
@@ -111,7 +112,10 @@ public sealed class ProjectionPermissionsSource(
         }
 
         if (jwtPermissionsVersion < snapshot.PermissionsVersion)
+        {
+            metrics.RecordTokenStale();
             throw new UnauthorizedAccessException("Auth.TokenStale");
+        }
 
         return snapshot.PermissionCodes.Contains(permission, StringComparer.Ordinal);
     }

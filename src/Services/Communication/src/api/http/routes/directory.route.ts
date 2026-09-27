@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import { searchEmployeeDirectory } from '../../../application/use-cases/search-employee-directory.js';
 import { searchCustomerDirectory } from '../../../application/use-cases/search-customer-directory.js';
@@ -22,31 +24,47 @@ const STAFF_ONLY = { code: 'Auth.Forbidden', message: 'Directory search is staff
  * conversacion ya sembrada), no por este autocomplete abierto.
  */
 export async function registerDirectoryRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
-  app.get('/communication/directory/employees', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
-    const query = SearchQuery.parse(request.query);
-    const results = await searchEmployeeDirectory(
-      { tenantId: principal.tenantId, query: query.q, ...(query.limit !== undefined ? { limit: query.limit } : {}) },
-      container,
-    );
-    return reply.send(results);
-  });
+  app.get(
+    '/communication/directory/employees',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
+      const query = SearchQuery.parse(request.query);
+      const results = await searchEmployeeDirectory(
+        {
+          tenantId: principal.tenantId,
+          query: query.q,
+          ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        },
+        container,
+      );
+      return reply.send(results);
+    },
+  );
 
-  app.get('/communication/directory/customers', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
-    const query = SearchQuery.parse(request.query);
-    const results = await searchCustomerDirectory(
-      {
-        tenantId: principal.tenantId,
-        query: query.q,
-        actorUserId: principal.userId,
-        actorType: principal.actorType,
-        ...(query.limit !== undefined ? { limit: query.limit } : {}),
-      },
-      container,
-    );
-    return reply.send(results);
-  });
+  app.get(
+    '/communication/directory/customers',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      if (!isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
+      const query = SearchQuery.parse(request.query);
+      const results = await searchCustomerDirectory(
+        {
+          tenantId: principal.tenantId,
+          query: query.q,
+          actorUserId: principal.userId,
+          actorType: principal.actorType,
+          ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        },
+        container,
+      );
+      return reply.send(results);
+    },
+  );
 }

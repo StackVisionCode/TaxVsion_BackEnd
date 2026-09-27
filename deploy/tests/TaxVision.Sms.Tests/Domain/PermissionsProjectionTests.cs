@@ -44,18 +44,6 @@ public sealed class PermissionsProjectionTests
     }
 
     [Fact]
-    public void UserProjection_ReapplyPermissionsUnion_replaces_codes_without_touching_version()
-    {
-        var p = UserPermissionsProjection.Create(Tenant, User, 7, ["a"], [RoleA]);
-
-        p.ReapplyPermissionsUnion(["sms.send", "a"]);
-
-        Assert.Equal(7, p.PermissionsVersion); // unchanged
-        Assert.Contains("sms.send", p.PermissionCodes());
-        Assert.Contains("a", p.PermissionCodes());
-    }
-
-    [Fact]
     public void RoleProjection_ApplyIfNewer_respects_version_ordering()
     {
         var role = RolePermissionsProjection.Create(Tenant, RoleA, "Tenant Admin", 1, ["a"]);

@@ -112,10 +112,7 @@ public static class InfrastructureRegistration
         services.AddScoped<EfTenantPlanCodeReader>();
 
         // Gate de módulo Fase 1 — lector de módulos de la misma proyección (la fuente se registra en Program.cs).
-        services.AddScoped<
-            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
-            TaxVision.Customer.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader
-        >();
+        services.AddCachedTenantEntitlementModulesReader<TaxVision.Customer.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader>();
         services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
             sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
             sp.GetRequiredService<EfTenantPlanCodeReader>()
