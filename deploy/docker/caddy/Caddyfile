@@ -77,6 +77,19 @@
 		reverse_proxy gateway:8080
 	}
 
+	# URL ESTABLE de una factura (la que se embebe en el PDF y viaja en el correo de cobro):
+	# endpoint de la API (PaymentClient PayableResolverController, [AllowAnonymous]) que resuelve
+	# el link vigente y responde 302 a la pagina /pay/{token} de la SPA — el 302 lo da la API, no
+	# la SPA. Se abre desde el navegador o un QR, o sea con Accept: text/html, asi que sin esta
+	# regla cae en @spa_nav -> SPA, que no tiene ninguna ruta /payments-client/* y muestra su 404:
+	# el cliente no puede pagar. Mismo caso que /storage/public/* de arriba. Solo
+	# /payments-client/invoices/*; el resto de /payments-client/* (el checkout que consume la
+	# pagina /pay) es XHR y ya llega al Gateway por el handle final.
+	@invoice_link path /payments-client/invoices/*
+	handle @invoice_link {
+		reverse_proxy gateway:8080
+	}
+
 	@spa_assets path *.js *.css *.map *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp *.woff *.woff2 *.ttf *.eot /assets/*
 	handle @spa_assets {
 		reverse_proxy https://app.taxproffice.com {
