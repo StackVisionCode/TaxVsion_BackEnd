@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -29,6 +30,7 @@ public static class ReissueInvoiceHandler
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -100,6 +102,7 @@ public static class ReissueInvoiceHandler
             new InvoiceVoidedIntegrationEvent
             {
                 TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 InvoiceId = original.Id,
                 InvoiceNumber = original.InvoiceNumber ?? string.Empty,
                 Reason = reason,

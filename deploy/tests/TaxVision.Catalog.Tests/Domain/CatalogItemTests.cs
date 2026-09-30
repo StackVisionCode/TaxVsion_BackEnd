@@ -220,9 +220,9 @@ public sealed class CatalogItemTests
     {
         var item = NewProduct();
         var newCat = Guid.NewGuid();
-        Assert.True(item.Update("Widget v2", "d2", "BC-2", newCat, "u2", 0, "img", Now).IsSuccess);
+        Assert.True(item.Update("Widget v2", "d2", "BC-2", newCat, "u2", 0, "img", true, Now).IsSuccess);
         Assert.Equal("Widget v2", item.Name);
         Assert.Equal(newCat, item.CategoryId);
-        Assert.True(item.Update("", null, null, newCat, null, 0, null, Now).IsFailure);
+        Assert.True(item.Update("", null, null, newCat, null, 0, null, true, Now).IsFailure);
     }
 }

@@ -105,6 +105,6 @@ public sealed class QrAndBrandingTests
         Assert.Contains("ACME Asesores", html); // nombre visible del tenant
         Assert.Contains("ACME · gracias", html); // pie personalizado
         Assert.Contains(qrDataUri, html); // QR del link de pago
-        Assert.Contains("Escaneá para pagar", html);
+        Assert.Contains("Scan to pay", html);
     }
 }

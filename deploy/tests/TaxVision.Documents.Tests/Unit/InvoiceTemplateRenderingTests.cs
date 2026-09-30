@@ -96,8 +96,8 @@ public sealed class InvoiceTemplateRenderingTests
 
         Assert.True(result.IsSuccess);
         var html = result.Value;
-        Assert.Contains("<div class=\"watermark paid\"", html); // overlay PAGADO renderizado
-        Assert.Contains("Factura pagada", html);
+        Assert.Contains("<div class=\"watermark paid\"", html); // paid overlay rendered
+        Assert.Contains("Invoice paid", html);
         Assert.Contains("2026-07-30", html);
         // Pagada ⇒ no se ofrece botón de pago aunque venga una URL (el <a>, no el CSS .pay-btn).
         Assert.DoesNotContain("<a class=\"pay-btn\"", html);
