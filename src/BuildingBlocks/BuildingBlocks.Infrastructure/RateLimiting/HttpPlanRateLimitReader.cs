@@ -33,7 +33,11 @@ public sealed class HttpPlanRateLimitReader(
 ) : IPlanRateLimitReader
 {
     private static readonly TimeSpan CatalogTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan LastGoodTtl = TimeSpan.FromHours(24);
+    private static readonly TimeSpan UnavailableBackoff = TimeSpan.FromSeconds(30);
     private const string CatalogCacheKey = "ratelimit:subscription-plan-rate-limits-catalog";
+    private const string LastGoodCacheKey = CatalogCacheKey + ":last-good";
+    private const string UnavailableCacheKey = CatalogCacheKey + ":unavailable";
 
     public async Task<PlanRateLimitSnapshot?> GetAsync(
         string planCode,
@@ -41,9 +45,54 @@ public sealed class HttpPlanRateLimitReader(
         CancellationToken ct = default
     )
     {
-        var catalog = await cache.GetOrCreateAsync(CatalogCacheKey, FetchCatalogAsync, CatalogTtl, ct);
-        return catalog.TryGetValue(CatalogKey(planCode, category), out var snapshot) ? snapshot : null;
+        var catalog = await GetCatalogAsync(ct);
+        return catalog is not null && catalog.TryGetValue(CatalogKey(planCode, category), out var snapshot)
+            ? snapshot
+            : null;
     }
+
+    // Antes un fallo devolvía un catálogo vacío que quedaba cacheado 5 minutos: todos los tenants caían
+    // a la cuota base (la mitad de starter) aunque Subscription hubiera vuelto a los pocos segundos.
+    // Ahora un fallo sirve el último catálogo bueno y, si no hay ninguno, se reintenta a los 30 s en vez
+    // de consultar Subscription en cada request.
+    private async Task<IReadOnlyDictionary<string, PlanRateLimitSnapshot>?> GetCatalogAsync(CancellationToken ct)
+    {
+        if (await cache.GetAsync<bool>(UnavailableCacheKey, ct))
+            return null;
+
+        try
+        {
+            return await cache.GetOrCreateAsync(CatalogCacheKey, FetchCatalogOrLastGoodAsync, CatalogTtl, ct);
+        }
+        catch (CatalogUnavailableException)
+        {
+            await cache.SetAsync(UnavailableCacheKey, true, UnavailableBackoff, ct);
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, PlanRateLimitSnapshot>> FetchCatalogOrLastGoodAsync(
+        CancellationToken ct
+    )
+    {
+        var fetched = await FetchCatalogAsync(ct);
+        if (fetched is not null)
+        {
+            await cache.SetAsync(LastGoodCacheKey, fetched, LastGoodTtl, ct);
+            return fetched;
+        }
+
+        var lastGood = await cache.GetAsync<Dictionary<string, PlanRateLimitSnapshot>>(LastGoodCacheKey, ct);
+        if (lastGood is not null)
+        {
+            logger.LogWarning("Serving the last known plan rate limits catalog while Subscription is unavailable.");
+            return lastGood;
+        }
+
+        throw new CatalogUnavailableException();
+    }
+
+    private sealed class CatalogUnavailableException : Exception { }
 
     // Clave compuesta serializada a string: un Dictionary con ValueTuple como clave no es
     // serializable por System.Text.Json (bug real encontrado en la verificación de Fase 0 — nunca
@@ -51,10 +100,9 @@ public sealed class HttpPlanRateLimitReader(
     // cachearse, ver fix de PlatformTenant.Id más abajo).
     private static string CatalogKey(string planCode, RateLimitCategory category) => $"{planCode}:{category}";
 
-    private async Task<IReadOnlyDictionary<string, PlanRateLimitSnapshot>> FetchCatalogAsync(CancellationToken ct)
+    /// <summary>Null ante cualquier fallo (token, status): el caller decide entre último bueno o backoff.</summary>
+    private async Task<Dictionary<string, PlanRateLimitSnapshot>?> FetchCatalogAsync(CancellationToken ct)
     {
-        var empty = new Dictionary<string, PlanRateLimitSnapshot>();
-
         // El catálogo es global, no por-tenant — PlatformTenant.Id es el sentinel real para
         // llamadas M2M sin tenant real (Guid.Empty NO sirve: IssueServiceTokenHandler en Auth lo
         // rechaza incondicionalmente con Auth.InvalidClient/401 antes de validar el cliente, bug
@@ -64,7 +112,7 @@ public sealed class HttpPlanRateLimitReader(
         if (token is null)
         {
             logger.LogWarning("Could not acquire a service token to fetch the plan rate limits catalog; failing open.");
-            return empty;
+            return null;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "internal/plan-rate-limits");
@@ -77,7 +125,7 @@ public sealed class HttpPlanRateLimitReader(
                 "Subscription plan-rate-limits catalog request failed with {StatusCode}; failing open.",
                 response.StatusCode
             );
-            return empty;
+            return null;
         }
 
         var rows = await response.Content.ReadFromJsonAsync<List<PlanRateLimitRow>>(cancellationToken: ct) ?? [];

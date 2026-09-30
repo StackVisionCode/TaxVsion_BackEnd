@@ -47,7 +47,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await SetUserPermissionOverridesHandler.Handle(
-            new SetUserPermissionOverridesCommand(tenantId, target.Id, [manage.Id], admin),
+            new SetUserPermissionOverridesCommand(tenantId, target.Id, [new PermissionDenyInput(manage.Id)], admin),
             users,
             roles,
             audit,
@@ -127,7 +127,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await SetUserPermissionOverridesHandler.Handle(
-            new SetUserPermissionOverridesCommand(tenantId, admin, [Guid.NewGuid()], admin),
+            new SetUserPermissionOverridesCommand(tenantId, admin, [new PermissionDenyInput(Guid.NewGuid())], admin),
             new FakeUserRepository { Seeded = null },
             new FakeRoleRepository(),
             new FakeAuthAuditWriter(),
@@ -189,7 +189,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await SetUserPermissionOverridesHandler.Handle(
-            new SetUserPermissionOverridesCommand(tenantId, target.Id, [portalOnly.Id], admin),
+            new SetUserPermissionOverridesCommand(tenantId, target.Id, [new PermissionDenyInput(portalOnly.Id)], admin),
             new FakeUserRepository { Seeded = target },
             new FakeRoleRepository { Catalog = [portalOnly], UserRoles = [] },
             new FakeAuthAuditWriter(),
@@ -217,17 +217,34 @@ public sealed class SetUserPermissionOverridesHandlerTests
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(Seeded is not null && Seeded.Id == id ? Seeded : null);
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -244,6 +261,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -253,6 +271,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
         public IReadOnlyList<Permission> Catalog { get; init; } = [];
         public IReadOnlyList<Role> UserRoles { get; init; } = [];
         public IReadOnlyList<Guid>? ReceivedDenies { get; private set; }
+        public IReadOnlyList<PermissionDenyInput>? ReceivedDenyEntries { get; private set; }
         public Guid? ReceivedDeniedBy { get; private set; }
 
         public Task<IReadOnlyList<Permission>> GetPermissionsCatalogAsync(CancellationToken ct = default) =>
@@ -263,12 +282,13 @@ public sealed class SetUserPermissionOverridesHandlerTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         )
         {
-            ReceivedDenies = permissionIds.ToList();
+            ReceivedDenies = denies.Select(deny => deny.PermissionId).ToList();
+            ReceivedDenyEntries = denies.ToList();
             ReceivedDeniedBy = deniedByUserId;
             return Task.CompletedTask;
         }
@@ -316,6 +336,74 @@ public sealed class SetUserPermissionOverridesHandlerTests
 
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task A_deny_carries_its_reason_and_expiry_to_the_repository_and_to_the_audit_log()
+    {
+        var tenantId = Guid.NewGuid();
+        var admin = Guid.NewGuid();
+        var (view, manage, role) = RoleGrantingTwo(tenantId);
+        var target = Staff(tenantId);
+        var expiry = DateTime.UtcNow.AddDays(30);
+
+        var users = new FakeUserRepository { Seeded = target };
+        var roles = new FakeRoleRepository { Catalog = [view, manage], UserRoles = [role] };
+        var audit = new FakeAuthAuditWriter();
+
+        var result = await SetUserPermissionOverridesHandler.Handle(
+            new SetUserPermissionOverridesCommand(
+                tenantId,
+                target.Id,
+                [new PermissionDenyInput(manage.Id, "  Licencia hasta el cierre  ", expiry)],
+                admin
+            ),
+            users,
+            roles,
+            audit,
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var stored = Assert.Single(roles.ReceivedDenyEntries!);
+        Assert.Equal(manage.Id, stored.PermissionId);
+        Assert.Equal("  Licencia hasta el cierre  ", stored.Reason);
+        Assert.Equal(expiry, stored.ExpiresAtUtc);
+        Assert.Contains("Licencia hasta el cierre", audit.Written!.DetailsJson);
+    }
+
+    [Fact]
+    public async Task A_deny_that_expires_in_the_past_is_rejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var (view, manage, role) = RoleGrantingTwo(tenantId);
+        var target = Staff(tenantId);
+
+        var roles = new FakeRoleRepository { Catalog = [view, manage], UserRoles = [role] };
+        var result = await SetUserPermissionOverridesHandler.Handle(
+            new SetUserPermissionOverridesCommand(
+                tenantId,
+                target.Id,
+                [new PermissionDenyInput(manage.Id, null, DateTime.UtcNow.AddMinutes(-1))],
+                Guid.NewGuid()
+            ),
+            new FakeUserRepository { Seeded = target },
+            roles,
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("UserPermissionDeny.ExpiryInPast", result.Error.Code);
+        Assert.Null(roles.ReceivedDenyEntries);
     }
 
     private sealed class FakeAuthAuditWriter : IAuthAuditWriter

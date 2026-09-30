@@ -43,7 +43,11 @@ public sealed class SubscriptionRenewalIntentTests
     {
         var intent = Pending();
 
-        Assert.True(intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow).IsSuccess);
+        Assert.True(
+            intent
+                .AttachCheckout(Guid.NewGuid(), "https://pay/x", DateTime.UtcNow.AddHours(24), DateTime.UtcNow)
+                .IsSuccess
+        );
         Assert.True(intent.MarkPaid(DateTime.UtcNow).IsSuccess);
         Assert.True(intent.MarkProvisioned(DateTime.UtcNow).IsSuccess);
         Assert.Equal(SubscriptionRenewalIntentStatus.Provisioned, intent.Status);

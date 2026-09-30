@@ -86,6 +86,8 @@ class FakeEmitter implements RealtimeEmitter {
     this.emitted.push({ event: input.event, payload: input.envelope.payload, kind: 'user' });
   }
   emitToTenant(): void {}
+  emitToTenantStaff(): void {}
+  emitToTenantMembers(): void {}
 }
 
 function buildHarness() {

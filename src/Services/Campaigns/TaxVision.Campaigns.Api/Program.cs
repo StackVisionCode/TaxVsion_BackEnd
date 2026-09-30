@@ -53,13 +53,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "campaigns-ser
 // Autorización por permiso ([HasPermission("campaigns.manage")]); los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo (module.campaigns): fuente de entitlements desde la proyección local
-// (EfTenantEntitlementModulesReader, alimentada por TenantEntitlementsChangedIntegrationEvent de
-// Subscription), igual que Notes/Reminder/Tasks.
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // Fuente de permisos de la Capa 2 (modo Projection). Requiere Authorization:PermissionsSource=Projection
 // + IUserPermissionsProjectionReader registrado (proyección local en Infrastructure) + IMemoryCache.

@@ -40,7 +40,7 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 3,
             maxPendingInvitations: 5,
             storageQuotaBytes: 10L * 1024 * 1024 * 1024,
-            modules: ["customers", "signatures", "documents", "planner"],
+            modules: PlanModuleCatalog.Starter,
             nowUtc: nowUtc
         );
 
@@ -56,7 +56,7 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 10,
             maxPendingInvitations: 15,
             storageQuotaBytes: 50L * 1024 * 1024 * 1024,
-            modules: ["customers", "signatures", "documents", "planner", "email", "comms", "campaigns", "reports"],
+            modules: PlanModuleCatalog.Pro,
             nowUtc: nowUtc
         );
 
@@ -66,27 +66,13 @@ public static class SubscriptionPlanCatalogSeeder
             versionId: PlanCatalog.EnterpriseV1Id,
             code: PlanCatalog.Enterprise,
             name: "Enterprise",
-            description: "Para multiservices con equipos grandes: 25 usuarios y todos los modulos.",
+            description: "Para multiservices con equipos grandes: 25 usuarios, 200 GB y todos los modulos.",
             tier: PlanTier.Enterprise,
             monthlyPriceUsd: 299m,
             seatsMax: 25,
             maxPendingInvitations: 40,
             storageQuotaBytes: 200L * 1024 * 1024 * 1024,
-            modules:
-            [
-                "customers",
-                "signatures",
-                "documents",
-                "planner",
-                "email",
-                "comms",
-                "campaigns",
-                "reports",
-                "marketing",
-                "builder",
-                "irs",
-                "miles",
-            ],
+            modules: PlanModuleCatalog.Enterprise,
             nowUtc: nowUtc
         );
 

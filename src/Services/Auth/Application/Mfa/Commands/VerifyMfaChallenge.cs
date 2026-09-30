@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Application.Mfa.Commands;
 
@@ -146,19 +147,25 @@ public static class VerifyMfaChallengeHandler
 
         challenge.Consume();
 
-        // Sesión única: si el usuario ya tiene una sesión activa, se difiere el mint (y con él el
-        // "recordar dispositivo") hasta que confirme el takeover.
+        // Un código de recuperación no marca el dispositivo: se usa justamente cuando el segundo
+        // factor habitual no está a mano, así que no prueba que este navegador sea del usuario.
+        var rememberDevice = command.RememberDevice && !usedRecoveryCode;
+
+        // Sesión única: si el usuario ya tiene una sesión activa, el mint se difiere —y el pedido viaja
+        // en el vale— hasta que confirme el takeover.
         var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
             user,
             tenant,
             ["pwd", methodAmr],
             command.DeviceName,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             roles,
             issuer,
             sessions,
             takeoverTickets,
-            ct
+            ct,
+            rememberDevice
         );
 
         if (outcome.TakeoverRequired)
@@ -187,35 +194,16 @@ public static class VerifyMfaChallengeHandler
 
         var issued = outcome.Tokens!;
 
-        string? deviceToken = null;
-        if (command.RememberDevice && !usedRecoveryCode)
-        {
-            var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
-            var trustedDays = policy?.TrustedDeviceDays ?? 30;
-            deviceToken = tokens.GenerateToken();
-            var device = TrustedDevice.Create(
-                user.TenantId,
-                user.Id,
-                tokens.Hash(deviceToken),
-                request.UserAgent,
-                TimeSpan.FromDays(trustedDays)
-            );
-            await mfa.AddTrustedDeviceAsync(device, ct);
-            await audit.AddAsync(
-                AuthAuditLog.Record(
-                    user.TenantId,
-                    user.Id,
-                    AuthAuditAction.TrustedDeviceAdded,
-                    true,
-                    request.IpAddress,
-                    request.UserAgent,
-                    correlation.CorrelationId,
-                    targetType: "TrustedDevice",
-                    targetId: device.Id
-                ),
-                ct
-            );
-        }
+        var deviceToken = await TrustedDeviceIssuer.IssueIfRequestedAsync(
+            rememberDevice,
+            user,
+            mfa,
+            tokens,
+            audit,
+            request,
+            correlation,
+            ct
+        );
 
         if (usedRecoveryCode)
         {

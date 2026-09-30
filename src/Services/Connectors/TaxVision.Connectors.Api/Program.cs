@@ -60,11 +60,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "connectors-se
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
@@ -87,13 +87,13 @@ builder.Services.Configure<ConnectorsPortalOptions>(
 // Webhooks públicos (Fase 7) — 100 req/min por IP, ambos endpoints no tienen sesión/tenant que particionar.
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "connectors-webhook",
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: client,
                 factory: _ => new FixedWindowRateLimiterOptions
                 {

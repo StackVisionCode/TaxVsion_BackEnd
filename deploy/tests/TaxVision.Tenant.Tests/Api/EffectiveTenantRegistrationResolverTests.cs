@@ -10,7 +10,7 @@ public sealed class EffectiveTenantRegistrationResolverTests
         new(new ClaimsIdentity([new Claim("reg_slug", slug), new Claim("reg_email", email)], "Bearer"));
 
     private static ClaimsPrincipal PlatformAdminPrincipal() =>
-        new(new ClaimsIdentity([new Claim(ClaimTypes.Role, "PlatformAdmin")], "Bearer"));
+        new(new ClaimsIdentity([new Claim("actor_type", "PlatformAdmin")], "Bearer"));
 
     [Fact]
     public void Ticket_claims_win_over_the_request_body()

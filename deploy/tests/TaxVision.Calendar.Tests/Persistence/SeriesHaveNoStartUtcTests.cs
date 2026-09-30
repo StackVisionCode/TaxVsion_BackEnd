@@ -76,7 +76,12 @@ public sealed class SeriesHaveNoStartUtcTests : IAsyncLifetime
         var series = Appointment
             .Schedule(_tenant, AppointmentTitle.Create("Serie").Value, recurring, Guid.NewGuid(), organizer, nowUtc)
             .Value;
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, recurring, organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            recurring,
+            organizer,
+            canManageAll: false
+        );
 
         var pointInTime = EventTiming
             .PointInTimeOf(

@@ -34,6 +34,17 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
             }
         );
 
+        // Opcional: las dos columnas van juntas o van nulas las dos, que es como EF materializa un
+        // OwnsOne ausente. Mismo patrón que ExternalChargeReference.
+        builder.OwnsOne(
+            payment => payment.Breakdown,
+            breakdown =>
+            {
+                breakdown.Property(b => b.Quantity).HasColumnName("BreakdownQuantity");
+                breakdown.Property(b => b.UnitAmountCents).HasColumnName("BreakdownUnitAmountCents");
+            }
+        );
+
         builder.Property(payment => payment.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(payment => payment.TargetAggregateId).IsRequired();
         builder.Property(payment => payment.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
@@ -72,6 +83,7 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         // PayFlow (Fase 8) — OnboardingId nullable, único cuando presente (un solo checkout
         // inicial por onboarding); reusa el patrón idempotente vía IdempotencyKey para replays.
         builder.Property(payment => payment.OnboardingId);
+        builder.Property(payment => payment.ReceiptFileId);
         builder
             .HasIndex(payment => payment.OnboardingId)
             .IsUnique()
@@ -85,6 +97,11 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         builder
             .HasIndex(payment => new { payment.TenantId, payment.Status })
             .HasDatabaseName("IX_SaaSPayments_TenantId_Status");
+
+        // El historial del tenant pagina por fecha descendente; sin este índice es un scan por tenant.
+        builder
+            .HasIndex(payment => new { payment.TenantId, payment.CreatedAtUtc })
+            .HasDatabaseName("IX_SaaSPayments_TenantId_CreatedAtUtc");
 
         builder
             .HasIndex(payment => payment.NextRetryAtUtc)

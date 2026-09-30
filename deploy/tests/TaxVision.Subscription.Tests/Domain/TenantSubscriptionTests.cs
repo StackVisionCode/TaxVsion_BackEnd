@@ -596,6 +596,70 @@ public sealed class TenantSubscriptionTests
         Assert.Equal(BillingCycle.Yearly, subscription.BillingCycle);
     }
 
+    // C7 — quien paga su upgrade deja de estar de prueba. Antes seguía Trialing con la fecha puesta y el
+    // job de pruebas podía expirar una suscripción ya pagada.
+    [Fact]
+    public void CompleteUpgradeCharge_from_trial_activates_and_clears_the_trial_end()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var nowUtc = DateTime.UtcNow;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, nowUtc)
+            .Value;
+        subscription.RequestUpgrade(pro, proVersion, null, 4900, "USD", "plan-change-test", Guid.Empty, nowUtc);
+        var request = subscription.PlanChangeRequests.Single();
+
+        var result = subscription.CompleteUpgradeCharge(
+            request.Id,
+            pro,
+            proVersion,
+            Guid.NewGuid(),
+            Guid.Empty,
+            nowUtc
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+        Assert.Null(subscription.TrialEndsAtUtc);
+        Assert.Equal("pro", subscription.PlanCode);
+    }
+
+    [Fact]
+    public void CompleteUpgradeCharge_from_active_stays_active()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var nowUtc = DateTime.UtcNow;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                nowUtc,
+                nowUtc.AddDays(30),
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+        subscription.RequestUpgrade(pro, proVersion, null, 4900, "USD", "plan-change-test", Guid.Empty, nowUtc);
+        var request = subscription.PlanChangeRequests.Single();
+
+        var result = subscription.CompleteUpgradeCharge(
+            request.Id,
+            pro,
+            proVersion,
+            Guid.NewGuid(),
+            Guid.Empty,
+            nowUtc
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+        Assert.Null(subscription.TrialEndsAtUtc);
+    }
+
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(string code) =>
         CreatePublishedPlan(code, [BillingCycle.Monthly]);
 

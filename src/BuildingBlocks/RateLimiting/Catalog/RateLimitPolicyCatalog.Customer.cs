@@ -43,10 +43,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     public static readonly RateLimitPolicyDefinition CustomerImports = Define(
@@ -96,10 +96,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 12,
+        quota: 30,
         windowSeconds: 3600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 40
+        overlayQuota: 100
     );
 
     public static readonly RateLimitPolicyDefinition CustomerImportsGetById = Define(
@@ -148,12 +148,14 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 100
     );
 
+    // Sigue auditado y sin escalar por plan (N); 20/h por usuario alcanza para un preparador que en
+    // temporada fiscal revela SSN/ITIN de varios clientes seguidos.
     public static readonly RateLimitPolicyDefinition CustomerFiscalReveal = Define(
         "customer.n.fiscal_reveal",
         RateLimitCategory.N,
         RateLimitPartitionDimension.User,
         [],
-        quota: 5,
+        quota: 20,
         windowSeconds: 3600,
         RateLimitAlgorithm.FixedWindow
     );

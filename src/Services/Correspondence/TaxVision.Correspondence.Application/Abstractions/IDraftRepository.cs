@@ -35,11 +35,16 @@ public interface IDraftRepository
     /// (<c>UpdatedAtUtc DESC</c>). Usa <c>IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc</c>
     /// (mismo índice que <see cref="FindOpenReplyDraftAsync"/>, ya creado en Fase 10).
     /// </summary>
+    /// <param name="ownerUserId">
+    /// A1 — si viene, solo los borradores de ese usuario. Un borrador es un correo a medio escribir: el
+    /// de un colega no se lista. <c>null</c> = sin filtro, para quien ve el buzón de la oficina.
+    /// </param>
     Task<PagedResult<Draft>> ListOpenByCustomerAsync(
         Guid tenantId,
         Guid customerId,
         int page,
         int size,
+        Guid? ownerUserId = null,
         CancellationToken ct = default
     );
 

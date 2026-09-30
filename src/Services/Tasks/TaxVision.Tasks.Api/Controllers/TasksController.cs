@@ -116,7 +116,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     // ---------- GET /tasks/offboarding-impact/{userId} ----------
     // Pre-flight (punto 3.2): cuántas tareas abiertas hay que reasignar antes de retirar a este empleado.
     [HttpGet("offboarding-impact/{userId:guid}")]
-    [HasPermission(TasksPermissions.Read)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(UserManagementPermissions.UsersManage)]
     [RateLimit("task.f.read")]
     [ProducesResponseType<OffboardingImpactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> OffboardingImpact(Guid userId, CancellationToken ct)
@@ -505,7 +506,7 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new AddDependencyCommand(tenantId, id, request.DependsOnTaskId, userId),
+            new AddDependencyCommand(tenantId, id, request.DependsOnTaskId, userId, await HasManageAllAsync(ct)),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -517,10 +518,13 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RemoveDependency(Guid id, Guid dependsOnTaskId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new RemoveDependencyCommand(tenantId, id, dependsOnTaskId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveDependencyCommand(tenantId, id, dependsOnTaskId, userId, await HasManageAllAsync(ct)),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

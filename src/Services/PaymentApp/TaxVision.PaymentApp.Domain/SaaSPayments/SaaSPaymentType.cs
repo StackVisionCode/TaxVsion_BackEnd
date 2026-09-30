@@ -36,4 +36,14 @@ public enum SaaSPaymentType
     /// Expired). Distinto de <see cref="SubscriptionRenewal"/> (cobro off-session periódico): éste se paga
     /// por checkout y al confirmarse reactiva la suscripción sin re-cobrar.</summary>
     SubscriptionRenewalCheckout = 9,
+
+    /// <summary>Compra de un add-on por HOSTED-CHECKOUT (redirect), para el tenant sin método en archivo.
+    /// Distinto de <see cref="AddOnRenewal"/> (cobro off-session periódico): éste se paga por checkout y al
+    /// confirmarse activa el add-on sin re-cobrar.</summary>
+    AddOnPurchaseCharge = 10,
+
+    /// <summary>Upgrade de plan pagado por HOSTED-CHECKOUT (redirect), para el tenant sin método en archivo.
+    /// Mismo resultado que <see cref="PlanChangeCharge"/> (el off-session): los dos cierran el mismo
+    /// <c>PlanChangeRequest</c> de Subscription, solo cambia cómo se cobra.</summary>
+    PlanChangeCheckout = 11,
 }

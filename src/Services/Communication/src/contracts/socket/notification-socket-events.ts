@@ -42,6 +42,19 @@ export interface SessionRevokedDto {
   revokedAtUtc: string;
 }
 
+/**
+ * El acceso del cliente cambio: sus permisos, o los modulos que el plan de la oficina habilita.
+ * **No lleva datos** a proposito — solo dice "volve a pedir el bootstrap" (`GET /auth/me/access`).
+ * Meter los permisos en el payload obligaria a mantener dos caminos de verdad y a decidir que hacer
+ * si llegan desordenados.
+ */
+export interface AccessChangedDto {
+  /** `user` = cambiaron los permisos de este usuario. `tenant` = cambiaron los modulos de la oficina. */
+  scope: 'user' | 'tenant';
+  /** `perm_v` nuevo, cuando el cambio es del usuario. Permite ignorar un evento viejo sin refetch. */
+  permissionsVersion: number | null;
+}
+
 export const NotificationSocketEvents = {
   // c -> s
   MarkRead: 'notification.mark_read',
@@ -52,4 +65,6 @@ export const NotificationSocketEvents = {
   ReadConfirmed: 'notification.read.confirmed',
   // s -> c (SESSION — canal propio, jamas mezclado con notifications de negocio)
   SessionRevoked: 'session.revoked',
+  // s -> c (ACCESO — mismo criterio: canal propio, sin datos de negocio en el payload)
+  AccessChanged: 'access.changed',
 } as const;

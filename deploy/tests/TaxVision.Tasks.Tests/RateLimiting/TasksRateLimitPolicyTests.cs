@@ -69,16 +69,18 @@ public sealed class TasksRateLimitPolicyTests
         }
     }
 
-    /// <summary>Capa 4: H e I derivan un cap agregado por endpoint del overlay; F y G no.</summary>
+    /// <summary>
+    /// Capa 4: solo I (bulk/uploads) deriva un cap agregado por endpoint del overlay. H dejó de
+    /// llevarlo — el board/search/calendar es lectura que el overlay por tenant ya acota.
+    /// </summary>
     [Fact]
-    public void Only_heavy_categories_carry_an_endpoint_cap()
+    public void Only_bulk_categories_carry_an_endpoint_cap()
     {
         foreach (var name in ExpectedPolicies)
         {
             var policy = RateLimitPolicyCatalog.GetByName(name);
-            var isHeavy = policy.Category is RateLimitCategory.H or RateLimitCategory.I;
 
-            Assert.Equal(isHeavy, policy.EndpointCapPerWindow is not null);
+            Assert.Equal(policy.Category is RateLimitCategory.I, policy.EndpointCapPerWindow is not null);
         }
     }
 }

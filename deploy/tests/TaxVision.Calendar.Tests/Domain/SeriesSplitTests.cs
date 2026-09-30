@@ -38,7 +38,12 @@ public sealed class SeriesSplitTests
             )
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, timing, Organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            timing,
+            Organizer,
+            canManageAll: false
+        );
         series.AddAttendee(
             AttendeeKind.InternalUser,
             Attendee,
@@ -46,12 +51,13 @@ public sealed class SeriesSplitTests
             AttendeeSnapshot.Create("Ana Preparadora", "ana@firma.test").Value,
             isRequired: true,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
         series.LinkMeeting(Guid.NewGuid(), "abc-defg-hij");
 
         // Lunes 16 de febrero, cancelada. Es la que tiene que sobrevivir en la serie vieja.
-        Assert.True(series.CancelOccurrence(Utc(2026, 2, 16, 14), Organizer, Now).IsSuccess);
+        Assert.True(series.CancelOccurrence(Utc(2026, 2, 16, 14), Organizer, canManageAll: false, Now).IsSuccess);
 
         return series;
     }
@@ -67,7 +73,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 9)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         Assert.True(follower.IsSuccess);
@@ -97,7 +104,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 9)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         // Heredarla revivirÍa una cancelación de una fecha que la serie nueva no produce.
@@ -110,7 +118,7 @@ public sealed class SeriesSplitTests
     public void The_exceptions_from_after_the_cut_are_discarded()
     {
         var original = SeriesWithFebruaryCancellation();
-        original.CancelOccurrence(Utc(2026, 3, 23, 13), Organizer, Now);
+        original.CancelOccurrence(Utc(2026, 3, 23, 13), Organizer, canManageAll: false, Now);
         Assert.Equal(2, original.Exceptions.Count);
 
         original.SplitForFollowing(
@@ -118,7 +126,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 9)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         // La del 23 de marzo pertenece a la mitad nueva, que ya no la produce a esa hora.
@@ -138,7 +147,8 @@ public sealed class SeriesSplitTests
                 TenAmFrom(new DateOnly(2026, 3, 9)),
                 RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
                 Organizer,
-                Now
+                Now,
+                canManageAll: false
             )
             .Value;
 
@@ -158,7 +168,8 @@ public sealed class SeriesSplitTests
                 TenAmFrom(new DateOnly(2026, 3, 9)),
                 RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
                 Organizer,
-                Now
+                Now,
+                canManageAll: false
             )
             .Value;
 
@@ -181,7 +192,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 1, 5)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         // Partir ahí dejaría la serie vieja sin ninguna ocurrencia. Para eso está EditEntireSeries.
@@ -200,7 +212,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 11)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         Assert.True(result.IsFailure);
@@ -217,7 +230,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 9)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Attendee,
-            Now
+            Now,
+            canManageAll: false
         );
 
         Assert.True(result.IsFailure);
@@ -233,6 +247,7 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 1, 5)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
+            canManageAll: false,
             Now
         );
 
@@ -251,7 +266,8 @@ public sealed class SeriesSplitTests
             TenAmFrom(new DateOnly(2026, 3, 9)),
             RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
             Organizer,
-            Now
+            Now,
+            canManageAll: false
         );
 
         // RFC 5545 lo exige: es la única parte de la regla del DST que es absoluta.

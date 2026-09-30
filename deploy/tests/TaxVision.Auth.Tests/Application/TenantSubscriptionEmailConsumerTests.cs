@@ -20,6 +20,55 @@ namespace TaxVision.Auth.Tests.Application;
 /// </summary>
 public sealed class TenantSubscriptionEmailConsumerTests
 {
+    // ---------- A6: el re-anuncio del job de anti-entropía NO avisa a nadie ----------
+
+    [Theory]
+    [InlineData("Expired")]
+    [InlineData("Suspended")]
+    [InlineData("Active")]
+    public async Task A_reconciliation_never_sends_an_email(string status)
+    {
+        // `Expired` y `Suspended` notifican SIN mirar el motivo, así que el job de anti-entropía —que
+        // re-anuncia el estado actual a diario para que Auth converja— le habría mandado al tenant el
+        // correo de "tu suscripción venció" todos los días.
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, status, nameof(SubscriptionChangeReason.Reconciliation)),
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task A_real_expiration_still_sends_the_email()
+    {
+        // La otra mitad: silenciar el re-anuncio no puede silenciar la transición de verdad.
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, "Expired", nameof(SubscriptionChangeReason.SuspensionTimeout)),
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Single(bus.Published);
+    }
+
     [Fact]
     public async Task GracePeriod_publishes_email_request_for_primary_admin_with_subdomain_url()
     {
@@ -63,6 +112,36 @@ public sealed class TenantSubscriptionEmailConsumerTests
 
         var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
         Assert.Equal("Active", request.Status);
+    }
+
+    // Cancelar al fin del período NO cambia el estado (sigue Active): el aviso se reconoce por el motivo, y
+    // arrastra la fecha hasta la que llega el acceso ya pagado.
+    [Fact]
+    public async Task A_scheduled_cancellation_publishes_the_email_with_the_access_end_date()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+        var accessEndsAtUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var evt = StatusEvent(tenantId, "Active", nameof(SubscriptionChangeReason.CancellationScheduled)) with
+        {
+            AccessEndsAtUtc = accessEndsAtUtc,
+        };
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            evt,
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal("Active", request.Status);
+        Assert.Equal(nameof(SubscriptionChangeReason.CancellationScheduled), request.Reason);
+        Assert.Equal(accessEndsAtUtc, request.AccessEndsAtUtc);
     }
 
     [Theory]
@@ -139,17 +218,34 @@ public sealed class TenantSubscriptionEmailConsumerTests
 
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -163,6 +259,7 @@ public sealed class TenantSubscriptionEmailConsumerTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

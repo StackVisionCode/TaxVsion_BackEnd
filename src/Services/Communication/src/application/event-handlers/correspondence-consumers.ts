@@ -22,7 +22,8 @@ export function bindCorrespondenceConsumers(
       getString(env.payload, 'incomingEmailId') ?? getString(env.payload, 'IncomingEmailId');
     if (!customerId || !emailThreadId) return;
 
-    deps.emitter.emitToTenant({
+    // Solo personal: el aviso nombra a un cliente y a un hilo de correo de la oficina.
+    deps.emitter.emitToTenantStaff({
       tenantId: env.tenantId,
       event: MailSocketEvents.IncomingEmail,
       envelope: {

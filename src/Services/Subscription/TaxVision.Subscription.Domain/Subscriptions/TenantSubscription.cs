@@ -34,6 +34,12 @@ public sealed class TenantSubscription : TenantEntity
     public DateTime? SuspendedAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
     public string? CancellationReason { get; private set; }
+
+    /// <summary>Cancelación programada al fin del período: el tenant sigue con acceso y pagado hasta
+    /// <see cref="CurrentPeriodEndUtc"/>, y ahí expira en vez de renovar. NO es un estado: mientras tanto la
+    /// suscripción sigue Active, que es justo lo que da acceso. Se deshace con <see cref="ResumeCancellation"/>.</summary>
+    public bool CancelAtPeriodEnd { get; private set; }
+    public DateTime? CancellationScheduledAtUtc { get; private set; }
     public string? SuspensionReason { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -322,11 +328,41 @@ public sealed class TenantSubscription : TenantEntity
         CurrentPeriodEndUtc = effectiveCycle.CalculateNext(nowUtc);
         NextRenewalAtUtc = CurrentPeriodEndUtc;
 
+        // Quien pagó su plan ya no está de prueba. Sin esto la suscripción seguía Trialing con
+        // TrialEndsAtUtc puesta y el job de pruebas podía expirar una suscripción pagada.
+        if (Status == SubscriptionStatus.Trialing)
+        {
+            Status = SubscriptionStatus.Active;
+            TrialEndsAtUtc = null;
+        }
+
         return request.MarkPaymentSucceeded(saaSPaymentId, nowUtc);
     }
 
     /// <summary>El cobro del upgrade falló — el plan se queda como estaba, no hay nada que
     /// revertir porque <see cref="ChangePlan"/> nunca se llamó para este request.</summary>
+    /// <summary>Guarda la sesión de checkout del upgrade, para poder retomar el pago sin abrir otro.</summary>
+    public Result AttachUpgradeCheckout(
+        Guid requestId,
+        Guid saaSPaymentId,
+        string checkoutUrl,
+        DateTime expiresAtUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        var attached = request.AttachCheckout(saaSPaymentId, checkoutUrl, expiresAtUtc);
+        if (attached.IsFailure)
+            return attached;
+
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result FailUpgradeCharge(Guid requestId, Guid saaSPaymentId, DateTime nowUtc)
     {
         var request = FindPlanChangeRequestById(requestId);
@@ -654,6 +690,67 @@ public sealed class TenantSubscription : TenantEntity
         Status = SubscriptionStatus.Cancelled;
         CancelledAtUtc = nowUtc;
         CancellationReason = reason.Length > 500 ? reason[..500] : reason;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cancelación self-service (D7): sin reembolso y sin cortar nada ahora — el período ya está pagado, así
+    /// que el acceso sigue hasta <see cref="CurrentPeriodEndUtc"/> y recién ahí expira. Idempotente.
+    /// <see cref="CancelImmediately"/> queda para plataforma/soporte.
+    /// </summary>
+    public Result ScheduleCancellation(string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot cancel from {Status}."));
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("Subscription.InvalidReason", "Reason is required."));
+
+        if (CancelAtPeriodEnd)
+            return Result.Success();
+
+        CancelAtPeriodEnd = true;
+        CancellationScheduledAtUtc = nowUtc;
+        CancellationReason = reason.Length > 500 ? reason[..500] : reason;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Deshace la cancelación programada antes de que llegue el fin del período. No cobra nada: el
+    /// período en curso ya estaba pagado y la suscripción nunca dejó de estar activa.</summary>
+    public Result ResumeCancellation(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!CancelAtPeriodEnd)
+            return Result.Failure(
+                new Error("Subscription.NoScheduledCancellation", "There is no scheduled cancellation to resume.")
+            );
+
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot resume from {Status}."));
+
+        CancelAtPeriodEnd = false;
+        CancellationScheduledAtUtc = null;
+        CancellationReason = null;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Llega el fin del período de una cancelación programada: en vez de renovar, expira. La llama el
+    /// job de renovación antes de facturar.</summary>
+    public Result ExpireAfterScheduledCancellation(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!CancelAtPeriodEnd)
+            return Result.Failure(
+                new Error("Subscription.NoScheduledCancellation", "There is no scheduled cancellation to apply.")
+            );
+
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot expire from {Status}."));
+
+        Status = SubscriptionStatus.Expired;
+        CancelledAtUtc ??= nowUtc;
+        ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }

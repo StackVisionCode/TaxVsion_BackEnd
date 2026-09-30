@@ -16,6 +16,9 @@ public sealed class User : TenantEntity
     public string Email { get; private set; } = default!;
     public string PasswordHash { get; private set; } = default!;
     public UserActorType ActorType { get; private set; }
+
+    /// <summary>Staff o Portal: el email es único por oficina dentro de cada tipo de cuenta.</summary>
+    public UserAccountKind AccountKind => UserAccountKinds.Of(ActorType);
     public Guid? CustomerId { get; private set; }
     public bool IsActive { get; private set; }
 

@@ -34,6 +34,8 @@ public static class SubscriptionStatusChangedPublishing
                         subscription.Status == SubscriptionStatus.GracePeriod
                             ? subscription.GracePeriodEndsAtUtc
                             : null,
+                    // La cancelación programada necesita decir hasta cuándo llega el acceso ya pagado.
+                    AccessEndsAtUtc = subscription.CancelAtPeriodEnd ? subscription.CurrentPeriodEndUtc : null,
                     FailureCode = failureCode,
                     ActorUserId = actorUserId,
                     CorrelationId = correlationId ?? string.Empty,

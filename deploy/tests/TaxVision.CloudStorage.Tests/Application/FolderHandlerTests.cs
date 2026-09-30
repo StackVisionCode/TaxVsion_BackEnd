@@ -717,7 +717,8 @@ public sealed class FolderHandlerTests
         FakeFolderRepository folders,
         FakeFileObjectRepository files,
         FakeUnitOfWork unitOfWork,
-        StorageActorScope? scope = null
+        StorageActorScope? scope = null,
+        bool canDeleteFiles = true
     ) =>
         DeleteFolderHandler.Handle(
             new DeleteFolderCommand(
@@ -725,7 +726,8 @@ public sealed class FolderHandlerTests
                 Guid.NewGuid(),
                 scope ?? TenantScope,
                 folderId,
-                new RequestAuditContext(null, null, "corr-1")
+                new RequestAuditContext(null, null, "corr-1"),
+                canDeleteFiles
             ),
             folders,
             files,
@@ -849,6 +851,60 @@ public sealed class FolderHandlerTests
         Assert.Equal(FolderErrors.HasLegalHold, result.Error);
         Assert.NotNull(await folders.GetAsync(tenantId, folder.Id, CancellationToken.None)); // no se borró
         Assert.NotEqual(FileStatus.SoftDeleted, file.Status);
+    }
+
+    /// <summary>
+    /// A1 — borrar una carpeta manda TODOS sus archivos a la papelera. Con <c>folder.manage</c> a secas se
+    /// podía vaciar el contenido de la oficina sin tener el permiso de borrar archivos: la operación
+    /// "administrar carpetas" era un borrado de archivos encubierto.
+    /// </summary>
+    [Fact]
+    public async Task DeleteFolder_with_files_inside_needs_the_file_delete_permission()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = RootFolder(tenantId);
+        var file = RegisteredFile(tenantId);
+        file.MoveToFolder(folder.Id, DateTime.UtcNow);
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await DeleteFolder(
+            tenantId,
+            folder.Id,
+            folders,
+            files,
+            new FakeUnitOfWork(),
+            canDeleteFiles: false
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.FileDeletePermissionRequired, result.Error);
+        Assert.False(folder.IsDeleted);
+        Assert.NotEqual(FileStatus.SoftDeleted, file.Status);
+    }
+
+    /// <summary>Una carpeta VACÍA se sigue borrando con folder.manage a secas: no se pierde nada de nadie.</summary>
+    [Fact]
+    public async Task DeleteFolder_of_an_empty_folder_does_not_need_the_file_delete_permission()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = RootFolder(tenantId);
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+
+        var result = await DeleteFolder(
+            tenantId,
+            folder.Id,
+            folders,
+            new FakeFileObjectRepository(),
+            new FakeUnitOfWork(),
+            canDeleteFiles: false
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.True(folder.IsDeleted);
     }
 
     [Fact]

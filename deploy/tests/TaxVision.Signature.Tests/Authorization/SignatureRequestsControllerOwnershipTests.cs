@@ -233,7 +233,7 @@ public sealed class SignatureRequestsControllerOwnershipTests
             new("sub", actingUserId.ToString()),
         };
         if (asPlatformAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+            claims.Add(new Claim("actor_type", "PlatformAdmin"));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
 
         var controller = new SignatureRequestsController(

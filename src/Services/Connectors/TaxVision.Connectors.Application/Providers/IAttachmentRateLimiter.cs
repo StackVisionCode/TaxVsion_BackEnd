@@ -1,10 +1,11 @@
 namespace TaxVision.Connectors.Application.Providers;
 
 /// <summary>
-/// Cupo de attachment-fetch por tenant (5/min default, Fase 9) — particionado solo por tenant, no
-/// por cuenta (a diferencia de <see cref="IMessageBodyRateLimiter"/>). Fail-fast, igual criterio.
+/// Cupo de attachment-fetch por (tenant, cuenta) — 30/min default. Antes era 5/min por tenant entero:
+/// una oficina abriendo adjuntos en varios buzones compartía un solo cupo. Mismo criterio de partición
+/// y fail-fast que <see cref="IMessageBodyRateLimiter"/>.
 /// </summary>
 public interface IAttachmentRateLimiter
 {
-    Task<bool> TryAcquireAsync(Guid tenantId, CancellationToken ct = default);
+    Task<bool> TryAcquireAsync(Guid tenantId, Guid accountId, CancellationToken ct = default);
 }

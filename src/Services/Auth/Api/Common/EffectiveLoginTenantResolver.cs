@@ -4,7 +4,7 @@ namespace TaxVision.Auth.Api.Common;
 
 /// <summary>
 /// Fase A6 — el gap que hace real el aislamiento de login (v2 doc §26.2.2): antes de
-/// esto, LoginCommand/ForgotPasswordCommand tomaban TenantId directo del body, así
+/// esto, LoginCommand tomaba TenantId directo del body, así
 /// que un cliente en tenantB.taxproffice.com podía mandar el TenantId de otro tenant
 /// y el subdominio no importaba nada — el candidato de by-host era decorativo.
 ///

@@ -32,6 +32,10 @@ public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
 
         var result = await bus.InvokeAsync<Result>(new ProcessStripeWebhookCommand(rawPayload, signatureHeader), ct);
 
-        return result.IsSuccess ? Ok() : BadRequest(new { result.Error.Code, result.Error.Message });
+        if (result.IsSuccess)
+            return Ok();
+        if (ProviderWebhookThrottle.IsThrottled(result.Error))
+            return await ProviderWebhookThrottle.RespondAsync(HttpContext, ct);
+        return BadRequest(new { result.Error.Code, result.Error.Message });
     }
 }

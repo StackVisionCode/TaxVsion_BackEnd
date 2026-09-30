@@ -69,7 +69,7 @@ public sealed class RetentionEligibilityTests
             )
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create(rule).Value, timing, _organizer);
+        series.MakeRecurring(RecurrenceRule.Create(rule).Value, timing, _organizer, canManageAll: false);
         return series;
     }
 }

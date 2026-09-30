@@ -42,6 +42,18 @@ public static partial class RateLimitPolicyCatalog
         RateLimitAlgorithm.FixedWindow
     );
 
+    // Step-up (POST /auth/reauthenticate): usuario ya autenticado, 5 intentos cada 15 min. El bloqueo de la
+    // cuenta por contraseña incorrecta lo lleva el propio handler, igual que el login.
+    public static readonly RateLimitPolicyDefinition AuthReauthenticate = Define(
+        "auth.b.reauthenticate",
+        RateLimitCategory.B,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [],
+        quota: 5,
+        windowSeconds: 900,
+        RateLimitAlgorithm.FixedWindow
+    );
+
     public static readonly RateLimitPolicyDefinition AuthOnboardingCheckoutCreate = Define(
         "auth.c.onboarding_checkout_create",
         RateLimitCategory.C,
@@ -70,10 +82,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     // Compartida por MySessions + UserSessions (SessionsController).
@@ -168,10 +180,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     public static readonly RateLimitPolicyDefinition AuthTenantLimitsRead = Define(
@@ -247,6 +259,18 @@ public static partial class RateLimitPolicyCatalog
         windowSeconds: 60,
         RateLimitAlgorithm.TokenBucket,
         overlayQuota: 600
+    );
+
+    // "Manage subscription" del CRM: emite el vale para abrir el Account del Landing con la misma sesión.
+    public static readonly RateLimitPolicyDefinition AuthAccountHandoff = Define(
+        "auth.g.account_handoff",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 30,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 300
     );
 
     // Compartida por Create + Verify + Activate + Disable + ChangeSubdomain (TenantDomainsController).

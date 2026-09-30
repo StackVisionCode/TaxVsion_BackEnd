@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
@@ -48,6 +49,13 @@ public sealed class RenewalNotificationJob(
             ct
         );
         var seatCount = await NotifyUpcomingSeatRenewalsAsync(seats, bus, correlation, nowUtc, windowEndUtc, ct);
+        var endingCount = await NotifyAccessEndingAsync(subscriptions, bus, correlation, nowUtc, windowEndUtc, ct);
+
+        if (endingCount > 0)
+            logger.LogInformation(
+                "RenewalNotificationJob warned {Count} tenant(s) that their access ends soon.",
+                endingCount
+            );
 
         if (subscriptionCount + seatCount > 0)
         {
@@ -87,6 +95,40 @@ public sealed class RenewalNotificationJob(
                     DaysUntilDue = daysUntilDue,
                     PlanCode = subscription.PlanCode,
                 }
+            );
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Recordatorio de que se acerca el fin del acceso de una cancelación programada. Viaja por el canal de
+    /// ciclo de vida (mismo destinatario, mismo envío) con motivo <see cref="SubscriptionChangeReason.AccessEnding"/>;
+    /// la suscripción sigue Active, así que no hay transición real que publicar.
+    /// </summary>
+    private static async Task<int> NotifyAccessEndingAsync(
+        ISubscriptionRepository subscriptions,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        DateTime windowEndUtc,
+        CancellationToken ct
+    )
+    {
+        var candidates = await subscriptions.GetAccessEndingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct);
+        var count = 0;
+
+        foreach (var subscription in candidates)
+        {
+            if (Array.IndexOf(NotifyThresholdDays, DaysUntilDue(subscription.CurrentPeriodEndUtc, nowUtc)) < 0)
+                continue;
+
+            await bus.PublishStatusChangedAsync(
+                subscription,
+                subscription.Status,
+                SubscriptionChangeReason.AccessEnding,
+                correlationId: correlation.CorrelationId
             );
             count++;
         }

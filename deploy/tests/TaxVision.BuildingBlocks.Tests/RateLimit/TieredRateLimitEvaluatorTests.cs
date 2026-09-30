@@ -174,9 +174,9 @@ public sealed class TieredRateLimitEvaluatorTests
     }
 
     [Fact]
-    public async Task Endpoint_cap_layer_trips_before_primary_or_overlay_and_reports_endpoint()
+    public async Task Endpoint_cap_layer_is_shared_across_tenants_and_reports_endpoint()
     {
-        // Capa 4 (hallazgo #7) — cap agregado a través de todos los tenants, evaluado primero.
+        // Capa 4 (hallazgo #7) — cap agregado a través de todos los tenants.
         var counter = new FakeAlgorithmCounter();
         var evaluator = new TieredRateLimitEvaluator(
             counter,
@@ -192,6 +192,63 @@ public sealed class TieredRateLimitEvaluatorTests
         Assert.True(verdict.IsExceeded);
         Assert.Equal("endpoint", verdict.Layer);
         Assert.Equal(1, verdict.Limit);
+    }
+
+    [Fact]
+    public async Task A_user_blocked_by_their_own_quota_does_not_consume_the_endpoint_cap()
+    {
+        // Con la Capa 4 evaluada primero, los reintentos de un usuario ya bloqueado agotaban el tope
+        // compartido y dejaban sin servicio a los demás tenants.
+        var counter = new FakeAlgorithmCounter();
+        var evaluator = new TieredRateLimitEvaluator(
+            counter,
+            new FixedQuotaResolver(new EffectiveQuota(1, 60)),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+        var policy = Policy() with { EndpointCapPerWindow = 2 };
+
+        for (var i = 0; i < 5; i++)
+            await evaluator.EvaluateAsync(policy, tenantId, userId); // 1 permitido, 4 bloqueados en "user"
+
+        var otherTenant = await evaluator.EvaluateAsync(policy, Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.False(otherTenant.IsExceeded);
+    }
+
+    [Fact]
+    public async Task Verdict_carries_the_real_wait_reported_by_the_counter()
+    {
+        var counter = new FakeAlgorithmCounter { RetryAfterOnReject = TimeSpan.FromSeconds(7.2) };
+        var evaluator = new TieredRateLimitEvaluator(
+            counter,
+            new FixedQuotaResolver(new EffectiveQuota(1, 60)),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+
+        await evaluator.EvaluateAsync(Policy(), tenantId, userId);
+        var verdict = await evaluator.EvaluateAsync(Policy(), tenantId, userId);
+
+        Assert.True(verdict.IsExceeded);
+        Assert.Equal(8, verdict.RetryAfterSeconds);
+    }
+
+    [Fact]
+    public async Task Verdict_falls_back_to_the_window_when_the_counter_reports_no_wait()
+    {
+        var counter = new FakeAlgorithmCounter { RetryAfterOnReject = TimeSpan.Zero };
+        var evaluator = new TieredRateLimitEvaluator(
+            counter,
+            new FixedQuotaResolver(new EffectiveQuota(1, 60)),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+
+        await evaluator.EvaluateAsync(Policy(), tenantId, userId);
+        var verdict = await evaluator.EvaluateAsync(Policy(), tenantId, userId);
+
+        Assert.Equal(60, verdict.RetryAfterSeconds);
     }
 
     [Fact]
@@ -299,13 +356,16 @@ public sealed class TieredRateLimitEvaluatorTests
         ) => throw new InvalidOperationException("Subscription M2M call failed.");
     }
 
+    // Mismo contrato que el contador Redis: un rechazo no consume cupo.
     private sealed class FakeAlgorithmCounter : IRateLimitAlgorithmCounter
     {
         private readonly Dictionary<string, long> counts = [];
 
         public List<string> EvaluatedKeys { get; } = [];
 
-        public Task<bool> EvaluateAsync(
+        public TimeSpan RetryAfterOnReject { get; init; } = TimeSpan.FromSeconds(30);
+
+        public Task<RateLimitCounterResult> EvaluateAsync(
             RateCounterKey key,
             RateLimitAlgorithm algorithm,
             int limit,
@@ -315,14 +375,17 @@ public sealed class TieredRateLimitEvaluatorTests
         {
             EvaluatedKeys.Add(key.Value);
             counts.TryGetValue(key.Value, out var current);
+            if (current >= limit)
+                return Task.FromResult(RateLimitCounterResult.Rejected(RetryAfterOnReject));
+
             counts[key.Value] = current + 1;
-            return Task.FromResult(counts[key.Value] > limit);
+            return Task.FromResult(RateLimitCounterResult.Allowed);
         }
     }
 
     private sealed class ThrowingAlgorithmCounter : IRateLimitAlgorithmCounter
     {
-        public Task<bool> EvaluateAsync(
+        public Task<RateLimitCounterResult> EvaluateAsync(
             RateCounterKey key,
             RateLimitAlgorithm algorithm,
             int limit,

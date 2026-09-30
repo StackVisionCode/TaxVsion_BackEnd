@@ -18,6 +18,8 @@ public sealed class AuthorizationMetrics : IDisposable
     private readonly Counter<int> _decisions;
     private readonly Counter<int> _sessionDenylistUnavailable;
     private readonly Counter<int> _moduleDecisions;
+    private readonly Counter<int> _denials;
+    private readonly Counter<int> _tokenStale;
 
     public AuthorizationMetrics()
     {
@@ -33,7 +35,28 @@ public sealed class AuthorizationMetrics : IDisposable
             "authz.module_decision",
             description: "Entitlement/module gate decisions (Phase 1 log-only) by module and result"
         );
+        _denials = _meter.CreateCounter<int>("authz.denial", description: "Authorization denials by reason");
+        _tokenStale = _meter.CreateCounter<int>(
+            "authz.token_stale",
+            description: "Requests rejected because the token's perm_v is older than the local projection"
+        );
     }
+
+    /// <summary>
+    /// Por qué se denegó, en el vocabulario cerrado de <see cref="AuthorizationDenialReasons"/>. El
+    /// tag <c>layer</c> de <see cref="RecordDecision"/> no alcanza: no distingue un endpoint que no
+    /// declara actor type (bug del backend) de un actor no permitido, ni ve la superficie ni el módulo.
+    /// Cardinalidad acotada (5), sin nada del usuario ni del tenant.
+    /// </summary>
+    public void RecordDenialReason(string reason) =>
+        _denials.Add(1, new KeyValuePair<string, object?>("reason", reason));
+
+    /// <summary>
+    /// El token trae un `perm_v` mas viejo que la proyección: al usuario le cambiaron los permisos y
+    /// su access token todavia no lo refleja. Se responde 401 para que el frontend refresque. Un pico
+    /// sostenido significa que algun cliente NO esta refrescando y sus usuarios ven 401 en bucle.
+    /// </summary>
+    public void RecordTokenStale() => _tokenStale.Add(1);
 
     /// <param name="layer">"1" (HasPermission), "2" (AllowActorTypes) o "3b" (resource ownership).</param>
     public void RecordDecision(bool allowed, string layer) =>

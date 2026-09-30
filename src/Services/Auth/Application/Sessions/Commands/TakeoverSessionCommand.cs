@@ -1,19 +1,26 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Application.Sessions.Commands;
 
 /// <summary>
 /// Confirma el takeover de sesión única: canjea el vale emitido por el login (un solo uso), revoca
 /// TODAS las sesiones anteriores del usuario y materializa la nueva. El vale ya prueba que el login
-/// (password + MFA si tocaba) se resolvió — acá no se re-autentica.
+/// (password + MFA si tocaba) se resolvió — acá no se re-autentica. <see cref="Surface"/> es dónde se
+/// confirma: debe coincidir con la del vale (un takeover del CRM no abre el Account ni al revés).
 /// </summary>
-public sealed record TakeoverSessionCommand(Guid Ticket, string? DeviceName = null);
+public sealed record TakeoverSessionCommand(
+    Guid Ticket,
+    string? DeviceName = null,
+    SessionSurface Surface = SessionSurface.Workspace
+);
 
 public static class TakeoverSessionHandler
 {
@@ -25,6 +32,8 @@ public static class TakeoverSessionHandler
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
         ISessionRepository sessions,
+        IMfaRepository mfa,
+        ISecureTokenService secureTokens,
         IAccessTokenDenylist denylist,
         ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
@@ -38,7 +47,7 @@ public static class TakeoverSessionHandler
         var invalid = new Error("Auth.TakeoverInvalid", "The session takeover request is invalid or has expired.");
 
         var payload = await takeoverTickets.ConsumeAsync(command.Ticket, ct);
-        if (payload is null)
+        if (payload is null || payload.Surface != command.Surface)
             return Result.Failure<LoginResponse>(invalid);
 
         var tenant = await tenants.GetByIdAsync(payload.TenantId, ct);
@@ -49,6 +58,12 @@ public static class TakeoverSessionHandler
         var user = await users.GetByIdAsync(payload.UserId, ct);
         if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
             return Result.Failure<LoginResponse>(invalid);
+
+        if (
+            payload.Surface == SessionSurface.Account
+            && AccountSurfacePolicy.Check(user, payload.MustEnrollMfa) is { } denied
+        )
+            return Result.Failure<LoginResponse>(denied);
 
         // Sesión única: aún no existe la nueva, así que se revocan TODAS las anteriores. Denylist cada
         // una (20 min cubre la vida máxima del JWT) y revocar en BD — mismo patrón que el cambio de
@@ -63,6 +78,7 @@ public static class TakeoverSessionHandler
             tenant,
             payload.AuthMethods,
             command.DeviceName ?? payload.DeviceName,
+            payload.Surface,
             roles,
             issuer,
             ct
@@ -77,10 +93,25 @@ public static class TakeoverSessionHandler
                 request.IpAddress,
                 request.UserAgent,
                 correlation.CorrelationId,
-                detailsJson: """{"sessionTakeover":true}"""
+                detailsJson: payload.Surface == SessionSurface.Account
+                    ? """{"sessionTakeover":true,"surface":"account"}"""
+                    : """{"sessionTakeover":true}"""
             ),
             ct
         );
+        // "No volver a pedirme el código" se resolvió antes del interstitial, pero no había sesión donde
+        // colgar el dispositivo: el pedido viajó en el vale y se cumple recién acá.
+        var deviceToken = await TrustedDeviceIssuer.IssueIfRequestedAsync(
+            payload.RememberDevice,
+            user,
+            mfa,
+            secureTokens,
+            audit,
+            request,
+            correlation,
+            ct
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
 
         // Post-commit: avisar en tiempo real a los dispositivos revocados (best-effort).
@@ -95,7 +126,9 @@ public static class TakeoverSessionHandler
 
         return Result.Success(
             LoginResponse.ForTokens(
-                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds),
+                // El dispositivo viaja DENTRO de los tokens, que es donde ya lo busca el frontend tras
+                // el segundo factor: el takeover no es un caso aparte para quien lo consume.
+                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken),
                 mfaSetupRequired: payload.MustEnrollMfa
             )
         );

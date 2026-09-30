@@ -53,11 +53,57 @@ public sealed class ClaimsPrincipalExtensionsTests
     }
 
     [Fact]
-    public void HasPermission_bypasses_for_PlatformAdmin_role_even_without_the_perm_claim()
+    public void HasPermission_bypasses_for_a_PlatformAdmin_actor_type_even_without_the_perm_claim()
+    {
+        var principal = BuildPrincipal(new Claim(ClaimNames.ActorType, nameof(ActorType.PlatformAdmin)));
+
+        Assert.True(principal.HasPermission("anything.at.all"));
+    }
+
+    [Fact]
+    public void IsPlatformAdmin_reads_the_actor_type_claim()
+    {
+        var principal = BuildPrincipal(new Claim(ClaimNames.ActorType, nameof(ActorType.PlatformAdmin)));
+
+        Assert.True(principal.IsPlatformAdmin());
+    }
+
+    [Theory]
+    [InlineData("PlatformAdmin")]
+    [InlineData("Platform Admin")]
+    [InlineData("platformadmin")]
+    public void IsPlatformAdmin_ignores_a_tenant_role_named_like_the_platform_pseudo_role(string roleName)
+    {
+        // El claim de rol mezcla el pseudo-rol del actor type con los nombres de los custom roles
+        // del tenant: nombrar un custom role así no puede otorgar ámbito de plataforma.
+        var principal = BuildPrincipal(
+            new Claim(ClaimNames.ActorType, nameof(ActorType.TenantAdmin)),
+            new Claim(ClaimTypes.Role, "TenantAdmin"),
+            new Claim(ClaimTypes.Role, roleName)
+        );
+
+        Assert.False(principal.IsPlatformAdmin());
+        Assert.False(principal.HasPermission("anything.at.all"));
+    }
+
+    [Fact]
+    public void IsPlatformAdmin_is_false_without_an_actor_type_claim()
     {
         var principal = BuildPrincipal(new Claim(ClaimTypes.Role, "PlatformAdmin"));
 
-        Assert.True(principal.HasPermission("anything.at.all"));
+        Assert.False(principal.IsPlatformAdmin());
+    }
+
+    [Theory]
+    [InlineData("TenantEmployee")]
+    [InlineData("TenantAdmin")]
+    [InlineData("CustomerPortal")]
+    [InlineData("Service")]
+    public void IsPlatformAdmin_is_false_for_every_other_actor_type(string actorType)
+    {
+        var principal = BuildPrincipal(new Claim(ClaimNames.ActorType, actorType));
+
+        Assert.False(principal.IsPlatformAdmin());
     }
 
     [Fact]

@@ -28,6 +28,9 @@ public static class ChangePlanHandler
         ChangePlanCommand command,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        ISubscriptionSeatRepository seats,
+        ITenantUserCountClient userCounts,
+        IPlanChangeCheckoutPaymentClient checkoutClient,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -40,53 +43,28 @@ public static class ChangePlanHandler
         if (subscription is null)
             return Result.Failure<ChangePlanResult>(new Error("Subscription.NotFound", "Subscription does not exist."));
 
-        var plan = await plans.GetByCodeAsync(command.PlanCode?.Trim().ToLowerInvariant() ?? string.Empty, ct);
-        if (plan is null || plan.Status != PlanStatus.Published)
-            return Result.Failure<ChangePlanResult>(new Error("Plan.NotFound", "Plan does not exist."));
+        var resolved = await PlanChangeResolver.ResolveAsync(
+            subscription,
+            command.PlanCode,
+            command.BillingCycle,
+            plans,
+            ct
+        );
+        if (resolved.IsFailure)
+            return Result.Failure<ChangePlanResult>(resolved.Error);
 
-        var planVersion = plan.GetPublishedVersion();
-        if (planVersion is null)
-            return Result.Failure<ChangePlanResult>(
-                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
-            );
-
-        if (!PlanPricing.TryParseBillingCycle(command.BillingCycle, out var requestedCycle))
-            return Result.Failure<ChangePlanResult>(
-                new Error("Subscription.InvalidBillingCycle", $"'{command.BillingCycle}' is not a valid billing cycle.")
-            );
-
-        var cycleChanged = requestedCycle is not null && requestedCycle.Value != subscription.BillingCycle;
-        if (subscription.PlanId == plan.Id && subscription.PlanVersionId == planVersion.Id && !cycleChanged)
+        var change = resolved.Value;
+        if (change.Direction == PlanChangeDirection.None)
             return Result.Success(new ChangePlanResult(AwaitingPayment: false, PlanChangeRequestId: null));
 
-        var effectiveCycle = requestedCycle ?? subscription.BillingCycle;
-        var targetPrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, effectiveCycle);
-        if (targetPrice is null)
-            return Result.Failure<ChangePlanResult>(
-                new Error(
-                    "Plan.NoPriceTier",
-                    $"Plan {plan.Code.Value} has no price for billing cycle {effectiveCycle}."
-                )
-            );
-
-        var currentPlan = await plans.GetByIdAsync(subscription.PlanId, ct);
-        var currentPlanVersion = PlanPricing.FindVersion(currentPlan, subscription.PlanVersionId);
-        var currentPrice = currentPlanVersion is null
-            ? null
-            : PlanPricing.ResolveBaseSubscriptionPrice(currentPlanVersion, subscription.BillingCycle);
-        if (currentPrice is null)
-        {
-            return Result.Failure<ChangePlanResult>(
-                new Error(
-                    "Plan.NoCurrentPriceTier",
-                    "Current plan has no resolvable price for its billing cycle; cannot determine upgrade/downgrade direction."
-                )
-            );
-        }
+        var plan = change.Plan;
+        var planVersion = change.PlanVersion;
+        var requestedCycle = change.RequestedCycle;
+        var targetPrice = (AmountCents: change.TargetAmountCents, Currency: change.Currency);
 
         var nowUtc = DateTime.UtcNow;
         var previousPlanCode = subscription.PlanCode;
-        var isUpgrade = targetPrice.Value.AmountCents > currentPrice.Value.AmountCents;
+        var isUpgrade = change.Direction == PlanChangeDirection.Upgrade;
 
         if (isUpgrade)
         {
@@ -97,8 +75,8 @@ public static class ChangePlanHandler
                 plan,
                 planVersion,
                 requestedCycle,
-                targetPrice.Value.AmountCents,
-                targetPrice.Value.Currency,
+                targetPrice.AmountCents,
+                targetPrice.Currency,
                 paymentIdempotencyKey,
                 command.RequestedByUserId,
                 nowUtc
@@ -133,20 +111,57 @@ public static class ChangePlanHandler
                 ct
             );
 
-            await bus.PublishAsync(
-                new SubscriptionPlanChangeDueIntegrationEvent
-                {
-                    TenantId = command.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    TenantSubscriptionId = subscription.Id,
-                    PlanChangeRequestId = awaitingPayment.Id,
-                    TargetPlanId = plan.Id,
-                    IdempotencyKey = awaitingPayment.PaymentIdempotencyKey,
-                    TargetPlanPrice = awaitingPayment.ChargeAmountCents,
-                    Currency = awaitingPayment.ChargeCurrency,
-                    RequestedByUserId = awaitingPayment.RequestedByUserId,
-                }
-            );
+            // Dos formas de cobrar el MISMO request: por redirect (única opción sin método en archivo) o
+            // off-session. Las dos terminan en SubscriptionPlanChangePaymentSucceeded/Failed.
+            string? checkoutUrl = null;
+            if (command.WantsHostedCheckout)
+            {
+                var checkout = await checkoutClient.CreateCheckoutAsync(
+                    new PlanChangeCheckoutClientRequest(
+                        command.TenantId,
+                        awaitingPayment.Id,
+                        awaitingPayment.ChargeAmountCents,
+                        awaitingPayment.ChargeCurrency,
+                        command.PayerEmail!,
+                        command.SuccessUrl!,
+                        command.CancelUrl!,
+                        awaitingPayment.PaymentIdempotencyKey,
+                        "Stripe",
+                        "Card"
+                    ),
+                    ct
+                );
+                if (checkout.IsFailure)
+                    return Result.Failure<ChangePlanResult>(checkout.Error);
+
+                subscription.AttachUpgradeCheckout(
+                    awaitingPayment.Id,
+                    checkout.Value.PaymentId,
+                    checkout.Value.CheckoutUrl,
+                    checkout.Value.ExpiresAtUtc,
+                    command.RequestedByUserId,
+                    DateTime.UtcNow
+                );
+                await unitOfWork.SaveChangesAsync(ct);
+                checkoutUrl = checkout.Value.CheckoutUrl;
+            }
+            else
+            {
+                await bus.PublishAsync(
+                    new SubscriptionPlanChangeDueIntegrationEvent
+                    {
+                        TenantId = command.TenantId,
+                        CorrelationId = correlation.CorrelationId,
+                        TenantSubscriptionId = subscription.Id,
+                        PlanChangeRequestId = awaitingPayment.Id,
+                        TargetPlanId = plan.Id,
+                        IdempotencyKey = awaitingPayment.PaymentIdempotencyKey,
+                        TargetPlanPrice = awaitingPayment.ChargeAmountCents,
+                        Currency = awaitingPayment.ChargeCurrency,
+                        RequestedByUserId = awaitingPayment.RequestedByUserId,
+                    }
+                );
+            }
 
             logger.LogInformation(
                 "Tenant {TenantId} requested an upgrade to {PlanCode}; full price charge of {AmountCents} {Currency} in flight (requested by {UserId}).",
@@ -156,11 +171,24 @@ public static class ChangePlanHandler
                 awaitingPayment.ChargeCurrency,
                 command.RequestedByUserId
             );
-            return Result.Success(new ChangePlanResult(AwaitingPayment: true, awaitingPayment.Id));
+            return Result.Success(new ChangePlanResult(AwaitingPayment: true, awaitingPayment.Id, checkoutUrl));
         }
 
         // Downgrade (o mismo precio): nunca cobra, nunca prorratea — se agenda para el fin del
         // período actual y sigue disfrutando el plan actual hasta la próxima renovación.
+        // Antes hay que ver si la oficina entra: bajar de plan con más gente de la que el plan admite
+        // dejaría a esos usuarios fuera al aplicarse.
+        var capacity = await DowngradeFit.MeasureAsync(
+            command.TenantId,
+            planVersion,
+            await seats.GetByTenantIdAsync(command.TenantId, ct),
+            userCounts,
+            ct
+        );
+        var fits = DowngradeFit.Ensure(capacity);
+        if (fits.IsFailure)
+            return Result.Failure<ChangePlanResult>(fits.Error);
+
         var downgradeResult = subscription.RequestDowngrade(
             plan,
             planVersion,

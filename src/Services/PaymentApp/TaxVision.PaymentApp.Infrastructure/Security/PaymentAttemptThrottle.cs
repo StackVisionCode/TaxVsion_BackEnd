@@ -26,15 +26,15 @@ namespace TaxVision.PaymentApp.Infrastructure.Security;
 public sealed class PaymentAttemptThrottle(IConnectionMultiplexer redis, IRateCounter rateCounter)
     : IPaymentAttemptThrottle
 {
-    private const int MaxWebhookAttemptsPerMinutePerTenant = 60;
+    private const int MaxWebhookAttemptsPerMinutePerScope = 60;
     private const int MaxAdminActionAttemptsPerMinutePerTenant = 5;
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
-    public async Task<bool> IsWebhookThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
-        await GetCountAsync(WebhookKey(tenantId)) >= MaxWebhookAttemptsPerMinutePerTenant;
+    public async Task<bool> IsWebhookThrottledAsync(Guid scopeId, CancellationToken ct = default) =>
+        await GetCountAsync(WebhookKey(scopeId)) >= MaxWebhookAttemptsPerMinutePerScope;
 
-    public Task RegisterWebhookAttemptAsync(Guid tenantId, CancellationToken ct = default) =>
-        rateCounter.IncrementAndGetAsync(WebhookKey(tenantId), Window, ct);
+    public Task RegisterWebhookAttemptAsync(Guid scopeId, CancellationToken ct = default) =>
+        rateCounter.IncrementAndGetAsync(WebhookKey(scopeId), Window, ct);
 
     public async Task<bool> IsAdminActionThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
         await GetCountAsync(AdminActionKey(tenantId)) >= MaxAdminActionAttemptsPerMinutePerTenant;
@@ -45,8 +45,8 @@ public sealed class PaymentAttemptThrottle(IConnectionMultiplexer redis, IRateCo
     private async Task<long> GetCountAsync(RateCounterKey key) =>
         (long)await redis.GetDatabase().StringGetAsync(key.Value);
 
-    private static RateCounterKey WebhookKey(Guid tenantId) =>
-        RateCounterKey.From($"paymentapp:throttle:{tenantId:N}:webhook");
+    private static RateCounterKey WebhookKey(Guid scopeId) =>
+        RateCounterKey.From($"paymentapp:throttle:{scopeId:N}:webhook");
 
     private static RateCounterKey AdminActionKey(Guid tenantId) =>
         RateCounterKey.From($"paymentapp:throttle:{tenantId:N}:admin-action");

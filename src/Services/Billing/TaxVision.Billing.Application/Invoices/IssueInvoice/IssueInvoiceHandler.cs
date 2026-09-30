@@ -1,6 +1,7 @@
 using System.Globalization;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
 using Wolverine;
@@ -14,6 +15,7 @@ public static class IssueInvoiceHandler
     public static async Task<Result<IssueInvoiceResult>> Handle(
         IssueInvoiceCommand command,
         IInvoiceRepository invoices,
+        IOptions<BillingVisibilityOptions> visibility,
         IInvoiceNumberSequenceRepository sequences,
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
@@ -22,7 +24,10 @@ public static class IssueInvoiceHandler
         CancellationToken ct
     )
     {
-        var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
+        // Visibilidad por asignación: la misma que ya filtra la lectura. Escribir sobre la factura de
+        // un cliente que no le toca no puede quedar abierto solo porque el permiso de módulo alcance.
+        var assignedTo = visibility.Value.Enabled && !command.CanViewAll ? command.ActorUserId : (Guid?)null;
+        var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct, assignedTo);
         if (invoice is null)
             return Result.Failure<IssueInvoiceResult>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
 

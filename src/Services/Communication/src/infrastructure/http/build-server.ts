@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import { CORRELATION_HEADER, normalizeCorrelationId } from '../../domain/shared/correlation.js';
 import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds } from '../telemetry/metrics.js';
+import { sendRateLimited } from './rate-limit-rejection.js';
 import { registerHealthRoutes } from '../../api/http/routes/health.route.js';
 import { registerAuthPlugin } from '../../api/http/plugins/auth.plugin.js';
 import { registerConversationRoutes } from '../../api/http/routes/conversations.route.js';
@@ -61,19 +62,19 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   // preHandler de ruta, asi que las 2 rutas publicas (join-by-token/by-code)
   // pasan primero por este gate generico por IP y despues por su propio gate
   // mas estricto por token/shortCode (meeting-invitations.route.ts).
+  // Limite por IP (trafico anonimo y techo por oficina); el de cada usuario autenticado lo aplica el
+  // plugin de auth. La IP sale de CF-Connecting-IP, que el Gateway siempre reescribe con la real; el
+  // X-Real-IP que se leia antes lo manda el propio cliente, asi que se podia falsear para saltarse esto.
   app.addHook('onRequest', async (req, reply) => {
-    const ip = (req.headers['x-real-ip'] as string) ?? req.ip;
-    const allowed = await container.httpRateLimiter.allow({
+    const ip = (req.headers['cf-connecting-ip'] as string | undefined) ?? req.ip;
+    const decision = await container.httpRateLimiter.allow({
       key: `comm:rl:http.global:${ip}`,
       policy: 'communication.global_http_ip',
       maxPerWindow: config.rateLimit.httpGlobal.maxPerWindow,
       windowSeconds: config.rateLimit.httpGlobal.windowSeconds,
     });
-    if (!allowed) {
-      reply
-        .code(429)
-        .header('Retry-After', String(config.rateLimit.httpGlobal.windowSeconds))
-        .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+    if (!decision.allowed) {
+      return sendRateLimited(reply, decision.retryAfterSeconds, 'communication.global_http_ip');
     }
   });
 
@@ -100,7 +101,10 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
     reply.header(CORRELATION_HEADER, req.id);
   });
 
-  await app.register(registerAuthPlugin);
+  await app.register(registerAuthPlugin, {
+    httpRateLimiter: container.httpRateLimiter,
+    userRateLimit: config.rateLimit.httpUser,
+  });
   await app.register(registerHealthRoutes);
   // Sin auth, mismo criterio que /health — scrape interno (Prometheus), no
   // expone datos de tenant/usuario, solo contadores agregados del proceso.

@@ -18,7 +18,8 @@ public sealed record AddAttendeeCommand(
     Guid? CustomerId,
     string? DisplayName,
     string? Email,
-    bool IsRequired
+    bool IsRequired,
+    bool CanManageAll
 );
 
 public static class AddAttendeeHandler
@@ -48,7 +49,8 @@ public static class AddAttendeeHandler
             snapshot.Value,
             command.IsRequired,
             command.ActingUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.CanManageAll
         );
 
         if (added.IsFailure)

@@ -42,6 +42,17 @@ public sealed class ErrorHttpMappingTests
     [InlineData("")]
     public void UnCodigoDesconocido_CaeA400(string code) => Assert.Equal(StatusCodes.Status400BadRequest, Map(code));
 
+    // Throttles de cara al usuario que antes caían al 400 por defecto (o a 401 en el accept de
+    // invitación): con 429 el front sabe que es "espera y reintenta", no un error de datos.
+    [Theory]
+    [InlineData("Onboarding.OtpRateLimited")]
+    [InlineData("Onboarding.ResendCooldown")]
+    [InlineData("Signature.Signer.PinLocked")]
+    [InlineData("Signature.Signer.ChallengeCooldown")]
+    [InlineData("Auth.InvitationAcceptThrottled")]
+    public void ThrottlesDeUsuario_MapeanA429(string code) =>
+        Assert.Equal(StatusCodes.Status429TooManyRequests, Map(code));
+
     [Fact]
     public void ErrorNone_CaeA400_YNoRevienta() =>
         Assert.Equal(StatusCodes.Status400BadRequest, Error.None.ToHttpStatusCode());

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using TaxVision.Gateway.LoadShedding;
 using Xunit;
 
@@ -23,7 +22,7 @@ public sealed class LoadShedderTests
         LoadShedderOptions? options = null
     )
     {
-        var monitor = new StaticOptionsMonitor(options ?? Overloadable());
+        var monitor = new StaticOptionsMonitor<LoadShedderOptions>(options ?? Overloadable());
 
         // La senal se refresca a mano: en produccion lo hace OverloadSignalRefresher cada 200 ms, y
         // atarlo al reloj aqui haria los tests lentos y no deterministas (GW-05).
@@ -33,10 +32,14 @@ public sealed class LoadShedderTests
         return new LoadShedder(signal, tracker, new RequestCriticalityClassifier(monitor), monitor);
     }
 
+    // Estos tests prueban la cascada de decisión, no la activación sostenida (ver OverloadSignalTests):
+    // se activa en el primer refresco y con un umbral fijo, independiente de los defaults.
     private static LoadShedderOptions Overloadable() =>
         new()
         {
             MinSamples = 1,
+            ActivationSeconds = 0,
+            P99LatencyThresholdMs = 2000,
             FairShareExcessFactor = 2.0,
             Criticality = new Dictionary<string, RequestCriticality>
             {
@@ -202,14 +205,5 @@ public sealed class LoadShedderTests
     public void FirstSegment_NormalizaLaClaveDeCriticidad(string path, string? expected)
     {
         Assert.Equal(expected, RequestCriticalityClassifier.FirstSegment(new PathString(path)));
-    }
-
-    private sealed class StaticOptionsMonitor(LoadShedderOptions value) : IOptionsMonitor<LoadShedderOptions>
-    {
-        public LoadShedderOptions CurrentValue => value;
-
-        public LoadShedderOptions Get(string? name) => value;
-
-        public IDisposable? OnChange(Action<LoadShedderOptions, string?> listener) => null;
     }
 }

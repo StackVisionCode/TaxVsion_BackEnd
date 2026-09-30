@@ -54,6 +54,15 @@ public sealed class Permission : BaseEntity
     public bool IsDangerous { get; private set; }
 
     /// <summary>
+    /// Si es <c>true</c>, el permiso está declarado pero <b>ningún endpoint lo exige todavía</b>: es
+    /// un marcador de una función que aún no existe. No se concede a ningún rol ni aparece en el
+    /// cajón de accesos — un permiso que no protege nada solo ensucia la pantalla y da una falsa
+    /// sensación de control. Distinto de <see cref="PlatformOnly"/> e <see cref="IsDangerous"/>, que
+    /// sí protegen algo real.
+    /// </summary>
+    public bool IsReserved { get; private set; }
+
+    /// <summary>
     /// Qué <see cref="UserActorType"/>(s) pueden llegar a tener este permiso a través de un rol
     /// (Fase 2 de Actor_Type_Authorization_Layers_Plan.md). Siempre concreto en la fila (nunca
     /// null en la base) — si el catálogo no lo especifica explícito, se infiere una única vez al
@@ -74,7 +83,8 @@ public sealed class Permission : BaseEntity
         bool isAssignableByTenant = true,
         bool platformOnly = false,
         UserActorType[]? allowedActorTypes = null,
-        bool isDangerous = false
+        bool isDangerous = false,
+        bool isReserved = false
     ) =>
         new()
         {
@@ -88,6 +98,7 @@ public sealed class Permission : BaseEntity
             PlatformOnly = platformOnly,
             AllowedActorTypes = allowedActorTypes ?? InferAllowedActorTypes(isCustomerPortal, platformOnly),
             IsDangerous = isDangerous,
+            IsReserved = isReserved,
         };
 
     /// <summary>

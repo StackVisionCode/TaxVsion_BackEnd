@@ -1,3 +1,4 @@
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Abstractions;
@@ -11,13 +12,17 @@ public interface IJwtTokenGenerator
     /// customer_id, zoneinfo, sid, jti, amr, roles y perm_v. No lleva permisos embebidos
     /// (RBAC Fase 7.5.10) — el resolver de permisos consulta la proyección local de
     /// cada servicio via IUserPermissionsSource, usando perm_v para detectar staleness.
+    /// <para>El Account del Landing lleva <c>surface=account</c> y su propia audiencia; <paramref name="reauthenticatedAtUtc"/>
+    /// agrega <c>reauth_at</c> (step-up) solo al token que emite la reautenticación.</para>
     /// </summary>
     AccessToken Generate(
         User user,
         string effectiveTimeZoneId,
         Guid sessionId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> authMethods
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface = SessionSurface.Workspace,
+        DateTime? reauthenticatedAtUtc = null
     );
 
     /// <summary>

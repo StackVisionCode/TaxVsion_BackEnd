@@ -10,20 +10,25 @@ namespace TaxVision.Gateway.LoadShedding;
 /// <see cref="RefreshInterval"/></b> y el camino por petición pasa a ser una lectura de campo.
 ///
 /// <para>
-/// El desfase máximo entre la sobrecarga real y la decisión es el intervalo de refresco, irrelevante
-/// contra una ventana de 60 segundos: la señal ya es un promedio de ese minuto, no un instante.
+/// La señal tiene dos umbrales: se <b>activa</b> solo si la sobrecarga se sostiene
+/// <see cref="LoadShedderOptions.ActivationSeconds"/> seguidos, y se <b>apaga</b> recién cuando p99 y
+/// 5xx bajan a <see cref="LoadShedderOptions.RecoveryRatio"/> de sus umbrales. Así un pico aislado no
+/// sheddea a la flota y un p99 que oscila alrededor del umbral no enciende y apaga en bucle.
 /// </para>
 /// </summary>
 public sealed class OverloadSignal(
     RequestOutcomeWindow window,
     IOptionsMonitor<LoadShedderOptions> options,
-    ILogger<OverloadSignal> logger
+    ILogger<OverloadSignal> logger,
+    TimeProvider? timeProvider = null
 )
 {
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(200);
 
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+    private readonly Lock gate = new();
     private volatile bool isOverloaded;
-    private int wasOverloaded;
+    private DateTimeOffset? breachingSince;
 
     public bool IsOverloaded => isOverloaded;
 
@@ -33,33 +38,63 @@ public sealed class OverloadSignal(
     {
         var current = options.CurrentValue;
         var snapshot = window.GetSnapshot();
+        var now = clock.GetUtcNow();
 
-        var overloaded =
-            snapshot.SampleCount >= current.MinSamples
-            && (
-                snapshot.P99LatencyMs > current.P99LatencyThresholdMs
-                || snapshot.ErrorRate5xx > current.ErrorRate5xxThreshold
-            );
-
-        isOverloaded = overloaded;
-
-        if (!overloaded)
+        lock (gate)
         {
-            Interlocked.Exchange(ref wasOverloaded, 0);
-            return;
+            if (isOverloaded)
+            {
+                if (!IsRecovered(snapshot, current))
+                    return;
+
+                isOverloaded = false;
+                breachingSince = null;
+                logger.LogInformation(
+                    "Load shedding deactivated: p99={P99LatencyMs}ms errorRate5xx={ErrorRate5xx:P1} samples={SampleCount}",
+                    snapshot.P99LatencyMs,
+                    snapshot.ErrorRate5xx,
+                    snapshot.SampleCount
+                );
+                return;
+            }
+
+            if (!IsBreaching(snapshot, current))
+            {
+                breachingSince = null;
+                return;
+            }
+
+            breachingSince ??= now;
+            if (now - breachingSince.Value < TimeSpan.FromSeconds(current.ActivationSeconds))
+                return;
+
+            isOverloaded = true;
+            GatewayMetrics.LoadSheddingActivated.Add(1);
+            logger.LogWarning(
+                "Load shedding activated: p99={P99LatencyMs}ms errorRate5xx={ErrorRate5xx:P1} samples={SampleCount} sustained={ActivationSeconds}s",
+                snapshot.P99LatencyMs,
+                snapshot.ErrorRate5xx,
+                snapshot.SampleCount,
+                current.ActivationSeconds
+            );
         }
+    }
 
-        // Edge-triggered: solo en la transición, no en cada refresco — si no, el log se llena de
-        // líneas idénticas 5 veces por segundo justo durante el episodio.
-        if (Interlocked.CompareExchange(ref wasOverloaded, 1, 0) != 0)
-            return;
-
-        GatewayMetrics.LoadSheddingActivated.Add(1);
-        logger.LogWarning(
-            "Load shedding activated: p99={P99LatencyMs}ms errorRate5xx={ErrorRate5xx:P1} samples={SampleCount}",
-            snapshot.P99LatencyMs,
-            snapshot.ErrorRate5xx,
-            snapshot.SampleCount
+    private static bool IsBreaching(WindowSnapshot snapshot, LoadShedderOptions current) =>
+        snapshot.SampleCount >= current.MinSamples
+        && (
+            snapshot.P99LatencyMs > current.P99LatencyThresholdMs
+            || snapshot.ErrorRate5xx > current.ErrorRate5xxThreshold
         );
+
+    // Sin tráfico suficiente para afirmar sobrecarga, tampoco hay motivo para seguir descartando.
+    private static bool IsRecovered(WindowSnapshot snapshot, LoadShedderOptions current)
+    {
+        if (snapshot.SampleCount < current.MinSamples)
+            return true;
+
+        var ratio = Math.Clamp(current.RecoveryRatio, 0.0, 1.0);
+        return snapshot.P99LatencyMs <= current.P99LatencyThresholdMs * ratio
+            && snapshot.ErrorRate5xx <= current.ErrorRate5xxThreshold * ratio;
     }
 }

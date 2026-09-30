@@ -43,6 +43,14 @@ public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISu
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
+    // El job de anti-entropía no participa en este test.
+    public Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
+        IReadOnlyCollection<SubscriptionStatus> statuses,
+        Guid afterTenantId,
+        int batchSize,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
     public Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
         DateTime n,
         int b,
@@ -53,6 +61,13 @@ public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISu
         DateTime f,
         DateTime t,
         int b,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
+        DateTime fromUtc,
+        DateTime toUtc,
+        int batchSize,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
@@ -139,20 +154,30 @@ public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) 
 
 public sealed class FakeTenantAddOnRepo(IReadOnlyList<TenantAddOn>? addOns = null) : ITenantAddOnRepository
 {
-    private readonly IReadOnlyList<TenantAddOn> _addOns = addOns ?? [];
+    private readonly List<TenantAddOn> _addOns = [.. addOns ?? []];
+
+    /// <summary>Lo que la compra dejó guardado.</summary>
+    public IReadOnlyList<TenantAddOn> Added => _added;
+
+    private readonly List<TenantAddOn> _added = [];
 
     public Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        Task.FromResult(_addOns);
+        Task.FromResult<IReadOnlyList<TenantAddOn>>(_addOns);
 
     public Task<IReadOnlyList<TenantAddOn>> GetByTenantIdForUpdateAsync(
         Guid tenantId,
         CancellationToken ct = default
-    ) => Task.FromResult(_addOns);
+    ) => Task.FromResult<IReadOnlyList<TenantAddOn>>(_addOns);
 
     public Task<TenantAddOn?> GetByIdAsync(Guid id, Guid t, CancellationToken ct = default) =>
         Task.FromResult(_addOns.FirstOrDefault(a => a.Id == id && a.TenantId == t));
 
-    public Task AddAsync(TenantAddOn addOn, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task AddAsync(TenantAddOn addOn, CancellationToken ct = default)
+    {
+        _added.Add(addOn);
+        _addOns.Add(addOn);
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(DateTime n, int b, CancellationToken ct = default) =>
         throw new NotSupportedException();

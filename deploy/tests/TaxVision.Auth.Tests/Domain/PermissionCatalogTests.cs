@@ -11,6 +11,40 @@ namespace TaxVision.Auth.Tests.Domain;
 /// </summary>
 public sealed class PermissionCatalogTests
 {
+    [Fact]
+    public void Saas_payment_refund_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PaymentAppSaaSPaymentRefund);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(
+            new[] { UserActorType.PlatformAdmin },
+            Permission.InferAllowedActorTypes(false, definition.PlatformOnly)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.PaymentAppSaaSPaymentRefund,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
+    // RolePermissionGuard solo lee IsAssignableByTenant: esta regla es la que impide que un TA meta
+    // una permission de plataforma o peligrosa en un custom role.
+    [Fact]
+    public void Platform_only_and_dangerous_permissions_are_never_assignable_by_a_tenant()
+    {
+        var violations = PermissionCatalog
+            .All.Where(d => (d.PlatformOnly || d.IsDangerous) && d.IsAssignableByTenant)
+            .Select(d => d.Code)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
     [Theory]
     [InlineData(PermissionCatalog.BillingView)]
     [InlineData(PermissionCatalog.BillingManage)]
@@ -61,10 +95,91 @@ public sealed class PermissionCatalogTests
             .ToList();
 
         Assert.Equal(expectedIds.OrderBy(id => id), actualIds);
-        Assert.All(
-            PermissionCatalog.All.Where(definition => definition.Module == "communication"),
-            definition => Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier)
+    }
+
+    /// <summary>
+    /// El techo de plan (§27) decide qué puede OTORGAR un tenant a un rol propio. Desde que `comms`
+    /// (chat, llamadas y vídeo) entró en Starter, dejar esos permisos en Pro daba un Starter con chat
+    /// incluido en el plan y sin poder delegarlo a nadie. Las reuniones se venden aparte, así que sus
+    /// cuatro permisos sí siguen en Pro.
+    /// </summary>
+    [Fact]
+    public void Only_the_meeting_permissions_still_require_the_pro_tier()
+    {
+        var communication = PermissionCatalog.All.Where(definition => definition.Module == "communication").ToList();
+
+        var proOnly = communication
+            .Where(definition => definition.MinPlanTier == (int)PlanTier.Pro)
+            .Select(definition => definition.Code)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                PermissionCatalog.CommunicationMeetingCreate,
+                PermissionCatalog.CommunicationMeetingHost,
+                PermissionCatalog.CommunicationMeetingJoin,
+                PermissionCatalog.CommunicationMeetingRecord,
+            ],
+            proOnly
         );
+
+        // El resto, alcanzable desde Starter.
+        Assert.All(
+            communication.Where(definition => !proOnly.Contains(definition.Code)),
+            definition => Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier)
+        );
+    }
+
+    /// <summary>
+    /// Las descripciones son texto de INTERFAZ: el cajón de accesos del CRM las pinta debajo del código
+    /// del permiso, y la regla del producto es que todo el copy que ve el usuario va en inglés.
+    ///
+    /// El test mira acentos y verbos españoles frecuentes, no traduce: basta para que una descripción
+    /// nueva escrita en español no llegue a producción sin que nadie lo note, que es exactamente lo que
+    /// pasó con las 194 originales.
+    /// </summary>
+    [Fact]
+    public void Every_description_is_written_in_english()
+    {
+        string[] spanishVerbs =
+        [
+            "Ver ",
+            "Gestionar",
+            "Crear",
+            "Consultar",
+            "Enviar",
+            "Eliminar",
+            "Borrar",
+            "Cambiar",
+            "Activar",
+            "Revocar",
+            "Asignar",
+            "Emitir",
+            "Definir",
+            "Abrir",
+            "Iniciar",
+            "Adjuntar",
+            "Responder",
+            "Archivar",
+            "Descargar",
+            "Subir",
+            "Restaurar",
+            "Editar",
+            "Invitar",
+            "Comprar",
+            "del tenant",
+        ];
+
+        var offenders = PermissionCatalog
+            .All.Where(definition =>
+                definition.Description.Any(character => "áéíóúñ¿¡".Contains(character, StringComparison.Ordinal))
+                || spanishVerbs.Any(verb => definition.Description.Contains(verb, StringComparison.OrdinalIgnoreCase))
+            )
+            .Select(definition => $"{definition.Code}: {definition.Description}")
+            .ToList();
+
+        Assert.True(offenders.Count == 0, "Descripciones que no están en inglés: " + string.Join(" | ", offenders));
     }
 
     [Fact]
@@ -261,6 +376,177 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(PermissionCatalog.PortalFoldersView, defaults);
     }
 
+    // ---------- Fase A3: baseline del empleado, split de Campaigns y permisos reservados ----------
+
+    /// <summary>
+    /// El empleado recibía 403 en Notes, en la lista de plantillas de firma, al cancelar su propia
+    /// solicitud, al armar un grupo de chat y en todo Campaigns — trabajo diario, no administración.
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCatalog.NotesRead)]
+    [InlineData(PermissionCatalog.NotesManage)]
+    [InlineData(PermissionCatalog.SignatureRequestCancel)]
+    [InlineData(PermissionCatalog.CommunicationGroupCreate)]
+    [InlineData(PermissionCatalog.CampaignsView)]
+    [InlineData(PermissionCatalog.CampaignsManage)]
+    [InlineData(PermissionCatalog.CampaignsSend)]
+    public void Employee_defaults_include_the_daily_work_that_used_to_return_403(string code)
+    {
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+    }
+
+    /// <summary>Lo que sigue siendo administrativo no entra al bundle del empleado.</summary>
+    [Theory]
+    [InlineData(PermissionCatalog.CampaignsSendersManage)]
+    [InlineData(PermissionCatalog.InvoicingIssuerManage)]
+    [InlineData(PermissionCatalog.NotesViewAll)]
+    public void Employee_defaults_stay_out_of_the_administrative_permissions(string code)
+    {
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        Assert.DoesNotContain(code, employeeDefaults);
+        // Y el admin raíz sí las tiene: separar no es quitarle nada a nadie.
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    [Fact]
+    public void The_four_campaigns_permissions_share_the_module_and_the_pro_tier()
+    {
+        string[] codes =
+        [
+            PermissionCatalog.CampaignsView,
+            PermissionCatalog.CampaignsManage,
+            PermissionCatalog.CampaignsSend,
+            PermissionCatalog.CampaignsSendersManage,
+        ];
+
+        foreach (var code in codes)
+        {
+            var definition = PermissionCatalog.All.Single(d => d.Code == code);
+            Assert.Equal("campaigns", definition.Module);
+            Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier);
+            Assert.True(definition.IsAssignableByTenant);
+            Assert.False(definition.IsDangerous);
+        }
+    }
+
+    /// <summary>
+    /// §R.6: el permiso que el administrador reconoce en el cajón de accesos del cliente entra al
+    /// bundle del rol de portal. Sin esto, aplicarlo en las rutas de llamada dejaría sin llamadas a
+    /// todos los clientes que ya existen.
+    /// </summary>
+    [Fact]
+    public void Portal_calls_use_is_in_the_customer_portal_bundle()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PortalCallsUse);
+
+        Assert.True(definition.IsCustomerPortal);
+        Assert.False(definition.IsReserved);
+        Assert.Contains(
+            PermissionCatalog.PortalCallsUse,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
+        );
+    }
+
+    /// <summary>§R.6: no hay módulo de millas ni endpoint que lo exija, así que no se concede a nadie.</summary>
+    [Fact]
+    public void Portal_miles_use_is_reserved_and_reaches_no_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PortalMilesUse);
+
+        Assert.True(definition.IsReserved);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.DoesNotContain(
+            PermissionCatalog.PortalMilesUse,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
+        );
+        Assert.DoesNotContain(PermissionCatalog.PortalMilesUse, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    /// <summary>
+    /// Fitness: un permiso reservado no protege nada todavía, así que no puede ser asignable ni
+    /// aparecer en ningún bundle. Si alguien marca uno como reservado y se olvida del otro flag,
+    /// esto falla.
+    /// </summary>
+    [Fact]
+    public void A_reserved_permission_is_never_assignable_and_never_in_a_bundle()
+    {
+        var reserved = PermissionCatalog.All.Where(d => d.IsReserved).Select(d => d.Code).ToArray();
+
+        Assert.All(
+            reserved,
+            code =>
+                Assert.False(
+                    PermissionCatalog.All.Single(d => d.Code == code).IsAssignableByTenant,
+                    $"{code} está reservado pero sigue siendo asignable por el tenant."
+                )
+        );
+
+        string[] bundles = [Role.SystemTenantAdmin, Role.SystemEmployee, Role.SystemCustomerPortal];
+        foreach (var bundle in bundles)
+        {
+            var defaults = PermissionCatalog.SystemRoleDefaults(bundle);
+            foreach (var code in reserved)
+                Assert.DoesNotContain(code, defaults);
+        }
+
+        foreach (var code in reserved)
+            Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    [Fact]
+    public void The_catalog_has_no_duplicate_codes_or_ids()
+    {
+        var codes = PermissionCatalog.All.Select(d => d.Code).ToArray();
+        var ids = PermissionCatalog.All.Select(d => d.Id).ToArray();
+
+        Assert.Equal(codes.Length, codes.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(ids.Length, ids.Distinct().Count());
+    }
+
+    [Fact]
+    public void DmcaManage_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CloudStorageDmcaManage);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(
+            new[] { UserActorType.PlatformAdmin },
+            Permission.InferAllowedActorTypes(false, definition.PlatformOnly)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CloudStorageDmcaManage,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
+    /// <summary>
+    /// Regresión de §R.7: separar el DMCA no le quita al admin raíz el legal hold que ya tenía
+    /// (retener evidencia de un litigio propio sigue siendo un caso de uso del tenant), ni le
+    /// devuelve el permiso al bundle de creación de roles custom.
+    /// </summary>
+    [Fact]
+    public void LegalManage_stays_with_the_tenant_root_admin_after_splitting_the_dmca()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CloudStorageLegalManage);
+
+        Assert.False(definition.PlatformOnly);
+        Assert.True(definition.IsDangerous);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Contains(
+            PermissionCatalog.CloudStorageLegalManage,
+            PermissionCatalog.SystemTenantAdminRootPermissions()
+        );
+    }
+
     [Fact]
     public void DmcaCounterNotice_is_deliberately_not_dangerous_despite_looking_like_a_legal_permission()
     {
@@ -423,5 +709,19 @@ public sealed class PermissionCatalogTests
             if (code.StartsWith("tasks.", StringComparison.Ordinal))
                 Assert.Equal(TasksPermissions.PortalClientRequests, code);
         }
+    }
+
+    /// <summary>
+    /// §R.7 — A1/A7 hicieron explícitos dos permisos de Signature que el empleado YA ejercia por otra
+    /// vía: "My Signature" bastaba con request.create y extender el vencimiento con request.resend. Si
+    /// el bundle no los trae, el día del despliegue todos los preparadores pierden las dos cosas.
+    /// </summary>
+    [Fact]
+    public void The_employee_keeps_the_signature_work_he_could_already_do()
+    {
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(SignaturePermissions.PreparerManage, employee);
+        Assert.Contains(SignaturePermissions.RequestExpire, employee);
     }
 }

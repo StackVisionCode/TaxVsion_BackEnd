@@ -97,6 +97,37 @@ public sealed class DocumentGenerationTests
         Assert.Equal("Documents.Generation.FileIdMismatch", result.Error.Code);
     }
 
+    /// <summary>
+    /// Una generación que arrancó y nunca terminó —el archivo no llegó a almacenarse, el evento de vuelta se
+    /// perdió— se quedaba a medias para siempre, porque el único estado reintentable era Failed. Un atasco
+    /// silencioso también tiene que poder desatascarse.
+    /// </summary>
+    [Fact]
+    public void A_generation_stuck_halfway_can_be_unstuck()
+    {
+        var now = DateTime.UtcNow;
+        var generation = NewRequested();
+        generation.Queue(now);
+        generation.StartRendering(now);
+        generation.StartUploading(Guid.NewGuid(), now);
+
+        Assert.True(generation.RetryStalled(now).IsSuccess);
+        Assert.Equal(DocumentGenerationStatus.Queued, generation.Status);
+        // Desde Queued el pipeline vuelve a arrancar solo.
+        Assert.True(generation.StartRendering(now).IsSuccess);
+    }
+
+    // Lo ya entregado no se rehace: sería un segundo archivo para el mismo documento.
+    [Fact]
+    public void A_finished_generation_is_never_unstuck()
+    {
+        var now = DateTime.UtcNow;
+        var generation = NewRequested();
+        generation.Cancel(now);
+
+        Assert.True(generation.RetryStalled(now).IsFailure);
+    }
+
     [Fact]
     public void Retry_only_from_Failed()
     {

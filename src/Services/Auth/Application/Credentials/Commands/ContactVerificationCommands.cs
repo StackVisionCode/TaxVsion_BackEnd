@@ -23,6 +23,7 @@ public static class RequestEmailChangeHandler
     public static async Task<Result> Handle(
         RequestEmailChangeCommand command,
         IUserRepository users,
+        ITenantRegistry tenants,
         ICredentialTokenRepository credentials,
         ISecureTokenService tokens,
         IAuthAuditWriter audit,
@@ -44,7 +45,7 @@ public static class RequestEmailChangeHandler
         if (string.Equals(newEmail, user.Email, StringComparison.OrdinalIgnoreCase))
             return Result.Failure(new Error("User.Email", "New email must be different."));
 
-        if (await users.EmailExistsAsync(user.TenantId, newEmail, ct))
+        if (await users.EmailExistsAsync(user.TenantId, newEmail, user.AccountKind, ct))
         {
             return Result.Failure(new Error("User.EmailConflict", "Email is already registered in this tenant."));
         }
@@ -58,6 +59,7 @@ public static class RequestEmailChangeHandler
             Validity
         );
         await credentials.AddEmailVerificationAsync(verification, ct);
+        var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
 
         await bus.PublishAsync(
             new EmailChangeRequestedIntegrationEvent
@@ -68,6 +70,8 @@ public static class RequestEmailChangeHandler
                 NewEmail = newEmail,
                 RawToken = rawToken,
                 ExpiresAtUtc = verification.ExpiresAtUtc,
+                ActorType = user.ActorType.ToString(),
+                TenantName = tenant?.Name,
                 CorrelationId = correlation.CorrelationId,
             }
         );
@@ -120,7 +124,7 @@ public static class ConfirmEmailChangeHandler
         if (user is null || !user.IsActive)
             return Result.Failure(invalid);
 
-        if (await users.EmailExistsAsync(user.TenantId, verification.NewEmail, ct))
+        if (await users.EmailExistsAsync(user.TenantId, verification.NewEmail, user.AccountKind, ct))
         {
             return Result.Failure(new Error("User.EmailConflict", "Email is already registered in this tenant."));
         }

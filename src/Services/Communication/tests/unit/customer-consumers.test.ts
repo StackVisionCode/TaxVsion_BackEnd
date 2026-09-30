@@ -29,6 +29,8 @@ function setup() {
     emitToCall: vi.fn(),
     emitToMeeting: vi.fn(),
     emitToTenant: vi.fn(),
+    emitToTenantStaff: vi.fn(),
+    emitToTenantMembers: vi.fn(),
   } as unknown as RealtimeEmitter;
   const customerDirectory = {
     upsert: vi.fn(),
@@ -84,13 +86,15 @@ describe('bindCustomerConsumers — customer.changed realtime (F4)', () => {
   ];
 
   for (const { event, payload, changeType } of cases) {
-    it(`${event} emite customer.changed al tenant con changeType=${changeType}`, async () => {
+    it(`${event} emite customer.changed solo al personal con changeType=${changeType}`, async () => {
       const { handlers, emitter } = setup();
 
       await handlers.get(event)!(envelope(event, payload));
 
-      expect(emitter.emitToTenant).toHaveBeenCalledTimes(1);
-      const call = vi.mocked(emitter.emitToTenant).mock.calls[0]![0] as {
+      expect(emitter.emitToTenantStaff).toHaveBeenCalledTimes(1);
+      // Nunca al room del tenant entero: los clientes del portal no ven la cartera de la oficina.
+      expect(emitter.emitToTenant).not.toHaveBeenCalled();
+      const call = vi.mocked(emitter.emitToTenantStaff).mock.calls[0]![0] as {
         tenantId: string;
         event: string;
         envelope: { payload: { customerId: string; changeType: string } };
@@ -108,7 +112,7 @@ describe('bindCustomerConsumers — customer.changed realtime (F4)', () => {
       envelope('customer.created.v1', { displayName: 'Ada', primaryEmail: 'ada@example.com' }),
     );
 
-    expect(emitter.emitToTenant).not.toHaveBeenCalled();
+    expect(emitter.emitToTenantStaff).not.toHaveBeenCalled();
   });
 });
 

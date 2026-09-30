@@ -23,6 +23,13 @@ public static class AcceptInvitationHandler
         "Invitation is invalid or expired."
     );
 
+    // 429 propio: con el mismo "invalid or expired" una oficina entera detrás de una IP veía su link
+    // válido rechazado sin pista de que solo tenía que esperar. No revela nada sobre el token.
+    private static readonly Error InvitationAcceptThrottled = new(
+        "Auth.InvitationAcceptThrottled",
+        "Too many attempts from your network. Please wait a few minutes and try again."
+    );
+
     /// <summary>Fase 18 — throttle por IP (20/hora, protege contra guessing masivo del token) y
     /// límite de intentos por invitación (Invitation.MaxAcceptAttempts=5, protege una invitación
     /// puntual de intentos repetidos de canje una vez que el token ya coincidió).</summary>
@@ -43,8 +50,8 @@ public static class AcceptInvitationHandler
         CancellationToken ct
     )
     {
-        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is not null)
-            return Result.Failure<UserResponse>(InvalidInvitation);
+        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
+            return Result.Failure<UserResponse>(InvitationAcceptThrottled.WithRetryAfter(retryAfter));
         await throttler.RegisterInvitationAcceptAttemptAsync(request.IpAddress, ct);
 
         var tokenHash = tokens.Hash(command.InvitationToken);
@@ -92,7 +99,7 @@ public static class AcceptInvitationHandler
             return Result.Failure<UserResponse>(passwordResult.Error);
         }
 
-        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
+        if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, invitation.AccountKind, ct))
         {
             invitation.RegisterAcceptAttempt();
             await unitOfWork.SaveChangesAsync(ct);
@@ -124,8 +131,10 @@ public static class AcceptInvitationHandler
 
         await users.AddAsync(user, ct);
 
-        // Roles RBAC: los indicados en la invitación o el rol de sistema del actor.
-        var roleIds = ResolveInvitationRoleIds(invitation);
+        // Roles RBAC: los indicados en la invitación o el rol de sistema del actor. Los de la
+        // invitación se revalidan acá, no se aplican tal cual: entre invitar y aceptar el rol pudo
+        // desactivarse, borrarse o dejar de ser válido para este actor type.
+        var roleIds = await RevalidateInvitationRolesAsync(invitation, roles, ct);
         if (roleIds.Count == 0)
         {
             var systemRoleName = invitation.ActorType switch
@@ -214,6 +223,46 @@ public static class AcceptInvitationHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(ToResponse(user));
+    }
+
+    /// <summary>
+    /// Los roles que la invitación pedía, filtrados a los que siguen siendo asignables: del mismo
+    /// tenant, activos y coherentes con el actor type de la invitación. Si no sobrevive ninguno, el
+    /// caller cae al rol de sistema — nunca se deja al usuario sin ningún rol.
+    /// </summary>
+    private static async Task<List<Guid>> RevalidateInvitationRolesAsync(
+        Invitation invitation,
+        IRoleRepository roles,
+        CancellationToken ct
+    )
+    {
+        var requested = ResolveInvitationRoleIds(invitation);
+        if (requested.Count == 0)
+            return [];
+
+        var tenantRoles = await roles.GetByIdsAsync(invitation.TenantId, requested, ct);
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+        var valid = new List<Guid>();
+        foreach (var role in tenantRoles.Where(role => role.IsActive))
+        {
+            var permissionIds = role.Permissions.Select(link => link.PermissionId).ToList();
+            if (
+                ActorTypeRoleGuard
+                    .ValidatePermissionsForActorType(invitation.ActorType, permissionIds, catalog)
+                    .IsFailure
+            )
+                continue;
+
+            // A4 (§27, R8) — el techo duro se revalida al aceptar, no solo al invitar: entre las dos
+            // cosas pueden pasar días y el catálogo puede haber marcado un permiso como reservado a
+            // la plataforma. Acá se descarta el rol (no se falla el alta): la invitación es válida y
+            // el usuario cae al rol de sistema, el mismo criterio que el resto de este método.
+            if (PermissionCeiling.ValidateRolesNeverGrantable([role], catalog).IsFailure)
+                continue;
+
+            valid.Add(role.Id);
+        }
+        return valid;
     }
 
     private static List<Guid> ResolveInvitationRoleIds(Invitation invitation)

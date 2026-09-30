@@ -24,10 +24,13 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
     IServiceScopeFactory scopeFactory,
     IDistributedLockFactory lockFactory,
     ILogger<SubscriptionRenewalCheckoutReconciliationJob> logger
-) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(2))
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(50))
 {
     private const int BatchSize = 100;
-    private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(3);
+
+    // Cadencia corta a propósito: una intención que el evento de PaymentApp ya resolvió deja de estar
+    // Pending y no entra en el barrido, así que esto solo alcanza a las que se quedaron sin confirmar.
+    private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(45);
 
     protected override string JobName => "subscription-renewal-checkout-reconciliation";
 

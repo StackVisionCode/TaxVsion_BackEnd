@@ -50,6 +50,15 @@ namespace TaxVision.Postmaster.Application.Consumers;
 /// </remarks>
 public static class NotificationsEmailSendRequestedConsumer
 {
+    /// <summary>
+    /// Entregas de un email por encima del cupo antes de darlo por fallido. Cada diferido espera la
+    /// ventana del limiter (≤60 s) más jitter: 60 entregas cubren cerca de una hora de ráfaga.
+    /// </summary>
+    public const int MaxRateLimitedDeliveries = 60;
+
+    private static readonly TimeSpan DefaultRateLimitRetryAfter = TimeSpan.FromSeconds(60);
+
+    /// <param name="envelope">La entrega actual (la inyecta Wolverine); null en llamadas directas.</param>
     public static async Task Handle(
         NotificationsEmailSendRequestedIntegrationEvent evt,
         IIdempotencyGuard idempotencyGuard,
@@ -65,9 +74,11 @@ public static class NotificationsEmailSendRequestedConsumer
         ICorrelationContext correlation,
         IMessageBus bus,
         ILogger logger,
-        CancellationToken ct
+        CancellationToken ct,
+        Envelope? envelope = null
     )
     {
+        var delivery = Math.Max(1, envelope?.Attempts ?? 1);
         using (correlation.Push(evt.CorrelationId))
         {
             var reservation = await idempotencyGuard.TryReserveAsync(evt.TenantId, evt.IdempotencyKey, ct);
@@ -98,6 +109,7 @@ public static class NotificationsEmailSendRequestedConsumer
             {
                 await HandleTenantOAuthPathAsync(
                     evt,
+                    delivery,
                     oauthProviderResolver,
                     suppressionList,
                     oauthEmailSender,
@@ -112,6 +124,7 @@ public static class NotificationsEmailSendRequestedConsumer
 
             await HandleSmtpPathAsync(
                 evt,
+                delivery,
                 providerResolver,
                 suppressionList,
                 rateLimiter,
@@ -129,6 +142,7 @@ public static class NotificationsEmailSendRequestedConsumer
 
     private static async Task HandleSmtpPathAsync(
         NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
         IProviderResolver providerResolver,
         ISuppressionListRepository suppressionList,
         IEmailProviderRateLimiter rateLimiter,
@@ -162,8 +176,10 @@ public static class NotificationsEmailSendRequestedConsumer
             await ApplyRateLimitAsync(
                 message,
                 evt,
+                delivery,
                 resolveResult.Provider!,
                 rateLimiter,
+                sentMessages,
                 idempotencyGuard,
                 unitOfWork,
                 bus,
@@ -194,6 +210,7 @@ public static class NotificationsEmailSendRequestedConsumer
     /// </summary>
     private static async Task HandleTenantOAuthPathAsync(
         NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
         IOAuthProviderResolver oauthProviderResolver,
         ISuppressionListRepository suppressionList,
         IOAuthEmailSender oauthEmailSender,
@@ -218,8 +235,10 @@ public static class NotificationsEmailSendRequestedConsumer
         await SendViaOAuthAndFinalizeAsync(
             message,
             evt,
+            delivery,
             resolveResult.Provider!,
             oauthEmailSender,
+            sentMessages,
             idempotencyGuard,
             unitOfWork,
             bus,
@@ -288,16 +307,18 @@ public static class NotificationsEmailSendRequestedConsumer
     /// Cupo por (ProviderCode, TenantId, Stream) — <c>provider.RateLimitPerMinute</c>/
     /// <c>BulkRateLimitPerMinute</c> ya vienen resueltos (Fase 3/3.5, Bulk-quota-isolation). Bulk y
     /// Transactional se parten en baldes de Redis separados (ver <see cref="IEmailProviderRateLimiter"/>)
-    /// para que una ráfaga de campaña nunca demore un email transaccional del mismo tenant. Si el
-    /// stream es Bulk y el provider no tiene <c>BulkRateLimitPerMinute</c> configurado, o si el cupo
-    /// resuelto se agota, el mensaje va directo a Failed (terminal, sin reintento automático de
-    /// Postmaster — el reintento real depende de que el originador vuelva a publicar el evento).
+    /// para que una ráfaga de campaña nunca demore un email transaccional del mismo tenant. Bulk sin
+    /// <c>BulkRateLimitPerMinute</c> configurado es un fallo de configuración: va a Failed. Con el cupo
+    /// agotado el envío se difiere (ver <see cref="DeferOverQuotaAsync"/>) y solo pasa a Failed tras
+    /// <see cref="MaxRateLimitedDeliveries"/> entregas.
     /// </summary>
     private static async Task<bool> ApplyRateLimitAsync(
         SentMessage message,
         NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
         ResolvedEmailProvider provider,
         IEmailProviderRateLimiter rateLimiter,
+        ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -329,10 +350,38 @@ public static class NotificationsEmailSendRequestedConsumer
         if (decision.Allowed)
             return false;
 
-        var reason =
-            $"RateLimited: retry after {(int)(decision.RetryAfter ?? TimeSpan.FromSeconds(60)).TotalSeconds}s.";
+        var retryAfter = decision.RetryAfter ?? DefaultRateLimitRetryAfter;
+        await DeferOverQuotaAsync(message, evt, delivery, retryAfter, sentMessages, idempotencyGuard, unitOfWork, ct);
+
+        var reason = $"RateLimited: still over the provider quota after {delivery} deliveries.";
         await FailAndPublishAsync(message, evt, reason, idempotencyGuard, unitOfWork, bus, ct);
         return true;
+    }
+
+    /// <summary>
+    /// Nada salió al proveedor: se deshace el intento (el <c>SentMessage</c> y la reserva de
+    /// idempotencia, igual que el rollback de Correspondence) y se lanza
+    /// <see cref="EmailRateLimitedException"/> para que Wolverine reprograme la entrega tras
+    /// <paramref name="retryAfter"/>. En la última entrega vuelve sin lanzar y el caller lo da por fallido.
+    /// </summary>
+    private static async Task DeferOverQuotaAsync(
+        SentMessage message,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
+        TimeSpan retryAfter,
+        ISentMessageRepository sentMessages,
+        IIdempotencyGuard idempotencyGuard,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        if (delivery >= MaxRateLimitedDeliveries)
+            return;
+
+        sentMessages.Remove(message);
+        await idempotencyGuard.ReleaseAsync(evt.TenantId, evt.IdempotencyKey, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        throw new EmailRateLimitedException(evt.IdempotencyKey, retryAfter);
     }
 
     /// <summary>Bulk nunca cae al cupo Transactional por defecto — null hasta que un admin lo configure explícitamente.</summary>
@@ -561,8 +610,10 @@ public static class NotificationsEmailSendRequestedConsumer
     private static async Task SendViaOAuthAndFinalizeAsync(
         SentMessage message,
         NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
         ResolvedOAuthProvider provider,
         IOAuthEmailSender oauthEmailSender,
+        ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -581,6 +632,19 @@ public static class NotificationsEmailSendRequestedConsumer
             attachments: [],
             ct
         );
+
+        // Connectors rechazó por su cupo por cuenta (429): el email no salió, se difiere igual que en SMTP.
+        if (!sendResult.Success && sendResult.RetryAfter is { } retryAfter)
+            await DeferOverQuotaAsync(
+                message,
+                evt,
+                delivery,
+                retryAfter,
+                sentMessages,
+                idempotencyGuard,
+                unitOfWork,
+                ct
+            );
 
         var now = DateTime.UtcNow;
         if (sendResult.Success)

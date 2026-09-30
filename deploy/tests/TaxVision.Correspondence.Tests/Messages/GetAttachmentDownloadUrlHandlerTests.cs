@@ -49,6 +49,7 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
         var result = await GetAttachmentDownloadUrlHandler.Handle(
             new GetAttachmentDownloadUrlQuery(tenantId, email.Id, attachment.Id),
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             cloudStorage,
             CancellationToken.None
         );
@@ -74,6 +75,7 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
         var result = await GetAttachmentDownloadUrlHandler.Handle(
             new GetAttachmentDownloadUrlQuery(tenantId, email.Id, attachment.Id),
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             cloudStorage,
             CancellationToken.None
         );
@@ -91,6 +93,7 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
         var result = await GetAttachmentDownloadUrlHandler.Handle(
             new GetAttachmentDownloadUrlQuery(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             new FakeCloudStorageClient(),
             CancellationToken.None
         );
@@ -110,6 +113,7 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
         var result = await GetAttachmentDownloadUrlHandler.Handle(
             new GetAttachmentDownloadUrlQuery(tenantId, email.Id, Guid.NewGuid()),
             repo,
+            new Ingest.FakeEmailThreadRepository(),
             new FakeCloudStorageClient(),
             CancellationToken.None
         );

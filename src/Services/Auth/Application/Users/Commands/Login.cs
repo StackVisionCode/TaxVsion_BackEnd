@@ -7,17 +7,23 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
 
+/// <summary>
+/// <see cref="AccountKind"/>: el CRM entra con la cuenta Staff y el portal con la Portal (la misma persona
+/// puede tener ambas con el mismo email). Sin indicarlo se usa Staff si existe y, si no, Portal.
+/// </summary>
 public sealed record LoginCommand(
     Guid TenantId,
     string Email,
     string Password,
     string? DeviceName = null,
-    string? DeviceToken = null
+    string? DeviceToken = null,
+    UserAccountKind? AccountKind = null
 );
 
 public sealed record AuthTokensResponse(
@@ -116,7 +122,9 @@ public static class LoginHandler
         var retryAfter = await throttler.GetIpRetryAfterAsync(request.IpAddress, ct);
         if (retryAfter is not null)
         {
-            return Result.Failure<LoginResponse>(new Error("Auth.LockedOut", "Too many attempts. Try again later."));
+            return Result.Failure<LoginResponse>(
+                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter.Value)
+            );
         }
 
         // 2. Tenant. Respuesta genérica hacia el anónimo (anti-enumeración);
@@ -143,7 +151,10 @@ public static class LoginHandler
         }
 
         var email = command.Email.Trim().ToLowerInvariant();
-        var user = await users.GetByEmailAsync(command.TenantId, email, ct);
+        var user = command.AccountKind is { } accountKind
+            ? await users.GetByEmailAsync(command.TenantId, email, accountKind, ct)
+            : await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Staff, ct)
+                ?? await users.GetByEmailAsync(command.TenantId, email, UserAccountKind.Portal, ct);
 
         if (user is null)
         {
@@ -182,7 +193,9 @@ public static class LoginHandler
             );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.")
+                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.").WithRetryAfter(
+                    user.LockoutEndUtc!.Value - now
+                )
             );
         }
 
@@ -291,6 +304,7 @@ public static class LoginHandler
                     ["pwd"],
                     command.DeviceName,
                     mustEnrollMfa: true,
+                    SessionSurface.Workspace,
                     roles,
                     issuer,
                     sessions,
@@ -365,6 +379,7 @@ public static class LoginHandler
                         ["pwd"],
                         command.DeviceName,
                         mustEnrollMfa: false,
+                        SessionSurface.Workspace,
                         roles,
                         issuer,
                         sessions,
@@ -495,6 +510,7 @@ public static class LoginHandler
             ["pwd"],
             command.DeviceName,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             roles,
             issuer,
             sessions,

@@ -67,9 +67,9 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 }

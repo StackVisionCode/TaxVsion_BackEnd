@@ -59,6 +59,28 @@ public static class ActorTypeRoleGuard
     }
 
     /// <summary>
+    /// A4 (G7 del plan) — la misma validación contra VARIOS actor types a la vez: cada permiso debe
+    /// ser válido para <b>todos</b> ellos. Se usa al editar los permisos de un rol que ya tiene
+    /// titulares: el conjunto es el de los actor types de esos titulares, así que ninguno puede
+    /// terminar con un permiso fuera del suyo por una edición del rol.
+    /// </summary>
+    public static Result ValidatePermissionsForActorTypes(
+        IReadOnlyCollection<UserActorType> actorTypes,
+        IReadOnlyCollection<Guid> permissionIds,
+        IReadOnlyCollection<Permission> catalog
+    )
+    {
+        foreach (var actorType in actorTypes.Distinct())
+        {
+            var result = ValidatePermissionsForActorType(actorType, permissionIds, catalog);
+            if (result.IsFailure)
+                return result;
+        }
+
+        return Result.Success();
+    }
+
+    /// <summary>
     /// RBAC Fase 3 (RBAC_Hardening_Plan.md) — valida permisos SUELTOS (antes de que existan como
     /// <see cref="RolePermission"/> de un <see cref="Role"/> persistido) contra un actor type
     /// destino. Complementa a <see cref="ValidateRolesForActorType"/>, que valida roles YA
@@ -68,11 +90,11 @@ public static class ActorTypeRoleGuard
     /// persistirse, en vez de fallar recién al intentar asignarlo.
     /// </summary>
     /// <param name="targetActorType">
-    /// Actor type declarado para el rol. <c>null</c> cuando no se conoce el destino (ej.
-    /// <c>SetRolePermissionsHandler</c>, que edita un rol custom ya existente sin un
-    /// <c>TargetActorType</c> propio) — en ese caso se exige que cada permiso sea válido para AL
-    /// MENOS UNO de {TenantEmployee, TenantAdmin}, la defensa razonable para no dejar colar un
-    /// permiso exclusivo de CustomerPortal en un rol sin destino declarado.
+    /// Actor type declarado para el rol (<see cref="Role.TargetActorType"/>). <c>null</c> cuando no
+    /// se conoce el destino: un rol custom creado antes de que esa columna existiera y sin
+    /// titulares — en ese caso se exige que cada permiso sea válido para AL MENOS UNO de
+    /// {TenantEmployee, TenantAdmin}, la defensa razonable para no dejar colar un permiso exclusivo
+    /// de CustomerPortal en un rol sin destino declarado.
     /// </param>
     public static Result ValidatePermissionsForActorType(
         UserActorType? targetActorType,

@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.RefreshTokens;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
@@ -12,8 +13,13 @@ namespace TaxVision.Auth.Application.Users.Commands;
 /// <summary>Fase 18 — ResolvedTenantId viene del Host de la request (IResolvedTenantContext, poblado
 /// por TenantHostResolutionMiddleware), nunca del cliente: el controller lo inyecta, nunca se hace
 /// bind directo del body. Null cuando el Host no resolvió a ningún tenant (ej. dev sin subdominio) —
-/// en ese caso el binding check se salta, no se puede validar contra un candidato inexistente.</summary>
-public sealed record RefreshAccessTokenCommand(string RefreshToken, Guid? ResolvedTenantId = null);
+/// en ese caso el binding check se salta, no se puede validar contra un candidato inexistente.
+/// <see cref="Surface"/>: cada endpoint de refresh solo rota tokens de su propia cadena.</summary>
+public sealed record RefreshAccessTokenCommand(
+    string RefreshToken,
+    Guid? ResolvedTenantId = null,
+    SessionSurface Surface = SessionSurface.Workspace
+);
 
 public static class RefreshAccessTokenHandler
 {
@@ -40,7 +46,7 @@ public static class RefreshAccessTokenHandler
             return Result.Failure<AuthTokensResponse>(invalid);
 
         var stored = await sessions.GetTokenByHashAsync(tokens.Hash(command.RefreshToken), ct);
-        if (stored is null || stored.SessionId is null)
+        if (stored is null || stored.SessionId is null || stored.Surface != command.Surface)
             return Result.Failure<AuthTokensResponse>(invalid);
 
         // Fase 18 — binding de host: un refresh token emitido para tenantA no debe poder canjearse

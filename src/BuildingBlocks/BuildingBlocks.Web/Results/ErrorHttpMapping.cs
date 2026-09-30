@@ -151,7 +151,12 @@ public static class ErrorHttpMapping
             or "Calendar.Exception.Duplicate"
             // El alta y la edicion de un cliente: ya hay uno igual en el tenant.
             or "Customer.DuplicateFound"
-            or "Customer.EmailAlreadyInUse" => StatusCodes.Status409Conflict,
+            or "Customer.EmailAlreadyInUse"
+            // Ya hay una compra de asientos esperando pago: abrir otra arriesga cobrar dos veces.
+            or "Seat.CheckoutInProgress"
+            // El plan ya trae ese add-on, o el tenant ya lo tiene activo.
+            or "AddOn.AlreadyIncludedInPlan"
+            or "AddOn.AlreadyActive" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"
@@ -202,7 +207,9 @@ public static class ErrorHttpMapping
             or "PostmasterClient.ServiceAuthUnavailable"
             or "PostmasterClient.RequestFailed"
             or "PaymentAppClient.RequestFailed"
-            or "Tenant.Logo.Storage.Auth" => StatusCodes.Status503ServiceUnavailable,
+            or "Tenant.Logo.Storage.Auth"
+            // Customer no pudo pedirle a Auth la invitación al portal: transitorio, se reintenta.
+            or "Customer.PortalAccessUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
             "GetMessageBodyHandler.RateLimited"
@@ -223,6 +230,8 @@ public static class ErrorHttpMapping
             or "Auth.HandoffInvalid"
             // El vale de takeover de sesión única es igual: portador, un solo uso; uno inválido es 401.
             or "Auth.TakeoverInvalid"
+            // Step-up vencido o ausente (RFC 9470): 401 para que el cliente pida la contraseña y reintente.
+            or "Auth.ReauthenticationRequired"
             or "Onboarding.SessionRequired"
             or "Onboarding.SessionInvalid"
             or "Onboarding.SessionExpired"
@@ -234,6 +243,11 @@ public static class ErrorHttpMapping
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
             or "Auth.StepUpRequired"
+            // Account del Landing: token de otra superficie, actor no admin, origen no permitido o MFA pendiente.
+            or "Auth.SurfaceNotAllowed"
+            or "Auth.AccountAdminOnly"
+            or "Auth.OriginNotAllowed"
+            or "Auth.AccountMfaSetupRequired"
             or "Subscription.Suspended"
             // Expiración/Dunning (Fase 2): acceso cortado porque la suscripción de la oficina cayó en
             // lapso. Es un bloqueo de autorización (como Tenant.Inactive/Subscription.Suspended), no un
@@ -244,6 +258,8 @@ public static class ErrorHttpMapping
             or "IncomingEmailAttachment.Blocked"
             or "File.Forbidden"
             or "Folder.Forbidden"
+            // A1 — borrar una carpeta con contenido exige el permiso de borrar archivos.
+            or "Folder.FileDeletePermissionRequired"
             or "EmailConfiguration.Forbidden"
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
@@ -266,12 +282,20 @@ public static class ErrorHttpMapping
             or "Onboarding.SessionChallengeMismatch"
             or "Onboarding.SessionOnboardingMismatch"
             or "Onboarding.PayerEmailMismatch"
+            // A1 — firmar como preparer con el PTIN/EFIN de otro no es un error de forma, es una
+            // denegación: el que firma tiene que ser el preparer asignado a la solicitud.
+            or "Signature.Request.PreparerNotSelf"
+            or "SignatureRequest.NotOwner"
             or "Signature.Profile.Forbidden"
             or "Signature.Profile.NotVisible"
             or "Signature.Profile.OwnSignatureDisabled" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
+            // Acceso al portal: el email ya es de la cuenta de portal de otro cliente, o el acceso de este
+            // cliente está desactivado (se reactiva, no se reinvita).
+            or "Auth.PortalEmailInUse"
+            or "Auth.PortalAccessDeactivated"
             or "Role.NameConflict"
             or "Plan.UserLimitReached"
             or "Plan.InvitationLimitReached"
@@ -317,8 +341,14 @@ public static class ErrorHttpMapping
             or "Task.Timer.NotRunning" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
+            or "Auth.InvitationAcceptThrottled"
             or "Invitation.ResendLimit"
+            or "Onboarding.OtpRateLimited"
+            or "Onboarding.ResendCooldown"
+            or "Signature.Signer.PinLocked"
+            or "Signature.Signer.ChallengeCooldown"
             or "PaymentApp.AdminActionThrottled"
+            or "PaymentApp.WebhookThrottled"
             or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
             "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
                 StatusCodes.Status413PayloadTooLarge,

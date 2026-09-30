@@ -1,10 +1,16 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Series.Commands;
 
-public sealed record ResumeTaskSeriesCommand(Guid TenantId, Guid SeriesId);
+public sealed record ResumeTaskSeriesCommand(
+    Guid TenantId,
+    Guid SeriesId,
+    Guid ByUserId = default,
+    bool HasManageAll = false
+);
 
 /// <summary>
 /// Reanudar siembra desde ahora. Si no quedó instancia abierta se materializa una acá mismo, para que
@@ -23,6 +29,11 @@ public static class ResumeTaskSeriesHandler
         var found = await seriesRepository.GetByIdAsync(command.TenantId, command.SeriesId, ct);
         if (found.IsFailure)
             return Result.Failure<TaskSeriesResponse>(found.Error);
+
+        // A1 — reanudar la serie de otro le hace desaparecer las tareas siguientes sin explicación. Antes
+        // alcanzaba con tasks.write.
+        if (!TaskSeriesAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<TaskSeriesResponse>(TaskErrors.Forbidden);
 
         var series = found.Value;
         var resumed = series.Resume(DateTime.UtcNow);

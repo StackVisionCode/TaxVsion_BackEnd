@@ -694,9 +694,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// el mismo usuario. Se permite sólo cuando la solicitud está <c>InProgress</c> o
     /// <c>Completed</c> — típicamente el preparer firma tras aprobar el taxpayer.
     /// </summary>
-    public Result MarkPreparerSigned(Guid preparerUserId, DateTime signedAtUtc, string? clientIp, string? userAgent)
+    public Result MarkPreparerSigned(
+        Guid preparerUserIdFromCaller,
+        DateTime signedAtUtc,
+        string? clientIp,
+        string? userAgent
+    )
     {
-        if (preparerUserId == Guid.Empty)
+        if (preparerUserIdFromCaller == Guid.Empty)
             return Result.Failure(new Error("Signature.Request.PreparerUser", "PreparerUserId is required."));
 
         if (Preparer is null)
@@ -709,7 +714,20 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error("Signature.Request.PreparerStatus", "Preparer can sign only after the request is InProgress.")
             );
 
-        if (IsPreparerSigned && PreparerSignedByUserId == preparerUserId)
+        // A1 — firma el preparer, no cualquiera que tenga el permiso. El PTIN/EFIN identifica a un
+        // profesional concreto ante el IRS: si un empleado firma con el de un colega, el PDF sellado sale
+        // con una credencial ajena. Las solicitudes anteriores a esta fase no tienen UserId y conservan el
+        // comportamiento de antes (§R.7: ningún chequeo nuevo rompe lo que hoy funciona); el override de
+        // signature.request.manage vive una capa más arriba, en el controller.
+        if (Preparer.UserId is { } preparerUserId && preparerUserId != preparerUserIdFromCaller)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.PreparerNotSelf",
+                    "Only the preparer assigned to this request can sign as preparer."
+                )
+            );
+
+        if (IsPreparerSigned && PreparerSignedByUserId == preparerUserIdFromCaller)
             return Result.Success();
 
         if (IsPreparerSigned)
@@ -717,7 +735,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error("Signature.Request.PreparerAlreadySigned", "Preparer signature already recorded.")
             );
 
-        PreparerSignedByUserId = preparerUserId;
+        PreparerSignedByUserId = preparerUserIdFromCaller;
         PreparerSignedAtUtc = signedAtUtc;
         _ = clientIp; // no lo almacenamos aquí: es contexto staff autenticado
         _ = userAgent;

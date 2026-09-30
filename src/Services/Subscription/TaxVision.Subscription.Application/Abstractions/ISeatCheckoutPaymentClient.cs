@@ -12,7 +12,10 @@ public sealed record SeatCheckoutClientRequest(
     string CancelUrl,
     string IdempotencyKey,
     string Provider,
-    string Method
+    string Method,
+    /// <summary>Unidades y precio unitario, para el recibo. PaymentApp los ignora si no cuadran.</summary>
+    int? Quantity = null,
+    long? UnitAmountCents = null
 );
 
 public sealed record SeatCheckoutClientResult(

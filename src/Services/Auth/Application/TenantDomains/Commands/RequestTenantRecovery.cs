@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.TenantDomains.Commands;
@@ -33,7 +34,8 @@ public static class RequestTenantRecoveryHandler
         if (string.IsNullOrEmpty(email))
             return Result.Success();
 
-        var tenantIds = await users.GetActiveTenantIdsByEmailAsync(email, ct);
+        // Solo cuentas Staff: el correo lleva al espacio de trabajo de cada oficina; el cliente entra por su portal.
+        var tenantIds = await users.GetActiveTenantIdsByEmailAsync(email, UserAccountKind.Staff, ct);
         if (tenantIds.Count == 0)
             return Result.Success();
 

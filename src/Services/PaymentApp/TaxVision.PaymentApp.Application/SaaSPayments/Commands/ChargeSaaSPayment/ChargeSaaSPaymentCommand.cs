@@ -18,6 +18,10 @@ public sealed record ChargeSaaSPaymentCommand(
     string PayerEmail,
     string? PayerName,
     Guid RequestedByUserId,
+    /// <summary>Unidades y precio unitario del cobro, para el recibo. Opcionales: solo los llevan los
+    /// cobros que tienen algo que contar, y PaymentApp los descarta si no cuadran con el importe.</summary>
+    int? Quantity = null,
+    long? UnitAmountCents = null,
     Guid? CodeReservationId = null,
     Guid? CodeReservationPaymentId = null,
     long? DiscountAmountCents = null,

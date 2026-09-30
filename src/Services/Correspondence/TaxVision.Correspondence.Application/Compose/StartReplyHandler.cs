@@ -32,6 +32,10 @@ public static class StartReplyHandler
         CancellationToken ct
     )
     {
+        var accountCheck = SendingAccountGuard.Validate(command.AccountId, command.VisibleAccountIds);
+        if (accountCheck.IsFailure)
+            return Result.Failure<StartReplyResult>(accountCheck.Error);
+
         var incomingEmail = await incomingEmails.GetByIdAsync(command.TenantId, command.IncomingEmailId, ct);
         if (incomingEmail is null)
             return Result.Failure<StartReplyResult>(
@@ -44,7 +48,10 @@ public static class StartReplyHandler
             incomingEmail.Id,
             ct
         );
-        if (existingDraft is not null)
+        // A1 — get-or-create, pero solo reutiliza el borrador PROPIO. Antes reutilizaba el reply abierto
+        // de cualquier colega sobre el mismo hilo: el que respondía terminaba editando —y enviando— el
+        // texto a medio escribir de otra persona, y el borrador quedaba atribuido al primero.
+        if (existingDraft is not null && existingDraft.CreatedByUserId == command.ActorId)
             return Result.Success(ToResult(existingDraft));
 
         return await CreateNewReplyAsync(command, incomingEmail, drafts, unitOfWork, ct);

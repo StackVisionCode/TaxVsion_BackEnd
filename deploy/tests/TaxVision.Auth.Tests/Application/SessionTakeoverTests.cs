@@ -1,8 +1,12 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Sessions.Commands;
+using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
 using TaxVision.Auth.Domain.Tenants;
@@ -43,6 +47,7 @@ public sealed class SessionTakeoverTests
             ["pwd"],
             deviceName: null,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             new FakeRoles(),
             issuer,
             sessions,
@@ -54,6 +59,31 @@ public sealed class SessionTakeoverTests
         Assert.NotNull(outcome.TakeoverTicket);
         Assert.Equal(1, store.IssueCount);
         Assert.Equal(0, issuer.StartCount); // NO se mintea con sesión previa
+    }
+
+    [Fact]
+    public async Task Account_login_with_an_open_workspace_session_asks_for_takeover_for_the_account()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var store = new FakeTakeoverStore();
+
+        var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
+            user,
+            BuildTenant(),
+            ["pwd", "handoff"],
+            deviceName: null,
+            mustEnrollMfa: false,
+            SessionSurface.Account,
+            new FakeRoles(),
+            new FakeIssuer(),
+            sessions,
+            store,
+            CancellationToken.None
+        );
+
+        Assert.True(outcome.TakeoverRequired);
+        Assert.Equal(SessionSurface.Account, store.LastIssued?.Surface);
     }
 
     [Fact]
@@ -70,6 +100,7 @@ public sealed class SessionTakeoverTests
             ["pwd"],
             deviceName: null,
             mustEnrollMfa: false,
+            SessionSurface.Workspace,
             new FakeRoles(),
             issuer,
             sessions,
@@ -81,6 +112,39 @@ public sealed class SessionTakeoverTests
         Assert.NotNull(outcome.Tokens);
         Assert.Equal(0, store.IssueCount);
         Assert.Equal(1, issuer.StartCount);
+    }
+
+    [Fact]
+    public async Task A_takeover_is_only_confirmed_on_the_surface_that_asked_for_it()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd"], null, Surface: SessionSurface.Account),
+        };
+
+        var result = await TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid()),
+            store,
+            new StubUsers(user),
+            new StubTenants(BuildTenant()),
+            new FakeRoles(),
+            new FakeIssuer(),
+            sessions,
+            new FakeMfa(),
+            new FakeSecureTokens(),
+            new RecordingDenylist(),
+            new RecordingRevocationPublisher(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.Equal("Auth.TakeoverInvalid", result.Error.Code);
+        Assert.False(sessions.RevokeAllCalled);
     }
 
     [Fact]
@@ -96,6 +160,8 @@ public sealed class SessionTakeoverTests
             new FakeRoles(),
             new FakeIssuer(),
             new FakeSessions(),
+            new FakeMfa(),
+            new FakeSecureTokens(),
             new RecordingDenylist(),
             new RecordingRevocationPublisher(),
             new FakeAuthAuditWriter(),
@@ -131,6 +197,8 @@ public sealed class SessionTakeoverTests
             new FakeRoles(),
             issuer,
             sessions,
+            new FakeMfa(),
+            new FakeSecureTokens(),
             denylist,
             publisher,
             new FakeAuthAuditWriter(),
@@ -148,7 +216,136 @@ public sealed class SessionTakeoverTests
         Assert.Equal(2, publisher.Published.Count); // aviso en tiempo real a ambas
     }
 
+    // ---- "no volver a pedirme el código" cuando hubo interstitial ----
+
+    [Fact]
+    public async Task The_remembered_device_survives_the_takeover()
+    {
+        // Se marca la casilla ANTES del interstitial, cuando todavía no hay sesión donde colgar el
+        // dispositivo. Antes el pedido se perdía en silencio: el usuario confirmaba, entraba, y el
+        // login siguiente le volvía a pedir el código sin explicación.
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var mfa = new FakeMfa();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd", "otp"], null, RememberDevice: true),
+        };
+
+        var result = await Confirm(store, user, sessions, mfa);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("token", result.Value.Tokens!.DeviceToken);
+        var device = Assert.Single(mfa.Added);
+        Assert.Equal(user.Id, device.UserId);
+    }
+
+    [Fact]
+    public async Task Without_the_request_the_takeover_marks_no_device()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var mfa = new FakeMfa();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd", "otp"], null),
+        };
+
+        var result = await Confirm(store, user, sessions, mfa);
+
+        Assert.Null(result.Value.Tokens!.DeviceToken);
+        Assert.Empty(mfa.Added);
+    }
+
+    private static Task<Result<LoginResponse>> Confirm(
+        FakeTakeoverStore store,
+        User user,
+        FakeSessions sessions,
+        FakeMfa mfa
+    ) =>
+        TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid()),
+            store,
+            new StubUsers(user),
+            new StubTenants(BuildTenant()),
+            new FakeRoles(),
+            new FakeIssuer(),
+            sessions,
+            mfa,
+            new FakeSecureTokens(),
+            new RecordingDenylist(),
+            new RecordingRevocationPublisher(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
     // ---- dobles ----
+
+    /// <summary>Solo lo que toca el takeover: la política del tenant y el alta del dispositivo.</summary>
+    private sealed class FakeMfa : IMfaRepository
+    {
+        public List<TrustedDevice> Added { get; } = [];
+
+        public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<TenantMfaPolicy?>(null);
+
+        public Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default)
+        {
+            Added.Add(device);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<MfaMethod>> GetMethodsAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaMethod?> GetMethodAsync(Guid userId, MfaMethodType type, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaMethod?> GetMethodByIdAsync(Guid methodId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddMethodAsync(MfaMethod method, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public void RemoveMethod(MfaMethod method) => throw new NotSupportedException();
+
+        public Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddRecoveryCodesAsync(IEnumerable<RecoveryCode> codes, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public void RemoveRecoveryCodes(IEnumerable<RecoveryCode> codes) => throw new NotSupportedException();
+
+        public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(
+            string deviceTokenHash,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FakeSecureTokens : ISecureTokenService
+    {
+        public string GenerateToken(int byteLength = 32) => "token";
+
+        public string GenerateNumericCode(int digits = 6) => "123456";
+
+        public string Hash(string rawToken) => rawToken;
+    }
 
     private sealed class FakeSessions : ISessionRepository
     {
@@ -189,6 +386,19 @@ public sealed class SessionTakeoverTests
         public Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<int> RevokeSurfaceTokensAsync(
+            Guid sessionId,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface,
+            string reason,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<bool> HasActiveChainAsync(
+            Guid sessionId,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
@@ -203,12 +413,23 @@ public sealed class SessionTakeoverTests
             IReadOnlyCollection<string> roles,
             IReadOnlyCollection<string> authMethods,
             string? deviceName,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface,
             CancellationToken ct = default
         )
         {
             StartCount++;
             return Task.FromResult(new IssuedTokens("access", "refresh", 900, Guid.NewGuid()));
         }
+
+        public Task<IssuedTokens> JoinSessionAsync(
+            UserSession session,
+            User user,
+            string effectiveTimeZoneId,
+            IReadOnlyCollection<string> roles,
+            IReadOnlyCollection<string> authMethods,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<IssuedTokens> RotateAsync(
             TaxVision.Auth.Domain.RefreshTokens.RefreshToken currentToken,
@@ -224,11 +445,13 @@ public sealed class SessionTakeoverTests
     private sealed class FakeTakeoverStore : ISessionTakeoverTicketStore
     {
         public int IssueCount { get; private set; }
+        public SessionTakeoverPayload? LastIssued { get; private set; }
         public SessionTakeoverPayload? ToConsume { get; set; }
 
         public Task<Guid> IssueAsync(SessionTakeoverPayload payload, CancellationToken ct = default)
         {
             IssueCount++;
+            LastIssued = payload;
             return Task.FromResult(Guid.NewGuid());
         }
 
@@ -287,7 +510,7 @@ public sealed class SessionTakeoverTests
 
         public Task ReplaceUserDeniesAsync(
             Guid userId,
-            IReadOnlyCollection<Guid> permissionIds,
+            IReadOnlyCollection<PermissionDenyInput> denies,
             Guid? deniedByUserId,
             CancellationToken ct = default
         ) => Task.CompletedTask;
@@ -331,17 +554,34 @@ public sealed class SessionTakeoverTests
     {
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<User?>(user);
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -358,6 +598,7 @@ public sealed class SessionTakeoverTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -366,17 +607,34 @@ public sealed class SessionTakeoverTests
     {
         public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 
-        public Task<User?> GetByEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<User?> GetByEmailAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
-        public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<bool> EmailExistsAsync(
+            Guid tenantId,
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<User?> GetPortalUserByCustomerAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+            string email,
+            UserAccountKind kind,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task AddAsync(User user, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -393,6 +651,7 @@ public sealed class SessionTakeoverTests
             string? search,
             bool? isActive,
             Guid? customerId = null,
+            UserAccountKind? accountKind = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

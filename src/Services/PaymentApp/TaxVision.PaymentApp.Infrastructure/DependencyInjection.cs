@@ -156,6 +156,26 @@ public static class DependencyInjection
             }
         );
 
+        services
+            .AddOptions<TaxVision.PaymentApp.Infrastructure.CloudStorage.CloudStorageClientOptions>()
+            .Bind(
+                config.GetSection(
+                    TaxVision.PaymentApp.Infrastructure.CloudStorage.CloudStorageClientOptions.SectionName
+                )
+            );
+        services.AddHttpClient<
+            IReceiptDownloadUrlClient,
+            TaxVision.PaymentApp.Infrastructure.CloudStorage.CloudStorageReceiptDownloadUrlClient
+        >(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TaxVision.PaymentApp.Infrastructure.CloudStorage.CloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
         services.AddHttpClient<ISubscriptionPlanPricingClient, SubscriptionPlanPricingClient>(
             (sp, http) =>
             {

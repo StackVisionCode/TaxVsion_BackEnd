@@ -169,6 +169,14 @@ public sealed class OnboardingCancelRequestedConsumerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        // El job de anti-entropía no participa en este test.
+        public Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
+            IReadOnlyCollection<SubscriptionStatus> statuses,
+            Guid afterTenantId,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
             DateTime nowUtc,
             int batchSize,
@@ -176,6 +184,13 @@ public sealed class OnboardingCancelRequestedConsumerTests
         ) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(
+            DateTime fromUtc,
+            DateTime toUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
             DateTime fromUtc,
             DateTime toUtc,
             int batchSize,

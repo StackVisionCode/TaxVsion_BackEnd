@@ -22,4 +22,25 @@ public sealed class TenantDomainOptions
     /// bloqueado para un solo email mientras el registro termina de completarse.
     /// </summary>
     public int SubdomainReservationTtlMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Hosts de la plataforma que no son de ninguna oficina (apex, www, app, client): ahí no se busca TenantDomain ni
+    /// se audita, y el tenant de una request autenticada sale del JWT. Vacío = se derivan de BaseDomain.
+    /// <c>api.*</c> no va acá: está sembrado como dominio del tenant Platform (login del PlatformAdmin).
+    /// </summary>
+    public string[] SystemHosts { get; set; } = [];
+
+    public bool IsSystemHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        var hosts =
+            SystemHosts.Length > 0
+                ? SystemHosts
+                : [BaseDomain, $"www.{BaseDomain}", $"app.{BaseDomain}", $"client.{BaseDomain}"];
+        return hosts.Any(systemHost =>
+            string.Equals(systemHost.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase)
+        );
+    }
 }

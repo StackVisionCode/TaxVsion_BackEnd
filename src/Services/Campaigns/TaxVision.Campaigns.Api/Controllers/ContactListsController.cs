@@ -46,7 +46,7 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.list")]
     [ProducesResponseType<PagedResult<ContactListResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int page, [FromQuery] int size, CancellationToken ct)
@@ -62,7 +62,7 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [HasPermission(CampaignsPermissions.Manage)]
+    [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.get")]
     [ProducesResponseType<ContactListResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)

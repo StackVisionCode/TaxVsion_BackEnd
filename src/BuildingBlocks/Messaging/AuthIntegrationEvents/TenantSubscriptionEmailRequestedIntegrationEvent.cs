@@ -24,6 +24,9 @@ public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : Integrat
     /// <summary>Fin de la ventana de gracia (cuando Status = GracePeriod) — "tu acceso se corta el {fecha}".</summary>
     public DateTime? GracePeriodEndsAtUtc { get; init; }
 
+    /// <summary>Hasta cuándo llega el acceso ya pagado, cuando el tenant canceló al fin del período.</summary>
+    public DateTime? AccessEndsAtUtc { get; init; }
+
     /// <summary>Código de fallo del proveedor, cuando la transición la disparó un pago fallido.</summary>
     public string? FailureCode { get; init; }
 

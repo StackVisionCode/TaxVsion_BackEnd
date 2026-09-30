@@ -94,6 +94,44 @@ public sealed class RateLimitFitnessFunctionsTests
         );
     }
 
+    // Sin OnRejected, el limiter nativo responde un 429 vacío y sin Retry-After: el front no puede
+    // decirle al usuario cuánto esperar. Incluye el global del Gateway (RateLimitingRegistration).
+    [Fact]
+    public void Every_native_AddRateLimiter_uses_the_shared_rejection_contract()
+    {
+        var offenders = SourceFilesUnder("src")
+            .Where(file => Regex.IsMatch(File.ReadAllText(file), @"\bAddRateLimiter\s*\("))
+            .Where(file =>
+                !File.ReadAllText(file).Contains("UseTaxVisionRejectionResponse()", StringComparison.Ordinal)
+            )
+            .ToList();
+
+        Assert.True(
+            offenders.Count == 0,
+            "AddRateLimiter without options.UseTaxVisionRejectionResponse(): " + string.Join(", ", offenders)
+        );
+    }
+
+    /// <summary>
+    /// El FixedWindowRateLimiter de .NET informa siempre la ventana entera como Retry-After ("60 seconds"
+    /// aunque falten 5). Los servicios usan TaxVisionRateLimitPartition, que informa la espera real.
+    /// </summary>
+    [Fact]
+    public void Native_limiters_report_the_real_wait()
+    {
+        var offenders = SourceFilesUnder("src")
+            .Where(file =>
+                Regex.IsMatch(File.ReadAllText(file), @"(?<!TaxVision)RateLimitPartition\.GetFixedWindowLimiter\s*\(")
+                || Regex.IsMatch(File.ReadAllText(file), @"\bAddFixedWindowLimiter\s*\(")
+            )
+            .ToList();
+
+        Assert.True(
+            offenders.Count == 0,
+            "Use TaxVisionRateLimitPartition.GetFixedWindowLimiter (real Retry-After): " + string.Join(", ", offenders)
+        );
+    }
+
     [Fact]
     public async Task TieredRateLimitEvaluator_keys_follow_the_canonical_svc_rl_policy_format()
     {
@@ -155,7 +193,7 @@ public sealed class RateLimitFitnessFunctionsTests
     {
         public List<string> IncrementedKeys { get; } = [];
 
-        public Task<bool> EvaluateAsync(
+        public Task<RateLimitCounterResult> EvaluateAsync(
             RateCounterKey key,
             RateLimitAlgorithm algorithm,
             int limit,
@@ -164,7 +202,7 @@ public sealed class RateLimitFitnessFunctionsTests
         )
         {
             IncrementedKeys.Add(key.Value);
-            return Task.FromResult(false);
+            return Task.FromResult(RateLimitCounterResult.Allowed);
         }
     }
 }

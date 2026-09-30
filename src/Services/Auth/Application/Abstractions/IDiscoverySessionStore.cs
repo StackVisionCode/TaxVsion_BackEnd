@@ -1,11 +1,19 @@
+using TaxVision.Auth.Domain.Users;
+
 namespace TaxVision.Auth.Application.Abstractions;
 
 /// <summary>
 /// Una oficina donde el email + password fue válido. <see cref="ChallengeRequired"/>: el handoff
 /// debe pedir un código. <see cref="MustEnroll"/>: exige MFA pero no hay método, se entra con flag
-/// de setup.
+/// de setup. La misma oficina puede aparecer dos veces, una por cada tipo de cuenta (Staff y Portal).
 /// </summary>
-public sealed record DiscoveredOffice(Guid TenantId, Guid UserId, bool ChallengeRequired, bool MustEnroll);
+public sealed record DiscoveredOffice(
+    Guid TenantId,
+    Guid UserId,
+    bool ChallengeRequired,
+    bool MustEnroll,
+    UserAccountKind AccountKind = UserAccountKind.Staff
+);
 
 /// <summary>El conjunto de oficinas autenticadas en un <c>discover-login</c>, para que el paso de
 /// selección/MFA no tenga que reautenticar el password.</summary>

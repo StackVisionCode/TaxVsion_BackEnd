@@ -77,4 +77,51 @@ public sealed class TenantConsumptionTrackerTests
         Assert.Equal(1, snapshot.TotalRequests);
         Assert.Equal(0, snapshot.TenantRequests);
     }
+
+    [Fact]
+    public void MuchasIpsAnonimas_NoBajanLaMediaDeLosTenants()
+    {
+        // Si las IPs anónimas (muchas y pequeñas) entraran en la media, dos tenants parejos quedarían
+        // muy por encima de ella y ambos se sheddearían.
+        var tracker = new TenantConsumptionTracker(60);
+        for (var i = 0; i < 50; i++)
+        {
+            tracker.RecordRequest("tenant-a");
+            tracker.RecordRequest("tenant-b");
+        }
+        for (var ip = 0; ip < 40; ip++)
+            tracker.RecordRequest(
+                TenantConsumptionTracker.AnonymousKeyFor(System.Net.IPAddress.Parse($"198.51.100.{ip}"))
+            );
+
+        Assert.Equal(1.0, tracker.GetSnapshot("tenant-a").ExcessOverFairShare, 3);
+        Assert.Equal(2, tracker.GetSnapshot("tenant-a").ActiveTenantCount);
+    }
+
+    [Fact]
+    public void UnaIpAnonimaAbusiva_SeComparaSoloContraOtrosAnonimos()
+    {
+        var tracker = new TenantConsumptionTracker(60);
+        var abusiva = TenantConsumptionTracker.AnonymousKeyFor(System.Net.IPAddress.Parse("203.0.113.7"));
+        for (var i = 0; i < 30; i++)
+            tracker.RecordRequest(abusiva);
+        foreach (var ip in new[] { "203.0.113.1", "203.0.113.2" })
+            tracker.RecordRequest(TenantConsumptionTracker.AnonymousKeyFor(System.Net.IPAddress.Parse(ip)));
+        for (var i = 0; i < 1000; i++)
+            tracker.RecordRequest("tenant-grande");
+
+        // Media anónima = 32/3 ≈ 10,67 → la abusiva va a ~2,8x, sin importar el volumen de los tenants.
+        Assert.Equal(30 / (32.0 / 3), tracker.GetSnapshot(abusiva).ExcessOverFairShare, 3);
+    }
+
+    [Theory]
+    [InlineData("203.0.113.9", "anon:203.0.113.9")]
+    [InlineData("::ffff:203.0.113.9", "anon:203.0.113.9")] // IPv4 mapeada a IPv6 → misma clave
+    [InlineData(null, "anon:unknown")]
+    public void AnonymousKeyFor_NormalizaLaIp(string? ip, string expected)
+    {
+        var address = ip is null ? null : System.Net.IPAddress.Parse(ip);
+
+        Assert.Equal(expected, TenantConsumptionTracker.AnonymousKeyFor(address));
+    }
 }

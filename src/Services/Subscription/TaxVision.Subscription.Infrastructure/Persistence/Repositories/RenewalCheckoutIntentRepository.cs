@@ -21,6 +21,24 @@ public sealed class RenewalCheckoutIntentRepository(SubscriptionDbContext db) : 
             .FirstOrDefaultAsync(intent => intent.Id == intentId && intent.TenantId == tenantId, ct);
 
     // Trackeado y sin filtro de tenant: el consumer del webhook llega por Id de evento y valida el TenantId.
+    // Trackeada (el handler la reutiliza) y acotada por el tenant autenticado. La más reciente: si hubiera
+    // varias abiertas, la última es la que el usuario vio.
+    public Task<SubscriptionRenewalIntent?> GetOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SubscriptionRenewalIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.Status == SubscriptionRenewalIntentStatus.Pending
+                && intent.CheckoutUrl != null
+                && intent.CheckoutExpiresAtUtc > nowUtc
+            )
+            .OrderByDescending(intent => intent.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public Task<SubscriptionRenewalIntent?> GetByIdForProvisioningAsync(
         Guid intentId,
         CancellationToken ct = default

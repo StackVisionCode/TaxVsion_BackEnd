@@ -16,8 +16,9 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 
 /// <summary>
 /// Fase L1.3 — flujo de notificaciones DMCA (17 U.S.C. § 512): registro, contranotificacion y
-/// reinstalacion. Staff-only (equipo legal de plataforma + tenant/uploader) — nunca CustomerPortal,
-/// ninguno de los 3 permisos usados aca esta en el bundle default del rol Customer Portal.
+/// reinstalacion. Nunca CustomerPortal: ninguno de los permisos usados aca esta en el bundle
+/// default del rol Customer Portal. Registrar y reinstalar son de la plataforma
+/// (cloudstorage.dmca.manage); la contranotificacion es del propio tenant.
 /// </summary>
 [ApiController]
 [Route("storage/legal/dmca-notices")]
@@ -36,7 +37,8 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
 
     /// <summary>Equipo legal de la plataforma registra un takedown: bloquea el archivo y lo pone bajo legal hold.</summary>
     [HttpPost]
-    [HasPermission(CloudStoragePermissions.LegalManage)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
+    [HasPermission(CloudStoragePermissions.DmcaManage)]
     [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType<object>(StatusCodes.Status201Created)]
     public async Task<IActionResult> RegisterTakedown(RegisterDmcaTakedownRequest request, CancellationToken ct)
@@ -97,7 +99,8 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
 
     /// <summary>Equipo legal de la plataforma cierra el expediente reinstalando el archivo.</summary>
     [HttpPost("{dmcaNoticeId:guid}/reinstate")]
-    [HasPermission(CloudStoragePermissions.LegalManage)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
+    [HasPermission(CloudStoragePermissions.DmcaManage)]
     [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reinstate(Guid dmcaNoticeId, ReinstateRequest request, CancellationToken ct)

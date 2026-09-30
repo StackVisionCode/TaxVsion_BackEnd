@@ -11,6 +11,9 @@ public sealed class RefreshToken : TenantEntity
     /// <summary>Sesión (familia de rotación) a la que pertenece el token. Null solo para tokens heredados pre-sesiones, que se consideran inválidos.</summary>
     public Guid? SessionId { get; private set; }
 
+    /// <summary>Cadena de la sesión a la que pertenece. La rotación la hereda.</summary>
+    public SessionSurface Surface { get; private set; }
+
     public string TokenHash { get; private set; } = default!;
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
@@ -26,7 +29,8 @@ public sealed class RefreshToken : TenantEntity
         Guid userId,
         Guid sessionId,
         string tokenHash,
-        DateTime expiresAtUtc
+        DateTime expiresAtUtc,
+        SessionSurface surface = SessionSurface.Workspace
     )
     {
         var token = new RefreshToken
@@ -34,6 +38,7 @@ public sealed class RefreshToken : TenantEntity
             Id = Guid.NewGuid(),
             UserId = userId,
             SessionId = sessionId,
+            Surface = surface,
             TokenHash = tokenHash,
             ExpiresAtUtc = expiresAtUtc,
             CreatedAtUtc = DateTime.UtcNow,

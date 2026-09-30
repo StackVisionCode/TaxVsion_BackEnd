@@ -5,6 +5,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
@@ -13,6 +14,8 @@ using TaxVision.Auth.Application.Sessions.Commands;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
+using TaxVision.Auth.Domain.RefreshTokens;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -32,7 +35,8 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         string Password,
         string? DeviceName = null,
         string? DeviceToken = null,
-        Guid? TenantId = null
+        Guid? TenantId = null,
+        UserAccountKind? AccountKind = null
     );
 
     [HttpPost("login")]
@@ -62,7 +66,8 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
             request.Email,
             request.Password,
             request.DeviceName,
-            request.DeviceToken
+            request.DeviceToken,
+            request.AccountKind
         );
         var result = await bus.InvokeAsync<Result<LoginResponse>>(command, ct);
 
@@ -100,8 +105,9 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     [HttpPost("refresh")]
     [AllowAnonymous]
     [RateLimitExempt(
-        "Anónimo — el refresh token en sí ya es el secreto portador (unguessable, host-binding en Fase 18.3); sin JWT propio que particionar, agregar protección HTTP nueva queda fuera de alcance de esta migración."
+        "Anónimo — el refresh token en sí ya es el secreto portador (unguessable, host-binding en Fase 18.3); sin JWT propio que particionar. Lo acota el limiter nativo \"auth-refresh\" por IP."
     )]
+    [EnableRateLimiting("auth-refresh")]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Refresh(
         RefreshRequest request,
@@ -177,6 +183,7 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [AllowSurface(AccessSurface.Account)]
     [RateLimit("auth.f.me_read")]
     [ProducesResponseType<MeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Me(CancellationToken ct)
@@ -187,6 +194,87 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         var result = await bus.InvokeAsync<Result<MeResponse>>(new GetMeQuery(userId), ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ReauthenticateRequest(string Password, string? Code = null);
+
+    /// <summary>
+    /// Step-up: confirma la contraseña (y el código si hay TOTP) y devuelve un access token de la misma
+    /// sesión y superficie con <c>reauth_at</c>. Lo exigen las acciones con <c>[RequireRecentAuthentication]</c>.
+    /// Contraseña o código incorrectos responden 400: la sesión sigue siendo válida.
+    /// </summary>
+    [HttpPost("reauthenticate")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("auth.b.reauthenticate")]
+    [ProducesResponseType<ReauthenticateResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Reauthenticate(ReauthenticateRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId) || !User.TryGetSessionId(out var sessionId))
+            return Unauthorized();
+
+        var surface = User.GetSurface() == AccessSurface.Account ? SessionSurface.Account : SessionSurface.Workspace;
+        var result = await bus.InvokeAsync<Result<ReauthenticateResponse>>(
+            new ReauthenticateCommand(userId, sessionId, surface, request.Password, request.Code),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Bootstrap de acceso (A5): permisos efectivos, módulos del plan, las dos versiones para detectar
+    /// que quedó viejo y, solo para el staff, el estado comercial de la oficina. Con esto —y nada más—
+    /// el CRM arma sidebar, guards y botones, y el Portal sus áreas.
+    ///
+    /// <para>
+    /// **Sin `[AllowSurface]` a propósito** (§R.4.1): un token del Account del Landing no obtiene el
+    /// bootstrap del CRM. <c>SurfaceAuthorizationFilter</c> lo rechaza antes del handler con
+    /// <c>Auth.SurfaceNotAllowed</c>.
+    /// </para>
+    ///
+    /// Responde 304 si el <c>If-None-Match</c> coincide, así el frontend puede pedirlo en cada
+    /// navegación sin costo.
+    /// </summary>
+    [HttpGet("me/access")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [RateLimit("auth.f.me_read")]
+    [ProducesResponseType<MyAccessResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status304NotModified)]
+    public async Task<IActionResult> MyAccess(CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<MyAccessResponse>>(
+            new GetMyAccessQuery(userId, User.GetSurface()),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        // El ETag va siempre, también en el 304: es el contrato de revalidación. Private porque el
+        // contenido es por usuario — ninguna caché compartida puede servirlo a otro.
+        Response.Headers.ETag = result.Value.ETag;
+        Response.Headers.CacheControl = "private, no-cache";
+
+        if (Request.Headers.IfNoneMatch.Any(tag => tag == result.Value.ETag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return Ok(result.Value);
     }
 
     /// <summary>Debugging (Fase 7): el acceso efectivo del usuario actual — por permiso, su módulo y si

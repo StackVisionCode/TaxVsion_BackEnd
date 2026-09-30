@@ -134,6 +134,38 @@ public sealed class ConnectorsSendClientTests
         Assert.False(result.Success);
         Assert.Contains("QuotaExceeded", result.ErrorReason);
         Assert.All(result.RecipientOutcomes, o => Assert.Equal(RecipientSendStatus.Rejected, o.Status));
+        Assert.Null(result.RetryAfter); // el cupo diario no se arregla reintentando en minutos
+    }
+
+    [Fact]
+    public async Task SendAsync_marks_the_per_minute_throttle_as_retryable_with_its_wait()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var throttled = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent("""{"code":"SendMessageHandler.RateLimited","message":"Too many sends."}"""),
+        };
+        throttled.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(25));
+        handler.Enqueue(throttled);
+        var client = new ConnectorsSendClient(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5390/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ConnectorsSendClient>.Instance
+        );
+
+        var result = await client.SendAsync(
+            CreateMessage(),
+            new RenderedContent("Welcome", "<p>Hi</p>", "Hi"),
+            CreateProvider(Guid.NewGuid()),
+            null,
+            null,
+            null,
+            attachments: [],
+            CancellationToken.None
+        );
+
+        Assert.False(result.Success);
+        Assert.Equal(TimeSpan.FromSeconds(25), result.RetryAfter);
     }
 
     [Fact]

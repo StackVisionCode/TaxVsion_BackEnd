@@ -180,6 +180,8 @@ public static class DependencyInjection
         services.AddScoped<IDiscoverySessionStore, RedisDiscoverySessionStore>();
         services.AddScoped<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
         services.AddScoped<ISessionTakeoverTicketStore, RedisSessionTakeoverTicketStore>();
+        // Vale del botón "Manage subscription" del CRM hacia el Account del Landing (mismo sid).
+        services.AddScoped<IAccountHandoffTicketStore, RedisAccountHandoffTicketStore>();
 
         // Rate Limit Fase 0.1 — contador atómico compartido entre réplicas para LoginThrottler
         // (antes GET+SET no atómico sobre ICacheService, ver doc-comment de LoginThrottler.cs).

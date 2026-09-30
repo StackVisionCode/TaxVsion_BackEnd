@@ -22,5 +22,6 @@ public sealed record UpdateRelationCommand(
     string? AddressCity,
     string? AddressRegion,
     string? AddressPostalCode,
-    string? AddressCountryCode
+    string? AddressCountryCode,
+    bool CallerCanViewAllCustomers
 );

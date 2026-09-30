@@ -41,7 +41,11 @@ public static partial class RateLimitPolicyCatalog
             ? definition
             : throw new KeyNotFoundException($"No rate limit policy registered with name '{name}'.");
 
-    /// <summary>Capa 4 (§4 del plan) — multiplicador sobre el overlay para derivar el cap agregado por endpoint en H/I (ADR_017 §2.2).</summary>
+    /// <summary>
+    /// Capa 4 (§4 del plan) — multiplicador sobre el overlay para derivar el cap agregado por endpoint en
+    /// I (ADR_017 §2.2). H (búsquedas/listados) ya no lo lleva: era un techo global fijo, compartido por
+    /// todos los tenants y sin escalar por plan, sobre lecturas que el overlay por tenant ya acota.
+    /// </summary>
     private const int EndpointCapMultiplier = 20;
 
     private static RateLimitPolicyDefinition Define(
@@ -65,7 +69,7 @@ public static partial class RateLimitPolicyCatalog
             WindowSeconds = windowSeconds,
             Algorithm = algorithm,
             EndpointCapPerWindow =
-                (category == RateLimitCategory.H || category == RateLimitCategory.I) && overlayQuota is not null
+                category == RateLimitCategory.I && overlayQuota is not null
                     ? overlayQuota.Value * EndpointCapMultiplier
                     : null,
         };

@@ -128,6 +128,20 @@ function clearRecordingTimer(key: string): void {
  *  el tope acota el trabajo de un usuario con muchísimas (las rooms son baratas, pero no ilimitadas). */
 const MAX_JOINED_CONVERSATIONS = 500;
 
+/**
+ * ¿Este socket es parte de la conversación? La membresía ya la resuelve el join-on-connect (el socket
+ * entra SOLO a sus propias rooms) y el alta al crear o entrar a una nueva, así que preguntarle a la room
+ * es la misma verdad que usa la entrega, sin una consulta extra. Se exporta para poder probarla: sin
+ * este chequeo, cualquiera emitía "está escribiendo…" en la conversación de otros, con su nombre visible.
+ */
+export function isMemberOfConversation(
+  rooms: ReadonlySet<string>,
+  tenantId: string,
+  conversationId: string,
+): boolean {
+  return rooms.has(`t:${tenantId}:c:${conversationId}`);
+}
+
 async function wireSocket(
   socket: CommunicationSocket,
   io: CommunicationIoServer,
@@ -808,6 +822,9 @@ async function wireSocket(
     }
   });
 
+  const isInConversation = (conversationId: string): boolean =>
+    isMemberOfConversation(socket.rooms, tenantId, conversationId);
+
   const emitTypingStopped = (conversationId: string): void => {
     emitter.emitToConversation({
       tenantId,
@@ -820,6 +837,7 @@ async function wireSocket(
   socket.on(ChatSocketEvents.TypingStart, async (...args: unknown[]) => {
     const parsed = TypingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
+    if (!isInConversation(parsed.data.conversationId)) return;
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.ChatTyping,
       tenantId,
@@ -848,6 +866,7 @@ async function wireSocket(
   socket.on(ChatSocketEvents.TypingStop, (...args: unknown[]) => {
     const parsed = TypingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
+    if (!isInConversation(parsed.data.conversationId)) return;
     clearTypingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
     emitTypingStopped(parsed.data.conversationId);
   });
@@ -866,6 +885,7 @@ async function wireSocket(
   socket.on(ChatSocketEvents.RecordingStart, async (...args: unknown[]) => {
     const parsed = RecordingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
+    if (!isInConversation(parsed.data.conversationId)) return;
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.ChatVoiceRecording,
       tenantId,
@@ -897,6 +917,7 @@ async function wireSocket(
   socket.on(ChatSocketEvents.RecordingStop, (...args: unknown[]) => {
     const parsed = RecordingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
+    if (!isInConversation(parsed.data.conversationId)) return;
     clearRecordingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
     emitRecordingStopped(parsed.data.conversationId);
   });

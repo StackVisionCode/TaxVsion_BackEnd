@@ -67,10 +67,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.H,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 20,
+        quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.SlidingWindow,
-        overlayQuota: 100
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
     );
 
     // Sin JWT: el token firmado de la URL es la credencial, asi que la particion es el token y no el
@@ -92,9 +92,9 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 10,
+        quota: 60,
         windowSeconds: 60,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 60
+        overlayQuota: 360
     );
 }

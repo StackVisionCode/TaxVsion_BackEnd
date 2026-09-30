@@ -10,6 +10,7 @@ using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Domain.Webhooks;
+using TaxVision.PaymentApp.Tests.TestDoubles;
 using Wolverine;
 using Wolverine.Runtime;
 using Wolverine.Transports.Sending;
@@ -49,6 +50,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -93,6 +95,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -129,6 +132,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -173,6 +177,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -183,6 +188,44 @@ public sealed class ProcessProviderWebhookHandlerTests
         Assert.Equal(WebhookEventStatus.Applied, existing.Status); // reusó la fila existente
         Assert.Null(webhooks.Added); // no insertó otra fila
         Assert.Single(bus.Published.OfType<OnboardingPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Throttled_webhook_asks_the_provider_to_retry_and_leaves_the_event_reprocessable()
+    {
+        // Antes: Rejected (terminal) + 200 → el provider no reintentaba y el pago confirmado se perdía.
+        var payment = CreateProcessingOnboardingPayment();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-throttled", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload("ORDER-123", PaymentStatus.Succeeded, null, null, null)
+        );
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            webhooks,
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(webhookThrottled: true),
+            new FakeCorrelationContext(),
+            bus,
+            new FakeTenantRegistry("Acme Tax"),
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ProcessProviderWebhookHandler.WebhookThrottledCode, result.Error.Code);
+        Assert.Equal(WebhookEventStatus.Failed, webhooks.Added!.Status);
+        Assert.False(webhooks.Added.IsTerminal); // la próxima entrega lo re-procesa
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Empty(bus.Published);
     }
 
     [Fact]
@@ -220,6 +263,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             bus,
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -263,6 +307,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -299,6 +344,7 @@ public sealed class ProcessProviderWebhookHandlerTests
             new FakePaymentAttemptThrottle(),
             new FakeCorrelationContext(),
             new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
             NullLogger<WebhookEvent>.Instance,
             CancellationToken.None
         );
@@ -306,6 +352,166 @@ public sealed class ProcessProviderWebhookHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Processing, payment.Status);
         Assert.False(provider.ParseWasCalled);
+    }
+
+    [Fact]
+    public async Task Late_success_of_an_off_session_renewal_publishes_the_renewal_result()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
+        var bus = new FakeMessageBus();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Succeeded, null, null, null),
+            bus
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentSucceededIntegrationEvent>());
+        Assert.Equal(payment.TargetAggregateId, published.TenantSubscriptionId);
+        // Todo cobro confirmado de un tenant real pide además su recibo.
+        Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Late_failure_of_a_seat_renewal_follows_dunning_and_says_it_will_retry()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SeatRenewal);
+        var bus = new FakeMessageBus();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Failed, "insufficient_funds", "No funds.", null),
+            bus
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Failed, payment.Status);
+        Assert.NotNull(payment.NextRetryAtUtc);
+        var published = Assert.IsType<SeatRenewalPaymentFailedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.True(published.WillRetry);
+        Assert.Equal("insufficient_funds", published.FailureCode);
+    }
+
+    [Fact]
+    public async Task Failure_event_for_an_already_failed_payment_is_stale_and_not_republished()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.AddOnRenewal);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            willRetry: true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+        var retryBefore = payment.NextRetryAtUtc;
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.Failed, "card_declined", "Declined.", null),
+            bus,
+            webhooks
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
+        Assert.Equal(retryBefore, payment.NextRetryAtUtc);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Onboarding_webhooks_are_throttled_per_onboarding_not_in_a_shared_bucket()
+    {
+        var payment = CreateProcessingOnboardingPayment();
+        var throttle = new FakePaymentAttemptThrottle();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-scope", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload("ORDER-123", PaymentStatus.Succeeded, null, null, null)
+        );
+
+        await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            new FakeWebhookEventRepository(),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            throttle,
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            new FakeTenantRegistry("Acme Tax"),
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(Guid.Empty, payment.TenantId);
+        Assert.Equal(payment.OnboardingId, Assert.Single(throttle.CheckedScopes));
+    }
+
+    private static Task<Result> HandleStripeAsync(
+        SaaSPayment payment,
+        WebhookEventPayload payload,
+        FakeMessageBus bus,
+        FakeWebhookEventRepository? webhooks = null
+    ) =>
+        ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(
+                PaymentProviderCode.Stripe,
+                "{}",
+                new Dictionary<string, string> { ["Stripe-Signature"] = "t=1,v1=test" }
+            ),
+            new FakePaymentAdapterFactory(
+                new FakePaymentProvider(
+                    PaymentProviderCode.Stripe,
+                    new WebhookVerificationResult($"evt_{Guid.NewGuid():N}", "payment_intent.updated", "{}"),
+                    payload
+                )
+            ),
+            new FakeProviderWebhookSecrets(),
+            webhooks ?? new FakeWebhookEventRepository(),
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(),
+            new FakeCorrelationContext(),
+            bus,
+            new FakeTenantRegistry("Acme Tax"),
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+    private static SaaSPayment CreateProcessingOffSessionPayment(SaaSPaymentType type)
+    {
+        var payment = SaaSPayment
+            .Create(
+                Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                IdempotencyKey.Create($"offsession-{type}").Value,
+                Money.Create(1500, "USD").Value,
+                type,
+                Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_offsession_1").Value,
+            "processing",
+            providerResponseBody: null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+        return payment;
     }
 
     private static IReadOnlyDictionary<string, string> PayPalHeaders() =>
@@ -548,6 +754,12 @@ public sealed class ProcessProviderWebhookHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SaaSPayment>> GetSucceededWithoutReceiptAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
             DateTime nowUtc,
             int batchSize,
@@ -569,6 +781,16 @@ public sealed class ProcessProviderWebhookHandlerTests
             SaaSPaymentType? type,
             DateTime? from,
             DateTime? to,
+            int page,
+            int pageSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
+            Guid tenantId,
             int page,
             int pageSize,
             CancellationToken ct = default
@@ -620,12 +842,17 @@ public sealed class ProcessProviderWebhookHandlerTests
         public void RecordProviderLatency(double milliseconds, string provider, string method) { }
     }
 
-    private sealed class FakePaymentAttemptThrottle : IPaymentAttemptThrottle
+    private sealed class FakePaymentAttemptThrottle(bool webhookThrottled = false) : IPaymentAttemptThrottle
     {
-        public Task<bool> IsWebhookThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult(false);
+        public List<Guid> CheckedScopes { get; } = [];
 
-        public Task RegisterWebhookAttemptAsync(Guid tenantId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> IsWebhookThrottledAsync(Guid scopeId, CancellationToken ct = default)
+        {
+            CheckedScopes.Add(scopeId);
+            return Task.FromResult(webhookThrottled);
+        }
+
+        public Task RegisterWebhookAttemptAsync(Guid scopeId, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task<bool> IsAdminActionThrottledAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();

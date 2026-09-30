@@ -1,4 +1,4 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -23,7 +23,11 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [ApiController]
 [Route("storage/folders")]
 [Authorize]
-public sealed class FoldersController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
+public sealed class FoldersController(
+    IMessageBus bus,
+    ICorrelationContext correlation,
+    IUserPermissionsSource permissions
+) : ControllerBase
 {
     /// <summary>Tope de página del listado de carpeta (guardrail anti-abuso).</summary>
     private const int MaxFolderPageSize = 200;
@@ -36,6 +40,7 @@ public sealed class FoldersController(IMessageBus bus, ICorrelationContext corre
     /// </summary>
     [HttpGet]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
@@ -99,6 +104,7 @@ public sealed class FoldersController(IMessageBus bus, ICorrelationContext corre
     /// </summary>
     [HttpGet("tree")]
     [HasPermission(CloudStoragePermissions.FileView)]
+    [HasPermissionForActor(ActorType.CustomerPortal, PortalPermissions.FoldersView)]
     [AllowActorTypes(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
@@ -212,8 +218,12 @@ public sealed class FoldersController(IMessageBus bus, ICorrelationContext corre
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        // A1 — borrar la carpeta manda su contenido a la papelera, así que se comprueba también el
+        // permiso de borrar archivos. Se resuelve por la proyección local, no por el claim `perm`, que
+        // ya no se emite.
+        var canDeleteFiles = await permissions.HasPermissionAsync(User, CloudStoragePermissions.FileDelete, ct);
         var result = await bus.InvokeAsync<Result>(
-            new DeleteFolderCommand(tenantId, actorId, scope, folderId, AuditContext()),
+            new DeleteFolderCommand(tenantId, actorId, scope, folderId, AuditContext(), canDeleteFiles),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

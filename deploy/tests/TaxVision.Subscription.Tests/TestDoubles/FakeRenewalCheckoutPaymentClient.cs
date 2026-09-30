@@ -10,6 +10,9 @@ public sealed class FakeRenewalCheckoutPaymentClient(Result<RenewalCheckoutClien
 {
     public RenewalCheckoutClientRequest? LastRequest { get; private set; }
 
+    /// <summary>Cuántas sesiones se pidieron: una renovación reutilizada no debe pedir otra.</summary>
+    public int CreateCalls { get; private set; }
+
     public RenewalPaymentStatusResult? PaymentStatus { get; set; }
 
     public Task<Result<RenewalCheckoutClientResult>> CreateCheckoutAsync(
@@ -18,6 +21,7 @@ public sealed class FakeRenewalCheckoutPaymentClient(Result<RenewalCheckoutClien
     )
     {
         LastRequest = request;
+        CreateCalls++;
         return Task.FromResult(result);
     }
 

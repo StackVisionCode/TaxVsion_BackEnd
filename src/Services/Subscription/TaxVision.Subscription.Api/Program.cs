@@ -70,7 +70,17 @@ builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
 builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
+
+// Los seeders del catálogo solo actúan contra una base vacía; este pone al día la que YA existe:
+// publica versión nueva del plan (+ recálculo masivo) y retira los add-ons que no se ofrecen.
+// Compara antes de actuar — ver el doc-comment, ReviseModules no es idempotente.
+builder.Services.AddHostedService<TaxVision.Subscription.Api.Bootstrap.SubscriptionCatalogReconciler>();
+builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
+
+// A6 — anti-entropía del corte por facturación: re-anuncia el estado ACTUAL para que Auth converja
+// tras un evento perdido. Su primer tick es inmediato, así que también reconcilia al arrancar.
+builder.Services.AddHostedService<SubscriptionAccessReconciliationJob>();
 
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
 // justo antes de facturar la renovación — no hay un job separado.

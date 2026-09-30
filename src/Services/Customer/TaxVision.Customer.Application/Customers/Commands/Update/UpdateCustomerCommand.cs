@@ -35,5 +35,6 @@ public sealed record UpdateCustomerCommand(
     string? Dba,
     BusinessStructure? BusinessStructure,
     DateOnly? FormationDate,
-    Guid? PrincipalBusinessActivityId
+    Guid? PrincipalBusinessActivityId,
+    bool CallerCanViewAllCustomers
 );

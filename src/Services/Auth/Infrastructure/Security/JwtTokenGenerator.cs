@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -5,6 +6,7 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Security;
@@ -16,6 +18,9 @@ public sealed class JwtOptions
     public string? Secret { get; set; }
     public string Issuer { get; set; } = default!;
     public string Audience { get; set; } = default!;
+
+    /// <summary>Audiencia de los tokens del Account del Landing. Solo la aceptan los servicios que el Account usa.</summary>
+    public string AccountAudience { get; set; } = "TaxVision.Account";
     public int AccessMinutes { get; set; } = 15;
 
     /// <summary>Clave privada RSA en PEM (activa RS256). Preferir PrivateKeyPath con un secret montado.</summary>
@@ -34,7 +39,9 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         string effectiveTimeZoneId,
         Guid sessionId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> authMethods
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface = SessionSurface.Workspace,
+        DateTime? reauthenticatedAtUtc = null
     )
     {
         var now = DateTime.UtcNow;
@@ -56,9 +63,25 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(authMethods.Select(method => new Claim(JwtRegisteredClaimNames.Amr, method)));
 
+        if (surface == SessionSurface.Account)
+            claims.Add(new Claim(ClaimNames.Surface, AccessSurface.Account));
+
+        if (reauthenticatedAtUtc is { } reauthAt)
+        {
+            claims.Add(
+                new Claim(
+                    ClaimNames.ReauthenticatedAt,
+                    new DateTimeOffset(DateTime.SpecifyKind(reauthAt, DateTimeKind.Utc))
+                        .ToUnixTimeSeconds()
+                        .ToString(CultureInfo.InvariantCulture),
+                    ClaimValueTypes.Integer64
+                )
+            );
+        }
+
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
-            audience: _options.Audience,
+            audience: surface == SessionSurface.Account ? _options.AccountAudience : _options.Audience,
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(_options.AccessMinutes),

@@ -52,7 +52,14 @@ public static class ClaimsPrincipalExtensions
         return Guid.TryParse(raw, out sessionId);
     }
 
-    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
+    /// <summary>
+    /// Se decide por el claim <c>actor_type</c>, que es inmutable y lo fija Auth al registrar al
+    /// usuario. Nunca por el claim de rol: ahí conviven el pseudo-rol del actor type y los nombres
+    /// de los custom roles del tenant, así que un rol de tenant llamado <c>PlatformAdmin</c>
+    /// habilitaba el bypass de plataforma.
+    /// </summary>
+    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) =>
+        principal.GetActorType() == ActorType.PlatformAdmin;
 
     // TenantAdmin no tiene bypass acá — depende del claim "perm" real (PermissionCatalog computa
     // su set completo al login, excluyendo lo marcado Permission.PlatformOnly). PlatformAdmin sí
@@ -67,6 +74,23 @@ public static class ClaimsPrincipalExtensions
     /// emitidos antes de que este claim existiera, o de un actor sin este claim).</summary>
     public static int GetPermissionsVersion(this ClaimsPrincipal principal) =>
         int.TryParse(principal.FindFirst("perm_v")?.Value, out var version) ? version : 0;
+
+    /// <summary>Superficie del token (<see cref="AccessSurface"/>); null en los tokens del CRM y del portal.</summary>
+    public static string? GetSurface(this ClaimsPrincipal principal)
+    {
+        var raw = principal.FindFirst(ClaimNames.Surface)?.Value;
+        return string.IsNullOrWhiteSpace(raw) ? null : raw;
+    }
+
+    /// <summary>Momento de la última reautenticación (claim <c>reauth_at</c>, epoch en segundos).</summary>
+    public static bool TryGetReauthenticatedAt(this ClaimsPrincipal principal, out DateTimeOffset reauthenticatedAt)
+    {
+        reauthenticatedAt = default;
+        if (!long.TryParse(principal.FindFirst(ClaimNames.ReauthenticatedAt)?.Value, out var epochSeconds))
+            return false;
+        reauthenticatedAt = DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
+        return true;
+    }
 
     /// <summary>Null si el claim falta o trae un valor que no matchea ningún <see cref="ActorType"/>
     /// conocido — se trata como "no confiable", nunca se asume un actor type por default

@@ -74,6 +74,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         Guid customerId,
         int page,
         int size,
+        Guid? ownerUserId = null,
         CancellationToken ct = default
     )
     {
@@ -84,6 +85,11 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Drafts.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(d => d.TenantId == tenantId && d.CustomerId == customerId && d.Status == DraftStatus.Draft);
+
+        // A1 — el filtro va en la consulta, no después de paginar: filtrar en memoria dejaría los
+        // totales y las páginas mintiendo.
+        if (ownerUserId is { } owner)
+            query = query.Where(d => d.CreatedByUserId == owner);
 
         var totalCount = await query.CountAsync(ct);
 

@@ -23,7 +23,26 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        // A5 — sigue bloqueando (fail-closed), pero con un código propio: un endpoint sin declarar es un
+        // bug del backend, no una denegación legítima, y hay que poder alertarlo aparte.
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotDeclared);
+    }
+
+    /// <summary>
+    /// A5 — el filtro ya no devuelve <c>ForbidResult</c> (403 con el cuerpo VACÍO, indistinguible de
+    /// cualquier otra capa desde el frontend) sino el cuerpo RFC 9457 con <c>code</c> y <c>reason</c>.
+    /// </summary>
+    private static void AssertDenied(AuthorizationFilterContext context, AuthorizationDenial expected)
+    {
+        var result = Assert.IsType<ObjectResult>(context.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("application/problem+json", result.ContentTypes);
+
+        var problem = Assert.IsType<ProblemDetails>(result.Value);
+        Assert.Equal(expected.Code, problem.Extensions["code"]);
+        Assert.Equal(expected.Reason, problem.Extensions["reason"]);
+        // Compatibilidad: los frontends desplegados leen {code, message}.
+        Assert.Equal(problem.Detail, problem.Extensions["message"]);
     }
 
     [Fact]
@@ -43,7 +62,7 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
 
     [Fact]
@@ -53,7 +72,7 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
 
     [Fact]
@@ -135,7 +154,7 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
 
     // Service (M2M, client_credentials) es un actor type real (ver ActorType.cs) usado por
@@ -150,7 +169,7 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
 
     [Theory]
@@ -163,7 +182,7 @@ public sealed class ActorTypeAuthorizationFilterTests
 
         Authorize(context);
 
-        Assert.IsType<ForbidResult>(context.Result);
+        AssertDenied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
 
     [Fact]

@@ -15,12 +15,24 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 /// </summary>
 public interface IRateLimitAlgorithmCounter
 {
-    /// <summary>Devuelve <c>true</c> si esta evaluación excede <paramref name="limit"/> dentro de <paramref name="window"/>.</summary>
-    Task<bool> EvaluateAsync(
+    /// <summary>
+    /// Consume un permiso si hay cupo dentro de <paramref name="window"/>. Un rechazo no consume cupo, y
+    /// trae cuánto falta para que se libere el próximo permiso.
+    /// </summary>
+    Task<RateLimitCounterResult> EvaluateAsync(
         RateCounterKey key,
         RateLimitAlgorithm algorithm,
         int limit,
         TimeSpan window,
         CancellationToken ct = default
     );
+}
+
+/// <param name="Exceeded">No había cupo: la evaluación se rechazó sin consumir.</param>
+/// <param name="RetryAfter">Tiempo hasta que se libere un permiso; <see cref="TimeSpan.Zero"/> si se permitió.</param>
+public readonly record struct RateLimitCounterResult(bool Exceeded, TimeSpan RetryAfter)
+{
+    public static RateLimitCounterResult Allowed => new(false, TimeSpan.Zero);
+
+    public static RateLimitCounterResult Rejected(TimeSpan retryAfter) => new(true, retryAfter);
 }

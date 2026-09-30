@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { checkPermission, permissionCheckHttpStatus, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  permissionCheckHttpStatus,
+  CommunicationPermissions,
+} from '../../../domain/shared/permissions.js';
 import { analyticsSummary, analyticsTimeline } from '../../../application/use-cases/analytics-queries.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
@@ -18,9 +22,15 @@ const RangeQuery = z.object({
 export async function registerAnalyticsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.get('/communication/analytics/summary', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const permCheck = await checkPermission(principal, CommunicationPermissions.AnalyticsRead, container.userPermissions);
+    const permCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.AnalyticsRead,
+      container.userPermissions,
+    );
     if (!permCheck.allowed) {
-      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
+      return reply
+        .code(permissionCheckHttpStatus(permCheck))
+        .send({ code: permCheck.code, message: permCheck.message });
     }
     const query = RangeQuery.parse(request.query);
     const result = await analyticsSummary(
@@ -36,9 +46,15 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, container: A
 
   app.get('/communication/analytics/timeline', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const permCheck = await checkPermission(principal, CommunicationPermissions.AnalyticsRead, container.userPermissions);
+    const permCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.AnalyticsRead,
+      container.userPermissions,
+    );
     if (!permCheck.allowed) {
-      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
+      return reply
+        .code(permissionCheckHttpStatus(permCheck))
+        .send({ code: permCheck.code, message: permCheck.message });
     }
     const query = RangeQuery.parse(request.query);
     const result = await analyticsTimeline(

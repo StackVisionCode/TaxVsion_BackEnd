@@ -21,7 +21,11 @@ public sealed record ScheduleCampaignCommand(
     DateTime RunAtUtc,
     int? IntervalMinutes,
     IReadOnlyList<Guid> ContactListIds,
-    bool IncludeCustomers = false
+    bool IncludeCustomers = false,
+    // A1 — quién agenda y qué clientes ve. El disparo (actor de sistema) hereda esto en vez de correr con
+    // la visibilidad abierta. Ver CampaignSchedule.CreatorCanViewAllCustomers.
+    Guid? CreatedByUserId = null,
+    bool CreatorCanViewAllCustomers = true
 );
 
 public static class ScheduleCampaignHandler
@@ -48,14 +52,18 @@ public static class ScheduleCampaignHandler
                 command.RunAtUtc,
                 command.IntervalMinutes ?? 0,
                 lists,
-                command.IncludeCustomers
+                command.IncludeCustomers,
+                command.CreatedByUserId,
+                command.CreatorCanViewAllCustomers
             )
             : CampaignSchedule.CreateOneTime(
                 command.TenantId,
                 command.CampaignId,
                 command.RunAtUtc,
                 lists,
-                command.IncludeCustomers
+                command.IncludeCustomers,
+                command.CreatedByUserId,
+                command.CreatorCanViewAllCustomers
             );
         if (result.IsFailure)
             return Result.Failure<CampaignScheduleResponse>(result.Error);

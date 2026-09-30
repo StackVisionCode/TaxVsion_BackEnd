@@ -56,11 +56,9 @@ public sealed class TenantHostResolutionMiddleware(
         "/auth/subdomains/check-availability",
         "/auth/subdomains/reserve",
         "/auth/tenant-resolution/by-email",
-        // Reset central: se pide desde app.*/api.* (host de sistema, sin oficina). Si se
-        // resolviera por Host, el sistema apuntaría a un tenant equivocado y el descubrimiento
-        // cross-tenant nunca correría. Exento → ResolvedTenantId null → ForgotPasswordCentralCommand.
-        // Hermano de tenant-resolution/by-email: mismo descubrimiento por email, todas las oficinas.
-        "/auth/password/forgot",
+        // M2M por la red interna (Host auth-api:8080): el Gateway no enruta /internal y los endpoints
+        // exigen token de servicio. Sin esto cada llamada dejaba una fila de audit y dependía del flag en false.
+        "/internal",
     ];
 
     public async Task InvokeAsync(
@@ -82,6 +80,14 @@ public sealed class TenantHostResolutionMiddleware(
         }
 
         var host = context.Request.Host.Host;
+
+        // Hosts de la plataforma sin oficina (apex, www, app, client): pasan sin buscar ni auditar.
+        if (options.Value.IsSystemHost(host))
+        {
+            await next(context);
+            return;
+        }
+
         var result = await resolver.ResolveAsync(host, context.RequestAborted);
         if (result.IsResolved)
         {

@@ -4,5 +4,6 @@ public sealed record RemoveContactPointCommand(
     Guid TenantId,
     Guid CustomerId,
     Guid ContactPointId,
-    Guid ModifiedByUserId
+    Guid ModifiedByUserId,
+    bool CallerCanViewAllCustomers
 );

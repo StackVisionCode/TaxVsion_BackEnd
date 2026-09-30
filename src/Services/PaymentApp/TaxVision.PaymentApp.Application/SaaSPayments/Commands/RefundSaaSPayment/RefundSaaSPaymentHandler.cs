@@ -26,20 +26,19 @@ public static class RefundSaaSPaymentHandler
         CancellationToken ct
     )
     {
-        // Defensa en profundidad (§41.4) — 5 acciones admin de dinero por minuto por tenant es
-        // más que suficiente para uso legítimo; por encima de eso probablemente sea un error
-        // de automatización o una cuenta admin comprometida.
-        if (await throttle.IsAdminActionThrottledAsync(command.TenantId, ct))
+        var payment = await payments.GetByIdAsync(command.SaaSPaymentId, ct);
+        if (payment is null)
+            return Result.Failure(new Error("SaaSPayment.NotFound", "SaaSPayment does not exist."));
+
+        // Defensa en profundidad: más de 5 acciones de dinero por minuto sobre un mismo tenant es un
+        // error de automatización o una cuenta comprometida.
+        if (await throttle.IsAdminActionThrottledAsync(payment.TenantId, ct))
             return Result.Failure(
                 new Error(
                     "PaymentApp.AdminActionThrottled",
                     "Too many admin actions for this tenant in the last minute."
                 )
             );
-
-        var payment = await payments.GetByIdAsync(command.SaaSPaymentId, command.TenantId, ct);
-        if (payment is null)
-            return Result.Failure(new Error("SaaSPayment.NotFound", "SaaSPayment does not exist."));
 
         if (payment.ExternalChargeReference is null)
             return Result.Failure(
@@ -80,7 +79,7 @@ public static class RefundSaaSPaymentHandler
             return applyResult;
 
         metrics.RecordRefunded(payment.ProviderCode.ToString());
-        await throttle.RegisterAdminActionAttemptAsync(command.TenantId, ct);
+        await throttle.RegisterAdminActionAttemptAsync(payment.TenantId, ct);
 
         await AuditEntryFactory.AppendAsync(
             audit,

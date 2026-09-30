@@ -27,7 +27,7 @@ public sealed class IcsWriterTests
         var cancelled = new DateTime(2026, 3, 9, 13, 0, 0, DateTimeKind.Utc);
         var moved = new DateTime(2026, 3, 16, 13, 0, 0, DateTimeKind.Utc);
 
-        series.CancelOccurrence(cancelled, _organizer, Now);
+        series.CancelOccurrence(cancelled, _organizer, canManageAll: false, Now);
         series.OverrideOccurrence(
             moved,
             new DateTime(2026, 3, 16, 18, 0, 0, DateTimeKind.Utc),
@@ -35,6 +35,7 @@ public sealed class IcsWriterTests
             newTitle: null,
             newLocation: null,
             _organizer,
+            canManageAll: false,
             Now
         );
 
@@ -64,7 +65,7 @@ public sealed class IcsWriterTests
     public void A_cancelled_appointment_is_not_in_the_feed()
     {
         var series = WeeklySeries();
-        series.Cancel(_organizer, "ya no aplica", Now);
+        series.Cancel(_organizer, canManageAll: false, "ya no aplica", Now);
 
         Assert.Equal(0, Occurrences(IcsWriter.Write([series]), "BEGIN:VEVENT"));
     }
@@ -86,7 +87,12 @@ public sealed class IcsWriterTests
             )
             .Value;
 
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value, timing, _organizer);
+        series.MakeRecurring(
+            RecurrenceRule.Create("FREQ=WEEKLY;BYDAY=MO").Value,
+            timing,
+            _organizer,
+            canManageAll: false
+        );
         return series;
     }
 

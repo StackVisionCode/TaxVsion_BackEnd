@@ -77,15 +77,16 @@ public static partial class RateLimitPolicyCatalog
     // (JwtTokenGenerator.GenerateScopedServiceToken lo setea siempre) — la justificación previa
     // ("sin user_id, TieredRateLimitEvaluator no aplicaría") era falsa: el evaluador soporta
     // partición solo-Tenant igual que growth.h.referral_attribution_create.
+    // Sin overlay: la primaria ya es por tenant, y un overlay [Tenant] caía en la MISMA clave Redis
+    // (cada request contaba dos veces y el límite efectivo quedaba en la mitad). Ídem las dos de abajo.
     public static readonly RateLimitPolicyDefinition GrowthCodesQuote = Define(
         "growth.j.codes_quote",
         RateLimitCategory.J,
         RateLimitPartitionDimension.Tenant,
-        [RateLimitPartitionDimension.Tenant],
+        [],
         quota: 300,
         windowSeconds: 60,
-        RateLimitAlgorithm.TokenBucket,
-        overlayQuota: 3000
+        RateLimitAlgorithm.TokenBucket
     );
 
     // Reemplaza los [RateLimitExempt] de Reserve/Commit/Cancel/Expire/Compensate
@@ -95,11 +96,10 @@ public static partial class RateLimitPolicyCatalog
         "growth.j.codes_reservation_manage",
         RateLimitCategory.J,
         RateLimitPartitionDimension.Tenant,
-        [RateLimitPartitionDimension.Tenant],
+        [],
         quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.TokenBucket,
-        overlayQuota: 600
+        RateLimitAlgorithm.TokenBucket
     );
 
     // Reemplaza los [RateLimitExempt] de Qualify/ConfirmGrant/ConfirmClawback
@@ -108,10 +108,9 @@ public static partial class RateLimitPolicyCatalog
         "growth.j.referrals_manage",
         RateLimitCategory.J,
         RateLimitPartitionDimension.Tenant,
-        [RateLimitPartitionDimension.Tenant],
+        [],
         quota: 60,
         windowSeconds: 60,
-        RateLimitAlgorithm.TokenBucket,
-        overlayQuota: 600
+        RateLimitAlgorithm.TokenBucket
     );
 }

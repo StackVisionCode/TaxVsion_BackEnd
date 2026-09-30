@@ -44,6 +44,11 @@ public sealed class PlanChangeRequest : BaseEntity
     public string PaymentIdempotencyKey { get; private set; } = default!;
     public Guid? SaaSPaymentId { get; private set; }
 
+    /// <summary>URL del checkout hosteado, cuando el upgrade se cobra por redirect en vez de off-session.
+    /// Mientras la sesión no caduque, el usuario puede retomar ese pago en vez de abrir otro.</summary>
+    public string? CheckoutUrl { get; private set; }
+    public DateTime? CheckoutExpiresAtUtc { get; private set; }
+
     private PlanChangeRequest() { }
 
     public static Result<PlanChangeRequest> Create(
@@ -114,6 +119,25 @@ public sealed class PlanChangeRequest : BaseEntity
             }
         );
     }
+
+    /// <summary>Guarda la sesión de checkout recién creada en PaymentApp. Solo aplica al camino por
+    /// redirect; el cobro off-session nunca tiene URL.</summary>
+    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc)
+    {
+        if (Status != PlanChangeRequestStatus.AwaitingPayment)
+            return Result.Failure(
+                new Error("PlanChangeRequest.InvalidTransition", $"Cannot attach a checkout from {Status}.")
+            );
+
+        SaaSPaymentId = saaSPaymentId;
+        CheckoutUrl = checkoutUrl;
+        CheckoutExpiresAtUtc = expiresAtUtc;
+        return Result.Success();
+    }
+
+    /// <summary>¿El pago sigue abierto y se puede retomar?</summary>
+    public bool HasOpenCheckout(DateTime nowUtc) =>
+        Status == PlanChangeRequestStatus.AwaitingPayment && CheckoutUrl is not null && CheckoutExpiresAtUtc > nowUtc;
 
     /// <summary>PaymentApp confirmó el cobro — el caller (TenantSubscription) ya aplicó
     /// ChangePlan (y reinició el ciclo) antes de llamar esto; acá solo se cierra el

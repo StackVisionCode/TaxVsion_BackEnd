@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -18,6 +20,8 @@ public sealed class AddOnRenewalJob(
 ) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
+
+    private const string BaseEndedReason = "Base subscription ended";
 
     protected override string JobName => "addon-renewal";
 
@@ -44,6 +48,26 @@ public sealed class AddOnRenewalJob(
             if (subscription is null)
             {
                 logger.LogWarning("Add-on {TenantAddOnId} has no base subscription; skipping renewal.", addOn.Id);
+                continue;
+            }
+
+            // C5 — sin base que dé acceso no se cobra: si puede volver, se espera; si terminó, se cancela.
+            var decision = ExtraBilling.Decide(subscription.Status);
+            if (decision == ExtraBillingDecision.Pause)
+                continue;
+
+            if (decision == ExtraBillingDecision.Cancel)
+            {
+                if (addOn.CancelActive(BaseEndedReason, actorUserId: Guid.Empty, nowUtc).IsSuccess)
+                {
+                    await unitOfWork.SaveChangesAsync(ct);
+                    // A6/A5.7 — cancelar aquí y no recalcular dejaba el módulo del add-on en el
+                    // snapshot: era el único camino de cancelación que no lo hacía (CancelAddOnHandler
+                    // y AddOnExpirationJob sí). Hoy queda tapado porque la base terminal ya pone todos
+                    // los módulos en false, pero eso es un accidente: en cuanto la base se reactive, el
+                    // snapshot se reconstruye y la incoherencia se vuelve visible.
+                    await bus.RecalculateEntitlementsSafelyAsync(addOn.TenantId, logger, ct);
+                }
                 continue;
             }
 

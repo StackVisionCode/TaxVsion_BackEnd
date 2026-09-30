@@ -2,12 +2,19 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Dependencies.Commands;
 
-public sealed record RemoveDependencyCommand(Guid TenantId, Guid TaskId, Guid DependsOnTaskId);
+public sealed record RemoveDependencyCommand(
+    Guid TenantId,
+    Guid TaskId,
+    Guid DependsOnTaskId,
+    Guid ByUserId = default,
+    bool HasManageAll = false
+);
 
 /// <summary>Mismo cerrojo que al agregar: sin él esto se cruza con la cascada de un completado.</summary>
 public static class RemoveDependencyHandler
@@ -30,6 +37,14 @@ public static class RemoveDependencyHandler
 
         var predecessorResult = await tasks.GetByIdAsync(command.TenantId, command.DependsOnTaskId, ct);
         var successorResult = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
+
+        // A1 — quitar el bloqueador desbloquea la sucesora: es una mutación de esa tarea, no una
+        // lectura. Sin esto, cualquier empleado con tasks.write podía destrabar la tarea de un colega.
+        if (
+            successorResult.IsSuccess
+            && !TaskAccessPolicy.CanMutate(successorResult.Value, command.ByUserId, command.HasManageAll)
+        )
+            return Result.Failure(TaskErrors.Forbidden);
 
         dependencies.Remove(dependency);
 

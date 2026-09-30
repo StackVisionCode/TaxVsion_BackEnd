@@ -22,7 +22,7 @@ namespace TaxVision.Tasks.Api.Controllers;
 [ApiController]
 [Route("tasks/series")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class TaskSeriesController(IMessageBus bus) : ControllerBase
+public sealed class TaskSeriesController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     [HttpPost]
     [HasPermission(TasksPermissions.Write)]
@@ -96,11 +96,11 @@ public sealed class TaskSeriesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<TaskSeriesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Pause(Guid seriesId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TaskSeriesResponse>>(
-            new PauseTaskSeriesCommand(tenantId, seriesId),
+            new PauseTaskSeriesCommand(tenantId, seriesId, userId, await HasManageAllAsync(ct)),
             ct
         );
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
@@ -112,11 +112,11 @@ public sealed class TaskSeriesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<TaskSeriesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Resume(Guid seriesId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TaskSeriesResponse>>(
-            new ResumeTaskSeriesCommand(tenantId, seriesId),
+            new ResumeTaskSeriesCommand(tenantId, seriesId, userId, await HasManageAllAsync(ct)),
             ct
         );
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
@@ -128,13 +128,18 @@ public sealed class TaskSeriesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<TaskSeriesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> End(Guid seriesId, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TaskSeriesResponse>>(
-            new EndTaskSeriesCommand(tenantId, seriesId),
+            new EndTaskSeriesCommand(tenantId, seriesId, userId, await HasManageAllAsync(ct)),
             ct
         );
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
+
+    /// <summary>A1 — el override de supervisión, igual que en TasksController: quien lo tiene puede
+    /// tocar lo de cualquiera dentro de su tenant.</summary>
+    private Task<bool> HasManageAllAsync(CancellationToken ct) =>
+        permissions.HasPermissionAsync(User, TasksPermissions.ManageAll, ct);
 }

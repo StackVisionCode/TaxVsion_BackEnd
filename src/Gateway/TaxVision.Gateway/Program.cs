@@ -26,7 +26,28 @@ var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>
 builder.Services.AddCors(options =>
     options.AddPolicy(
         "spa",
-        policy => policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+        policy =>
+            policy
+                .WithOrigins(corsOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials()
+                // Sin esto el navegador oculta estos headers a la SPA en cross-origin y el front no puede
+                // decirle al usuario cuánto esperar tras un 429/503.
+                //
+                // ETag es del mismo tipo de olvido y costaba más de lo que parece: `GET /auth/me/access`
+                // responde 304 si el cliente manda `If-None-Match`, pero el navegador le ocultaba el ETag
+                // a la SPA, así que nunca podía mandarlo y CADA comprobación de acceso bajaba el bootstrap
+                // entero (~140 permissions). Detectado en la QA de B10 contra la flota local.
+                .WithExposedHeaders(
+                    "Retry-After",
+                    "X-RateLimit-Limit",
+                    "X-RateLimit-Remaining",
+                    "X-RateLimit-Reset",
+                    "X-RateLimit-Policy",
+                    "X-RateLimit-Layer",
+                    "ETag"
+                )
     )
 );
 

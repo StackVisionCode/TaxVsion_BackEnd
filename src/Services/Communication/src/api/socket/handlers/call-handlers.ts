@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  checkPermissionForActor,
+  CommunicationPermissions,
+} from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
-import type {
-  CommunicationIoServer,
-  CommunicationSocket,
-} from '../../../infrastructure/socket/build-io.js';
+import type { CommunicationIoServer, CommunicationSocket } from '../../../infrastructure/socket/build-io.js';
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
+import { resolveActorType } from './resolve-actor-type.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { initiateCall } from '../../../application/use-cases/initiate-call.js';
 import { respondToCall } from '../../../application/use-cases/respond-to-call.js';
@@ -101,9 +103,10 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.Initiate, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; ringingAtUtc: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ callId: string; ringingAtUtc: string }>) => void)
+        : undefined;
     const parsed = InitiateCallPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -118,20 +121,39 @@ function wireCallSocket(
       ack?.({ ok: false, code: permCheck.code, message: permCheck.message });
       return;
     }
+    // Y para un cliente del portal, tambien portal.calls.use: es la palanca por cliente que el
+    // administrador maneja desde el cajon de accesos. Al staff no se le exige. Detras de un flag
+    // apagado por default: hasta que Auth resincronice el rol del portal, ningun cliente la tiene.
+    if (config.portalCallsPermission.enforce) {
+      const portalCheck = await checkPermissionForActor(
+        principal,
+        'CustomerPortal',
+        CommunicationPermissions.PortalCallsUse,
+        container.userPermissions,
+      );
+      if (!portalCheck.allowed) {
+        ack?.({ ok: false, code: portalCheck.code, message: portalCheck.message });
+        return;
+      }
+    }
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.CallInitiate,
       tenantId,
       userId,
-      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.callInitiate.maxPerWindow),
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(
+        tenantId,
+        config.rateLimit.callInitiate.maxPerWindow,
+      ),
       windowSeconds: config.rateLimit.callInitiate.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Call.RateLimited', message: 'Too many call attempts, slow down.' });
       return;
     }
-    const [callerDisplayName, calleeDisplayName] = await Promise.all([
+    const [callerDisplayName, calleeDisplayName, calleeActorType] = await Promise.all([
       resolveDisplayName(container.userDirectory, userId),
       resolveDisplayName(container.userDirectory, parsed.data.calleeUserId),
+      resolveActorType(container.userDirectory, parsed.data.calleeUserId),
     ]);
     const result = await initiateCall(
       {
@@ -139,8 +161,12 @@ function wireCallSocket(
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         kind: parsed.data.kind,
-        caller: { userId, displayName: callerDisplayName },
-        callee: { userId: parsed.data.calleeUserId, displayName: calleeDisplayName },
+        caller: { userId, displayName: callerDisplayName, actorType: principal.actorType },
+        callee: {
+          userId: parsed.data.calleeUserId,
+          displayName: calleeDisplayName,
+          actorType: calleeActorType,
+        },
         conversationId: parsed.data.conversationId ?? null,
         recordingRequested: parsed.data.recordingRequested ?? false,
       },
@@ -181,14 +207,9 @@ function wireCallSocket(
     });
   });
 
-  const respondAction = async (
-    action: 'accept' | 'reject' | 'cancel',
-    args: unknown[],
-  ): Promise<void> => {
+  const respondAction = async (action: 'accept' | 'reject' | 'cancel', args: unknown[]): Promise<void> => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<unknown>) => void)
-      : undefined;
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
     const parsed = CallActionPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -265,9 +286,7 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.End, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<unknown>) => void)
-      : undefined;
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
     const parsed = CallActionPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -299,9 +318,8 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.Signal, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ delivered: true }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ delivered: true }>) => void) : undefined;
     const parsed = CallSignalPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -311,7 +329,10 @@ function wireCallSocket(
       scope: CommunicationRateLimitPolicyNames.CallSignal,
       tenantId,
       userId,
-      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.callSignal.maxPerWindow),
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(
+        tenantId,
+        config.rateLimit.callSignal.maxPerWindow,
+      ),
       windowSeconds: config.rateLimit.callSignal.windowSeconds,
     });
     if (!allowed) {
@@ -379,12 +400,25 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.AttachRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; recordingFileId: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ callId: string; recordingFileId: string }>) => void)
+        : undefined;
     const parsed = AttachCallRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const attachRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.CallRecord,
+      container.userPermissions,
+    );
+    if (!attachRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: attachRecordingPermCheck.code, message: attachRecordingPermCheck.message });
       return;
     }
     const result = await attachCallRecording(
@@ -414,12 +448,27 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.RequestRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; participantUserIds: readonly string[]; requestedAtUtc: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (
+            r: SocketAck<{ callId: string; participantUserIds: readonly string[]; requestedAtUtc: string }>,
+          ) => void)
+        : undefined;
     const parsed = RequestCallRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const requestRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.CallRecord,
+      container.userPermissions,
+    );
+    if (!requestRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: requestRecordingPermCheck.code, message: requestRecordingPermCheck.message });
       return;
     }
     const result = await requestCallRecording(
@@ -441,9 +490,10 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.RespondRecordingConsent, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
+        : undefined;
     const parsed = RespondCallRecordingConsentPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -468,12 +518,25 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.StopRecording, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; elapsedSeconds: number }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ callId: string; elapsedSeconds: number }>) => void)
+        : undefined;
     const parsed = StopCallRecordingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // A6/A5.4 — grabar es una accion con permiso propio y hasta ahora no se exigia en ningun
+    // sitio: cualquier participante podia grabar. `RespondRecordingConsent` queda FUERA a
+    // proposito — quien consiente no graba, y exigirselo bloquearia la grabacion entera.
+    const stopRecordingPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.CallRecord,
+      container.userPermissions,
+    );
+    if (!stopRecordingPermCheck.allowed) {
+      ack?.({ ok: false, code: stopRecordingPermCheck.code, message: stopRecordingPermCheck.message });
       return;
     }
     const result = await stopCallRecording(
@@ -495,9 +558,10 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.UpgradeToVideo, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; upgradedAtUtc: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ callId: string; upgradedAtUtc: string }>) => void)
+        : undefined;
     const parsed = UpgradeCallToVideoPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -522,9 +586,10 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.ScreenShareStart, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ callId: string; startedAtUtc: string }>) => void)
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ callId: string; startedAtUtc: string }>) => void)
+        : undefined;
     const parsed = StartCallScreenSharePayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -549,13 +614,17 @@ function wireCallSocket(
 
   socket.on(CallSocketEvents.ScreenShareStop, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function'
-      ? (
-          args[1] as (
-            r: SocketAck<{ callId: string; startedAtUtc: string; stoppedAtUtc: string; durationSeconds: number }>,
-          ) => void
-        )
-      : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (
+            r: SocketAck<{
+              callId: string;
+              startedAtUtc: string;
+              stoppedAtUtc: string;
+              durationSeconds: number;
+            }>,
+          ) => void)
+        : undefined;
     const parsed = StopCallScreenSharePayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
@@ -596,16 +665,18 @@ function wireCallSocket(
           actorUserId: userId,
         },
         { ...container, emitter },
-      ).then(async (result) => {
-        if (!result.isSuccess) return;
-        await clearCallBusyForBothParties(container, tenantId, callId);
-        emitter.emitToCall({
-          tenantId,
-          callId,
-          event: CallSocketEvents.StateChanged,
-          envelope: envelope(result.value.state),
-        });
-      }).catch((err: unknown) => logger.warn({ err, callId }, 'end call on disconnect failed'));
+      )
+        .then(async (result) => {
+          if (!result.isSuccess) return;
+          await clearCallBusyForBothParties(container, tenantId, callId);
+          emitter.emitToCall({
+            tenantId,
+            callId,
+            event: CallSocketEvents.StateChanged,
+            envelope: envelope(result.value.state),
+          });
+        })
+        .catch((err: unknown) => logger.warn({ err, callId }, 'end call on disconnect failed'));
     }
   });
 }

@@ -65,6 +65,19 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
+        IReadOnlyCollection<SubscriptionStatus> statuses,
+        Guid afterTenantId,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s => statuses.Contains(s.Status) && s.TenantId.CompareTo(afterTenantId) > 0)
+            .OrderBy(s => s.TenantId)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
         DateTime cutoffUtc,
         int batchSize,
@@ -91,6 +104,24 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
+        DateTime fromUtc,
+        DateTime toUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s =>
+                s.CancelAtPeriodEnd
+                && s.Status == SubscriptionStatus.Active
+                && s.CurrentPeriodEndUtc >= fromUtc
+                && s.CurrentPeriodEndUtc <= toUtc
+            )
+            .OrderBy(s => s.CurrentPeriodEndUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(
         DateTime fromUtc,
         DateTime toUtc,
@@ -101,6 +132,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Subscriptions.IgnoreQueryFilters()
             .Where(s =>
                 s.Status == SubscriptionStatus.Active
+                // Una cancelación programada no renueva: se le avisa que TERMINA, no que se le va a cobrar.
+                && !s.CancelAtPeriodEnd
                 && s.NextRenewalAtUtc != null
                 && s.NextRenewalAtUtc >= fromUtc
                 && s.NextRenewalAtUtc <= toUtc

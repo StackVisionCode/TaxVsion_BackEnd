@@ -23,6 +23,18 @@ public sealed class FakeRenewalCheckoutIntentRepository : IRenewalCheckoutIntent
         CancellationToken ct = default
     ) => Task.FromResult(Added.FirstOrDefault(intent => intent.Id == intentId && intent.TenantId == tenantId));
 
+    public Task<SubscriptionRenewalIntent?> GetOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Added
+                .Where(intent => intent.TenantId == tenantId && intent.IsOpen(nowUtc))
+                .OrderByDescending(intent => intent.CreatedAtUtc)
+                .FirstOrDefault()
+        );
+
     public Task<SubscriptionRenewalIntent?> GetByIdForProvisioningAsync(
         Guid intentId,
         CancellationToken ct = default

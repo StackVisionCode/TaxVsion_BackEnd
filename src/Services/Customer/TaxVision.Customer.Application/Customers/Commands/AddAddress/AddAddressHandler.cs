@@ -15,7 +15,13 @@ public static class AddAddressHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        if (
+            customer is null
+            || customer.TenantId != cmd.TenantId
+            // Visibilidad por asignación: un cliente que no le toca se comporta como inexistente,
+            // igual que en la lectura. Un 403 confirmaría que ese id existe.
+            || !CustomerAccessPolicy.CanAccess(customer, cmd.ModifiedByUserId, cmd.CallerCanViewAllCustomers)
+        )
             return Result.Failure<AddressResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         var addressResult = AddressValue.Create(

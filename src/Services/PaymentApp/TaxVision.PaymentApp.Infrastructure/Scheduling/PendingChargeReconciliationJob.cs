@@ -4,9 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
-using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
-using TaxVision.PaymentApp.Application.SeatsCheckouts;
-using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
@@ -23,10 +21,15 @@ public sealed class PendingChargeReconciliationJob(
     IServiceScopeFactory scopeFactory,
     IDistributedLockFactory lockFactory,
     ILogger<PendingChargeReconciliationJob> logger
-) : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(4))
+) : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(50))
 {
     private const int BatchSize = 100;
-    private static readonly TimeSpan StuckThreshold = TimeSpan.FromMinutes(5);
+
+    // Cadencia corta a propósito: un cobro que el webhook ya confirmó pasa a Succeeded y NUNCA entra en
+    // este barrido, así que preguntar seguido no cuesta llamadas de más — solo alcanza a los cobros que de
+    // verdad siguen sin confirmar. Con el umbral y el intervalo anteriores (5 min cada uno) el peor caso
+    // eran 10 minutos sólo en este paso, y Subscription sumaba los suyos encima.
+    private static readonly TimeSpan StuckThreshold = TimeSpan.FromSeconds(45);
 
     protected override string JobName => "pending-charge-reconciliation";
 
@@ -42,13 +45,18 @@ public sealed class PendingChargeReconciliationJob(
 
         var bus = services.GetRequiredService<IMessageBus>();
         var correlation = services.GetRequiredService<ICorrelationContext>();
+        // El recibo lleva el nombre de la oficina, y este camino también lo emite: sin el registro
+        // saldría en blanco justo cuando el webhook no llegó, que es cuando más se usa.
+        var tenants = services.GetRequiredService<ITenantRegistry>();
 
         var resolvedCount = 0;
         foreach (var payment in stuck)
         {
             using (correlation.Push(Guid.NewGuid().ToString("N")))
             {
-                if (await TryResolveAsync(payment, providerFactory, bus, correlation.CorrelationId, logger, ct))
+                if (
+                    await TryResolveAsync(payment, providerFactory, bus, tenants, correlation.CorrelationId, logger, ct)
+                )
                     resolvedCount++;
             }
         }
@@ -68,6 +76,7 @@ public sealed class PendingChargeReconciliationJob(
         SaaSPayment payment,
         IPaymentAdapterFactory providerFactory,
         IMessageBus bus,
+        ITenantRegistry tenants,
         string correlationId,
         ILogger logger,
         CancellationToken ct
@@ -118,21 +127,26 @@ public sealed class PendingChargeReconciliationJob(
             case PaymentStatus.Succeeded:
                 var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
                 if (succeeded.IsSuccess)
-                    await PublishResultAsync(payment, bus, correlationId, ct);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
                 return succeeded.IsSuccess;
 
             case PaymentStatus.Failed
             or PaymentStatus.Cancelled:
+                var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(
+                    payment,
+                    nowUtc,
+                    failedAttemptRecorded: true
+                );
                 var failed = payment.MarkFailed(
                     outcome.FailureCode ?? "Provider.Unknown",
                     outcome.FailureMessage ?? "The provider reported the charge as failed.",
-                    willRetry: false,
-                    nextRetryAtUtc: null,
+                    willRetry: nextRetryAtUtc is not null,
+                    nextRetryAtUtc,
                     Guid.Empty,
                     nowUtc
                 );
                 if (failed.IsSuccess)
-                    await PublishResultAsync(payment, bus, correlationId, ct);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct);
                 return failed.IsSuccess;
 
             default:
@@ -140,23 +154,5 @@ public sealed class PendingChargeReconciliationJob(
                 // se reintenta en la próxima corrida.
                 return false;
         }
-    }
-
-    // Despacha el resultado por tipo de pago — mismo criterio que el handler del webhook
-    // (ProcessProviderWebhookHandler): sin esto, un pago de asientos resuelto out-of-band contra
-    // el provider quedaba Succeeded pero nunca disparaba la provisión (SeatsCheckoutPaid).
-    private static async ValueTask PublishResultAsync(
-        SaaSPayment payment,
-        IMessageBus bus,
-        string correlationId,
-        CancellationToken ct
-    )
-    {
-        if (payment.Type == SaaSPaymentType.OnboardingInitial)
-            await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
-        else if (payment.Type == SaaSPaymentType.SeatsPurchaseCharge)
-            await SeatsCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
-        else if (payment.Type == SaaSPaymentType.SubscriptionRenewalCheckout)
-            await SubscriptionRenewalCheckoutResultPublisher.PublishAsync(payment, bus, correlationId, ct);
     }
 }

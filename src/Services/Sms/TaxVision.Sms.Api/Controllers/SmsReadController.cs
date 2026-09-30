@@ -110,7 +110,7 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
     /// <summary>Reconcilia AHORA el estado de los SMS atascados en Accepted de este tenant, consultando por
     /// pull a cada proveedor (backstop del DLR por webhook). Idempotente. Acotado al tenant del JWT.</summary>
     [HttpPost("messages/reconcile")]
-    [RateLimit("sms.h.read")]
+    [RateLimit("sms.i.reconcile")]
     [ProducesResponseType<ReconcileSmsStatusesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Reconcile(
         [FromQuery] int max = 200,
@@ -118,8 +118,11 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
         CancellationToken ct = default
     )
     {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
         var result = await bus.InvokeAsync<Result<ReconcileSmsStatusesResponse>>(
-            new ReconcileSmsStatusesCommand(tenant.TenantId, max, minAgeSeconds),
+            new ReconcileSmsStatusesCommand(tenantId, max, minAgeSeconds),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

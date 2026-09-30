@@ -1,4 +1,5 @@
 using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -143,10 +144,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
         // Gate de módulo Fase 1 — lector de módulos (fuente en Program.cs).
-        services.AddScoped<
-            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
-            TaxVision.Notes.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader
-        >();
+        services.AddCachedTenantEntitlementModulesReader<TaxVision.Notes.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader>();
         services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
             sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
                 sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),

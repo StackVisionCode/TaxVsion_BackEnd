@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -35,15 +36,27 @@ public sealed class ActorTypeAuthorizationFilter : IAuthorizationFilter
         if (declared is null)
         {
             context.HttpContext.RequestServices.GetRequiredService<AuthorizationMetrics>().RecordDecision(false, "2");
-            context.Result = new ForbidResult();
+            // A5 — antes esto era un ForbidResult, es decir un 403 con el cuerpo vacío: desde el
+            // frontend era indistinguible de "no tenés el permiso". El código separa además el bug
+            // (endpoint sin declarar) de la denegación legítima, para poder alertarlo.
+            context.Result = Denied(context, AuthorizationDenial.ActorTypeNotDeclared);
             return;
         }
 
         var allowed = IsActorAllowed(context.HttpContext.User.GetActorType(), declared);
         context.HttpContext.RequestServices.GetRequiredService<AuthorizationMetrics>().RecordDecision(allowed, "2");
         if (!allowed)
-            context.Result = new ForbidResult();
+            context.Result = Denied(context, AuthorizationDenial.ActorTypeNotAllowed);
     }
+
+    /// <summary>403 con cuerpo RFC 9457. <see cref="ObjectResult"/> y no <see cref="ForbidResult"/>:
+    /// el forbid delega en el esquema de autenticación y nunca lleva cuerpo.</summary>
+    private static ObjectResult Denied(AuthorizationFilterContext context, AuthorizationDenial denial) =>
+        new(denial.ToProblemDetails(context.HttpContext))
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+            ContentTypes = { "application/problem+json" },
+        };
 
     private static bool IsAnonymous(ControllerActionDescriptor descriptor) =>
         descriptor.MethodInfo.GetCustomAttributes(typeof(AllowAnonymousAttribute), inherit: true).Length > 0
@@ -85,6 +98,18 @@ public static class ActorTypeAuthorizationExtensions
         // los 14 servicios ya llaman este método una vez desde su Program.cs, así PermissionPolicyProvider
         // (Layer 1) e IsOwnerOrHasManageHandler (Layer 3b, cuando aplica) lo resuelven sin wiring extra.
         builder.Services.AddSingleton<AuthorizationMetrics>();
-        return builder.AddMvcOptions(options => options.Filters.Add<ActorTypeAuthorizationFilter>());
+        // A5 — el 403 de una policy ([HasPermission], capa 3) lo escribe el middleware de
+        // autorización, no un filtro de MVC: sin este handler sale con el cuerpo vacío. Se registra
+        // acá porque los 14 servicios ya llaman este método una vez desde su Program.cs.
+        builder.Services.AddSingleton<
+            IAuthorizationMiddlewareResultHandler,
+            ProblemDetailsAuthorizationResultHandler
+        >();
+        return builder.AddMvcOptions(options =>
+        {
+            options.Filters.Add<ActorTypeAuthorizationFilter>();
+            // Un token con superficie (Account del Landing) solo entra donde se declara [AllowSurface].
+            options.Filters.Add<SurfaceAuthorizationFilter>();
+        });
     }
 }

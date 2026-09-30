@@ -135,7 +135,8 @@ public sealed class ProjectionPermissionsSourceTests
         new(
             reader,
             new MemoryCache(new MemoryCacheOptions()),
-            logger ?? new RecordingLogger<ProjectionPermissionsSource>()
+            logger ?? new RecordingLogger<ProjectionPermissionsSource>(),
+            new AuthorizationMetrics()
         );
 
     private static ClaimsPrincipal BuildPrincipal(
@@ -152,7 +153,7 @@ public sealed class ProjectionPermissionsSourceTests
             new("perm_v", permVersion.ToString()),
         ];
         if (isPlatformAdmin)
-            claims.Add(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+            claims.Add(new Claim(ClaimNames.ActorType, "PlatformAdmin"));
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Test"));
     }

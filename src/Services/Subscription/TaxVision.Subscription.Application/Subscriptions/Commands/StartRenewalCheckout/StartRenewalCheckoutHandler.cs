@@ -31,6 +31,10 @@ public static class StartRenewalCheckoutHandler
         CancellationToken ct
     )
     {
+        var reused = await ReuseOpenCheckoutAsync(command, intents, ct);
+        if (reused is not null)
+            return reused;
+
         var prepared = await PrepareIntentAsync(command, subscriptions, plans, ct);
         if (prepared.IsFailure)
             return Result.Failure<StartRenewalCheckoutResponse>(prepared.Error);
@@ -57,7 +61,12 @@ public static class StartRenewalCheckoutHandler
         if (checkout.IsFailure)
             return Result.Failure<StartRenewalCheckoutResponse>(checkout.Error);
 
-        intent.AttachCheckout(checkout.Value.PaymentId, checkout.Value.CheckoutUrl, DateTime.UtcNow);
+        intent.AttachCheckout(
+            checkout.Value.PaymentId,
+            checkout.Value.CheckoutUrl,
+            checkout.Value.ExpiresAtUtc,
+            DateTime.UtcNow
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
@@ -66,6 +75,32 @@ public static class StartRenewalCheckoutHandler
                 checkout.Value.CheckoutUrl,
                 checkout.Value.PaymentId,
                 checkout.Value.ExpiresAtUtc
+            )
+        );
+    }
+
+    /// <summary>
+    /// Guard del doble cobro, el mismo que ya tienen asientos, add-ons y el upgrade: mientras la sesión
+    /// anterior siga viva, se devuelve esa misma URL en vez de abrir un segundo cobro. Acá la renovación es
+    /// siempre "la misma compra" (el precio del ciclo vigente), así que no hace falta comparar nada.
+    /// </summary>
+    private static async Task<Result<StartRenewalCheckoutResponse>?> ReuseOpenCheckoutAsync(
+        StartRenewalCheckoutCommand command,
+        IRenewalCheckoutIntentRepository intents,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var open = await intents.GetOpenByTenantAsync(command.TenantId, nowUtc, ct);
+        if (open is null || !open.IsOpen(nowUtc))
+            return null;
+
+        return Result.Success(
+            new StartRenewalCheckoutResponse(
+                open.Id,
+                open.CheckoutUrl!,
+                open.SaaSPaymentId!.Value,
+                open.CheckoutExpiresAtUtc!.Value
             )
         );
     }

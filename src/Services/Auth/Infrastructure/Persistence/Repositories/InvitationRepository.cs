@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Invitations;
@@ -21,17 +22,20 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
     public Task<Invitation?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         db.Invitations.IgnoreQueryFilters().FirstOrDefaultAsync(invitation => invitation.TokenHash == tokenHash, ct);
 
-    public Task<bool> HasPendingAsync(Guid tenantId, string email, CancellationToken ct = default) =>
-        db
-            .Invitations.IgnoreQueryFilters()
-            .AnyAsync(
-                invitation =>
-                    invitation.TenantId == tenantId
-                    && invitation.Email == email
-                    && invitation.Status == InvitationStatus.Pending
-                    && invitation.ExpiresAtUtc > DateTime.UtcNow,
-                ct
-            );
+    public Task<bool> HasPendingAsync(
+        Guid tenantId,
+        string email,
+        UserAccountKind kind,
+        CancellationToken ct = default
+    ) => Pending(tenantId, email, kind).AnyAsync(ct);
+
+    public Task<Invitation?> GetPendingAsync(
+        Guid tenantId,
+        string email,
+        UserAccountKind kind,
+        CancellationToken ct = default
+    ) =>
+        Pending(tenantId, email, kind).OrderByDescending(invitation => invitation.CreatedAtUtc).FirstOrDefaultAsync(ct);
 
     public async Task AddAsync(Invitation invitation, CancellationToken ct = default) =>
         await db.Invitations.AddAsync(invitation, ct);
@@ -84,4 +88,20 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
 
         return (items, total);
     }
+
+    private IQueryable<Invitation> Pending(Guid tenantId, string email, UserAccountKind kind) =>
+        db
+            .Invitations.IgnoreQueryFilters()
+            .Where(OfKind(kind))
+            .Where(invitation =>
+                invitation.TenantId == tenantId
+                && invitation.Email == email
+                && invitation.Status == InvitationStatus.Pending
+                && invitation.ExpiresAtUtc > DateTime.UtcNow
+            );
+
+    private static Expression<Func<Invitation, bool>> OfKind(UserAccountKind kind) =>
+        kind == UserAccountKind.Portal
+            ? invitation => invitation.ActorType == UserActorType.CustomerPortal
+            : invitation => invitation.ActorType != UserActorType.CustomerPortal;
 }

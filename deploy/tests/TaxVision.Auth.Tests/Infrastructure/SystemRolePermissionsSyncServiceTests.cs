@@ -6,8 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Api.Bootstrap;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Infrastructure.Persistence;
+using TaxVision.Auth.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Infrastructure;
@@ -46,6 +48,10 @@ public sealed class SystemRolePermissionsSyncServiceTests
         services.AddDbContext<AuthDbContext>(options => options.UseInMemoryDatabase(databaseName));
         services.AddSingleton<Wolverine.IMessageBus>(bus);
         services.AddSingleton<ITenantContext>(new NoTenantContext());
+        // El resync avisa por titular (RolePermissionsFanOut): necesita los repositorios reales
+        // sobre el mismo contexto en memoria. Sin titulares, el fan-out no publica nada.
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         return (services.BuildServiceProvider(), bus);
     }
 

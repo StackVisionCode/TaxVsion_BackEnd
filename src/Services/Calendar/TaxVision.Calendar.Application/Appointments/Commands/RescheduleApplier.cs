@@ -51,7 +51,7 @@ internal static class RescheduleApplier
             return Result.Failure<Appointment>(timing.Error);
 
         var previous = appointment.Timing.StartUtc;
-        var moved = appointment.Reschedule(timing.Value, command.ActingUserId, DateTime.UtcNow);
+        var moved = appointment.Reschedule(timing.Value, command.ActingUserId, command.CanManageAll, DateTime.UtcNow);
         if (moved.IsFailure)
             return Result.Failure<Appointment>(moved.Error);
 
@@ -86,6 +86,7 @@ internal static class RescheduleApplier
             null,
             null,
             command.ActingUserId,
+            command.CanManageAll,
             DateTime.UtcNow
         );
 
@@ -139,7 +140,8 @@ internal static class RescheduleApplier
             timing.Value,
             rule.Value,
             command.ActingUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.CanManageAll
         );
         if (follower.IsFailure)
             return Result.Failure<Appointment>(follower.Error);
@@ -210,7 +212,13 @@ internal static class RescheduleApplier
             return Result.Failure<Appointment>(rule.Error);
 
         var first = OccurrenceExpander.FirstStart(appointment);
-        var edited = appointment.EditEntireSeries(timing.Value, rule.Value, command.ActingUserId, DateTime.UtcNow);
+        var edited = appointment.EditEntireSeries(
+            timing.Value,
+            rule.Value,
+            command.ActingUserId,
+            command.CanManageAll,
+            DateTime.UtcNow
+        );
         if (edited.IsFailure)
             return Result.Failure<Appointment>(edited.Error);
 

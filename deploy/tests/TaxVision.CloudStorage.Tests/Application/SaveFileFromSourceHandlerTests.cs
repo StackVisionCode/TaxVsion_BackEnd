@@ -120,6 +120,67 @@ public sealed class SaveFileFromSourceHandlerTests
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 
+    /// <summary>
+    /// El recibo de la suscripción llegaba de Documents y CloudStorage lo tiraba: su dueño y su carpeta no
+    /// existían en los enums, así que el PDF se generaba y se perdía en silencio, y la columna "Receipt"
+    /// del Account quedaba siempre vacía. Encontrado probando una compra de asientos de punta a punta.
+    /// </summary>
+    [Fact]
+    public async Task A_subscription_receipt_is_stored_and_stays_out_of_the_document_manager()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var folders = new FakeFolderRepository();
+        var evt = Evt(
+            tenantId,
+            fileId,
+            builder =>
+            {
+                builder.OwnerType = "SaaSPayment";
+                builder.FolderType = "SaaSReceipts";
+                builder.OriginalName = "receipt.pdf";
+                builder.TaxYear = null;
+            }
+        );
+
+        await SaveFileFromSourceHandler.Handle(
+            evt,
+            files,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new FakeObjectStorage(),
+            new SystemFolderProvisioner(folders),
+            DefaultOptions(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var stored = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal(FileStatus.PendingScan, stored!.Status);
+        // Carpeta interna: no se mezcla con los recibos de clientes del gestor documental.
+        Assert.Null(stored.FolderId);
+        Assert.False(SystemFolderCatalog.IsNavigable(FolderType.SaaSReceipts));
+    }
+
+    /// <summary>El tope por archivo del plan no decide si una oficina puede recibir su propio recibo.</summary>
+    [Fact]
+    public void A_subscription_receipt_is_a_system_upload_so_the_plan_does_not_narrow_it()
+    {
+        var policy = new CloudStorageOptions().ResolveUploadPolicy("starter", FolderType.SaaSReceipts);
+
+        Assert.Contains(".pdf", policy.AllowedExtensions);
+        Assert.Contains("application/pdf", policy.AllowedContentTypes);
+    }
+
     [Fact]
     public async Task Redelivery_of_an_already_registered_file_is_a_no_op()
     {

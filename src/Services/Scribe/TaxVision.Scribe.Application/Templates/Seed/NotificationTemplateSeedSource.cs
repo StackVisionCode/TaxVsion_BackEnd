@@ -60,6 +60,8 @@ public static class NotificationTemplateSeedSource
             SubscriptionPaymentFailed,
             SubscriptionSuspended,
             SubscriptionExpired,
+            SubscriptionCancellationScheduled,
+            SubscriptionAccessEnding,
             SubscriptionReactivated,
             ReminderDue,
             TaskWaitingOnClient,
@@ -102,6 +104,7 @@ public static class NotificationTemplateSeedSource
         ["subscription.payment_failed"] = "We couldn't renew your subscription — update your payment to keep access.",
         ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
         ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
+        ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
@@ -149,14 +152,14 @@ public static class NotificationTemplateSeedSource
             EventKey: "auth.invitation_created.v1",
             TemplateKey: "auth.invitation",
             Name: "Auth — Invitación",
-            Subject: "{% if is_resend %}Reminder: your invitation to {{ office }} on {{ product_name }}{% else %}You've been invited to {{ office }} on {{ product_name }}{% endif %}",
+            Subject: "{% if account_kind == 'portal' %}{% if is_resend %}Reminder: activate{% else %}Activate{% endif %} your client portal at {{ office }}{% else %}{% if is_resend %}Reminder: your invitation to {{ office }} on {{ product_name }}{% else %}You've been invited to {{ office }} on {{ product_name }}{% endif %}{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Invitation</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
-              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You've been invited to collaborate</td></tr>
-              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ inviter }}</strong> invited you to join <strong style="color:#1E466B;">{{ office }}</strong> on {{ product_name }}.</td></tr>
-              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Activate your account to access the workspace and start collaborating.</td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">{% if account_kind == 'portal' %}Your client portal is ready{% else %}You've been invited to collaborate{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if account_kind == 'portal' %}<strong style="color:#1E466B;">{{ office }}</strong> invited you to your client portal on {{ product_name }}.{% else %}<strong style="color:#23384B;">{{ inviter }}</strong> invited you to join <strong style="color:#1E466B;">{{ office }}</strong> on {{ product_name }}.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if account_kind == 'portal' %}Activate your account to see your documents, sign what your office sends you and message them securely.{% else %}Activate your account to access the workspace and start collaborating.{% endif %}</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 22px 0;">
                   <!--[if mso]>
@@ -179,7 +182,15 @@ public static class NotificationTemplateSeedSource
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("is_resend", VariableType.Bool, true, "false", "true si es un reenvío del mismo invite."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
-            ]
+                (
+                    "account_kind",
+                    VariableType.String,
+                    false,
+                    "workspace",
+                    "portal o workspace: la cuenta que crea la invitación."
+                ),
+            ],
+            ContentVersion: 9
         );
 
     private static NotificationTemplateSeed MeetingInvitation { get; } =
@@ -241,13 +252,13 @@ public static class NotificationTemplateSeedSource
             EventKey: "auth.password_reset_requested.v1",
             TemplateKey: "auth.password_reset",
             Name: "Auth — Restablecer contraseña",
-            Subject: "Reset your {{ product_name }} password",
+            Subject: "Reset your {% if account_kind == 'portal' %}client portal{% else %}{{ product_name }}{% endif %} password",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Security</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Reset your password</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">We received a request to reset the password for your <strong style="color:#23384B;">{{ product_name }}</strong> account.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">We received a request to reset the password for your {% if account_kind == 'portal' %}client portal account at <strong style="color:#23384B;">{{ office }}</strong>{% else %}<strong style="color:#23384B;">{{ office }}</strong> workspace account{% endif %}. Only this account changes: any other {{ product_name }} account you have keeps its password.</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 22px 0;">
                   <!--[if mso]>
@@ -267,7 +278,16 @@ public static class NotificationTemplateSeedSource
                 ("reset_link", VariableType.Url, true, null, "URL de restablecimiento de contraseña."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
-            ]
+                (
+                    "account_kind",
+                    VariableType.String,
+                    false,
+                    "workspace",
+                    "portal o workspace: de qué cuenta es el reset."
+                ),
+                ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
+            ],
+            ContentVersion: 9
         );
 
     private static NotificationTemplateSeed OtpCode { get; } =
@@ -305,7 +325,7 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Security</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Confirm your new email</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">You requested to change your account email. Confirm the new address to activate it:</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">You requested to change the email of your {% if account_kind == 'portal' %}client portal account at <strong style="color:#23384B;">{{ office }}</strong>{% else %}<strong style="color:#23384B;">{{ office }}</strong> workspace account{% endif %}. Confirm the new address to activate it:</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 22px 0;">
                   <!--[if mso]>
@@ -324,7 +344,16 @@ public static class NotificationTemplateSeedSource
                 ("confirm_link", VariableType.Url, true, null, "URL de confirmación del nuevo email."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
-            ]
+                (
+                    "account_kind",
+                    VariableType.String,
+                    false,
+                    "workspace",
+                    "portal o workspace: qué cuenta cambia de email."
+                ),
+                ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
+            ],
+            ContentVersion: 9
         );
 
     private static NotificationTemplateSeed SecurityAlert { get; } =
@@ -960,6 +989,79 @@ public static class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para renovar."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionAccessEnding { get; } =
+        new(
+            EventKey: "subscription.access_ending.v1",
+            TemplateKey: "subscription.access_ending",
+            Name: "Suscripción — El acceso termina pronto",
+            Subject: "Your {{ product_name }} access ends on {{ access_ends_date }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your access ends soon</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, you cancelled your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan and it ends on <strong style="color:#1E466B;">{{ access_ends_date }}</strong>. That's in {{ days_until_end }} day(s). If you'd like to stay, you can undo the cancellation before then and nothing will have changed.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Keep my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Keep my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">If you'd rather go ahead, no action is needed. Your data stays safe and you can come back whenever you want.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("access_ends_date", VariableType.String, true, null, "Fecha en la que termina el acceso."),
+                ("days_until_end", VariableType.String, true, "0", "Días que faltan para esa fecha."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
+                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionCancellationScheduled { get; } =
+        new(
+            EventKey: "subscription.cancellation_scheduled.v1",
+            TemplateKey: "subscription.cancellation_scheduled",
+            Name: "Suscripción — Cancelación programada",
+            Subject: "Your {{ product_name }} subscription ends on {{ access_ends_date }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription will end</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we've scheduled the cancellation of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: you keep full access until <strong style="color:#1E466B;">{{ access_ends_date }}</strong>, the end of the period you already paid for. We won't charge you again.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Keep my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Keep my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Changed your mind? You can undo this any time before {{ access_ends_date }} and nothing will have happened. After that date your data stays safe — you can come back whenever you want.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("access_ends_date", VariableType.String, true, null, "Fecha hasta la que llega el acceso pagado."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
                 ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
             ]
         );

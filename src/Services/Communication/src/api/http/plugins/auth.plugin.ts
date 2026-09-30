@@ -5,6 +5,8 @@ import {
   verifyAccessToken,
   type AuthenticatedPrincipal,
 } from '../../../infrastructure/jwks/jwt-verifier.js';
+import type { HttpRateLimiter } from '../../../infrastructure/redis/http-rate-limiter.js';
+import { sendRateLimited } from '../../../infrastructure/http/rate-limit-rejection.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -15,6 +17,13 @@ declare module 'fastify' {
   }
 }
 
+export const USER_HTTP_RATE_LIMIT_POLICY = 'communication.user_http';
+
+export interface AuthPluginOptions {
+  readonly httpRateLimiter: HttpRateLimiter;
+  readonly userRateLimit: { readonly maxPerWindow: number; readonly windowSeconds: number };
+}
+
 /**
  * Plugin de autenticacion HTTP. Se registra como decorador `authenticate` y se
  * agrega al `preHandler` de las rutas privadas:
@@ -23,8 +32,17 @@ declare module 'fastify' {
  *
  * NUNCA lee actor/rol del body/query — solo del JWT firmado por Auth (JWKS).
  * Cierra CRIT-18 del legacy (`isDepartmentMember` desde query).
+ *
+ * Rechaza `actor_type=Service`: todas las rutas de este servicio son de un actor humano y
+ * resuelven datos a partir del `sub` del token. Un token M2M trae un `sub` sintetico derivado del
+ * clientId y permisos estaticos del registro en Auth, asi que entraria a rutas de usuario con una
+ * identidad que no corresponde a nadie. Communication no expone rutas M2M.
+ *
+ * Tambien aplica la cuota HTTP por usuario. Va aca y no en el onRequest global porque recien aca
+ * la identidad esta verificada: con el `sub` sin verificar, cualquiera podria forjarlo y agotarle
+ * el cupo a otro usuario. El limite global por IP sigue cubriendo el trafico anonimo.
  */
-async function authPlugin(app: FastifyInstance): Promise<void> {
+async function authPlugin(app: FastifyInstance, options: AuthPluginOptions): Promise<void> {
   app.decorate(
     'authenticate',
     async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -34,9 +52,9 @@ async function authPlugin(app: FastifyInstance): Promise<void> {
         return;
       }
       const token = header.slice('Bearer '.length).trim();
+      let principal: AuthenticatedPrincipal;
       try {
-        const principal = await verifyAccessToken(token);
-        request.principal = principal;
+        principal = await verifyAccessToken(token);
       } catch (err) {
         if (err instanceof UnauthorizedError) {
           await reply.code(401).send({ code: err.code, message: err.message });
@@ -44,6 +62,24 @@ async function authPlugin(app: FastifyInstance): Promise<void> {
         }
         request.log.error({ err }, 'Unexpected auth error');
         await reply.code(401).send({ code: 'Auth.InvalidToken', message: 'Access token could not be verified.' });
+        return;
+      }
+      if (principal.actorType === 'Service') {
+        await reply
+          .code(403)
+          .send({ code: 'Auth.Forbidden', message: 'Machine-to-machine tokens cannot call this API.' });
+        return;
+      }
+      request.principal = principal;
+
+      const decision = await options.httpRateLimiter.allow({
+        key: `comm:rl:http.user:${principal.tenantId}:${principal.userId}`,
+        policy: USER_HTTP_RATE_LIMIT_POLICY,
+        maxPerWindow: options.userRateLimit.maxPerWindow,
+        windowSeconds: options.userRateLimit.windowSeconds,
+      });
+      if (!decision.allowed) {
+        await sendRateLimited(reply, decision.retryAfterSeconds, USER_HTTP_RATE_LIMIT_POLICY);
       }
     },
   );

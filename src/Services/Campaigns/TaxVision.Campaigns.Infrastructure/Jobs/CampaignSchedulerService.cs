@@ -83,11 +83,15 @@ public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<
                 new StartCampaignRunFromAudienceCommand(
                     schedule.TenantId,
                     schedule.CampaignId,
-                    SchedulerActor,
+                    // A1 — se atribuye a quien agendó, no al actor de sistema, y sobre todo se hereda SU
+                    // visibilidad: si solo veía sus clientes asignados, el disparo tampoco ve más.
+                    schedule.CreatedByUserId
+                        ?? SchedulerActor,
                     schedule.ContactListIds(),
                     [],
                     TriggerKind: "Scheduled",
-                    IncludeCustomers: schedule.IncludeCustomers
+                    IncludeCustomers: schedule.IncludeCustomers,
+                    CanViewAllCustomers: schedule.CreatorCanViewAllCustomers
                 ),
                 ct
             );

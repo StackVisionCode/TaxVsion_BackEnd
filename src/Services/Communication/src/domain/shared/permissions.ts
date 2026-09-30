@@ -43,6 +43,13 @@ export const CommunicationPermissions = {
 
   SettingsManage: 'communication.settings.manage',
   AnalyticsRead: 'communication.analytics.read',
+
+  /**
+   * Palanca del portal: es la que el administrador reconoce en el cajon de accesos del cliente
+   * ("quitarle las llamadas a este cliente"). Se exige SOLO al actor CustomerPortal — equivalente
+   * en Node de [HasPermissionForActor] del lado .NET: apilarla para todos dejaria al staff afuera.
+   */
+  PortalCallsUse: 'portal.calls.use',
 } as const;
 
 export type CommunicationPermission =
@@ -63,18 +70,29 @@ export interface PermissionSubject {
 }
 
 /**
- * Gate de modulo (Entitlements en runtime), modo LOG-ONLY — espejo del hook en
+ * Gate de modulo (Entitlements en runtime) — espejo del hook en
  * BuildingBlocks.Web/ActorTypeAuthorization/PermissionPolicyProvider.cs (.NET): tras conceder un
- * permiso, observa si el tenant tiene habilitado el modulo al que pertenece ese permiso y lo
- * loguea/mide SIN cambiar la decision. Opt-in: si `configureModuleGate` no se llamo (composition
- * root), el gate no corre — igual que un servicio .NET que no registra `ITenantModuleEntitlementsSource`.
+ * permiso, comprueba si el tenant tiene habilitado el modulo al que pertenece. Opt-in: si
+ * `configureModuleGate` no se llamo (composition root), el gate no corre — igual que un servicio .NET
+ * que no registra `ITenantModuleEntitlementsSource`.
+ *
+ * **Quien decide log-only vs denegar es el gate, no esta funcion.** El gate devuelve `denied: true`
+ * solo cuando el escalon lo incluye (`COMMUNICATION_MODULE_GATE_ENFORCE`); en log-only registra y
+ * devuelve `denied: false`. Asi la garantia "log-only jamas cambia la decision" es estructural y no
+ * depende de que este call site se acuerde.
  */
-export type ModuleGateObserver = (subject: PermissionSubject, required: CommunicationPermission) => Promise<void>;
-let moduleGateObserver: ModuleGateObserver | undefined;
+export type ModuleGateResult =
+  | { readonly denied: false }
+  | { readonly denied: true; readonly module: string };
+export type ModuleGate = (
+  subject: PermissionSubject,
+  required: CommunicationPermission,
+) => Promise<ModuleGateResult>;
+let moduleGate: ModuleGate | undefined;
 
-/** Configura el gate de modulo (log-only). Se llama una sola vez en el composition root (main.ts). */
-export function configureModuleGate(observer: ModuleGateObserver | undefined): void {
-  moduleGateObserver = observer;
+/** Configura el gate de modulo. Se llama una sola vez en el composition root (main.ts). */
+export function configureModuleGate(gate: ModuleGate | undefined): void {
+  moduleGate = gate;
 }
 
 export type PermissionCheckResult =
@@ -145,13 +163,24 @@ export async function checkPermission(
     return { allowed: false, code: 'Auth.Forbidden', message: `Missing ${required}.` };
   }
 
-  // Gate de modulo LOG-ONLY — corre solo cuando el permiso YA paso por permisos reales (no para el
-  // bypass de PlatformAdmin de arriba). Nunca cambia la decision ni la puede romper.
-  if (moduleGateObserver) {
+  // Gate de modulo — corre solo cuando el permiso YA paso por permisos reales (no para el bypass de
+  // PlatformAdmin de arriba), igual que en .NET: asi `module_not_entitled` solo le aparece a quien
+  // "podria si el plan lo tuviera", que es la semantica que necesita la UX de upgrade.
+  if (moduleGate) {
+    let gateResult: ModuleGateResult = { denied: false };
     try {
-      await moduleGateObserver(subject, required);
+      gateResult = await moduleGate(subject, required);
     } catch {
-      // log-only: jamas afectar la autorizacion por un fallo del gate.
+      // Un fallo del gate (Prisma caido, cache rota) NO deja a nadie fuera: el permiso ya se
+      // concedio y negarlo aca convertiria una averia de lectura en una perdida de acceso general.
+      // Es la misma direccion que el `null` del reader (sin proyeccion todavia -> no gatea).
+    }
+    if (gateResult.denied) {
+      return {
+        allowed: false,
+        code: 'Authz.ModuleUnavailable',
+        message: `Your plan does not include the '${gateResult.module}' module required for this action.`,
+      };
     }
   }
 
@@ -163,7 +192,11 @@ export async function checkPermission(
  * unico punto de mapeo para los 4 route files que exponen `[HasPermission]`-like
  * gates directos (evita repetir el ternario en cada uno).
  */
-export function permissionCheckHttpStatus(result: Extract<PermissionCheckResult, { allowed: false }>): number {
+export function permissionCheckHttpStatus(
+  result: Extract<PermissionCheckResult, { allowed: false }>,
+): number {
+  // `Authz.ModuleUnavailable` es 403 igual que `Auth.Forbidden` — el frontend los distingue por el
+  // `code`, no por el status (el mismo contrato que el 403 RFC 9457 del lado .NET).
   return result.code === 'Auth.TokenStale' ? 401 : 403;
 }
 
@@ -174,6 +207,22 @@ export function permissionCheckHttpStatus(result: Extract<PermissionCheckResult,
  */
 export function isPlatformAdmin(actorType: string): boolean {
   return actorType === 'PlatformAdmin';
+}
+
+/**
+ * Chequea un permiso SOLO si el caller es de un actor type concreto; para los demas pasa. Es el
+ * equivalente en Node de `[HasPermissionForActor(actorType, code)]` del lado .NET, y existe por el
+ * mismo motivo: en un endpoint compartido entre staff y portal, exigirle a todos un permiso que solo
+ * el portal tiene deja al staff afuera.
+ */
+export async function checkPermissionForActor(
+  subject: PermissionSubject,
+  actorType: string,
+  required: CommunicationPermission,
+  projectionRepo: UserPermissionsProjectionRepository,
+): Promise<PermissionCheckResult> {
+  if (subject.actorType !== actorType) return { allowed: true };
+  return checkPermission(subject, required, projectionRepo);
 }
 
 /**

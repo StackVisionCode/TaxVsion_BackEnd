@@ -66,12 +66,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "customer-serv
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, opt-in): el hook de PermissionPolicyProvider resuelve esta fuente
-// por request y loguea allow/deny por módulo SIN bloquear.
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
@@ -158,7 +157,6 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerArchivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<CustomerPortalInvitationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomersBulkImportedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerImportFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");

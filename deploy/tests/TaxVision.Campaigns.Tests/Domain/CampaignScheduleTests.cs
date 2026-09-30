@@ -100,4 +100,49 @@ public sealed class CampaignScheduleTests
         Assert.Contains(a, ids);
         Assert.Contains(b, ids);
     }
+
+    // ---------------------------------------------------------------------
+    // A1 — el schedule congela la visibilidad de quien lo agendó
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// El scheduler dispara con un actor de sistema, así que corría con la visibilidad abierta: un
+    /// preparador que solo ve sus clientes asignados agendaba una campaña y el envío salía a la cartera
+    /// completa de la oficina. La decisión de audiencia se toma al agendar; el disparo solo la ejecuta.
+    /// </summary>
+    [Fact]
+    public void A_schedule_remembers_who_created_it_and_what_that_person_could_see()
+    {
+        var creator = Guid.NewGuid();
+
+        var schedule = CampaignSchedule
+            .CreateRecurring(
+                Tenant,
+                Campaign,
+                DateTime.UtcNow,
+                60,
+                [],
+                includeCustomers: true,
+                createdByUserId: creator,
+                creatorCanViewAllCustomers: false
+            )
+            .Value;
+
+        Assert.Equal(creator, schedule.CreatedByUserId);
+        Assert.False(schedule.CreatorCanViewAllCustomers);
+    }
+
+    /// <summary>
+    /// §R.7 — un schedule creado antes de esta fase no sabe qué veía su creador. Asumir que veía POCO
+    /// cambiaría a quién se le envía un correo ya agendado, en silencio: el default abierto conserva el
+    /// comportamiento actual (y la migración usa el mismo default para las filas existentes).
+    /// </summary>
+    [Fact]
+    public void A_schedule_without_a_recorded_creator_keeps_the_open_visibility()
+    {
+        var schedule = CampaignSchedule.CreateOneTime(Tenant, Campaign, DateTime.UtcNow, []).Value;
+
+        Assert.Null(schedule.CreatedByUserId);
+        Assert.True(schedule.CreatorCanViewAllCustomers);
+    }
 }

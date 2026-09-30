@@ -19,6 +19,17 @@ public interface ISessionRepository
     /// <summary>Revoca la sesión y todos sus refresh tokens activos. Devuelve tokens revocados.</summary>
     Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default);
 
+    /// <summary>Revoca solo la cadena de una superficie dentro de la sesión (la sesión sigue viva). Devuelve tokens revocados.</summary>
+    Task<int> RevokeSurfaceTokensAsync(
+        Guid sessionId,
+        SessionSurface surface,
+        string reason,
+        CancellationToken ct = default
+    );
+
+    /// <summary>¿La sesión tiene una cadena activa de esa superficie?</summary>
+    Task<bool> HasActiveChainAsync(Guid sessionId, SessionSurface surface, CancellationToken ct = default);
+
     /// <summary>Revoca todas las sesiones activas del usuario (opcionalmente excepto una).</summary>
     Task<int> RevokeAllForUserAsync(
         Guid userId,
@@ -29,4 +40,13 @@ public interface ISessionRepository
 
     /// <summary>Revoca todas las sesiones activas del tenant (suspensión).</summary>
     Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// Las sesiones vivas del tenant. Hace falta ANTES de revocarlas: <see cref="RevokeAllForTenantAsync"/>
+    /// solo devuelve un contador, y para cortar el acceso de verdad hay que denylistear cada sid y
+    /// anunciarlo (A5, G10 del plan — hasta ahora la suspensión y el bloqueo por facturación revocaban
+    /// solo en la base, así que el access token seguía sirviendo hasta 15 minutos).
+    /// </summary>
+    Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<UserSession>>([]);
 }

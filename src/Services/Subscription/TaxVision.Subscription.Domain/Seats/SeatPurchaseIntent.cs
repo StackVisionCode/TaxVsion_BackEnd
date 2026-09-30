@@ -39,6 +39,10 @@ public sealed class SeatPurchaseIntent : TenantEntity
     public SeatPurchaseIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
     public string? CheckoutUrl { get; private set; }
+
+    /// <summary>Cuándo caduca la sesión de checkout del proveedor. Mientras no caduque, esta intención sigue
+    /// siendo pagable: crear otra en paralelo arriesga un doble cobro.</summary>
+    public DateTime? CheckoutExpiresAtUtc { get; private set; }
     public Guid RequestedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -94,7 +98,7 @@ public sealed class SeatPurchaseIntent : TenantEntity
     }
 
     /// <summary>Guarda la referencia al pago y la URL de checkout una vez creada la sesión en PaymentApp.</summary>
-    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime nowUtc)
+    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc, DateTime nowUtc)
     {
         if (Status != SeatPurchaseIntentStatus.Pending)
             return Result.Failure(
@@ -103,9 +107,18 @@ public sealed class SeatPurchaseIntent : TenantEntity
 
         SaaSPaymentId = saaSPaymentId;
         CheckoutUrl = checkoutUrl;
+        CheckoutExpiresAtUtc = expiresAtUtc;
         Touch(nowUtc);
         return Result.Success();
     }
+
+    /// <summary>¿Sigue viva? Con la sesión aún pagable, reutilizarla es lo que evita el doble cobro.</summary>
+    public bool IsOpen(DateTime nowUtc) =>
+        Status == SeatPurchaseIntentStatus.Pending && CheckoutUrl is not null && CheckoutExpiresAtUtc > nowUtc;
+
+    /// <summary>¿Es exactamente la misma compra que se está pidiendo otra vez?</summary>
+    public bool Matches(SeatType seatType, int quantity, BillingCycle billingCycle, bool autoRenew) =>
+        SeatType == seatType && Quantity == quantity && BillingCycle == billingCycle && AutoRenew == autoRenew;
 
     /// <summary>Marca el pago confirmado (webhook/reconcile). Idempotente.</summary>
     public Result MarkPaid(DateTime paidAtUtc)

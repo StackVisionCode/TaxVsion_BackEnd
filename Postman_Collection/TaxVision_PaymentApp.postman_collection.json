@@ -91,9 +91,9 @@
           "response": []
         },
         {
-          "name": "RefundSaaSPayment",
+          "name": "SearchMySaaSPayments",
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [
               {
                 "key": "Authorization",
@@ -101,17 +101,43 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refundAmountCents\": 500,\n  \"reason\": \"cliente solicito reembolso parcial\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "url": {
-              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/refund",
+              "raw": "{{UrlBase}}/payments-app/saas-payments?page=1&pageSize=25",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "saas-payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "Historial de pagos del tenant autenticado, el mas reciente primero. Lo consume la pantalla Billing history del Account en el Landing, por eso lleva [AllowSurface(Account)]. Solo TenantAdmin o PlatformAdmin, y requiere payment_app.saas_payment.read. page arranca en 1; pageSize se acota a 25 por defecto y 100 como maximo. Respuesta 200: MySaaSPaymentsPage(items, totalCount), donde cada item trae hasReceipt para saber si ya se puede descargar el recibo."
+          },
+          "response": []
+        },
+        {
+          "name": "GetSaaSPaymentReceipt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/receipt",
               "host": [
                 "{{UrlBase}}"
               ],
@@ -119,10 +145,10 @@
                 "payments-app",
                 "saas-payments",
                 "{{saaSPaymentId}}",
-                "refund"
+                "receipt"
               ]
             },
-            "description": "Reembolso administrativo, solo plataforma (un tenant nunca se reembolsa a si mismo). Requiere payment_app.saas_payment.refund. Falla si excede el invariante SumOfRefunds + newRefund <= Amount."
+            "description": "URL firmada para descargar el recibo en PDF de un cobro confirmado. El archivo no se sirve desde aca: PaymentApp valida que el pago pertenece al tenant autenticado y CloudStorage firma una URL de vida corta. Requiere payment_app.saas_payment.read y esta habilitado en la superficie Account. Respuesta 200: ReceiptDownloadUrlResponse(url, expiresAtUtc). Devuelve 404 si el pago no es del tenant, y 409 si el recibo todavia se esta generando."
           },
           "response": []
         }
@@ -417,6 +443,43 @@
             "description": "Mismos filtros que SearchAllTenantsPayments, sin paginacion (capado a 5000 filas). Devuelve text/csv. Requiere payment_app.admin.cross_tenant."
           },
           "response": []
+        },
+        {
+          "name": "RefundSaaSPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refundAmountCents\": 500,\n  \"reason\": \"cliente solicito reembolso parcial\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/admin/payments/{{saaSPaymentId}}/refund",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "admin",
+                "payments",
+                "{{saaSPaymentId}}",
+                "refund"
+              ]
+            },
+            "description": "Reembolso de soporte de un pago SaaS de cualquier tenant. Solo PlatformAdmin (payment_app.saas_payment.refund es PlatformOnly)."
+          },
+          "response": []
         }
       ]
     },
@@ -461,7 +524,61 @@
             },
             "description": "Publico, sin JWT — Stripe autentica con HMAC en Stripe-Signature. Este body/firma son de ejemplo: con la firma dummy de arriba la respuesta esperada es 400 (Stripe.WebhookSignature.Invalid), NO 500 — eso confirma que la verificacion de firma esta activa. Para probar el flujo completo usa `stripe listen --forward-to {{UrlBase}}/payments-app/webhooks/stripe` y dispara un evento real con `stripe trigger payment_intent.succeeded`. Rate limitado a 1000 req/min/IP (§K.1)."
           },
-          "response": []
+          "response": [
+            {
+              "name": "Webhook throttleado por tenant (429 — Stripe reintenta)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Stripe-Signature",
+                    "value": "t=1700000000,v1=replace_with_a_real_signature",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"evt_test_postman\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_postman\"\n    }\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/payments-app/webhooks/stripe",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "payments-app",
+                    "webhooks",
+                    "stripe"
+                  ]
+                }
+              },
+              "status": "Too Many Requests",
+              "code": 429,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Retry-After",
+                  "value": "60"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"code\": \"RateLimit.Exceeded\",\n  \"message\": \"You're making requests too quickly. Please try again in 60 seconds.\",\n  \"retryAfterSeconds\": 60,\n  \"policy\": \"paymentapp.webhook_tenant\",\n  \"layer\": \"tenant\"\n}"
+            }
+          ]
         }
       ]
     },

@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
+        services.AddScoped<IAddOnPurchaseIntentRepository, AddOnPurchaseIntentRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
         services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
@@ -81,6 +82,16 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+        // Guard de downgrade — solo Auth sabe cuántos usuarios activos hay. Reusa el mismo acquirer y la
+        // misma base URL de Auth que el token de servicio.
+        services.AddHttpClient<ITenantUserCountClient, Auth.AuthTenantUserCountClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
         services.AddHttpClient<IReferralBenefitReserver, GrowthRefereeBenefitClient>(
             (sp, http) =>
             {
@@ -107,6 +118,28 @@ public static class DependencyInjection
         // Expiración/Dunning Fase 4 — M2M contra PaymentApp para el hosted-checkout de una renovación/
         // reactivación self-service. Mismo cliente/patrón que el de seats de arriba.
         services.AddHttpClient<IRenewalCheckoutPaymentClient, PaymentApp.PaymentAppRenewalCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Upgrade — M2M contra PaymentApp para cobrar un cambio de plan por redirect, cuando el tenant no
+        // tiene método en archivo.
+        services.AddHttpClient<IPlanChangeCheckoutPaymentClient, PaymentApp.PaymentAppPlanChangeCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Add-ons — M2M contra PaymentApp para el hosted-checkout de una compra de add-on. Mismo cliente
+        // y opciones que los dos de arriba.
+        services.AddHttpClient<IAddOnCheckoutPaymentClient, PaymentApp.PaymentAppAddOnCheckoutClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;

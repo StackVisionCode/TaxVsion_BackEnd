@@ -16,10 +16,32 @@ public enum SubscriptionChangeReason
     GraceExpired,
     SuspensionTimeout,
     CancellationRequested,
+
+    /// <summary>El tenant canceló al fin del período: sigue activo y pagado hasta esa fecha.</summary>
+    CancellationScheduled,
+
+    /// <summary>Deshizo esa cancelación antes de que llegara el fin del período.</summary>
+    CancellationResumed,
+
+    /// <summary>Recordatorio: se acerca el fin del acceso de una cancelación programada. No es una
+    /// transición — viaja por el mismo canal para reusar la resolución de destinatario y el envío.</summary>
+    AccessEnding,
     CancellationEnded,
     AdminSuspended,
     AdminReactivated,
     SelfServiceRenewed,
+
+    /// <summary>
+    /// A6 — **no es una transición**: es el job de anti-entropía re-anunciando el estado ACTUAL para
+    /// que los servicios que guardan su consecuencia (Auth y su <c>BillingAccessBlocked</c>) converjan
+    /// tras un evento perdido.
+    ///
+    /// Los consumidores que producen efectos hacia fuera —correos, métricas de transición— DEBEN
+    /// ignorarlo: re-anunciar un <c>Expired</c> a diario le mandaría al tenant el correo de
+    /// "tu suscripción venció" todos los días, y contaría una transición que no ocurrió. Los que solo
+    /// derivan estado (el corte de acceso) sí deben procesarlo: es justo para ellos.
+    /// </summary>
+    Reconciliation,
 }
 
 /// <summary>
@@ -45,6 +67,10 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 
     /// <summary>Fin de la ventana de gracia, cuando el estado nuevo es <c>GracePeriod</c>.</summary>
     public DateTime? GracePeriodEndsAtUtc { get; init; }
+
+    /// <summary>Hasta cuándo llega el acceso ya pagado. Lo llena la cancelación programada, para que el
+    /// correo pueda decir la fecha exacta en la que se termina.</summary>
+    public DateTime? AccessEndsAtUtc { get; init; }
 
     /// <summary>Código de fallo del proveedor, cuando la transición la dispara un pago fallido.</summary>
     public string? FailureCode { get; init; }

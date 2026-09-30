@@ -18,6 +18,24 @@ public sealed class SeatPurchaseIntentRepository(SubscriptionDbContext db) : ISe
             .SeatPurchaseIntents.IgnoreQueryFilters()
             .FirstOrDefaultAsync(intent => intent.Id == intentId && intent.TenantId == tenantId, ct);
 
+    // Trackeada (el handler la reutiliza y puede tocarla) y acotada por el tenant autenticado, igual que
+    // GetByIdAsync. La más reciente: si hubiera varias abiertas, la última es la que el usuario vio.
+    public Task<SeatPurchaseIntent?> GetOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SeatPurchaseIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.Status == SeatPurchaseIntentStatus.Pending
+                && intent.CheckoutUrl != null
+                && intent.CheckoutExpiresAtUtc > nowUtc
+            )
+            .OrderByDescending(intent => intent.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     // Trackeado y sin filtro de tenant: el consumer del webhook llega por Id de evento y valida el TenantId.
     public Task<SeatPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default) =>
         db.SeatPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(intent => intent.Id == intentId, ct);

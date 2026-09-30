@@ -21,6 +21,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.IsAssignableByTenant).IsRequired();
         builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.Property(permission => permission.IsDangerous).IsRequired();
+        builder.Property(permission => permission.IsReserved).IsRequired();
         builder.HasIndex(permission => permission.Code).IsUnique();
 
         // Mismo patrón que AddOnDefinitionConfiguration (Subscription) para List<BillingCycle>:
@@ -60,6 +61,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 AllowedActorTypes = definition.AllowedActorTypes
                     ?? Permission.InferAllowedActorTypes(definition.IsCustomerPortal, definition.PlatformOnly),
                 definition.IsDangerous,
+                definition.IsReserved,
             })
         );
     }
@@ -84,6 +86,10 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.Property(role => role.IsActive).IsRequired();
         builder.Property(role => role.CreatedAtUtc).IsRequired();
         builder.Property(role => role.PermissionsVersion).IsRequired();
+
+        // Como string y nullable: mismo criterio que User.ActorType (ver el doc-comment de
+        // UserActorType sobre no transportar el ordinal). null = rol sin destino declarado.
+        builder.Property(role => role.TargetActorType).HasConversion<string>().HasMaxLength(32);
 
         builder.HasIndex(role => new { role.TenantId, role.Name }).IsUnique();
 
@@ -140,8 +146,12 @@ public sealed class UserPermissionDenyConfiguration : IEntityTypeConfiguration<U
         builder.ToTable("UserPermissionDenies");
         builder.HasKey(link => new { link.UserId, link.PermissionId });
         builder.Property(link => link.DeniedAtUtc).IsRequired();
+        builder.Property(link => link.Reason).HasMaxLength(UserPermissionDeny.ReasonMaxLength);
 
         builder.HasIndex(link => link.PermissionId);
+
+        // El job de expiración barre por fecha: sin este índice hace un scan de toda la tabla.
+        builder.HasIndex(link => link.ExpiresAtUtc);
 
         builder.HasOne<User>().WithMany().HasForeignKey(link => link.UserId).OnDelete(DeleteBehavior.Cascade);
 

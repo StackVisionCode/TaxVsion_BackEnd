@@ -35,7 +35,11 @@ public sealed class OccurrenceExpanderTests
             )
             .Value;
 
-        Assert.True(appointment.MakeRecurring(RecurrenceRule.Create(rule).Value, timing, Organizer).IsSuccess);
+        Assert.True(
+            appointment
+                .MakeRecurring(RecurrenceRule.Create(rule).Value, timing, Organizer, canManageAll: false)
+                .IsSuccess
+        );
         return appointment;
     }
 
@@ -81,7 +85,7 @@ public sealed class OccurrenceExpanderTests
         var series = WeeklyMondayNineAm();
         var target = Utc(2026, 1, 19, 14);
 
-        Assert.True(series.CancelOccurrence(target, Organizer, Now).IsSuccess);
+        Assert.True(series.CancelOccurrence(target, Organizer, canManageAll: false, Now).IsSuccess);
 
         var occurrences = OccurrenceExpander.Expand(series, Utc(2026, 1, 1), Utc(2026, 2, 1)).Value;
 
@@ -99,7 +103,16 @@ public sealed class OccurrenceExpanderTests
 
         Assert.True(
             series
-                .OverrideOccurrence(original, moved, moved.AddHours(1), "Revision movida", null, Organizer, Now)
+                .OverrideOccurrence(
+                    original,
+                    moved,
+                    moved.AddHours(1),
+                    "Revision movida",
+                    null,
+                    Organizer,
+                    canManageAll: false,
+                    Now
+                )
                 .IsSuccess
         );
 
@@ -123,7 +136,9 @@ public sealed class OccurrenceExpanderTests
         var moved = Utc(2026, 2, 24, 14);
 
         Assert.True(
-            series.OverrideOccurrence(original, moved, moved.AddHours(1), null, null, Organizer, Now).IsSuccess
+            series
+                .OverrideOccurrence(original, moved, moved.AddHours(1), null, null, Organizer, canManageAll: false, Now)
+                .IsSuccess
         );
 
         var february = OccurrenceExpander.Expand(series, Utc(2026, 2, 1), Utc(2026, 3, 1)).Value;
@@ -137,7 +152,7 @@ public sealed class OccurrenceExpanderTests
         var series = WeeklyMondayNineAm();
 
         // Un miércoles: la serie es de lunes.
-        var result = series.CancelOccurrence(Utc(2026, 1, 14, 14), Organizer, Now);
+        var result = series.CancelOccurrence(Utc(2026, 1, 14, 14), Organizer, canManageAll: false, Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Calendar.Exception.NotAnOccurrence", result.Error.Code);
@@ -149,9 +164,18 @@ public sealed class OccurrenceExpanderTests
     {
         var series = WeeklyMondayNineAm();
         var target = Utc(2026, 1, 19, 14);
-        series.CancelOccurrence(target, Organizer, Now);
+        series.CancelOccurrence(target, Organizer, canManageAll: false, Now);
 
-        var second = series.OverrideOccurrence(target, target.AddHours(2), null, null, null, Organizer, Now);
+        var second = series.OverrideOccurrence(
+            target,
+            target.AddHours(2),
+            null,
+            null,
+            null,
+            Organizer,
+            canManageAll: false,
+            Now
+        );
 
         Assert.True(second.IsFailure);
         Assert.Equal("Calendar.Exception.Duplicate", second.Error.Code);
@@ -163,7 +187,16 @@ public sealed class OccurrenceExpanderTests
     {
         var series = WeeklyMondayNineAm();
 
-        var result = series.OverrideOccurrence(Utc(2026, 1, 19, 14), null, null, null, null, Organizer, Now);
+        var result = series.OverrideOccurrence(
+            Utc(2026, 1, 19, 14),
+            null,
+            null,
+            null,
+            null,
+            Organizer,
+            canManageAll: false,
+            Now
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Calendar.Exception.EmptyOverride", result.Error.Code);
@@ -177,7 +210,7 @@ public sealed class OccurrenceExpanderTests
             .Schedule(Guid.NewGuid(), AppointmentTitle.Create("Puntual").Value, timing, Guid.NewGuid(), Organizer, Now)
             .Value;
 
-        var result = appointment.CancelOccurrence(Utc(2026, 3, 10, 14), Organizer, Now);
+        var result = appointment.CancelOccurrence(Utc(2026, 3, 10, 14), Organizer, canManageAll: false, Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Calendar.Exception.NotRecurring", result.Error.Code);
@@ -204,7 +237,7 @@ public sealed class OccurrenceExpanderTests
         var series = Appointment
             .Schedule(Guid.NewGuid(), AppointmentTitle.Create("Diaria").Value, timing, Guid.NewGuid(), Organizer, Now)
             .Value;
-        series.MakeRecurring(RecurrenceRule.Create("FREQ=DAILY").Value, timing, Organizer);
+        series.MakeRecurring(RecurrenceRule.Create("FREQ=DAILY").Value, timing, Organizer, canManageAll: false);
 
         // Cuatro años de una serie diaria son ~1460 ocurrencias.
         var result = OccurrenceExpander.Expand(series, Utc(2026, 1, 1), Utc(2030, 1, 1));

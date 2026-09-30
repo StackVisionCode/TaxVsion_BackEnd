@@ -8,8 +8,8 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 
 /// <summary>
 /// Implementación de referencia de <see cref="ITieredRateLimitEvaluator"/> — evalúa, en orden
-/// (§1 del plan — "la primera capa que dispare"), Capa 4 (cap global por endpoint, categorías
-/// H/I), Capa 3 (primaria/"user") y Capa 2 (overlay/"tenant"), contra la cuota resuelta por
+/// (§1 del plan — "la primera capa que dispare"), Capa 3 (primaria/"user"), Capa 2
+/// (overlay/"tenant") y Capa 4 (cap global por endpoint, categoría I), contra la cuota resuelta por
 /// <see cref="IRateLimitQuotaResolver"/> y el algoritmo declarado por
 /// <see cref="RateLimitPolicyDefinition.Algorithm"/> (vía <see cref="IRateLimitAlgorithmCounter"/>
 /// — cierra el hallazgo #8 de la auditoría post-Fase-9: antes de esto todo corría como ventana fija
@@ -42,31 +42,6 @@ public sealed class TieredRateLimitEvaluator(
     {
         var window = TimeSpan.FromSeconds(policy.WindowSeconds);
         var service = ServiceNameOf(policy.Name.Value);
-
-        // Capa 4 (§4, categorías H/I) — cap agregado a través de TODOS los tenants, evaluado
-        // antes que nada porque protege el recurso de infraestructura compartido, no la fairness
-        // de un tenant individual (eso lo cubren las capas 2/3 más abajo). No depende de la cuota
-        // resuelta por tenant/plan — es un número fijo del catálogo.
-        if (policy.EndpointCapPerWindow is { } endpointCap)
-        {
-            var endpointKey = RateCounterKey.From(BuildKey(service, policy.Name.Value, ["endpoint"]));
-            try
-            {
-                var endpointExceeded = await algorithmCounter
-                    .EvaluateAsync(endpointKey, policy.Algorithm, endpointCap, window, ct)
-                    .ConfigureAwait(false);
-                if (endpointExceeded)
-                {
-                    metrics.RecordBlocked(policy.Name.Value, "endpoint", tenantId, "n/a");
-                    return RateLimitVerdict.Exceeded("endpoint", endpointCap, policy.WindowSeconds);
-                }
-            }
-            catch (Exception)
-            {
-                // Fail-open — invariante §3.3.
-                metrics.RecordFallbackOpen(policy.Name.Value, "redis_endpoint");
-            }
-        }
 
         EffectiveQuota quota;
         try
@@ -109,13 +84,13 @@ public sealed class TieredRateLimitEvaluator(
         metrics.RecordEvaluated(policy.Name.Value, "user", tenantId, plan);
         try
         {
-            var primaryExceeded = await algorithmCounter
+            var primary = await algorithmCounter
                 .EvaluateAsync(primaryKey, policy.Algorithm, quota.PermitCount, window, ct)
                 .ConfigureAwait(false);
-            if (primaryExceeded)
+            if (primary.Exceeded)
             {
                 metrics.RecordBlocked(policy.Name.Value, "user", tenantId, plan);
-                return RateLimitVerdict.Exceeded("user", quota.PermitCount, policy.WindowSeconds);
+                return RateLimitVerdict.Exceeded("user", quota.PermitCount, RetryAfterSeconds(primary, policy));
             }
         }
         catch (Exception)
@@ -143,13 +118,13 @@ public sealed class TieredRateLimitEvaluator(
             metrics.RecordEvaluated(policy.Name.Value, "tenant", tenantId, plan);
             try
             {
-                var overlayExceeded = await algorithmCounter
+                var overlay = await algorithmCounter
                     .EvaluateAsync(overlayKey, policy.Algorithm, overlayPermitCount, window, ct)
                     .ConfigureAwait(false);
-                if (overlayExceeded)
+                if (overlay.Exceeded)
                 {
                     metrics.RecordBlocked(policy.Name.Value, "tenant", tenantId, plan);
-                    return RateLimitVerdict.Exceeded("tenant", overlayPermitCount, policy.WindowSeconds);
+                    return RateLimitVerdict.Exceeded("tenant", overlayPermitCount, RetryAfterSeconds(overlay, policy));
                 }
             }
             catch (Exception)
@@ -159,8 +134,37 @@ public sealed class TieredRateLimitEvaluator(
             }
         }
 
+        // Capa 4 (§4, categoría I) — cap agregado a través de TODOS los tenants: protege el recurso
+        // compartido y es un número fijo del catálogo. Va al final para contar solo requests que el
+        // tenant sí podía hacer; antes iba primero y los reintentos de un usuario ya bloqueado por su
+        // propia cuota consumían el tope de todos los demás tenants.
+        if (policy.EndpointCapPerWindow is { } endpointCap)
+        {
+            var endpointKey = RateCounterKey.From(BuildKey(service, policy.Name.Value, ["endpoint"]));
+            try
+            {
+                var endpoint = await algorithmCounter
+                    .EvaluateAsync(endpointKey, policy.Algorithm, endpointCap, window, ct)
+                    .ConfigureAwait(false);
+                if (endpoint.Exceeded)
+                {
+                    metrics.RecordBlocked(policy.Name.Value, "endpoint", tenantId, plan);
+                    return RateLimitVerdict.Exceeded("endpoint", endpointCap, RetryAfterSeconds(endpoint, policy));
+                }
+            }
+            catch (Exception)
+            {
+                // Fail-open — invariante §3.3.
+                metrics.RecordFallbackOpen(policy.Name.Value, "redis_endpoint");
+            }
+        }
+
         return RateLimitVerdict.Allowed();
     }
+
+    // Espera real informada por el contador; la ventana solo si el contador no la supo calcular.
+    private static int RetryAfterSeconds(RateLimitCounterResult result, RateLimitPolicyDefinition policy) =>
+        result.RetryAfter > TimeSpan.Zero ? (int)Math.Ceiling(result.RetryAfter.TotalSeconds) : policy.WindowSeconds;
 
     private static string ServiceNameOf(string policyName) => policyName[..policyName.IndexOf('.')];
 

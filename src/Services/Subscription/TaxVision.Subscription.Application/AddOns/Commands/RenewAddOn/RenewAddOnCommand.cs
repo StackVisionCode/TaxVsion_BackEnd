@@ -1,5 +1,4 @@
 namespace TaxVision.Subscription.Application.AddOns.Commands.RenewAddOn;
 
-/// <summary>Renovación manual de un add-on disparada por un admin, mientras no exista
-/// integración con Billing.</summary>
+/// <summary>Extensión sin cobro del período de un add-on. Solo soporte de plataforma.</summary>
 public sealed record RenewAddOnCommand(Guid TenantId, Guid TenantAddOnId, Guid RequestedByUserId);

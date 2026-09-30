@@ -60,6 +60,8 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
                     .Property(p => p.TitleLabel)
                     .HasColumnName("Preparer_TitleLabel")
                     .HasMaxLength(PreparerInfo.MaxTitleLabelLength);
+                // A1 — quién es el preparer. Nullable: las solicitudes anteriores no lo tienen.
+                preparer.Property(p => p.UserId).HasColumnName("Preparer_UserId");
             }
         );
         builder.Property(request => request.PreparerSignedByUserId);

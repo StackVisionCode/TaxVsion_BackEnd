@@ -56,6 +56,8 @@ internal sealed class PaymentAppSeatCheckoutClient(
                         idempotencyKey = request.IdempotencyKey,
                         provider = request.Provider,
                         method = request.Method,
+                        quantity = request.Quantity,
+                        unitAmountCents = request.UnitAmountCents,
                     },
                     options: Json
                 ),

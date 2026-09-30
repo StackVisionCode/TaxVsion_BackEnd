@@ -12,14 +12,14 @@ import {
   type CustomerChangedDto,
 } from '../../contracts/socket/customer-socket-events.js';
 
-/** Avisa a todo el tenant que un cliente cambió, para que el cache de clientes del front lo invalide (backlog 5.1). */
+/** Avisa al personal del tenant que un cliente cambió, para que el cache de clientes del CRM lo invalide (backlog 5.1). */
 function emitCustomerChanged(
   env: IncomingEnvelope,
   emitter: RealtimeEmitter,
   customerId: string,
   changeType: CustomerChangedDto['changeType'],
 ): void {
-  emitter.emitToTenant<CustomerChangedDto>({
+  emitter.emitToTenantStaff<CustomerChangedDto>({
     tenantId: env.tenantId,
     event: CustomerSocketEvents.Changed,
     envelope: {

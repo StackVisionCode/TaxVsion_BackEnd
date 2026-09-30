@@ -2,6 +2,11 @@ import type { TenantCommunicationLimitsSnapshot } from '../../domain/settings/te
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { LimitsRepository } from '../ports/settings-repository.js';
 import { applyLimitsUpdate } from '../use-cases/settings-use-cases.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import {
+  NotificationSocketEvents,
+  type AccessChangedDto,
+} from '../../contracts/socket/notification-socket-events.js';
 
 /**
  * Consumer Subscription -> proyeccion `TenantCommunicationLimits`.
@@ -23,12 +28,32 @@ export function bindSubscriptionConsumers(
     limits: LimitsRepository;
     planCodeCache?: { invalidate(tenantId: string): void };
     modulesCache?: { invalidate(tenantId: string): void };
+    /** Opcional: sin emisor la proyeccion se actualiza igual, solo no se avisa en vivo. */
+    emitter?: RealtimeEmitter;
   },
 ): void {
   register('subscription.entitlements_changed.v1', async (env) => {
     const snapshot = extractLimitsSnapshot(env);
     if (!snapshot) return;
     await applyLimitsUpdate(snapshot, deps);
+
+    // A5 — cambiaron los modulos que el plan habilita, asi que el sidebar del CRM y las areas del
+    // portal quedaron viejos. Va al room de MIEMBROS, no al del tenant: un invitado de meeting no
+    // tiene acceso que refrescar. El payload no lleva nada del plan (ni codigo ni precio): solo dice
+    // "volve a pedir el bootstrap", que es lo unico que el portal puede mostrar sin semantica
+    // comercial.
+    if (!deps.emitter) return;
+    const payload: AccessChangedDto = { scope: 'tenant', permissionsVersion: null };
+    deps.emitter.emitToTenantMembers({
+      tenantId: env.tenantId,
+      event: NotificationSocketEvents.AccessChanged,
+      envelope: {
+        eventId: crypto.randomUUID(),
+        correlationId: '',
+        emittedAtUtc: new Date().toISOString(),
+        payload,
+      },
+    });
   });
 }
 

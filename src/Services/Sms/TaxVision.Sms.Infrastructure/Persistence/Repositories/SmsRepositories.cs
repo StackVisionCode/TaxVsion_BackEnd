@@ -41,9 +41,7 @@ public sealed class SmsMessageRepository(SmsDbContext db) : ISmsMessageRepositor
         var query = db
             .SmsMessages.IgnoreQueryFilters()
             .Where(m =>
-                m.Status == SmsMessageStatus.Accepted
-                && m.ProviderMessageId != null
-                && m.UpdatedAtUtc < olderThanUtc
+                m.Status == SmsMessageStatus.Accepted && m.ProviderMessageId != null && m.UpdatedAtUtc < olderThanUtc
             );
         if (tenantId is { } t)
             query = query.Where(m => m.TenantId == t);

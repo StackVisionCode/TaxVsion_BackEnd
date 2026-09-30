@@ -10,5 +10,6 @@ public sealed record UpdateContactPointCommand(
     ContactPointType Type,
     string Value,
     string? Label,
-    bool IsPrimary
+    bool IsPrimary,
+    bool CallerCanViewAllCustomers
 );

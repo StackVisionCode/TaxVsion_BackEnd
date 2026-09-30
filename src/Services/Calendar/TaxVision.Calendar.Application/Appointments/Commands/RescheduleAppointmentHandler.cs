@@ -28,7 +28,8 @@ public sealed record RescheduleAppointmentCommand(
     TimeOnly? LocalStartTime,
     TimeSpan? Duration,
     string? TimeZoneId,
-    string? RecurrenceRule
+    string? RecurrenceRule,
+    bool CanManageAll
 );
 
 public static class RescheduleAppointmentHandler

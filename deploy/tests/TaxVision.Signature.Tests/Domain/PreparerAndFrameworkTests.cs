@@ -88,6 +88,87 @@ public sealed class PreparerAndFrameworkTests
         Assert.Equal("Signature.Request.PreparerAlreadySigned", second.Error.Code);
     }
 
+    // -------------------- A1: el preparer ligado a un usuario --------------------
+
+    /// <summary>
+    /// El PTIN/EFIN identifica a un profesional concreto ante el IRS (Pub. 1345, §6109(a)(4)). Antes de
+    /// A1 era un dato suelto en el cuerpo del request: cualquier empleado con
+    /// <c>signature.document.sign</c> firmaba como preparer y el PDF sellado salía con la credencial del
+    /// colega que estuviera declarada. Eso no es un problema de permisos, es suplantación.
+    /// </summary>
+    [Fact]
+    public void MarkPreparerSigned_rejects_a_user_who_is_not_the_assigned_preparer()
+    {
+        var preparerUserId = Guid.NewGuid();
+        var request = NewInProgressWithPreparerBoundTo(preparerUserId);
+
+        var result = request.MarkPreparerSigned(Guid.NewGuid(), DateTime.UtcNow, null, null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Request.PreparerNotSelf", result.Error.Code);
+        Assert.False(request.IsPreparerSigned);
+    }
+
+    [Fact]
+    public void MarkPreparerSigned_accepts_the_assigned_preparer()
+    {
+        var preparerUserId = Guid.NewGuid();
+        var request = NewInProgressWithPreparerBoundTo(preparerUserId);
+
+        var result = request.MarkPreparerSigned(preparerUserId, DateTime.UtcNow, null, null);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal(preparerUserId, request.PreparerSignedByUserId);
+    }
+
+    /// <summary>
+    /// §R.7 — las solicitudes creadas antes de A1 no tienen el preparer ligado a nadie, y su
+    /// comportamiento no puede cambiar: si el chequeo las bloqueara, una firma en curso quedaría
+    /// imposible de completar.
+    /// </summary>
+    [Fact]
+    public void A_request_from_before_the_binding_keeps_working()
+    {
+        var request = NewInProgressWithFieldAndPreparer();
+        Assert.Null(request.Preparer!.UserId);
+
+        Assert.True(request.MarkPreparerSigned(Guid.NewGuid(), DateTime.UtcNow, null, null).IsSuccess);
+    }
+
+    [Fact]
+    public void PreparerInfo_keeps_the_user_it_was_created_with()
+    {
+        var userId = Guid.NewGuid();
+
+        var preparer = PreparerInfo.Create("P12345678", "Jane Doe, EA", null, userId);
+
+        Assert.True(preparer.IsSuccess);
+        Assert.Equal(userId, preparer.Value.UserId);
+    }
+
+    [Fact]
+    public void PreparerInfo_rejects_an_empty_user()
+    {
+        var result = PreparerInfo.Create("P12345678", "Jane Doe, EA", null, Guid.Empty);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Preparer.User", result.Error.Code);
+    }
+
+    private static SignatureRequest NewInProgressWithPreparerBoundTo(Guid preparerUserId)
+    {
+        var draft = NewDraft();
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .Value;
+        var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
+        draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
+        draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent", preparerUserId).Value);
+        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.Send(DateTime.UtcNow);
+        return draft;
+    }
+
     // -------------------- SignerPhoneNumber VO --------------------
 
     [Fact]

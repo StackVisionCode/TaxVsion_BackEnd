@@ -8,10 +8,11 @@ namespace TaxVision.PaymentApp.Application.Abstractions;
 /// </summary>
 public interface IPaymentAttemptThrottle
 {
-    /// <summary><c>MaxWebhookAttemptsPerMinutePerTenant = 60</c>.</summary>
-    Task<bool> IsWebhookThrottledAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>60 webhooks por minuto por <paramref name="scopeId"/>: el tenant del pago, o su
+    /// onboarding mientras el tenant todavía no existe.</summary>
+    Task<bool> IsWebhookThrottledAsync(Guid scopeId, CancellationToken ct = default);
 
-    Task RegisterWebhookAttemptAsync(Guid tenantId, CancellationToken ct = default);
+    Task RegisterWebhookAttemptAsync(Guid scopeId, CancellationToken ct = default);
 
     /// <summary><c>MaxAdminActionAttemptsPerMinutePerTenant = 5</c> — reembolsos u otras
     /// acciones administrativas de dinero sobre el mismo tenant.</summary>

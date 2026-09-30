@@ -17,7 +17,8 @@ public sealed record CancelAppointmentCommand(
     Guid ActingUserId,
     EditScope? Scope,
     DateTime? OriginalStartUtc,
-    string? Reason
+    string? Reason,
+    bool CanManageAll
 );
 
 public static class CancelAppointmentHandler
@@ -44,7 +45,7 @@ public static class CancelAppointmentHandler
 
         var cancelled = onlyOne
             ? CancelOccurrence(appointment, command)
-            : appointment.Cancel(command.ActingUserId, command.Reason, DateTime.UtcNow);
+            : appointment.Cancel(command.ActingUserId, command.CanManageAll, command.Reason, DateTime.UtcNow);
 
         if (cancelled.IsFailure)
             return cancelled;
@@ -59,7 +60,7 @@ public static class CancelAppointmentHandler
     private static Result CancelOccurrence(Appointment appointment, CancelAppointmentCommand command) =>
         command.OriginalStartUtc is not { } original
             ? Result.Failure(RecurrenceErrors.NotAnOccurrence)
-            : appointment.CancelOccurrence(original, command.ActingUserId, DateTime.UtcNow);
+            : appointment.CancelOccurrence(original, command.ActingUserId, command.CanManageAll, DateTime.UtcNow);
 
     /// <summary>
     /// Cancelar sin avisar a Reminder deja el aviso vivo: al cliente le llega un recordatorio de una

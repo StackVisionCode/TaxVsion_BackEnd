@@ -4,7 +4,9 @@ namespace TaxVision.Subscription.Application.Subscriptions.Queries;
 /// <paramref name="ChargeAmountCents"/>/<paramref name="ChargeCurrency"/> traen el precio
 /// completo cobrado (o por cobrar) y <paramref name="EffectiveAtUtc"/> es null. Para un
 /// downgrade, <paramref name="EffectiveAtUtc"/> trae la fecha de la próxima renovación y los
-/// campos de cargo son null — un downgrade nunca cobra nada.</summary>
+/// campos de cargo son null — un downgrade nunca cobra nada.
+/// <para><paramref name="CheckoutUrl"/> solo viene cuando el upgrade se está cobrando por redirect y la
+/// sesión sigue viva: es el pago que el usuario dejó a medias y puede retomar.</para></summary>
 public sealed record PendingPlanChangeResponse(
     string Kind,
     Guid Id,
@@ -15,5 +17,6 @@ public sealed record PendingPlanChangeResponse(
     DateTime RequestedAtUtc,
     DateTime? EffectiveAtUtc,
     long? ChargeAmountCents,
-    string? ChargeCurrency
+    string? ChargeCurrency,
+    string? CheckoutUrl = null
 );

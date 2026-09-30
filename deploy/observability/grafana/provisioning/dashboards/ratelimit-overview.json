@@ -4,7 +4,7 @@
   "tags": ["taxvision", "ratelimit"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
@@ -121,13 +121,68 @@
     },
     {
       "id": 10,
-      "title": "Load shedder de flota (Gateway, Fase 5)",
+      "title": "Load shedder de flota (Gateway, 503 LoadShedding.Active)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(rate(gateway_load_shedding_activated_total[5m]))", "legendFormat": "activado", "refId": "A" },
-        { "expr": "sum(rate(gateway_requests_shed_total[5m]))", "legendFormat": "requests rechazados", "refId": "B" }
+        { "expr": "sum(increase(gateway_load_shedding_activated_total[5m]))", "legendFormat": "activaciones", "refId": "A" },
+        { "expr": "sum(rate(gateway_requests_shed_total[5m])) by (reason)", "legendFormat": "rechazados — {{reason}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "429 de limiters nativos por política (Gateway por IP, auth-refresh, Connectors, webhooks)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(ratelimit_native_rejected_total[5m])) by (policy)",
+          "legendFormat": "{{policy}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Load shedding: top 10 tenants rechazados (anonymous = sin JWT)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(gateway_requests_shed_total[1h])) by (tenant_key))",
+          "legendFormat": "{{tenant_key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Emails diferidos por cupo del provider (Postmaster, por stream)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(postmaster_rate_limit_hits_total[5m])) by (stream)",
+          "legendFormat": "{{stream}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Webhooks de pago throttleados por tenant (429, el provider reintenta)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(ratelimit_native_rejected_total{policy=\"paymentapp.webhook_tenant\"}[24h]))",
+          "refId": "A"
+        }
       ]
     }
   ]

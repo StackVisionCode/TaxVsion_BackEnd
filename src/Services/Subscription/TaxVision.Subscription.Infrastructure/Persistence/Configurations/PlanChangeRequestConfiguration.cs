@@ -34,6 +34,8 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.ChargeCurrency).HasMaxLength(3).IsRequired();
         builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(request => request.SaaSPaymentId);
+        builder.Property(request => request.CheckoutUrl).HasMaxLength(2048);
+        builder.Property(request => request.CheckoutExpiresAtUtc);
 
         builder
             .HasIndex(request => new { request.TenantSubscriptionId, request.Status })

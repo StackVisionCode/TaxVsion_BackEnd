@@ -55,7 +55,10 @@ public sealed class IssueServiceTokenHandlerTests
             string effectiveTimeZoneId,
             Guid sessionId,
             IReadOnlyCollection<string> roles,
-            IReadOnlyCollection<string> authMethods
+            IReadOnlyCollection<string> authMethods,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
+                TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
+            DateTime? reauthenticatedAtUtc = null
         ) => throw new NotSupportedException();
 
         public AccessToken GenerateServiceToken(

@@ -79,8 +79,10 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     }
 
     // ---------- GET /signature/templates ----------
+    // Leer las plantillas es parte de preparar una solicitud, no de administrarlas: con
+    // template.create el preparador no podía ni ver la lista para elegir una.
     [HttpGet]
-    [HasPermission(SignaturePermissions.TemplateCreate)]
+    [HasPermission(SignaturePermissions.RequestCreate)]
     [RateLimit("signature.f.template_read")]
     [ProducesResponseType<ListTemplatesResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListTemplatesResult>> List(
@@ -103,7 +105,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
 
     // ---------- GET /signature/templates/{id} ----------
     [HttpGet("{id:guid}")]
-    [HasPermission(SignaturePermissions.TemplateCreate)]
+    [HasPermission(SignaturePermissions.RequestCreate)]
     [RateLimit("signature.f.template_read")]
     [ProducesResponseType<SignatureTemplateResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -10,7 +10,17 @@ namespace TaxVision.Auth.Application.Abstractions;
 /// frontend le fuerce el enrolamiento — no hay código que verificar todavía.
 /// </para>
 /// </summary>
-public sealed record HandoffTicketPayload(Guid TenantId, Guid UserId, bool MustEnrollMfa = false);
+/// <param name="RememberDevice">
+/// El usuario marcó "recordar este dispositivo" al resolver el segundo factor. Viaja en el vale
+/// porque el dispositivo de confianza se crea al CANJEARLO: así el token nace junto a los de la
+/// sesión y lo guarda el mismo origen que después lo va a reenviar en el próximo login.
+/// </param>
+public sealed record HandoffTicketPayload(
+    Guid TenantId,
+    Guid UserId,
+    bool MustEnrollMfa = false,
+    bool RememberDevice = false
+);
 
 /// <summary>
 /// Vale de handoff cross-dominio: <b>de un solo uso</b> (GETDEL) y TTL corto. Se emite en el host

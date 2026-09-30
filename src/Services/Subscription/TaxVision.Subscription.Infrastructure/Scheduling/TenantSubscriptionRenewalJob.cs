@@ -7,6 +7,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -48,6 +49,14 @@ public sealed class TenantSubscriptionRenewalJob(
 
         foreach (var subscription in due)
         {
+            // Cancelación programada: llegó el fin del período, así que en vez de renovar se expira. Va
+            // primero — no tiene sentido aplicar un downgrade ni resolver un precio de algo que termina acá.
+            if (subscription.CancelAtPeriodEnd)
+            {
+                await ExpireScheduledCancellationAsync(subscription, unitOfWork, bus, logger, nowUtc, ct);
+                continue;
+            }
+
             await ApplyPendingDowngradeIfAnyAsync(
                 subscription,
                 plans,
@@ -114,6 +123,41 @@ public sealed class TenantSubscriptionRenewalJob(
 
         if (due.Count > 0)
             logger.LogInformation("TenantSubscriptionRenewalJob processed {Count} due subscription(s).", due.Count);
+    }
+
+    /// <summary>El tenant canceló y el período ya terminó: expira, recalcula el acceso y avisa. Los seats y
+    /// add-ons terminan solos con la base — sus jobs miran el estado de la suscripción.</summary>
+    private static async Task ExpireScheduledCancellationAsync(
+        TenantSubscription subscription,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ILogger logger,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var previousStatus = subscription.Status;
+        var expired = subscription.ExpireAfterScheduledCancellation(actorUserId: Guid.Empty, nowUtc);
+        if (expired.IsFailure)
+        {
+            logger.LogWarning(
+                "Could not expire the scheduled cancellation of tenant {TenantId}: {Code}.",
+                subscription.TenantId,
+                expired.Error.Code
+            );
+            return;
+        }
+
+        await unitOfWork.SaveChangesAsync(ct);
+
+        bus.TenantId = subscription.TenantId.ToString();
+        await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
+        await bus.PublishStatusChangedAsync(subscription, previousStatus, SubscriptionChangeReason.CancellationEnded);
+
+        logger.LogInformation(
+            "Subscription of tenant {TenantId} expired at the end of its period after a scheduled cancellation.",
+            subscription.TenantId
+        );
     }
 
     private static async Task ApplyPendingDowngradeIfAnyAsync(

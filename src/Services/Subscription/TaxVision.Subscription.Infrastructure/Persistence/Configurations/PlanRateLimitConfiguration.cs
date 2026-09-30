@@ -61,12 +61,14 @@ public sealed class PlanRateLimitConfiguration : IEntityTypeConfiguration<PlanRa
         var pro = PlanCode.Create(PlanCatalog.Pro).Value;
         var enterprise = PlanCode.Create(PlanCatalog.Enterprise).Value;
 
+        // Lectura/escritura (F/G) y búsquedas/listados (H) escalan igual: 2/5/10. H era ×1 en starter
+        // (20/min en el grid de clientes, 30 veces menos que una lectura simple) y ×15 en enterprise.
         (PlanCode Plan, RateLimitCategory Category, decimal Multiplier)[] rows =
         [
-            // starter — baseline ("Standard" en el doc de diseño), ×1.0 en todo.
-            (starter, RateLimitCategory.F, 1.0m),
-            (starter, RateLimitCategory.G, 1.0m),
-            (starter, RateLimitCategory.H, 1.0m),
+            // starter — ×2 en F/G/H, ×1.0 en el resto.
+            (starter, RateLimitCategory.F, 2.0m),
+            (starter, RateLimitCategory.G, 2.0m),
+            (starter, RateLimitCategory.H, 2.0m),
             (starter, RateLimitCategory.I, 1.0m),
             (starter, RateLimitCategory.J, 1.0m),
             (starter, RateLimitCategory.K, 1.0m),
@@ -74,10 +76,10 @@ public sealed class PlanRateLimitConfiguration : IEntityTypeConfiguration<PlanRa
             (starter, RateLimitCategory.M, 1.0m),
             (starter, RateLimitCategory.N, 1.0m),
             (starter, RateLimitCategory.O, 1.0m),
-            // pro — equivalente a "Plus" del doc: ×3.0 default, I y J a ×5 (más volumen/templates).
-            (pro, RateLimitCategory.F, 3.0m),
-            (pro, RateLimitCategory.G, 3.0m),
-            (pro, RateLimitCategory.H, 3.0m),
+            // pro — ×5 en F/G/H/I/J, ×3.0 en K/L/O.
+            (pro, RateLimitCategory.F, 5.0m),
+            (pro, RateLimitCategory.G, 5.0m),
+            (pro, RateLimitCategory.H, 5.0m),
             (pro, RateLimitCategory.I, 5.0m),
             (pro, RateLimitCategory.J, 5.0m),
             (pro, RateLimitCategory.K, 3.0m),
@@ -85,10 +87,10 @@ public sealed class PlanRateLimitConfiguration : IEntityTypeConfiguration<PlanRa
             (pro, RateLimitCategory.M, 1.0m),
             (pro, RateLimitCategory.N, 1.0m),
             (pro, RateLimitCategory.O, 3.0m),
-            // enterprise — ×10.0 default, K a ×20 (envío) y H a ×15 (búsqueda).
+            // enterprise — ×10.0 default, K a ×20 (envío).
             (enterprise, RateLimitCategory.F, 10.0m),
             (enterprise, RateLimitCategory.G, 10.0m),
-            (enterprise, RateLimitCategory.H, 15.0m),
+            (enterprise, RateLimitCategory.H, 10.0m),
             (enterprise, RateLimitCategory.I, 10.0m),
             (enterprise, RateLimitCategory.J, 10.0m),
             (enterprise, RateLimitCategory.K, 20.0m),

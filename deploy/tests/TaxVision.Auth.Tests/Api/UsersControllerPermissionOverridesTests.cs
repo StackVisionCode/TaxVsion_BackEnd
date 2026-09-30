@@ -48,7 +48,7 @@ public sealed class UsersControllerPermissionOverridesTests
         var response = await ControllerFor(bus, tenantId, callerId)
             .SetPermissionOverrides(
                 targetId,
-                new UsersController.SetPermissionOverridesRequest([denyId]),
+                new UsersController.SetPermissionOverridesRequest([denyId], null),
                 CancellationToken.None
             );
 
@@ -57,7 +57,7 @@ public sealed class UsersControllerPermissionOverridesTests
         Assert.Equal(tenantId, command.TenantId);
         Assert.Equal(targetId, command.TargetUserId);
         Assert.Equal(callerId, command.RequestedByUserId);
-        Assert.Equal(new[] { denyId }, command.DeniedPermissionIds);
+        Assert.Equal(new[] { denyId }, command.Denies.Select(deny => deny.PermissionId));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class UsersControllerPermissionOverridesTests
         var response = await ControllerFor(bus, Guid.NewGuid(), Guid.NewGuid())
             .SetPermissionOverrides(
                 Guid.NewGuid(),
-                new UsersController.SetPermissionOverridesRequest([]),
+                new UsersController.SetPermissionOverridesRequest([], null),
                 CancellationToken.None
             );
 
@@ -84,7 +84,7 @@ public sealed class UsersControllerPermissionOverridesTests
         var response = await ControllerFor(bus, Guid.NewGuid(), Guid.NewGuid())
             .SetPermissionOverrides(
                 Guid.NewGuid(),
-                new UsersController.SetPermissionOverridesRequest([]),
+                new UsersController.SetPermissionOverridesRequest([], null),
                 CancellationToken.None
             );
 
@@ -100,7 +100,7 @@ public sealed class UsersControllerPermissionOverridesTests
         var response = await AnonymousController(bus)
             .SetPermissionOverrides(
                 Guid.NewGuid(),
-                new UsersController.SetPermissionOverridesRequest([]),
+                new UsersController.SetPermissionOverridesRequest([], null),
                 CancellationToken.None
             );
 

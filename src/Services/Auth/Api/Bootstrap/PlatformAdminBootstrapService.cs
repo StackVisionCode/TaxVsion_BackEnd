@@ -100,7 +100,7 @@ public sealed class PlatformAdminBootstrapService(
             return;
         }
 
-        if (await invitations.HasPendingAsync(PlatformTenant.Id, email, cancellationToken))
+        if (await invitations.HasPendingAsync(PlatformTenant.Id, email, UserAccountKind.Staff, cancellationToken))
         {
             throw new InvalidOperationException(
                 "A different pending platform invitation already exists for the configured email."

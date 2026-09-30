@@ -12,16 +12,32 @@ public sealed record IssuedTokens(string AccessToken, string RefreshToken, int E
 /// </summary>
 public interface IAuthSessionIssuer
 {
+    /// <summary>Sesión nueva cuya primera cadena de refresh es la de <paramref name="surface"/>.</summary>
     Task<IssuedTokens> StartSessionAsync(
         User user,
         string effectiveTimeZoneId,
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
+        SessionSurface surface,
         CancellationToken ct = default
     );
 
-    /// <summary>Rota el refresh token dentro de la misma sesión y emite un nuevo access token.</summary>
+    /// <summary>
+    /// Suma a una sesión existente la cadena de <paramref name="surface"/> (mismo <c>sid</c>, sin takeover).
+    /// Si la sesión ya tenía una cadena de esa superficie, se revoca: hay una sola por sesión.
+    /// </summary>
+    Task<IssuedTokens> JoinSessionAsync(
+        UserSession session,
+        User user,
+        string effectiveTimeZoneId,
+        IReadOnlyCollection<string> roles,
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Rota el refresh token dentro de su cadena (misma superficie) y emite un nuevo access token.</summary>
     Task<IssuedTokens> RotateAsync(
         RefreshToken currentToken,
         UserSession session,

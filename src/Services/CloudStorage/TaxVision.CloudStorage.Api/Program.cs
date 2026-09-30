@@ -62,11 +62,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "cloudstorage-
 // CloudStorage con el resto del monorepo.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
@@ -85,7 +85,7 @@ builder.Services.AddOwnershipAuthorization<ShareLink>(CloudStoragePermissions.Sh
 // (varios accesos al mismo link compartido desde la misma red).
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.UseTaxVisionRejectionResponse();
     options.AddPolicy(
         "share-public",
         context =>
@@ -102,7 +102,7 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
@@ -123,7 +123,7 @@ builder.Services.AddRateLimiter(options =>
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:zip",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {

@@ -47,6 +47,11 @@ public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> opti
                     var metrics = httpContext.RequestServices.GetRequiredService<AuthorizationMetrics>();
                     metrics.RecordDecision(allowed, "1");
 
+                    // A5 — deja la razón para ProblemDetailsAuthorizationResultHandler: la policy solo
+                    // puede devolver true/false, y el 403 lo escribe el middleware después de esto.
+                    if (!allowed)
+                        AuthorizationDenial.ForPermission(permission).Record(httpContext);
+
                     // Gate de Entitlements/módulo: si el permiso pasó pero pertenece a un módulo que el
                     // plan del tenant no habilita, loguea (log-only) o lanza 403 según el flag
                     // Authorization:ModuleGate:Enforce. Opt-in: solo corre donde se registró
@@ -65,14 +70,18 @@ public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> opti
                             metrics.RecordModuleDecision(moduleEnabled, module);
                             if (!moduleEnabled)
                             {
-                                var enforce = httpContext
-                                    .RequestServices.GetRequiredService<IConfiguration>()
-                                    .GetValue("Authorization:ModuleGate:Enforce", false);
+                                // A6 — el escalón se decide POR MÓDULO, no por servicio: ver
+                                // ModuleGateSettings. Un módulo fuera del escalón sigue en log-only.
+                                var enforce = ModuleGateSettings.ShouldEnforce(
+                                    httpContext.RequestServices.GetRequiredService<IConfiguration>(),
+                                    module
+                                );
                                 if (enforce)
-                                    throw new ModuleUnavailableException(
-                                        "Authz.ModuleUnavailable",
-                                        $"Your plan does not include the '{module}' module required for this action."
-                                    );
+                                {
+                                    var denial = AuthorizationDenial.ForModule(module);
+                                    denial.Record(httpContext);
+                                    throw new ModuleUnavailableException(denial.Code, denial.Detail, module);
+                                }
 
                                 httpContext
                                     .RequestServices.GetRequiredService<ILoggerFactory>()

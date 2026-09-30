@@ -15,6 +15,7 @@ using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Permissions;
 using TaxVision.Customer.Infrastructure.Persistence;
 using TaxVision.Customer.Infrastructure.Persistence.Repositories;
+using TaxVision.Customer.Infrastructure.Portal;
 using TaxVision.Customer.Infrastructure.RateLimiting;
 using TaxVision.Customer.Infrastructure.Security;
 
@@ -111,10 +112,7 @@ public static class InfrastructureRegistration
         services.AddScoped<EfTenantPlanCodeReader>();
 
         // Gate de módulo Fase 1 — lector de módulos de la misma proyección (la fuente se registra en Program.cs).
-        services.AddScoped<
-            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
-            TaxVision.Customer.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader
-        >();
+        services.AddCachedTenantEntitlementModulesReader<TaxVision.Customer.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader>();
         services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
             sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
             sp.GetRequiredService<EfTenantPlanCodeReader>()
@@ -146,6 +144,16 @@ public static class InfrastructureRegistration
     {
         services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
         services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
+        // Acceso al portal de un cliente: Auth crea/reenvía la invitación y devuelve el desenlace.
+        services.AddHttpClient<ICustomerPortalAccessClient, CustomerPortalAccessClient>(
             (sp, http) =>
             {
                 var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;

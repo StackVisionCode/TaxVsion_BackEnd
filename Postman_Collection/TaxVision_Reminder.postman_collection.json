@@ -557,7 +557,7 @@
 							"host": [ "{{UrlBase}}" ],
 							"path": [ "reminders", "upcoming" ]
 						},
-						"description": "Correr con el Collection Runner ~120 iteraciones seguidas (cuota base 20/60s, escalada por tier con EnforceTierQuotas=true, overlay de tenant 100). OJO: las cabeceras X-RateLimit-* solo aparecen en la respuesta 429, NO en las 200 — buscarlas en un 200 y no encontrarlas no es un bug."
+						"description": "Correr con el Collection Runner ~150 iteraciones seguidas, sin delay (reminder.h.upcoming es token bucket: 60 de base por minuto, escalada por tier con EnforceTierQuotas=true, y overlay de tenant 600; la recarga es continua, con pausas no se agota). El 429 trae el contrato único: body {code: RateLimit.Exceeded, message, retryAfterSeconds, policy, layer} y Retry-After con la espera real, no la ventana entera. OJO: las cabeceras X-RateLimit-* solo aparecen en la respuesta 429, NO en las 200 — buscarlas en un 200 y no encontrarlas no es un bug."
 					},
 					"response": [],
 					"event": [

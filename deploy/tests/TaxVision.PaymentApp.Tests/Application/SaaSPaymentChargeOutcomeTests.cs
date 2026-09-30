@@ -29,6 +29,37 @@ public sealed class SaaSPaymentChargeOutcomeTests
         Assert.NotNull(nextRetryAtUtc);
     }
 
+    [Theory]
+    [InlineData(SaaSPaymentType.SeatsPurchaseCharge)]
+    [InlineData(SaaSPaymentType.SubscriptionRenewalCheckout)]
+    public void Hosted_checkouts_never_get_dunning(SaaSPaymentType type)
+    {
+        var payment = CreatePayment(type);
+
+        Assert.False(SaaSPaymentChargeOutcome.SupportsDunning(type));
+        Assert.Null(SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void A_late_failure_gets_the_same_first_retry_as_an_immediate_failure()
+    {
+        var payment = CreatePayment(SaaSPaymentType.SeatRenewal);
+        var nowUtc = DateTime.UtcNow;
+        var immediate = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, nowUtc);
+
+        payment.MarkProcessing(
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_late").Value,
+            "processing",
+            providerResponseBody: null,
+            Guid.Empty,
+            nowUtc
+        );
+        var late = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, nowUtc, failedAttemptRecorded: true);
+
+        Assert.Equal(nowUtc.AddHours(1), immediate);
+        Assert.Equal(immediate, late);
+    }
+
     private static SaaSPayment CreatePayment(SaaSPaymentType type) =>
         SaaSPayment
             .Create(

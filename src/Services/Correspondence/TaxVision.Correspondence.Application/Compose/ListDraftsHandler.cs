@@ -20,7 +20,14 @@ public static class ListDraftsHandler
         CancellationToken ct
     )
     {
-        var page = await drafts.ListOpenByCustomerAsync(query.TenantId, query.CustomerId, query.Page, query.Size, ct);
+        var page = await drafts.ListOpenByCustomerAsync(
+            query.TenantId,
+            query.CustomerId,
+            query.Page,
+            query.Size,
+            query.OwnerUserId,
+            ct
+        );
 
         var items = page.Items.Select(ToListItem).ToList();
         return new PagedResult<DraftListItem>(items, page.Page, page.Size, page.TotalCount);

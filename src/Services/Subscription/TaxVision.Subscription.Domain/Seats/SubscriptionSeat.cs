@@ -60,6 +60,14 @@ public sealed class SubscriptionSeat : TenantEntity
         if (tenantId == Guid.Empty)
             return Result.Failure<SubscriptionSeat>(new Error("Seat.InvalidTenant", "TenantId is required."));
 
+        // Copia propia del precio: Money es un owned type, y EF Core no puede compartir una instancia entre
+        // filas — comprar varios asientos de una pasaba el MISMO objeto a todos, EF lo rastreaba una sola vez
+        // y los demás se insertaban con UnitPriceAmount NULL. Se copia acá para que ningún llamador pueda
+        // equivocarse: el precio no cambia, pero la instancia sí es de este asiento.
+        var price = Money.Create(unitPrice.Amount, unitPrice.Currency);
+        if (price.IsFailure)
+            return Result.Failure<SubscriptionSeat>(price.Error);
+
         var seat = new SubscriptionSeat
         {
             Type = type,
@@ -69,7 +77,7 @@ public sealed class SubscriptionSeat : TenantEntity
             PurchasedAtUtc = nowUtc,
             AutoRenew = autoRenew,
             BillingCycle = billingCycle,
-            UnitPrice = unitPrice,
+            UnitPrice = price.Value,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,

@@ -190,7 +190,8 @@ public sealed class CustomerDuplicateGuardTests
                 Dba: null,
                 BusinessStructure: null,
                 FormationDate: null,
-                PrincipalBusinessActivityId: null
+                PrincipalBusinessActivityId: null,
+                CallerCanViewAllCustomers: true
             ),
             repo,
             detector,

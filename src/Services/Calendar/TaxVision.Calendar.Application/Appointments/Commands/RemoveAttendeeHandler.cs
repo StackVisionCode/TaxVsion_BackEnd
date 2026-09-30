@@ -4,7 +4,13 @@ using TaxVision.Calendar.Application.Appointments.Abstractions;
 
 namespace TaxVision.Calendar.Application.Appointments.Commands;
 
-public sealed record RemoveAttendeeCommand(Guid TenantId, Guid AppointmentId, Guid AttendeeId, Guid ActingUserId);
+public sealed record RemoveAttendeeCommand(
+    Guid TenantId,
+    Guid AppointmentId,
+    Guid AttendeeId,
+    Guid ActingUserId,
+    bool CanManageAll
+);
 
 public static class RemoveAttendeeHandler
 {
@@ -19,7 +25,7 @@ public static class RemoveAttendeeHandler
         if (found.IsFailure)
             return found;
 
-        var removed = found.Value.RemoveAttendee(command.AttendeeId, command.ActingUserId);
+        var removed = found.Value.RemoveAttendee(command.AttendeeId, command.ActingUserId, command.CanManageAll);
         if (removed.IsFailure)
             return removed;
 

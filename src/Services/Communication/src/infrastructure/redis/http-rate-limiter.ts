@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis';
-import { incrementAndGet } from './rate-counter.js';
+import { consumeWithinLimit } from './rate-counter.js';
 import { recordEvaluated, recordBlocked, recordFallbackOpen } from '../telemetry/rate-limit-metrics.js';
 
 /**
@@ -20,22 +20,35 @@ import { recordEvaluated, recordBlocked, recordFallbackOpen } from '../telemetry
  * (.NET) y del ADR_017 (Redis caido nunca debe bloquear trafico). Ahora, igual que el lado .NET,
  * se registra `fallback_open_total{reason=redis_error}` y se permite el request.
  */
+export interface HttpRateLimitDecision {
+  readonly allowed: boolean;
+  /** Segundos hasta que la ventana se reinicia; 0 cuando se permite. */
+  readonly retryAfterSeconds: number;
+}
+
 export class HttpRateLimiter {
   constructor(private readonly redis: Redis) {}
 
-  async allow(input: { key: string; policy: string; maxPerWindow: number; windowSeconds: number }): Promise<boolean> {
+  async allow(input: {
+    key: string;
+    policy: string;
+    maxPerWindow: number;
+    windowSeconds: number;
+  }): Promise<HttpRateLimitDecision> {
     recordEvaluated(input.policy, 'http', 'n/a');
 
-    let count: number;
+    let counter: { allowed: boolean; ttlMs: number };
     try {
-      count = await incrementAndGet(this.redis, input.key, input.windowSeconds);
+      counter = await consumeWithinLimit(this.redis, input.key, input.windowSeconds, input.maxPerWindow);
     } catch (error) {
       recordFallbackOpen(input.policy, 'redis_error');
-      return true;
+      return { allowed: true, retryAfterSeconds: 0 };
     }
 
-    const allowed = count <= input.maxPerWindow;
-    if (!allowed) recordBlocked(input.policy, 'http', 'n/a');
-    return allowed;
+    if (counter.allowed) return { allowed: true, retryAfterSeconds: 0 };
+
+    recordBlocked(input.policy, 'http', 'n/a');
+    const retryAfterSeconds = counter.ttlMs > 0 ? Math.ceil(counter.ttlMs / 1000) : input.windowSeconds;
+    return { allowed: false, retryAfterSeconds };
   }
 }

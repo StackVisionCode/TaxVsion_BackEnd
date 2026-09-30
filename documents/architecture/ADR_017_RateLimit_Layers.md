@@ -5,7 +5,9 @@ Fase 5 el load shedder de Gateway, Fase 6 el piloto de tier-aware quotas en Cust
 port de rate limiting atómico en Communication/Node, Fase 8 las métricas OTel + dashboards Grafana
 + alertas, y Fase 9 las fitness functions de cierre (encontró y corrigió 4 endpoints reales de
 PaymentClient sin migrar) + README + Postman. Ver
-`documents/RateLimit/Plan_Implementacion_Fases.md` para el detalle de cada fase.
+`documents/RateLimit/Plan_Implementacion_Fases.md` para el detalle de cada fase. **Revisado
+2026-09-25** (§2.4): cuotas por costo/riesgo, load shedding sin falsos positivos, contrato único de
+rechazo y throttles que ya no pierden datos.
 **Fecha**: 2026-08-01
 **Contexto de la decisión**: investigación de industria (Stripe, Shopify, Zendesk, Atlassian, Salesforce, Auth0, HubSpot) + auditoría del rate-limiting actual del monorepo, solicitada para validar una recomendación previa de un senior de particionar por tenant.
 
@@ -119,6 +121,55 @@ duplicado aquí. Dos hallazgos afectan el diseño de este ADR y sí se registran
   Growth, Fase 4.15). Esto significa que las 17 categorías ya cubren tráfico M2M sin necesitar una
   categoría "servicios internos" dedicada, como especulaba la nota original de la tabla de Fase 4
   para Documents — se prefirió reutilizar J en vez de ampliar el enum congelado en §2.
+
+## 2.4 Revisión 2026-09 — flexibilización por costo/riesgo y load shedding
+
+En producción, clientes logueados navegando módulos recibían `429` y el `503 "Fleet is overloaded"`.
+El diagnóstico y el plan completo están en `documents/RateLimit/Plan_Flexibilizacion_RateLimit_y_LoadShedding.md`.
+Esta sección registra las decisiones que cambian el diseño de este ADR.
+
+**Capa 1 — load shedding (Gateway).** El 503 era un falso positivo: el middleware corría antes de
+`UseWebSockets()`, así que los sockets de chat (minutos de vida) se medían como latencia.
+- El upgrade se detecta por header (`Upgrade: websocket` / CONNECT extendido), sin depender del orden del pipeline.
+- `PassThroughPathPrefixes` (`/communication/socket.io`) no se mide ni se sheddea.
+- La latencia se mide hasta el primer byte (`Response.OnStarting`). Los bodies > 1 MB no se miden.
+- La activación exige `ActivationSeconds` sostenidos y se desactiva con histéresis (`RecoveryRatio`).
+- `MinSamples` sube a 200 y el p99 a 5 s.
+- Los anónimos se reparten por IP en una población separada de los tenants.
+- En la métrica, los anónimos se etiquetan `anonymous`, nunca con la IP.
+
+**Contrato único de rechazo.** Todo rechazo "espera y reintenta" usa el mismo contrato:
+- `429 {code:"RateLimit.Exceeded", message, retryAfterSeconds, policy?, layer?}` con `Retry-After`.
+- `503 {code:"LoadShedding.Active", message, retryAfterSeconds}` para el load shedding.
+
+Aplica al evaluador tiered, a los limiters nativos de ASP.NET Core (`UseTaxVisionRejectionResponse()`)
+y a Communication/Node. Los throttles de dominio de cara al usuario (OTP, PIN, accept de invitación)
+responden `429` con su propio código vía `ErrorHttpMapping`, nunca `400`/`401`. El Gateway expone
+`Retry-After` y `X-RateLimit-*` por CORS.
+
+**Algoritmos.**
+- Un rechazo no consume cupo: fixed window hace check-then-INCR y sliding window no agrega el request rechazado.
+- `Retry-After` es la espera real que devuelve el script Lua, no la ventana completa.
+- La Capa 4 (tope por endpoint) se evalúa al final y solo para I. Antes se evaluaba primero, y los reintentos de un usuario ya bloqueado agotaban el tope global.
+- Si falla la lectura de `PlanRateLimits`, se usa el último catálogo bueno o un fallback breve. Nunca se cachea un catálogo vacío 5 min.
+
+**Cuotas (§3 del plan).**
+- Listados/búsquedas H: `TokenBucket` 60 base / 600 overlay. Multiplicadores H 2/5/10.
+- Upload: solo el initiate consume cupo.
+- Gateway `PreAuthByIp`: 30/min, y ya no incluye `/auth/refresh` ni `GET /auth/invitations`.
+- Auth: política propia `auth-refresh` de 120/min por IP.
+- Communication: 1000/min por IP (`CF-Connecting-IP`) + 600/min por usuario tras verificar el JWT.
+- `OnRejected` de los limiters nativos emite `ratelimit.native_rejected_total{policy}`. Antes esos 429 no dejaban métrica.
+
+**Fronts (CRM y Portal).**
+- Un aviso global con cuenta regresiva que lee `retryAfterSeconds`.
+- Un único reintento silencioso de GET si la espera es de 5 s o menos.
+- Un refresh que recibe `429`, `503` o un fallo de red **no cierra la sesión**; solo el rechazo del refresh token (400/401/403) la cierra.
+
+**Throttles que perdían datos.**
+- Un webhook de pago throttleado por tenant responde `429` y el evento queda `Failed` (no terminal), así la entrega siguiente del provider lo reprocesa.
+- Un email por encima del cupo del provider se **difiere**: rollback del intento + `EmailRateLimitedException` + `ReScheduleAsync` con `Retry-After` y jitter. Solo falla tras 60 entregas.
+- Un consumer nunca responde a un throttle marcando el mensaje como fallo permanente.
 
 ## 4. Consecuencias
 

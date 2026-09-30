@@ -5,10 +5,10 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Credentials.Commands;
-using TaxVision.Auth.Application.TenantDomains;
+using TaxVision.Auth.Application.Credentials.Queries;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -17,14 +17,13 @@ namespace TaxVision.Auth.Api.Controllers;
 [Route("auth")]
 public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>
-    /// TenantId opcional — mismo criterio que AuthController.Login (ver
-    /// EffectiveLoginTenantResolver): con EnforceHostResolution=true se ignora
-    /// siempre y se usa el Host resuelto; nunca lo dicta el cliente.
-    /// </summary>
-    public sealed record ForgotPasswordRequest(string Email, Guid? TenantId = null);
+    /// <summary><c>AccountKind</c>: el CRM pide el reset de la cuenta Staff y el portal el de la Portal.</summary>
+    public sealed record ForgotPasswordRequest(string Email, UserAccountKind? AccountKind = null);
 
-    /// <summary>Solicita recuperación de contraseña. Siempre responde 202 (anti-enumeración).</summary>
+    /// <summary>
+    /// Solicita recuperación de contraseña. Desde el subdominio de una oficina solo resetea esa oficina; desde la
+    /// entrada general, todas las del email. La oficina sale del Host, nunca del body. Siempre 202 (anti-enumeración).
+    /// </summary>
     [HttpPost("password/forgot")]
     [AllowAnonymous]
     [RateLimitExempt(
@@ -34,25 +33,13 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> ForgotPassword(
         ForgotPasswordRequest request,
         [FromServices] IResolvedTenantContext tenantContext,
-        [FromServices] IOptions<TenantDomainOptions> tenantDomainOptions,
         CancellationToken ct
     )
     {
-        // Con oficina resuelta (subdominio) → reset POR-TENANT. Sin oficina (app.taxproffice.com, el
-        // Host no resuelve a ningún tenant) → reset CENTRAL: descubre todas las oficinas del email y
-        // manda un link por cada una. Ambos caminos devuelven el mismo 202 (anti-enumeración): el
-        // caller no puede distinguirlos ni saber si el email existe.
-        var tenantResult = EffectiveLoginTenantResolver.Resolve(
-            tenantDomainOptions.Value.EnforceHostResolution,
-            tenantContext.ResolvedTenantId,
-            request.TenantId
+        await bus.InvokeAsync<Result>(
+            new ForgotPasswordCommand(request.Email, request.AccountKind, tenantContext.ResolvedTenantId),
+            ct
         );
-
-        if (tenantResult.IsSuccess)
-            await bus.InvokeAsync<Result>(new ForgotPasswordCommand(tenantResult.Value, request.Email), ct);
-        else
-            await bus.InvokeAsync<Result>(new ForgotPasswordCentralCommand(request.Email), ct);
-
         return Accepted();
     }
 
@@ -66,6 +53,24 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> ResetPassword(ResetPasswordCommand command, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(command, ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ValidateResetTokenRequest(string Token);
+
+    /// <summary>¿El enlace de reset todavía sirve? 204 si sí; 401 si caducó, ya se usó o fue anulado. No lo consume
+    /// ni cuenta intentos: la página lo consulta al abrirse para avisar antes de pedir la contraseña.</summary>
+    [HttpPost("password/reset/validate")]
+    [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (token de reset por email) — el token es imposible de adivinar y el Gateway acota la ruta por IP (PreAuthByIp)."
+    )]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ValidateResetToken(ValidateResetTokenRequest request, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result>(new ValidatePasswordResetTokenQuery(request.Token), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

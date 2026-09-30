@@ -18,10 +18,12 @@ public sealed record RecipientSendOutcome(
 /// Resultado agregado de <see cref="IEmailSender.SendAsync"/>. <see cref="Success"/> es true cuando
 /// el MTA aceptó el envelope para al menos un destinatario; los rechazos 5xx individuales quedan en
 /// <see cref="RecipientOutcomes"/> sin fallar el envío completo (plan §Fase 3, punto 3).
+/// <see cref="RetryAfter"/> != null: rechazo pasajero por cupo (429), nada salió y conviene reintentar.
 /// </summary>
 public sealed record SendResult(
     bool Success,
     string? ProviderMessageId,
     string? ErrorReason,
-    IReadOnlyList<RecipientSendOutcome> RecipientOutcomes
+    IReadOnlyList<RecipientSendOutcome> RecipientOutcomes,
+    TimeSpan? RetryAfter = null
 );

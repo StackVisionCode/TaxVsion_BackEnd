@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using BuildingBlocks.RateLimiting;
 using Xunit;
 
 namespace TaxVision.Customer.Tests.Integration;
@@ -20,7 +21,7 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
     public RateLimitIntegrationTests(CustomerApiFactory factory) => this.factory = factory;
 
     [Fact]
-    public async Task CustomerCreate_trips_with_user_layer_and_limit_60()
+    public async Task CustomerCreate_trips_with_user_layer_at_its_catalog_limit()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -40,14 +41,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
                         PreferredChannel = "Email",
                     }
                 ),
-            maxAttempts: 120
+            maxAttempts: 2 * BaseLimit("customer.g.create")
         );
 
-        await AssertTripped(tripped, expectedPolicy: "customer.g.create", expectedLayer: "user", expectedLimit: 60);
+        await AssertTripped(tripped, expectedPolicy: "customer.g.create", expectedLayer: "user");
     }
 
     [Fact]
-    public async Task CustomerGetById_trips_with_user_layer_and_limit_300()
+    public async Task CustomerGetById_trips_with_user_layer_at_its_catalog_limit()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -56,14 +57,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
 
         var tripped = await FireUntilTrippedAsync(
             () => client.GetAsync($"/customers/{randomCustomerId}"),
-            maxAttempts: 600
+            maxAttempts: 2 * BaseLimit("customer.f.get")
         );
 
-        await AssertTripped(tripped, expectedPolicy: "customer.f.get", expectedLayer: "user", expectedLimit: 300);
+        await AssertTripped(tripped, expectedPolicy: "customer.f.get", expectedLayer: "user");
     }
 
     [Fact]
-    public async Task FiscalReveal_trips_with_user_layer_and_limit_5()
+    public async Task FiscalReveal_trips_with_user_layer_at_its_catalog_limit()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -72,19 +73,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
 
         var tripped = await FireUntilTrippedAsync(
             () => client.GetAsync($"/customers/{randomCustomerId}/fiscal-profile/tax-identifier"),
-            maxAttempts: 20
+            maxAttempts: BaseLimit("customer.n.fiscal_reveal") + 5
         );
 
-        await AssertTripped(
-            tripped,
-            expectedPolicy: "customer.n.fiscal_reveal",
-            expectedLayer: "user",
-            expectedLimit: 5
-        );
+        await AssertTripped(tripped, expectedPolicy: "customer.n.fiscal_reveal", expectedLayer: "user");
     }
 
     [Fact]
-    public async Task CustomerUpdate_trips_with_user_layer_and_limit_60()
+    public async Task CustomerUpdate_trips_with_user_layer_at_its_catalog_limit()
     {
         // Fase 4.1: customer.g.write es compartida por los ~17 endpoints de escritura simple
         // sobre un customer existente — este test prueba el wiring vía PATCH /customers/{id}
@@ -105,14 +101,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
                         PrimaryEmail = "ratelimit.update.test@ratelimit-test.local",
                     }
                 ),
-            maxAttempts: 120
+            maxAttempts: 2 * BaseLimit("customer.g.write")
         );
 
-        await AssertTripped(tripped, expectedPolicy: "customer.g.write", expectedLayer: "user", expectedLimit: 60);
+        await AssertTripped(tripped, expectedPolicy: "customer.g.write", expectedLayer: "user");
     }
 
     [Fact]
-    public async Task BulkStatusChange_trips_with_user_layer_and_limit_12()
+    public async Task BulkStatusChange_trips_with_user_layer_at_its_catalog_limit()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -124,15 +120,10 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
                     "/customers/bulk/activate",
                     new { CustomerIds = new[] { Guid.NewGuid() }, Reason = (string?)null }
                 ),
-            maxAttempts: 40
+            maxAttempts: BaseLimit("customer.i.bulk_status_change") + 10
         );
 
-        await AssertTripped(
-            tripped,
-            expectedPolicy: "customer.i.bulk_status_change",
-            expectedLayer: "user",
-            expectedLimit: 12
-        );
+        await AssertTripped(tripped, expectedPolicy: "customer.i.bulk_status_change", expectedLayer: "user");
     }
 
     /// <summary>
@@ -168,13 +159,15 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
         return client;
     }
 
-    private static async Task AssertTripped(
-        HttpResponseMessage response,
-        string expectedPolicy,
-        string expectedLayer,
-        int expectedLimit
-    )
+    /// <summary>
+    /// El cupo sale del catálogo, no de un número copiado: el tenant de prueba no tiene plan, así que
+    /// el efectivo es la base de la política. Antes los números fijos quedaron viejos al ajustar las cuotas.
+    /// </summary>
+    private static int BaseLimit(string policy) => RateLimitPolicyCatalog.GetByName(policy).BaseQuotaPerMinute;
+
+    private static async Task AssertTripped(HttpResponseMessage response, string expectedPolicy, string expectedLayer)
     {
+        var expectedLimit = BaseLimit(expectedPolicy);
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
 
         Assert.True(response.Headers.TryGetValues("Retry-After", out _), "Retry-After header missing.");

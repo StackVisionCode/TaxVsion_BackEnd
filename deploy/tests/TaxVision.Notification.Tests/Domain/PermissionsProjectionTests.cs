@@ -63,25 +63,6 @@ public sealed class PermissionsProjectionTests
     }
 
     [Fact]
-    public void UserPermissionsProjection_ReapplyPermissionsUnion_does_not_change_version_or_roles()
-    {
-        var roleId = Guid.NewGuid();
-        var projection = NotificationRecipientPermissionsProjection.Create(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            5,
-            ["a"],
-            [roleId]
-        );
-
-        projection.ReapplyPermissionsUnion(["a", "b", "c"]);
-
-        Assert.Equal(5, projection.PermissionsVersion);
-        Assert.Equal([roleId], projection.RoleIds());
-        Assert.Equal(["a", "b", "c"], projection.PermissionCodes());
-    }
-
-    [Fact]
     public void UserPermissionsProjection_MarkInactive_is_idempotent()
     {
         var projection = NotificationRecipientPermissionsProjection.Create(Guid.NewGuid(), Guid.NewGuid(), 1, [], []);

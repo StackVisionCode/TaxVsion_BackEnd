@@ -43,7 +43,8 @@ public sealed class CalendarUserOffboardedConsumerTests
                 AttendeeSnapshot.Create("Client", "client@example.com").Value,
                 isRequired: true,
                 organizer,
-                Now
+                Now,
+                canManageAll: false
             );
         return appointment;
     }

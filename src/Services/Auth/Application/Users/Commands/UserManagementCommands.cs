@@ -17,7 +17,17 @@ namespace TaxVision.Auth.Application.Users.Commands;
 
 /// <summary>Desactiva un usuario (baja reversible): corta sus sesiones y deja de contar para el cupo del
 /// plan. NO libera un asiento COMPRADO — eso lo hace Subscription al consumir el evento.</summary>
-public sealed record DeactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
+/// <param name="CallerActorType">
+/// Actor type real del caller, leído del JWT y nunca del cuerpo. Solo se usa para la jerarquía: un
+/// empleado con <c>users.manage</c> no da de baja a un administrador. <c>null</c> = desconocido, y
+/// entonces la jerarquía se aplica igual (fail-closed).
+/// </param>
+public sealed record DeactivateUserCommand(
+    Guid TenantId,
+    Guid TargetUserId,
+    Guid RequestedByUserId,
+    UserActorType? CallerActorType = null
+);
 
 /// <summary>Desactiva al usuario objetivo, revoca sesiones y tokens, y publica el evento de integración correspondiente.</summary>
 public static class DeactivateUserHandler
@@ -27,6 +37,7 @@ public static class DeactivateUserHandler
         IUserRepository users,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocations,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -45,12 +56,30 @@ public static class DeactivateUserHandler
         if (!target.IsActive)
             return Result.Success();
 
+        // Jerarquía: users.manage alcanza para dar de baja a un empleado, no a un administrador.
+        // Un empleado con el permiso delegado podía desactivar a su propio jefe.
+        var callerIsAdmin = command.CallerActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin;
+        if (target.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin && !callerIsAdmin)
+        {
+            return Result.Failure(
+                new Error("User.Hierarchy", "Only an administrator can deactivate another administrator.")
+            );
+        }
+
+        // Y nunca se queda el tenant sin ningún administrador activo — el mismo guard que ya tenía
+        // el retiro definitivo (Offboard), que la baja reversible no tenía.
+        if (
+            target.ActorType == UserActorType.TenantAdmin
+            && await users.CountActiveAdminsAsync(command.TenantId, ct) <= 1
+        )
+            return Result.Failure(new Error("User.LastAdmin", "You cannot deactivate the last active administrator."));
+
         target.Deactivate(DateTime.UtcNow);
 
-        var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
-        foreach (var session in active)
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
+        // A5 (R12) — denylist + anuncio + revocación. Antes denylisteaba y revocaba pero NO anunciaba,
+        // así que la pestaña abierta del usuario dado de baja se quedaba con la sesión muerta hasta su
+        // siguiente request en vez de recibir el logout al instante.
+        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
 
         await bus.PublishAsync(
             new UserDeactivatedIntegrationEvent
@@ -189,6 +218,7 @@ public static class OffboardUserHandler
         IUserRepository users,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocations,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -207,6 +237,20 @@ public static class OffboardUserHandler
         // Idempotente: ya retirado → no re-publica.
         if (target.Status == UserStatus.Offboarded)
             return Result.Success();
+
+        // El retiro es para quien TRABAJA en la oficina: reasigna su trabajo a un sucesor, transfiere sus
+        // archivos compartidos, suelta sus conectores y libera su asiento. Un cliente de portal no tiene nada
+        // de eso, y su acceso se quita desde su propio perfil. Se corta acá y no solo en la pantalla: la API
+        // no puede depender de que la UI no lo ofrezca.
+        if (target.ActorType == UserActorType.CustomerPortal)
+        {
+            return Result.Failure(
+                new Error(
+                    "User.PortalClient",
+                    "Portal clients aren't removed from the office. Manage their access from the client's profile."
+                )
+            );
+        }
 
         // No dejar al tenant sin ningún admin.
         if (
@@ -235,11 +279,8 @@ public static class OffboardUserHandler
         if (offboard.IsFailure)
             return offboard;
 
-        // Corta el acceso al instante: mismo camino probado que Deactivate.
-        var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
-        foreach (var session in active)
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
+        // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
+        await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
 
         await bus.PublishAsync(
             new UserOffboardedIntegrationEvent
@@ -399,6 +440,17 @@ public static class AssignUserRolesHandler
         var actorTypeGuard = ActorTypeRoleGuard.ValidateRolesForActorType(target.ActorType, tenantRoles, catalog);
         if (actorTypeGuard.IsFailure)
             return actorTypeGuard;
+
+        // A4 (§27) — el techo también acá: hasta ahora asignar un rol no revalidaba nada del techo,
+        // así que un rol custom con un permiso que dejó de ser concedible (el catálogo lo marcó
+        // PlatformOnly, peligroso o reservado después de crearlo) seguía repartiéndolo a usuarios
+        // nuevos. Solo la mitad DURA: el tier y el módulo no se miden acá a propósito, porque una
+        // configuración anterior a un downgrade tiene que quedar dormida, no volver el rol
+        // inasignable (§27, opción híbrida). Los roles de sistema quedan fuera: los siembra la
+        // plataforma y el bundle raíz de Tenant Admin incluye permisos peligrosos por diseño.
+        var ceilingGuard = PermissionCeiling.ValidateRolesNeverGrantable(tenantRoles, catalog);
+        if (ceilingGuard.IsFailure)
+            return ceilingGuard;
 
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();

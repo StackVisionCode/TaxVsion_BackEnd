@@ -13,6 +13,13 @@ public interface ICredentialTokenRepository
     /// <summary>Busca un token de reset de contraseña por su hash (los tokens en claro nunca se almacenan).</summary>
     Task<PasswordResetToken?> GetPasswordResetByHashAsync(string tokenHash, CancellationToken ct = default);
 
+    /// <summary>Enlaces de reset del usuario que todavía podrían usarse: sin usar, sin anular y sin caducar.</summary>
+    Task<IReadOnlyList<PasswordResetToken>> GetPendingPasswordResetsAsync(
+        Guid userId,
+        DateTime utcNow,
+        CancellationToken ct = default
+    );
+
     Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default);
 
     /// <summary>Busca un token de verificación de correo por su hash.</summary>

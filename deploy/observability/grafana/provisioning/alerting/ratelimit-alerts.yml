@@ -92,5 +92,133 @@ groups:
           severity: critical
           team: ops
         annotations:
-          summary: "El load shedder de flota (Fase 5, Gateway) está rechazando requests con 503 hace 2+ min."
-          description: "Revisar RateLimit_Overview.json panel 'Load shedder de flota' — indica saturación real de p99+5xx en algún servicio, no solo rate limiting por tenant."
+          summary: "El load shedder de flota (Gateway) está rechazando requests con 503 hace 2+ min."
+          description: "Solo se activa con p99 o tasa de 5xx por encima del umbral durante ActivationSeconds sostenidos (los sockets y los uploads grandes no cuentan como latencia). Indica saturación real de algún servicio, no rate limiting por tenant. Revisar el dashboard Rate Limit Overview, paneles 'Load shedder de flota' y 'top 10 tenants rechazados'."
+
+  - orgId: 1
+    name: ratelimit-native-and-deferred
+    folder: TaxVision
+    interval: 1m
+    rules:
+      # Los limiters nativos particionan por IP: un rechazo sostenido suele ser una oficina entera
+      # detrás de un NAT (o un abuso real). 0.2/s = 12 rechazos por minuto durante 10 min.
+      - uid: ratelimit-native-rejections-sustained
+        title: "RateLimit — limiter nativo rechazando sostenido 10 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(ratelimit_native_rejected_total[5m])) by (policy)"
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Un limiter nativo (Gateway por IP, auth-refresh, Connectors…) lleva 10+ min rechazando más de 12 req/min."
+          description: "Ver el panel '429 de limiters nativos por política'. Si es gateway.pre_auth_by_ip o auth-refresh desde la IP de una oficina, subir el límite (appsettings GatewayRateLimiting / política nativa del servicio); si es una IP ajena, es abuso."
+
+      # Stripe/PayPal reintentan el 429, así que no se pierde nada; pero más de 60 webhooks por minuto
+      # para un tenant es anómalo (bug de reintentos del provider o abuso).
+      - uid: ratelimit-payment-webhooks-throttled
+        title: "RateLimit — webhooks de pago throttleados por tenant"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: "sum(increase(ratelimit_native_rejected_total{policy=\"paymentapp.webhook_tenant\"}[10m]))"
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "PaymentApp está respondiendo 429 a webhooks de Stripe/PayPal (más de 60/min para un tenant)."
+          description: "El provider los reintenta y el evento queda Failed (no terminal) hasta entonces: no se pierde el pago. Revisar en los logs de PaymentApp qué tenant y qué tipo de evento, y en el dashboard del provider si hay una tormenta de reintentos."
+
+      # Postmaster difiere los emails por encima del cupo en vez de fallarlos; tras 60 entregas
+      # (≈1 h) se dan por fallidos. 15 min sostenidos avisan antes de llegar a ese punto.
+      - uid: postmaster-emails-deferred-sustained
+        title: "Postmaster — emails diferidos por cupo del provider sostenido 15 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(postmaster_rate_limit_hits_total[5m])) by (tenant, stream)"
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "Los emails de un tenant se están difiriendo por el cupo por minuto del provider hace 15+ min."
+          description: "Si la ráfaga dura más de ~1 h, los emails empiezan a fallar (MaxRateLimitedDeliveries = 60). Subir RateLimitPerMinute/BulkRateLimitPerMinute del provider del tenant o repartir la campaña."

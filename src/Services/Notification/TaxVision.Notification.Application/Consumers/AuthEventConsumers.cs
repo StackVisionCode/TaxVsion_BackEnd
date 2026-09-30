@@ -48,7 +48,8 @@ public static class InvitationCreatedConsumer
                     new Dictionary<string, object?>
                     {
                         ["office"] = office,
-                        ["inviter"] = evt.InviterName ?? "El administrador",
+                        ["inviter"] = string.IsNullOrWhiteSpace(evt.InviterName) ? office : evt.InviterName,
+                        ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["invite_link"] = inviteLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["is_resend"] = evt.IsResend,
@@ -95,10 +96,9 @@ public static class PasswordResetRequestedConsumer
             // multi-oficina recibe un correo por oficina, cada uno con su link al destino correcto.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var resetToken = Uri.EscapeDataString(evt.RawToken);
-            var resetLink =
-                evt.ActorType == "CustomerPortal"
-                    ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
-                    : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
+            var resetLink = AuthAccountCopy.IsPortal(evt.ActorType)
+                ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
+                : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -109,6 +109,10 @@ public static class PasswordResetRequestedConsumer
                         ["reset_link"] = resetLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["product_name"] = portal.Value.ProductName,
+                        ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
+                        ["office"] = string.IsNullOrWhiteSpace(evt.TenantName)
+                            ? portal.Value.ProductName
+                            : evt.TenantName,
                     },
                     ct
                 )
@@ -271,10 +275,13 @@ public static class EmailChangeRequestedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            // Link al subdominio de la oficina (no a un base fijo): la confirmación la resuelve el CRM por Host.
+            // Link al subdominio de la oficina: el cliente confirma en su portal y el staff en el CRM.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var confirmLink =
-                $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={Uri.EscapeDataString(evt.RawToken)}";
+            var confirmToken = Uri.EscapeDataString(evt.RawToken);
+            var confirmLink = AuthAccountCopy.IsPortal(evt.ActorType)
+                ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
+                : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={confirmToken}";
+            var office = string.IsNullOrWhiteSpace(evt.TenantName) ? portal.Value.ProductName : evt.TenantName;
 
             // Nota Fase 7: antes, si este primer render fallaba, el bloque se saltaba en silencio y
             // el consumer seguía directo a la alerta de seguridad — el email de confirmación se
@@ -289,6 +296,8 @@ public static class EmailChangeRequestedConsumer
                         ["confirm_link"] = confirmLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["product_name"] = portal.Value.ProductName,
+                        ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
+                        ["office"] = office,
                     },
                     ct
                 )
@@ -309,17 +318,16 @@ public static class EmailChangeRequestedConsumer
                 ct
             );
 
-            // Comportamiento preservado tal cual del builder original: el alertType pasado aquí
-            // ("email_change_requested") nunca coincidía con los casos reales del switch de
-            // SecurityAlert, así que siempre caía al texto genérico — no es un bug nuevo de esta
-            // migración, se mantiene la misma descripción por fidelidad de comportamiento.
+            // Aviso a la dirección anterior: dice qué cuenta pidió el cambio y hacia qué email.
             var warningRender = (
                 await scribeClient.RenderAsync(
                     "auth.email_change_security_alert.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
-                        ["description"] = "se registró actividad de seguridad en tu cuenta.",
+                        ["description"] = AuthAccountCopy.IsPortal(evt.ActorType)
+                            ? $"Someone asked to change the email of your client portal account at {office} to {evt.NewEmail}."
+                            : $"Someone asked to change the email of your {office} workspace account to {evt.NewEmail}.",
                         ["ip_address"] = null,
                         ["product_name"] = portal.Value.ProductName,
                     },

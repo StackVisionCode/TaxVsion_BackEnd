@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Postmaster.Api.Jobs;
 using TaxVision.Postmaster.Application;
+using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Infrastructure;
 using TaxVision.Postmaster.Infrastructure.Persistence;
 using Wolverine;
@@ -55,11 +56,11 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "postmaster-se
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// Gate de módulo Fase 1 (LOG-ONLY, opt-in).
-builder.Services.AddScoped<
-    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
-    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
->();
+// Gate de módulo: exige que el plan del tenant habilite el módulo del permiso. El escalón se decide
+// POR MÓDULO en `Authorization:ModuleGate` (ver ModuleGateSettings); un módulo fuera del escalón
+// sigue en log-only. El registro valida la lista al arrancar. El lector de la proyección local
+// (ITenantEntitlementModulesReader) lo registra la Infrastructure.
+BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
@@ -120,6 +121,21 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, PostmasterDbContext>();
     options.Policies.AutoApplyTransactions();
+
+    // Email por encima del cupo del provider: se reprograma tras la espera del limiter (con jitter) en
+    // vez de gastar los 3 reintentos estándar de 1/5/15 s. Va antes de la política estándar: gana la
+    // primera regla que matchea.
+    options
+        .Policies.OnException<EmailRateLimitedException>()
+        .CustomAction(
+            (_, lifecycle, ex) =>
+                new ValueTask(
+                    lifecycle.ReScheduleAsync(
+                        DateTimeOffset.UtcNow.Add(((EmailRateLimitedException)ex).NextAttemptDelay())
+                    )
+                ),
+            "Reschedule an email that is over the provider quota"
+        );
 
     options.ApplyStandardFailurePolicies();
 
