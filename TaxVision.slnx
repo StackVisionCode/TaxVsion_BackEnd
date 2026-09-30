@@ -7,6 +7,10 @@
     <Project Path="src/BuildingBlocks/BuildingBlocks.Web/BuildingBlocks.Web.csproj" />
   </Folder>
   <Folder Name="/src/BuildingBlocks/" />
+  <Folder Name="/src/BuildingBlocks/CustomerVisibility/">
+    <Project Path="src/BuildingBlocks/CustomerVisibility/BuildingBlocks.CustomerVisibility.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/Messaging/" />
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
   </Folder>
