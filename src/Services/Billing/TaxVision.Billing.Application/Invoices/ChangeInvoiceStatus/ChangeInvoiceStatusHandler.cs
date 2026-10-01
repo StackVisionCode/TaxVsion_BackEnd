@@ -11,7 +11,13 @@ namespace TaxVision.Billing.Application.Invoices.ChangeInvoiceStatus;
 /// transiciones con efectos colaterales (emitir/cobrar/anular) NO pasan por acá: tienen su propio comando.
 /// El tenant y el actor salen del JWT.
 /// </summary>
-public sealed record ChangeInvoiceStatusCommand(Guid TenantId, Guid InvoiceId, string ToStatus, string? Reason, Guid ActorUserId);
+public sealed record ChangeInvoiceStatusCommand(
+    Guid TenantId,
+    Guid InvoiceId,
+    string ToStatus,
+    string? Reason,
+    Guid ActorUserId
+);
 
 public sealed record ChangeInvoiceStatusResult(Guid InvoiceId, string Status);
 

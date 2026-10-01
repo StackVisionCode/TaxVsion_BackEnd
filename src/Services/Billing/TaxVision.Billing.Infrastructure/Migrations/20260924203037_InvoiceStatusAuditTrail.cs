@@ -23,7 +23,7 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     Trigger = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Reason = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
                     ChangedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ChangedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ChangedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -34,22 +34,23 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         principalSchema: "billing",
                         principalTable: "Invoices",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoiceStatusChanges_InvoiceId_ChangedAtUtc",
                 schema: "billing",
                 table: "InvoiceStatusChanges",
-                columns: new[] { "InvoiceId", "ChangedAtUtc" });
+                columns: new[] { "InvoiceId", "ChangedAtUtc" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "InvoiceStatusChanges",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "InvoiceStatusChanges", schema: "billing");
         }
     }
 }

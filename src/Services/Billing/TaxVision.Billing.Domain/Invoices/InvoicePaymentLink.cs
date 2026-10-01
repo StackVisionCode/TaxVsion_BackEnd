@@ -39,7 +39,14 @@ public sealed class InvoicePaymentLink : BaseEntity
         CreatedAtUtc = createdAtUtc;
     }
 
-    /// <summary>Marca este enlace como reemplazado por otro (Fase 3). No-op si ya no está Active.</summary>
+    /// <summary>Repara la URL publica si cambio la composicion del link estable.</summary>
+    internal void RefreshCheckoutUrl(string checkoutUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(checkoutUrl) && CheckoutUrl != checkoutUrl)
+            CheckoutUrl = checkoutUrl;
+    }
+
+    /// <summary>Marca este enlace como reemplazado por otro (Fase 3). No-op si ya no esta Active.</summary>
     internal void Supersede(DateTime nowUtc)
     {
         if (Status == InvoicePaymentLinkStatus.Active)

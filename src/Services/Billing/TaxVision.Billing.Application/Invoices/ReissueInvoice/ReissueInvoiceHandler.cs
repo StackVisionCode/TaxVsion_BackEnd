@@ -110,8 +110,6 @@ public static class ReissueInvoiceHandler
         );
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, original.Id));
 
-        return Result.Success(
-            new ReissueInvoiceResult(original.Id, replacement.Id, replacement.Status.ToString())
-        );
+        return Result.Success(new ReissueInvoiceResult(original.Id, replacement.Id, replacement.Status.ToString()));
     }
 }

@@ -15,25 +15,23 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "Description",
                 table: "PayableReferences",
                 type: "nvarchar(max)",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "RevokedAtUtc",
                 table: "PayableReferences",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Description",
-                table: "PayableReferences");
+            migrationBuilder.DropColumn(name: "Description", table: "PayableReferences");
 
-            migrationBuilder.DropColumn(
-                name: "RevokedAtUtc",
-                table: "PayableReferences");
+            migrationBuilder.DropColumn(name: "RevokedAtUtc", table: "PayableReferences");
         }
     }
 }

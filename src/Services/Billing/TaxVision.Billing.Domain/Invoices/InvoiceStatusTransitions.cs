@@ -18,13 +18,15 @@ namespace TaxVision.Billing.Domain.Invoices;
 public static class InvoiceStatusTransitions
 {
     /// <summary>Transiciones manuales permitidas: (estado actual) → conjunto de destinos legales.</summary>
-    private static readonly IReadOnlyDictionary<InvoiceStatus, IReadOnlySet<InvoiceStatus>> Allowed =
-        new Dictionary<InvoiceStatus, IReadOnlySet<InvoiceStatus>>
-        {
-            // Emitida ⇄ Enviada: marcar como enviada al cliente (o revertir si no se envió).
-            [InvoiceStatus.Issued] = new HashSet<InvoiceStatus> { InvoiceStatus.Sent },
-            [InvoiceStatus.Sent] = new HashSet<InvoiceStatus> { InvoiceStatus.Issued },
-        };
+    private static readonly IReadOnlyDictionary<InvoiceStatus, IReadOnlySet<InvoiceStatus>> Allowed = new Dictionary<
+        InvoiceStatus,
+        IReadOnlySet<InvoiceStatus>
+    >
+    {
+        // Emitida ⇄ Enviada: marcar como enviada al cliente (o revertir si no se envió).
+        [InvoiceStatus.Issued] = new HashSet<InvoiceStatus> { InvoiceStatus.Sent },
+        [InvoiceStatus.Sent] = new HashSet<InvoiceStatus> { InvoiceStatus.Issued },
+    };
 
     /// <summary>¿Es legal mover una factura de <paramref name="from"/> a <paramref name="to"/> manualmente?
     /// Mover al mismo estado se considera legal (no-op idempotente).</summary>
