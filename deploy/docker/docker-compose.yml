@@ -2038,7 +2038,7 @@ services:
       # www.taxproffice.com incluido por el mismo motivo que en Cors__Origins del
       # gateway (linea ~1945) — es un origin CORS distinto de taxproffice.com, sin
       # redirect de canonicalizacion entre ambos.
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,https://www.taxproffice.com,http://localhost:5173,http://localhost:4200}
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,https://www.taxproffice.com,http://localhost:5173,http://localhost:4200,http://localhost,https://localhost,capacitor://localhost,ionic://localhost}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
       # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
       # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
@@ -2294,6 +2294,7 @@ services:
       Cors__Origins__9: http://localhost
       Cors__Origins__10: capacitor://localhost
       Cors__Origins__11: ionic://localhost
+      Cors__Origins__12: https://localhost
       # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son

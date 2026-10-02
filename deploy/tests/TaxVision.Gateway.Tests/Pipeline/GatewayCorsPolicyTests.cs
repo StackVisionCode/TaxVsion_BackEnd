@@ -12,12 +12,17 @@ public sealed class GatewayCorsPolicyTests
 {
     private static string ProgramSource()
     {
+        return RepoFile("src/Gateway/TaxVision.Gateway/Program.cs");
+    }
+
+    private static string RepoFile(string relativePath)
+    {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "TaxVision.slnx")))
             dir = dir.Parent;
 
         Assert.NotNull(dir);
-        return File.ReadAllText(Path.Combine(dir!.FullName, "src", "Gateway", "TaxVision.Gateway", "Program.cs"));
+        return File.ReadAllText(Path.Combine(dir!.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar)));
     }
 
     [Theory]
@@ -37,5 +42,31 @@ public sealed class GatewayCorsPolicyTests
             source.IndexOf($"\"{header}\"", exposed, StringComparison.Ordinal) >= 0,
             $"La política CORS \"spa\" no expone {header}."
         );
+    }
+
+    [Theory]
+    [InlineData("http://localhost")]
+    [InlineData("https://localhost")]
+    [InlineData("capacitor://localhost")]
+    [InlineData("ionic://localhost")]
+    public void GatewayCors_IncluyeOriginsMovilesEnAppsettingsYCompose(string origin)
+    {
+        var appsettings = RepoFile("src/Gateway/TaxVision.Gateway/appsettings.json");
+        var compose = RepoFile("deploy/docker/docker-compose.yml");
+
+        Assert.Contains(origin, appsettings);
+        Assert.Contains(origin, compose);
+    }
+
+    [Theory]
+    [InlineData("https://localhost")]
+    [InlineData("capacitor://localhost")]
+    [InlineData("ionic://localhost")]
+    public void CommunicationCors_IncluyeOriginsMovilesEnCompose(string origin)
+    {
+        var compose = RepoFile("deploy/docker/docker-compose.yml");
+
+        Assert.Contains("COMMUNICATION_CORS_ORIGINS", compose);
+        Assert.Contains(origin, compose);
     }
 }
