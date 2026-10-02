@@ -41,6 +41,8 @@ describe('access.changed — cambio de permisos de un usuario', () => {
         upsert: vi.fn(),
         upsertIdentityPreservingPermissions: vi.fn(),
         findByUserId: vi.fn(),
+        findActiveByTenantAndPermission: vi.fn().mockResolvedValue([]),
+        findActiveSupportRecipients: vi.fn().mockResolvedValue([]),
         markInactive: vi.fn(),
         markActive: vi.fn(),
         findActiveByTenantAndRoleId: vi.fn().mockResolvedValue([]),

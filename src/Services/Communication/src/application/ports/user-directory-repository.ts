@@ -39,6 +39,12 @@ export interface UserDirectoryRepository {
 
   findByUserId(userId: string): Promise<UserDirectoryEntrySnapshot | null>;
 
+  /**
+   * Batch read for hot paths that render lists. Callers must still apply their
+   * own tenant/permission gates before asking for display data.
+   */
+  findByUserIds?(userIds: readonly string[]): Promise<UserDirectoryEntrySnapshot[]>;
+
   markInactive(userId: string): Promise<void>;
 
   /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: restaura el entry al reactivar

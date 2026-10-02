@@ -95,7 +95,7 @@ export function registerChatHandlers(io: CommunicationIoServer, container: AppCo
  * Socket.IO, asi que no importa en que instancia vive el timer.
  */
 const TYPING_TIMEOUT_MS = 8_000;
-const typingTimers = new Map<string, { timer: NodeJS.Timeout; conversationId: string }>();
+const typingTimers = new Map<string, { timer: NodeJS.Timeout; conversationTenantId: string; conversationId: string }>();
 
 /**
  * TTL del indicador "grabando una nota de voz…". El cliente re-emite RecordingStart cada ~12-15s
@@ -104,7 +104,7 @@ const typingTimers = new Map<string, { timer: NodeJS.Timeout; conversationId: st
  * RecordingStop nunca llega. Timer por-instancia (el emit viaja por el adapter de Socket.IO).
  */
 const RECORDING_TIMEOUT_MS = 20_000;
-const recordingTimers = new Map<string, { timer: NodeJS.Timeout; conversationId: string }>();
+const recordingTimers = new Map<string, { timer: NodeJS.Timeout; conversationTenantId: string; conversationId: string }>();
 
 function typingKey(tenantId: string, conversationId: string, userId: string): string {
   return `${tenantId}:${conversationId}:${userId}`;
@@ -140,6 +140,25 @@ export function isMemberOfConversation(
   conversationId: string,
 ): boolean {
   return rooms.has(`t:${tenantId}:c:${conversationId}`);
+}
+
+export function resolveJoinedConversationTenant(
+  rooms: ReadonlySet<string>,
+  actorTenantId: string,
+  conversationId: string,
+): string | null {
+  if (isMemberOfConversation(rooms, actorTenantId, conversationId)) {
+    return actorTenantId;
+  }
+
+  const suffix = `:c:${conversationId}`;
+  for (const room of rooms) {
+    if (room.startsWith('t:') && room.endsWith(suffix)) {
+      return room.slice(2, -suffix.length);
+    }
+  }
+
+  return null;
 }
 
 async function wireSocket(
@@ -822,22 +841,29 @@ async function wireSocket(
     }
   });
 
-  const isInConversation = (conversationId: string): boolean =>
-    isMemberOfConversation(socket.rooms, tenantId, conversationId);
+  const joinedConversationTenant = (conversationId: string): string | null =>
+    resolveJoinedConversationTenant(socket.rooms, tenantId, conversationId);
 
-  const emitTypingStopped = (conversationId: string): void => {
+  const indicatorIdentity = (conversationTenantId: string): { userId: string; displayName: string } =>
+    conversationTenantId === tenantId
+      ? { userId, displayName: selfDisplayName }
+      : { userId: tenantId, displayName: 'Support Team' };
+
+  const emitTypingStopped = (conversationTenantId: string, conversationId: string): void => {
+    const identity = indicatorIdentity(conversationTenantId);
     emitter.emitToConversation({
-      tenantId,
+      tenantId: conversationTenantId,
       conversationId,
       event: ChatSocketEvents.TypingStopped,
-      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+      envelope: envelope({ conversationId, userId: identity.userId, displayName: identity.displayName }),
     });
   };
 
   socket.on(ChatSocketEvents.TypingStart, async (...args: unknown[]) => {
     const parsed = TypingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    if (!isInConversation(parsed.data.conversationId)) return;
+    const conversationTenantId = joinedConversationTenant(parsed.data.conversationId);
+    if (!conversationTenantId) return;
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.ChatTyping,
       tenantId,
@@ -847,45 +873,49 @@ async function wireSocket(
     });
     if (!allowed) return;
     const { conversationId } = parsed.data;
+    const identity = indicatorIdentity(conversationTenantId);
     emitter.emitToConversation({
-      tenantId,
+      tenantId: conversationTenantId,
       conversationId,
       event: ChatSocketEvents.TypingStarted,
-      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+      envelope: envelope({ conversationId, userId: identity.userId, displayName: identity.displayName }),
     });
 
-    const key = typingKey(tenantId, conversationId, userId);
+    const key = typingKey(conversationTenantId, conversationId, userId);
     clearTypingTimer(key);
     const timer = setTimeout(() => {
       typingTimers.delete(key);
-      emitTypingStopped(conversationId);
+      emitTypingStopped(conversationTenantId, conversationId);
     }, TYPING_TIMEOUT_MS);
-    typingTimers.set(key, { timer, conversationId });
+    typingTimers.set(key, { timer, conversationTenantId, conversationId });
   });
 
   socket.on(ChatSocketEvents.TypingStop, (...args: unknown[]) => {
     const parsed = TypingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    if (!isInConversation(parsed.data.conversationId)) return;
-    clearTypingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
-    emitTypingStopped(parsed.data.conversationId);
+    const conversationTenantId = joinedConversationTenant(parsed.data.conversationId);
+    if (!conversationTenantId) return;
+    clearTypingTimer(typingKey(conversationTenantId, parsed.data.conversationId, userId));
+    emitTypingStopped(conversationTenantId, parsed.data.conversationId);
   });
 
   // ---------- Indicador "grabando una nota de voz…" (clon del typing) ----------
 
-  const emitRecordingStopped = (conversationId: string): void => {
+  const emitRecordingStopped = (conversationTenantId: string, conversationId: string): void => {
+    const identity = indicatorIdentity(conversationTenantId);
     emitter.emitToConversation({
-      tenantId,
+      tenantId: conversationTenantId,
       conversationId,
       event: ChatSocketEvents.RecordingStopped,
-      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+      envelope: envelope({ conversationId, userId: identity.userId, displayName: identity.displayName }),
     });
   };
 
   socket.on(ChatSocketEvents.RecordingStart, async (...args: unknown[]) => {
     const parsed = RecordingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    if (!isInConversation(parsed.data.conversationId)) return;
+    const conversationTenantId = joinedConversationTenant(parsed.data.conversationId);
+    if (!conversationTenantId) return;
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.ChatVoiceRecording,
       tenantId,
@@ -898,28 +928,30 @@ async function wireSocket(
     });
     if (!allowed) return;
     const { conversationId } = parsed.data;
+    const identity = indicatorIdentity(conversationTenantId);
     emitter.emitToConversation({
-      tenantId,
+      tenantId: conversationTenantId,
       conversationId,
       event: ChatSocketEvents.RecordingStarted,
-      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+      envelope: envelope({ conversationId, userId: identity.userId, displayName: identity.displayName }),
     });
 
-    const key = typingKey(tenantId, conversationId, userId);
+    const key = typingKey(conversationTenantId, conversationId, userId);
     clearRecordingTimer(key);
     const timer = setTimeout(() => {
       recordingTimers.delete(key);
-      emitRecordingStopped(conversationId);
+      emitRecordingStopped(conversationTenantId, conversationId);
     }, RECORDING_TIMEOUT_MS);
-    recordingTimers.set(key, { timer, conversationId });
+    recordingTimers.set(key, { timer, conversationTenantId, conversationId });
   });
 
   socket.on(ChatSocketEvents.RecordingStop, (...args: unknown[]) => {
     const parsed = RecordingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    if (!isInConversation(parsed.data.conversationId)) return;
-    clearRecordingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
-    emitRecordingStopped(parsed.data.conversationId);
+    const conversationTenantId = joinedConversationTenant(parsed.data.conversationId);
+    if (!conversationTenantId) return;
+    clearRecordingTimer(typingKey(conversationTenantId, parsed.data.conversationId, userId));
+    emitRecordingStopped(conversationTenantId, parsed.data.conversationId);
   });
 
   // Snapshot de presencia bajo demanda: `chat.presence.changed` solo se emite en transiciones, así que
@@ -1099,16 +1131,16 @@ async function wireSocket(
     // pendiente — sin esto, un cierre abrupto de pestana deja el indicador
     // pegado hasta el timeout de 8s (que igual dispara, pero mejor limpiar ya).
     for (const [key, entry] of typingTimers) {
-      if (!key.startsWith(`${tenantId}:`) || !key.endsWith(`:${userId}`)) continue;
+      if (!key.endsWith(`:${userId}`)) continue;
       clearTypingTimer(key);
-      emitTypingStopped(entry.conversationId);
+      emitTypingStopped(entry.conversationTenantId, entry.conversationId);
     }
 
     // Igual para "grabando una nota de voz…": un cierre abrupto no debe dejar el indicador pegado.
     for (const [key, entry] of recordingTimers) {
-      if (!key.startsWith(`${tenantId}:`) || !key.endsWith(`:${userId}`)) continue;
+      if (!key.endsWith(`:${userId}`)) continue;
       clearRecordingTimer(key);
-      emitRecordingStopped(entry.conversationId);
+      emitRecordingStopped(entry.conversationTenantId, entry.conversationId);
     }
   });
 }

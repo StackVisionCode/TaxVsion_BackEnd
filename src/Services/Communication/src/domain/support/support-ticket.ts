@@ -256,7 +256,8 @@ export class SupportTicket {
     if (
       input.actorHasAgentPermission &&
       input.actorTenantId === this.state.agentTenantId &&
-      this.state.status === SupportStatus.Open
+      this.state.status === SupportStatus.Open &&
+      this.state.assignedAgentId === null
     ) {
       return true;
     }

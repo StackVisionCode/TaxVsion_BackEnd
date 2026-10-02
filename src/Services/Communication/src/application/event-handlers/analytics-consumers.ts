@@ -78,22 +78,6 @@ export function bindAnalyticsConsumers(
       increments: { meetingsEnded: 1, meetingMinutes: Math.floor(duration / 60) },
     });
   });
-
-  register('communication.support.opened.v1', async (env) => {
-    await deps.analytics.incrementCounters({
-      tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
-      increments: { supportTicketsOpened: 1 },
-    });
-  });
-
-  register('communication.support.resolved.v1', async (env) => {
-    await deps.analytics.incrementCounters({
-      tenantId: env.tenantId,
-      day: dayOf(env.occurredOnUtc),
-      increments: { supportTicketsResolved: 1 },
-    });
-  });
 }
 
 function dayOf(iso: string): string {

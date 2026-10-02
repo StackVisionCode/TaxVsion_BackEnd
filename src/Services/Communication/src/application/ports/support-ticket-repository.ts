@@ -20,9 +20,15 @@ export interface SupportTicketRepository {
   listForAgentTenant(input: {
     agentTenantId: string;
     assignedAgentId?: string | null;
+    visibleToAgentUserId?: string | null;
     take: number;
     skip: number;
     includeClosed?: boolean;
   }): Promise<SupportTicketSnapshot[]>;
-  countForAgentTenant(agentTenantId: string, assignedAgentId?: string | null, includeClosed?: boolean): Promise<number>;
+  countForAgentTenant(
+    agentTenantId: string,
+    assignedAgentId?: string | null,
+    includeClosed?: boolean,
+    visibleToAgentUserId?: string | null,
+  ): Promise<number>;
 }

@@ -53,11 +53,11 @@ public sealed class PaymentAppDeployConfigWiringTests
     /// <summary>El bloque de un servicio del compose: desde su clave hasta la del siguiente.</summary>
     private static string ComposeServiceBlock(string compose, string serviceName)
     {
-        var header = Regex.Match(compose, "^  " + Regex.Escape(serviceName) + ":$", RegexOptions.Multiline);
+        var header = Regex.Match(compose, "^  " + Regex.Escape(serviceName) + @":\r?$", RegexOptions.Multiline);
         Assert.True(header.Success, "El compose no declara el servicio " + serviceName + ".");
 
         var rest = compose[(header.Index + header.Length)..];
-        var next = Regex.Match(rest, "^  [a-z0-9-]+:$", RegexOptions.Multiline);
+        var next = Regex.Match(rest, @"^  [a-z0-9-]+:\r?$", RegexOptions.Multiline);
         return next.Success ? compose.Substring(header.Index, header.Length + next.Index) : compose[header.Index..];
     }
 

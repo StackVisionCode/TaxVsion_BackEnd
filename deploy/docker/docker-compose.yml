@@ -2288,6 +2288,12 @@ services:
       Cors__Origins__3: https://client.taxproffice.com
       Cors__Origins__4: http://localhost:5173
       Cors__Origins__5: http://localhost:4200
+      Cors__Origins__6: http://localhost:4201
+      Cors__Origins__7: http://localhost:4300
+      Cors__Origins__8: http://localhost:8101
+      Cors__Origins__9: http://localhost
+      Cors__Origins__10: capacitor://localhost
+      Cors__Origins__11: ionic://localhost
       # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son
