@@ -15,6 +15,7 @@ public interface IInvoicePaymentLinkClient
         string currency,
         Guid invoiceId,
         Guid tenantId,
+        string? invoiceNumber = null,
         CancellationToken ct = default
     );
 }

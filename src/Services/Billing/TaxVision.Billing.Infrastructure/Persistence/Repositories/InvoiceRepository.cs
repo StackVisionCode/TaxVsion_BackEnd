@@ -27,17 +27,8 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)
-            .Where(i => i.TenantId == tenantId && i.Id == invoiceId)
-            // Visibilidad por asignación: si está restringido y su cliente no está asignado → null (404).
-            .Where(i =>
-                assignedToUserId == null
-                || _dbContext
-                    .CustomerAssignmentProjections.IgnoreQueryFilters()
-                    .Any(a =>
-                        a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignedToUserId.Value
-                    )
-            )
-            .FirstOrDefaultAsync(ct);
+            .Include(i => i.StatusChanges)
+            .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
 
     // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId
     // (índice único filtrado), no por tenant → IgnoreQueryFilters obligatorio.

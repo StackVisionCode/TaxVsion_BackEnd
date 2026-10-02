@@ -1,53 +1,63 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { isMemberOfConversation } from '../../src/api/socket/handlers/chat-handlers.js';
+import {
+  isMemberOfConversation,
+  resolveJoinedConversationTenant,
+} from '../../src/api/socket/handlers/chat-handlers.js';
 
-/**
- * A1 — los indicadores `chat.typing.*` y `chat.recording.*` se emitían a CUALQUIER conversationId del
- * tenant: bastaba con conocer el id para hacer aparecer "Fulano está escribiendo…" en una conversación
- * ajena, con su nombre visible. Ahora solo se anuncia en una conversación de la que ya se es parte, y
- * la parte se mide por la room a la que el socket se unió al conectar — la misma que usa la entrega.
- */
-describe('membresía de conversación para los indicadores', () => {
+describe('conversation membership for live indicators', () => {
   const tenant = 'tenant-1';
   const mine = 'conv-mine';
   const others = 'conv-others';
   const rooms = new Set([`t:${tenant}:c:${mine}`, `t:${tenant}:u:someone`]);
 
-  it('deja anunciar en la propia conversación', () => {
+  it('allows announcing in an owned conversation', () => {
     expect(isMemberOfConversation(rooms, tenant, mine)).toBe(true);
   });
 
-  it('no deja anunciar en la conversación de otros', () => {
+  it('does not announce in another conversation', () => {
     expect(isMemberOfConversation(rooms, tenant, others)).toBe(false);
   });
 
-  it('no cruza tenants aunque el id de conversación coincida', () => {
+  it('does not cross tenants in the strict membership check', () => {
     expect(isMemberOfConversation(rooms, 'tenant-2', mine)).toBe(false);
   });
 
-  it('un socket sin rooms no anuncia en ningún lado', () => {
+  it('does not announce when the socket has no rooms', () => {
     expect(isMemberOfConversation(new Set(), tenant, mine)).toBe(false);
+  });
+
+  it('resolves a support cross-tenant room that was already authorized by join', () => {
+    const platformTenant = 'platform-tenant';
+    const customerTenant = 'customer-tenant';
+    const supportRooms = new Set([`t:${customerTenant}:c:${mine}`, `t:${platformTenant}:u:agent`]);
+
+    expect(resolveJoinedConversationTenant(supportRooms, platformTenant, mine)).toBe(customerTenant);
+  });
+
+  it('prefers the actor tenant when the joined conversation is local', () => {
+    expect(resolveJoinedConversationTenant(rooms, tenant, mine)).toBe(tenant);
+  });
+
+  it('does not resolve conversations missing from the socket rooms', () => {
+    expect(resolveJoinedConversationTenant(rooms, tenant, others)).toBeNull();
   });
 });
 
-describe('los cuatro indicadores aplican el chequeo', () => {
+describe('the four live indicators apply the membership guard', () => {
   const source = readFileSync(
     fileURLToPath(new URL('../../src/api/socket/handlers/chat-handlers.ts', import.meta.url)),
     'utf8',
   );
 
-  // Cada handler debe filtrar ANTES de emitir. Si mañana se agrega otro indicador y se olvida,
-  // esta prueba no lo ve — pero sí ve que se quite alguno de los que ya estan cubiertos.
   const handlers = ['TypingStart', 'TypingStop', 'RecordingStart', 'RecordingStop'];
 
-  it.each(handlers)('%s no emite sin ser parte de la conversación', (handler) => {
+  it.each(handlers)('%s does not emit before resolving a joined room', (handler) => {
     const start = source.indexOf(`socket.on(ChatSocketEvents.${handler},`);
     expect(start).toBeGreaterThan(-1);
-    // Hasta el siguiente handler (o el final): basta para ver si filtra antes de emitir.
     const next = source.indexOf('socket.on(ChatSocketEvents.', start + 1);
     const body = source.slice(start, next === -1 ? source.length : next);
-    expect(body).toContain('isInConversation(');
+    expect(body).toContain('joinedConversationTenant(');
   });
 });

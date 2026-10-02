@@ -41,6 +41,7 @@ public sealed record UpdateCatalogItemCommand(
     Guid CategoryId,
     string? Unit,
     int TaxRateBasisPoints,
+    bool TrackInventory,
     string? ImageUrl,
     IReadOnlyList<CatalogItemAttributeDto>? Attributes
 );
@@ -175,6 +176,7 @@ public static class UpdateCatalogItemHandler
             command.Unit,
             command.TaxRateBasisPoints,
             command.ImageUrl,
+            command.TrackInventory,
             DateTime.UtcNow
         );
         if (updated.IsFailure)

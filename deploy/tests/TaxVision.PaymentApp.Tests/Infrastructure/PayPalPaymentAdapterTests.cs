@@ -388,6 +388,40 @@ public sealed class PayPalPaymentAdapterTests
     }
 
     [Fact]
+    public async Task Get_charge_status_returns_not_found_when_paypal_no_longer_recognizes_order()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        handler.EnqueueJson(
+            HttpStatusCode.OK,
+            """{"access_token":"token_123","token_type":"Bearer","expires_in":3600}"""
+        );
+        handler.EnqueueJson(HttpStatusCode.NotFound, """{"name":"RESOURCE_NOT_FOUND"}""");
+        var adapter = CreateAdapter(handler);
+
+        var result = await adapter.GetChargeStatusAsync("ORDER-MISSING", CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PayPal.ChargeStatus.NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Get_charge_status_returns_failure_when_paypal_request_times_out()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        handler.EnqueueJson(
+            HttpStatusCode.OK,
+            """{"access_token":"token_123","token_type":"Bearer","expires_in":3600}"""
+        );
+        handler.EnqueueException(new TaskCanceledException("PayPal did not respond before timeout."));
+        var adapter = CreateAdapter(handler);
+
+        var result = await adapter.GetChargeStatusAsync("ORDER-TIMEOUT", CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PayPal.ChargeStatus.Unavailable", result.Error.Code);
+    }
+
+    [Fact]
     public async Task Get_charge_status_maps_denied_capture_to_failed_without_reconciling_reference()
     {
         var handler = new CapturingHttpMessageHandler();
@@ -488,7 +522,7 @@ public sealed class PayPalPaymentAdapterTests
 
     private sealed class CapturingHttpMessageHandler : HttpMessageHandler
     {
-        private readonly Queue<HttpResponseMessage> _responses = new();
+        private readonly Queue<object> _responses = new();
 
         public List<CapturedRequest> Requests { get; } = [];
 
@@ -500,6 +534,11 @@ public sealed class PayPalPaymentAdapterTests
                     Content = new StringContent(json, Encoding.UTF8, "application/json"),
                 }
             );
+        }
+
+        public void EnqueueException(Exception exception)
+        {
+            _responses.Enqueue(exception);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -525,7 +564,11 @@ public sealed class PayPalPaymentAdapterTests
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No fake HTTP response was queued.");
 
-            return _responses.Dequeue();
+            var queued = _responses.Dequeue();
+            if (queued is Exception exception)
+                throw exception;
+
+            return (HttpResponseMessage)queued;
         }
     }
 

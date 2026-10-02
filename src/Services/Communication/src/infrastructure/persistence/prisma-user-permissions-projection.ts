@@ -74,6 +74,32 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
     return toSnapshot(row);
   }
 
+  async findActiveByTenantAndPermission(
+    tenantId: string,
+    permissionCode: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]> {
+    const rows = await this.prisma.userPermissionsProjection.findMany({
+      where: { TenantId: tenantId, IsActive: true, Permissions: { contains: `"${permissionCode}"` } },
+    });
+    return rows.map(toSnapshot).filter((row) => row.permissions.includes(permissionCode));
+  }
+
+  async findActiveSupportRecipients(
+    tenantId: string,
+    supportPermissionCode: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]> {
+    const rows = await this.prisma.userPermissionsProjection.findMany({
+      where: {
+        TenantId: tenantId,
+        IsActive: true,
+        OR: [{ ActorType: 'PlatformAdmin' }, { Permissions: { contains: `"${supportPermissionCode}"` } }],
+      },
+    });
+    return rows
+      .map(toSnapshot)
+      .filter((row) => row.actorType === 'PlatformAdmin' || row.permissions.includes(supportPermissionCode));
+  }
+
   async markInactive(userId: string, _now: Date): Promise<void> {
     await this.prisma.userPermissionsProjection
       .update({ where: { UserId: userId }, data: { IsActive: false } })

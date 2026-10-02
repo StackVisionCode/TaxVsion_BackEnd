@@ -101,17 +101,36 @@ public static class EditInvoiceHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        // Emitida: el total pudo cambiar → refrescar el ancla de cobro (monto) y regenerar el PDF.
+        // Emitida: el total/saldo pudo cambiar → refrescar el ancla de cobro y regenerar el PDF.
         if (wasIssued)
         {
             bus.TenantId = command.TenantId.ToString();
-            await paymentLinks.EnsurePayableAsync(
-                invoice.Total.AmountCents,
-                invoice.Currency,
-                invoice.Id,
-                command.TenantId,
-                ct
-            );
+            // El link SIEMPRE cobra el TOTAL de la factura (decisión del negocio), consistente con
+            // IssueInvoiceHandler / EnsureInvoicePaymentLinkHandler. Un cambio sobre una factura ya pagada
+            // se maneja por reemisión. Nada por cobrar (pagada/anulada o total 0) ⇒ no se toca el link.
+            var totalCents = invoice.Total.AmountCents;
+            if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && totalCents > 0)
+            {
+                var ensured = await paymentLinks.EnsurePayableAsync(
+                    totalCents,
+                    invoice.Currency,
+                    invoice.Id,
+                    command.TenantId,
+                    invoice.InvoiceNumber,
+                    ct
+                );
+                if (ensured.IsFailure)
+                    throw new InvalidOperationException(
+                        $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
+                    );
+
+                invoice.AttachPaymentLink(
+                    ensured.Value.PayableId,
+                    ensured.Value.CheckoutUrl,
+                    clock.GetUtcNow().UtcDateTime
+                );
+                await unitOfWork.SaveChangesAsync(ct);
+            }
             await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
         }
 

@@ -40,6 +40,7 @@ import { moduleFor } from './domain/shared/permission-module-map.js';
 import { configureModuleGate } from './domain/shared/permissions.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
 import { bindCalendarConsumers } from './application/event-handlers/calendar-consumers.js';
+import { bindSupportConsumers } from './application/event-handlers/support-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
@@ -250,6 +251,13 @@ async function main(): Promise<void> {
     publisher: container.publisher,
     passcodes: container.passcodes,
     settings: container.settings,
+    emitter,
+  });
+  bindSupportConsumers(consumers.register.bind(consumers), {
+    supportTickets: container.supportTickets,
+    analytics: container.analytics,
+    notifications: container.notifications,
+    userPermissions: container.userPermissions,
     emitter,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });

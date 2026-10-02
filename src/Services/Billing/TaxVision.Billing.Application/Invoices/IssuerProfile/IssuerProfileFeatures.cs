@@ -17,7 +17,8 @@ public sealed record IssuerProfileResponse(
     string? Country,
     string? Phone,
     string? Email,
-    string? Website
+    string? Website,
+    string DefaultCurrency
 );
 
 // ---------------- Get ----------------
@@ -33,7 +34,9 @@ public static class GetIssuerProfileHandler
     {
         var p = await profiles.GetByTenantAsync(query.TenantId, ct);
         if (p is null)
-            return Result.Success(new IssuerProfileResponse("", null, null, null, null, null, "US", null, null, null));
+            return Result.Success(
+                new IssuerProfileResponse("", null, null, null, null, null, "US", null, null, null, "USD")
+            );
 
         return Result.Success(
             new IssuerProfileResponse(
@@ -46,7 +49,8 @@ public static class GetIssuerProfileHandler
                 p.Address?.Country,
                 p.Phone,
                 p.Email,
-                p.Website
+                p.Website,
+                p.DefaultCurrency
             )
         );
     }
@@ -64,7 +68,8 @@ public sealed record UpsertIssuerProfileCommand(
     string? Country,
     string? Phone,
     string? Email,
-    string? Website
+    string? Website,
+    string? DefaultCurrency
 );
 
 public static class UpsertIssuerProfileHandler
@@ -110,6 +115,7 @@ public static class UpsertIssuerProfileHandler
             command.Email,
             command.Website,
             null,
+            command.DefaultCurrency,
             nowUtc
         );
         await unitOfWork.SaveChangesAsync(ct);

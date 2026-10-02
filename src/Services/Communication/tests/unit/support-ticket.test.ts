@@ -118,6 +118,19 @@ describe('SupportTicket.canBeAccessedBy', () => {
     ).toBe(true);
   });
 
+  it('another support agent cannot access a claimed ticket', () => {
+    const { ticket, platform } = opened();
+    ticket.claim({ agentUserId: u() });
+    expect(
+      ticket.canBeAccessedBy({
+        actorUserId: u(),
+        actorTenantId: platform,
+        actorHasAgentPermission: true,
+        isPlatformAdmin: false,
+      }),
+    ).toBe(false);
+  });
+
   it('random user is denied', () => {
     const { ticket } = opened();
     expect(

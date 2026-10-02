@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Billing.Api.Authorization;
+using TaxVision.Billing.Application.Invoices.ChangeInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
 using TaxVision.Billing.Application.Invoices.DeleteInvoice;
 using TaxVision.Billing.Application.Invoices.EditInvoice;
@@ -15,6 +16,7 @@ using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
+using TaxVision.Billing.Application.Invoices.ReissueInvoice;
 using TaxVision.Billing.Application.Invoices.VoidInvoice;
 using Wolverine;
 
@@ -230,6 +232,31 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record ChangeInvoiceStatusRequest(string ToStatus, string? Reason);
+
+    /// <summary>Cambio de estado MANUAL (item 6.2): solo transiciones legales de la matriz del dominio
+    /// (hoy Issued⇄Sent). Emitir/cobrar/anular usan sus endpoints dedicados. Cada cambio se audita.</summary>
+    [HttpPost("{invoiceId:guid}/status")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(InvoicingPermissions.Manage)]
+    [ProducesResponseType<ChangeInvoiceStatusResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ChangeStatus(
+        Guid invoiceId,
+        ChangeInvoiceStatusRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<ChangeInvoiceStatusResult>>(
+            new ChangeInvoiceStatusCommand(tenantId, invoiceId, request.ToStatus, request.Reason, actorId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record VoidInvoiceRequest(string? Reason);
 
     /// <summary>Anula una factura emitida/pagada y repone el stock descontado al emitir.</summary>
@@ -250,5 +277,27 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record ReissueInvoiceRequest(string? Reason);
+
+    /// <summary>Reemisión enlazada (item 6.3): anula esta factura y crea un BORRADOR de reemplazo enlazado
+    /// (copia de cliente/líneas), arrastrando el pago ya cobrado como crédito. Devuelve el id del reemplazo
+    /// para abrirlo en el editor y corregirlo antes de emitir.</summary>
+    [HttpPost("{invoiceId:guid}/reissue")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(InvoicingPermissions.Manage)]
+    [ProducesResponseType<ReissueInvoiceResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Reissue(Guid invoiceId, ReissueInvoiceRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<ReissueInvoiceResult>>(
+            new ReissueInvoiceCommand(tenantId, invoiceId, actorId, request.Reason),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

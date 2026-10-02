@@ -43,7 +43,8 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
         string? Country,
         string? Phone,
         string? Email,
-        string? Website
+        string? Website,
+        string? DefaultCurrency
     );
 
     // El emisor legal cambia con qué identidad fiscal factura la oficina: no es trabajo diario del
@@ -69,7 +70,8 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
                 request.Country,
                 request.Phone,
                 request.Email,
-                request.Website
+                request.Website,
+                request.DefaultCurrency
             ),
             ct
         );

@@ -38,7 +38,14 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
         var result = await bus.InvokeAsync<Result<ResolvePayableResponse>>(new ResolvePayableCommand(reference), ct);
 
         if (result.IsFailure)
-            return NotFound(new { result.Error.Code, result.Error.Message });
+        {
+            // En vez de devolver JSON crudo (lo abre un humano en el navegador), redirige a la PÁGINA de
+            // checkout del frontend con el motivo, para que muestre un mensaje amable (factura anulada,
+            // enlace vencido, etc.) en vez de un 404 técnico.
+            var pageBase = PayablePublicUrls.CheckoutPageUrl(options.Value, subDomain: null, reference);
+            var reason = Uri.EscapeDataString(result.Error.Code);
+            return Redirect($"{pageBase}?unavailable={reason}");
+        }
 
         // 302 a la PÁGINA de checkout del frontend (que consume GET /payments-client/checkout/{token} y
         // renderiza Stripe con la key del tenant). Se compone en el subdominio del tenant (mismo host

@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
@@ -24,6 +25,7 @@ public sealed class PendingChargeReconciliationJob(
 ) : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(50))
 {
     private const int BatchSize = 100;
+    private static readonly TimeSpan ProviderNotFoundGrace = TimeSpan.FromMinutes(30);
 
     // Cadencia corta a propósito: un cobro que el webhook ya confirmó pasa a Succeeded y NUNCA entra en
     // este barrido, así que preguntar seguido no cuesta llamadas de más — solo alcanza a los cobros que de
@@ -91,11 +93,43 @@ public sealed class PendingChargeReconciliationJob(
         // estado; GetChargeStatusAsync espera un PaymentIntent y no confirma una sesión. Aplica a onboarding,
         // seats y renovación self-service por igual (antes solo onboarding lo hacía, dejando a los otros dos
         // sin reconciliar cuando el webhook no llegaba — el gap que reveló el pago real de renovación).
-        var statusResult = !string.IsNullOrWhiteSpace(payment.ProviderCheckoutSessionId)
-            ? await adapter.FinalizeHostedCheckoutAsync(payment.ExternalChargeReference.Value, payment.Amount, ct)
-            : await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        Result<ChargeAuthorizationResult> statusResult;
+        try
+        {
+            statusResult = !string.IsNullOrWhiteSpace(payment.ProviderCheckoutSessionId)
+                ? await adapter.FinalizeHostedCheckoutAsync(payment.ExternalChargeReference.Value, payment.Amount, ct)
+                : await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        }
+        catch (Exception ex) when (IsProviderTransportFailure(ex, ct))
+        {
+            logger.LogWarning(
+                ex,
+                "Could not confirm status for stuck SaaSPayment {SaaSPaymentId}: provider request failed.",
+                payment.Id
+            );
+            return false;
+        }
+
+        var nowUtc = DateTime.UtcNow;
         if (statusResult.IsFailure)
         {
+            if (ShouldFailProviderNotFound(payment, statusResult.Error, nowUtc))
+            {
+                var notFound = payment.MarkFailed(
+                    statusResult.Error.Code,
+                    statusResult.Error.Message,
+                    willRetry: false,
+                    nextRetryAtUtc: null,
+                    Guid.Empty,
+                    nowUtc
+                );
+
+                if (notFound.IsSuccess)
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
+
+                return notFound.IsSuccess;
+            }
+
             logger.LogWarning(
                 "Could not confirm status for stuck SaaSPayment {SaaSPaymentId}: {Error}",
                 payment.Id,
@@ -104,7 +138,6 @@ public sealed class PendingChargeReconciliationJob(
             return false;
         }
 
-        var nowUtc = DateTime.UtcNow;
         var outcome = statusResult.Value;
 
         // Igual criterio que el webhook checkout.session.completed (ver StripePaymentAdapter):
@@ -155,4 +188,14 @@ public sealed class PendingChargeReconciliationJob(
                 return false;
         }
     }
+
+    private static bool ShouldFailProviderNotFound(SaaSPayment payment, Error error, DateTime nowUtc) =>
+        IsProviderNotFound(error) && payment.UpdatedAtUtc <= nowUtc - ProviderNotFoundGrace;
+
+    private static bool IsProviderNotFound(Error error) =>
+        error.Code.EndsWith(".ChargeStatus.NotFound", StringComparison.Ordinal)
+        || error.Message.Contains("HTTP 404", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProviderTransportFailure(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested && ex is OperationCanceledException or HttpRequestException or TimeoutException;
 }

@@ -81,14 +81,25 @@ export class PrismaSupportTicketRepository implements SupportTicketRepository {
   async listForAgentTenant(input: {
     agentTenantId: string;
     assignedAgentId?: string | null;
+    visibleToAgentUserId?: string | null;
     take: number;
     skip: number;
     includeClosed?: boolean;
   }): Promise<SupportTicketSnapshot[]> {
-    const whereBase =
+    const agentScope =
       input.assignedAgentId !== undefined && input.assignedAgentId !== null
         ? { AgentTenantId: input.agentTenantId, AssignedAgentId: input.assignedAgentId }
         : { AgentTenantId: input.agentTenantId };
+    const whereBase =
+      input.visibleToAgentUserId && input.assignedAgentId == null
+        ? {
+            ...agentScope,
+            OR: [
+              { AssignedAgentId: input.visibleToAgentUserId },
+              { AssignedAgentId: null, Status: 'Open' },
+            ],
+          }
+        : agentScope;
     const where = input.includeClosed
       ? whereBase
       : { ...whereBase, Status: { notIn: ['Closed'] } };
@@ -105,11 +116,22 @@ export class PrismaSupportTicketRepository implements SupportTicketRepository {
     agentTenantId: string,
     assignedAgentId?: string | null,
     includeClosed = false,
+    visibleToAgentUserId?: string | null,
   ): Promise<number> {
-    const whereBase =
+    const agentScope =
       assignedAgentId !== undefined && assignedAgentId !== null
         ? { AgentTenantId: agentTenantId, AssignedAgentId: assignedAgentId }
         : { AgentTenantId: agentTenantId };
+    const whereBase =
+      visibleToAgentUserId && assignedAgentId == null
+        ? {
+            ...agentScope,
+            OR: [
+              { AssignedAgentId: visibleToAgentUserId },
+              { AssignedAgentId: null, Status: 'Open' },
+            ],
+          }
+        : agentScope;
     const where = includeClosed ? whereBase : { ...whereBase, Status: { notIn: ['Closed'] } };
     return this.prisma.supportTicket.count({ where });
   }

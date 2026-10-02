@@ -17,6 +17,7 @@ public sealed class Invoice : AggregateRoot
     private readonly List<InvoiceLineItem> _lines = [];
     private readonly List<InvoicePaymentLink> _paymentLinks = [];
     private readonly List<InvoiceAdjustmentLine> _adjustments = [];
+    private readonly List<InvoiceStatusChange> _statusChanges = [];
 
     public string? InvoiceNumber { get; private set; }
     public InvoiceStatus Status { get; private set; }
@@ -94,11 +95,26 @@ public sealed class Invoice : AggregateRoot
     public DateTime? VoidedAtUtc { get; private set; }
     public string? VoidReason { get; private set; }
 
+    /// <summary>Reemisión enlazada (item 6.3). Una factura emitida/pagada NO se muta para corregirla: se
+    /// anula y se emite un reemplazo enlazado. <see cref="ReplacesInvoiceId"/> apunta de este reemplazo a
+    /// la original; <see cref="ReplacedByInvoiceId"/> apunta de la original a su reemplazo. Referencia débil
+    /// (sin FK), como el resto de enlaces del dominio.</summary>
+    public Guid? ReplacesInvoiceId { get; private set; }
+    public Guid? ReplacedByInvoiceId { get; private set; }
+
+    /// <summary>Crédito arrastrado desde la factura original al reemplazarla (item 6.3): el pago ya cobrado
+    /// se traslada al reemplazo y se aplica al EMITIRLO (<see cref="ApplyCarriedCredit"/>). 0 en facturas
+    /// normales. En centavos de la moneda de la factura.</summary>
+    public long CarriedCreditCents { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<InvoiceLineItem> Lines => _lines;
     public IReadOnlyCollection<InvoicePaymentLink> PaymentLinks => _paymentLinks;
     public IReadOnlyCollection<InvoiceAdjustmentLine> Adjustments => _adjustments;
+
+    /// <summary>Rastro de auditoría de estado (item 6.2): append-only, una fila por transición.</summary>
+    public IReadOnlyCollection<InvoiceStatusChange> StatusChanges => _statusChanges;
 
     private Invoice() { }
 
@@ -148,6 +164,7 @@ public sealed class Invoice : AggregateRoot
         invoice.AmountPaid = Money.Zero(cur);
         invoice.AmountDue = invoice.Total;
 
+        invoice.RecordStatusChange(null, InvoiceStatus.Draft, StatusChangeTrigger.Created, null, actorUserId, nowUtc);
         return Result.Success(invoice);
     }
 
@@ -298,11 +315,13 @@ public sealed class Invoice : AggregateRoot
             return Result.Failure(
                 new Error("Billing.Invoice.NotVoidable", $"An invoice in status {Status} cannot be voided.")
             );
+        var from = Status;
         Status = InvoiceStatus.Voided;
         VoidedAtUtc = nowUtc;
         VoidReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         UpdatedAtUtc = nowUtc;
         LastModifiedBy = actorUserId;
+        RecordStatusChange(from, InvoiceStatus.Voided, StatusChangeTrigger.Void, reason, actorUserId, nowUtc);
         return Result.Success();
     }
 
@@ -437,6 +456,8 @@ public sealed class Invoice : AggregateRoot
         invoice.ReceiptNumber = $"REC-{invoiceNumber}";
         invoice.ReceiptHash = invoice.ComputeReceiptHash(netAmountCents, invoice.PaymentMethod.Value, nowUtc);
 
+        // Nace ya liquidada (el pago/redención ocurrió aguas arriba): una sola fila de auditoría → Paid.
+        invoice.RecordStatusChange(null, InvoiceStatus.Paid, StatusChangeTrigger.Created, null, Guid.Empty, nowUtc);
         return Result.Success(invoice);
     }
 
@@ -476,6 +497,14 @@ public sealed class Invoice : AggregateRoot
         Status = InvoiceStatus.Issued;
         UpdatedAtUtc = nowUtc;
         LastModifiedBy = actorUserId;
+        RecordStatusChange(
+            InvoiceStatus.Draft,
+            InvoiceStatus.Issued,
+            StatusChangeTrigger.Issue,
+            null,
+            actorUserId,
+            nowUtc
+        );
         return Result.Success();
     }
 
@@ -502,7 +531,10 @@ public sealed class Invoice : AggregateRoot
     {
         var existing = _paymentLinks.FirstOrDefault(l => l.ExternalPayableId == externalPayableId);
         if (existing is not null)
+        {
+            existing.RefreshCheckoutUrl(checkoutUrl);
             return existing;
+        }
 
         // NO se muta la factura (UpdatedAtUtc/RowVersion): adjuntar un enlace hijo solo inserta esa fila.
         // Tocar el padre dispararía un UPDATE con chequeo de RowVersion que compite con el resto del
@@ -534,6 +566,7 @@ public sealed class Invoice : AggregateRoot
                 )
             );
 
+        var from = Status;
         AmountPaid = Money.Create(amountCents, Currency).Value;
         var dueCents = Total.AmountCents - amountCents;
         AmountDue = Money.Create(dueCents < 0 ? 0 : dueCents, Currency).Value;
@@ -546,8 +579,104 @@ public sealed class Invoice : AggregateRoot
         }
         PaymentMethod = method;
         UpdatedAtUtc = paidAtUtc;
+        // Auditar solo si el estado efectivamente cambió (un pago parcial sobre otro parcial no transiciona).
+        if (from != Status)
+            RecordStatusChange(from, Status, StatusChangeTrigger.Payment, null, Guid.Empty, paidAtUtc);
         return Result.Success();
     }
+
+    /// <summary>
+    /// Cambio de estado MANUAL por un usuario autorizado (item 6.2). Solo permite transiciones legales
+    /// (<see cref="InvoiceStatusTransitions"/>) — nunca any→any — y registra cada una en el rastro de
+    /// auditoría. Las transiciones con efectos colaterales (emitir, cobrar, anular) tienen su propio
+    /// comando y son rechazadas acá con un error que apunta a la acción correcta. Idempotente: cambiar al
+    /// mismo estado es no-op sin auditar.
+    /// </summary>
+    public Result ChangeStatus(InvoiceStatus target, Guid actorUserId, string? reason, DateTime nowUtc)
+    {
+        if (DeletedAtUtc is not null)
+            return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot change status."));
+        if (Status == target)
+            return Result.Success();
+        if (!InvoiceStatusTransitions.IsLegal(Status, target))
+            return Result.Failure(
+                new Error(
+                    "Billing.Invoice.IllegalTransition",
+                    $"Cannot change an invoice from {Status} to {target}. "
+                        + "Use Issue, Record payment or Void for those transitions."
+                )
+            );
+
+        var from = Status;
+        Status = target;
+        if (target == InvoiceStatus.Sent)
+            SentAtUtc = nowUtc;
+        UpdatedAtUtc = nowUtc;
+        LastModifiedBy = actorUserId;
+        RecordStatusChange(from, target, StatusChangeTrigger.ManualChange, reason, actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Reemisión (item 6.3), lado ORIGINAL: valida que la factura pueda reemplazarse y la marca como
+    /// reemplazada por <paramref name="replacementId"/>. El caller la anula por separado (repone stock +
+    /// revoca link). No permite reemplazar un borrador (se edita/borra), una anulada o una ya reemplazada.
+    /// </summary>
+    public Result MarkReplacedBy(Guid replacementId, DateTime nowUtc)
+    {
+        if (DeletedAtUtc is not null)
+            return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be reissued."));
+        if (Status == InvoiceStatus.Draft)
+            return Result.Failure(
+                new Error("Billing.Invoice.NotReissuable", "A draft invoice is edited or deleted, not reissued.")
+            );
+        if (ReplacedByInvoiceId is not null)
+            return Result.Failure(
+                new Error("Billing.Invoice.AlreadyReplaced", "This invoice was already replaced by another one.")
+            );
+
+        ReplacedByInvoiceId = replacementId;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Reemisión (item 6.3), lado REEMPLAZO: enlaza este borrador con la original a la que sustituye
+    /// y arrastra el crédito (el pago ya cobrado) que se aplicará al emitirlo.</summary>
+    public Result LinkAsReplacementFor(Guid originalInvoiceId, long carriedCreditCents, DateTime nowUtc)
+    {
+        if (Status != InvoiceStatus.Draft)
+            return Result.Failure(
+                new Error("Billing.Invoice.NotDraft", "Only a draft can be linked as a replacement.")
+            );
+        ReplacesInvoiceId = originalInvoiceId;
+        CarriedCreditCents = carriedCreditCents < 0 ? 0 : carriedCreditCents;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Aplica el crédito arrastrado (item 6.3) tras emitir el reemplazo: traslada el pago ya
+    /// cobrado a la factura nueva → queda Paid si cubre el total, o PartiallyPaid si el total nuevo es
+    /// mayor (queda saldo por cobrar con el link nuevo). No-op si no hay crédito. Reusa <see cref="MarkPaid"/>
+    /// (que ya audita la transición y calcula recibo/hash). El método de pago se marca Other (crédito interno).</summary>
+    public Result ApplyCarriedCredit(DateTime nowUtc)
+    {
+        if (CarriedCreditCents <= 0)
+            return Result.Success();
+        var credit = CarriedCreditCents;
+        CarriedCreditCents = 0;
+        return MarkPaid(credit, Currency, nowUtc, ValueObjects.PaymentMethod.Other);
+    }
+
+    /// <summary>Anexa una fila al rastro de auditoría de estado. Lo llaman los métodos de transición
+    /// (fábrica, Issue, MarkPaid, Void, ChangeStatus) — así el historial queda completo en el dominio.</summary>
+    private void RecordStatusChange(
+        InvoiceStatus? from,
+        InvoiceStatus to,
+        string trigger,
+        string? reason,
+        Guid actorUserId,
+        DateTime nowUtc
+    ) => _statusChanges.Add(new InvoiceStatusChange(Id, from, to, trigger, reason, actorUserId, nowUtc));
 
     /// <summary>Hash de verificación del recibo (SHA-256 hex). Reproducible: cualquiera con los mismos
     /// datos del pago obtiene el mismo hash → sirve para verificar que el recibo no fue alterado.</summary>

@@ -29,13 +29,19 @@ public static class EnsureInvoicePaymentLinkHandler
         if (invoice is null || invoice.InvoiceNumber is null)
             return; // Borrador borrado o no emitido; nada que asegurar.
 
-        if (invoice.ActivePaymentLink is null && invoice.Status != InvoiceStatus.Paid)
+        // El cobro es SIEMPRE por el TOTAL de la factura (decisión del negocio): el checkout cobra el importe
+        // completo en un solo pago. Un cambio sobre una factura ya pagada/parcial se maneja por REEMISIÓN
+        // (anular + crear nueva), no re-cobrando el saldo. EnsurePayableAsync es idempotente por invoice.Id.
+        // Nada por cobrar (ya pagada/anulada o total 0) ⇒ no se toca el link.
+        var totalCents = invoice.Total.AmountCents;
+        if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && totalCents > 0)
         {
             var ensured = await paymentLinks.EnsurePayableAsync(
-                invoice.Total.AmountCents,
+                totalCents,
                 invoice.Currency,
                 invoice.Id,
                 command.TenantId,
+                invoice.InvoiceNumber,
                 ct
             );
             if (ensured.IsFailure)
@@ -43,6 +49,8 @@ public static class EnsureInvoicePaymentLinkHandler
                     $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
                 );
 
+            // Idempotente por ExternalPayableId: en un re-sync (link ya adjunto) es no-op — el monto lo
+            // actualizó PaymentClient, no cambia la URL.
             invoice.AttachPaymentLink(
                 ensured.Value.PayableId,
                 ensured.Value.CheckoutUrl,

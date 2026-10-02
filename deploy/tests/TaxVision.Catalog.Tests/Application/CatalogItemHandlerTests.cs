@@ -175,7 +175,19 @@ public sealed class CatalogItemHandlerTests
         var h = new Harness();
         var item = h.SeedItem();
         var result = await UpdateCatalogItemHandler.Handle(
-            new UpdateCatalogItemCommand(Tenant, item.Id, "New Name", null, null, h.CategoryId, null, 0, null, null),
+            new UpdateCatalogItemCommand(
+                Tenant,
+                item.Id,
+                "New Name",
+                null,
+                null,
+                h.CategoryId,
+                null,
+                0,
+                true,
+                null,
+                null
+            ),
             h.Items,
             h.Categories,
             h.Uow,

@@ -182,6 +182,11 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(CreateTenantPaymentConfigCommand).Assembly);
+    // Registro explícito del consumer de "factura anulada" (revoca el payable/link). La discovery por
+    // assembly a veces omite consumers de clase estática (bug real visto en otros servicios).
+    options.Discovery.IncludeType(
+        typeof(TaxVision.PaymentClient.Application.Payables.IntegrationEvents.InvoiceVoidedConsumer)
+    );
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

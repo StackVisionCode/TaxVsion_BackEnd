@@ -17,6 +17,11 @@ public sealed class IssuerProfile : TenantEntity
     public string? Email { get; private set; }
     public string? Website { get; private set; }
     public Guid? LogoFileId { get; private set; }
+
+    /// <summary>Moneda por defecto del tenant para nuevas facturas (ISO-4217, ej. "USD"). Prellenado del
+    /// formulario; cada factura CONGELA su moneda al crearse, así el histórico nunca cambia aunque esto
+    /// cambie luego. "Platform fallback" = si el tenant no la fijó, se usa "USD".</summary>
+    public string DefaultCurrency { get; private set; } = "USD";
     public DateTime UpdatedAtUtc { get; private set; }
 
     private IssuerProfile() { }
@@ -36,6 +41,7 @@ public sealed class IssuerProfile : TenantEntity
         string? email,
         string? website,
         Guid? logoFileId,
+        string? defaultCurrency,
         DateTime nowUtc
     )
     {
@@ -46,6 +52,10 @@ public sealed class IssuerProfile : TenantEntity
         Email = email;
         Website = website;
         LogoFileId = logoFileId;
+        // Normalizar a ISO-4217 de 3 letras en mayúsculas; vacío → conservar el actual (nunca null).
+        var cur = defaultCurrency?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrEmpty(cur) && cur.Length == 3)
+            DefaultCurrency = cur;
         UpdatedAtUtc = nowUtc;
     }
 

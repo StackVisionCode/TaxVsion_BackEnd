@@ -138,6 +138,12 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, BillingDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Evento de anulación de factura → PaymentClient revoca el payable/link (fanout taxvision-events).
+    // Sin esto, bus.PublishAsync lo descartaría en silencio (Billing no publicaba integración hasta ahora).
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceVoidedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     options
         .ListenToRabbitQueue("billing-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();

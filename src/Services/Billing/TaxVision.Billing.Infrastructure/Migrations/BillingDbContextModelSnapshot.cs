@@ -67,6 +67,11 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<long>("CarriedCreditCents")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -146,6 +151,12 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<string>("ReceiptNumber")
                         .HasMaxLength(96)
                         .HasColumnType("nvarchar(96)");
+
+                    b.Property<Guid?>("ReplacedByInvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReplacesInvoiceId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -253,6 +264,46 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.ToTable("InvoicePaymentLinks", "billing");
                 });
 
+            modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.InvoiceStatusChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ChangedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId", "ChangedAtUtc");
+
+                    b.ToTable("InvoiceStatusChanges", "billing");
+                });
+
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.IssuerProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -261,6 +312,13 @@ namespace TaxVision.Billing.Infrastructure.Migrations
 
                     b.Property<string>("Address")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DefaultCurrency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)")
+                        .HasDefaultValue("USD");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -535,9 +593,20 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.InvoiceStatusChange", b =>
+                {
+                    b.HasOne("TaxVision.Billing.Domain.Invoices.Invoice", null)
+                        .WithMany("StatusChanges")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.Invoice", b =>
                 {
                     b.Navigation("PaymentLinks");
+
+                    b.Navigation("StatusChanges");
                 });
 #pragma warning restore 612, 618
         }

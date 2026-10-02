@@ -36,10 +36,10 @@ internal static class EmbeddedDocumentTemplates
     // HTML autocontenido, apto para impresión A4; sin recursos externos (CSP del motor: nada de red/FS).
     private const string InvoiceV1 = """
         <!DOCTYPE html>
-        <html lang="es">
+        <html lang="en">
         <head>
           <meta charset="utf-8" />
-          <title>Factura {{ invoice.number }}</title>
+          <title>Invoice {{ invoice.number }}</title>
           <style>
             :root { --brand: {{ invoice.brandColor }}; }
             * { box-sizing: border-box; }
@@ -96,39 +96,40 @@ internal static class EmbeddedDocumentTemplates
           </style>
         </head>
         <body>
-          {% if invoice.status == "Paid" %}<div class="watermark paid">Pagado</div>
-          {% elsif invoice.status == "Overdue" %}<div class="watermark overdue">Vencida</div>
-          {% elsif invoice.status == "Cancelled" %}<div class="watermark cancelled">Anulada</div>{% endif %}
+          {% if invoice.status == "Paid" %}<div class="watermark paid">Paid</div>
+          {% elsif invoice.status == "Voided" %}<div class="watermark cancelled">Void</div>
+          {% elsif invoice.status == "Overdue" %}<div class="watermark overdue">Overdue</div>{% endif %}
 
           <div class="header">
             <div>
               {% if invoice.logo != "" %}<img class="logo" src="{{ invoice.logo }}" alt="{{ invoice.displayName }}" />{% endif %}
-              <h1>FACTURA</h1>
+              <h1>INVOICE</h1>
               <p>{{ invoice.displayName }}</p>
             </div>
             <div class="meta">
-              <strong>N.º {{ invoice.number }}</strong><br />
-              Emisión: {{ invoice.issueDate }}<br />
-              {% if invoice.dueDate != "" %}Vencimiento: {{ invoice.dueDate }}<br />{% endif %}
-              Ejercicio fiscal: {{ invoice.taxYear }}<br />
-              {% if invoice.status == "Paid" %}<span class="badge paid">Pagada</span>
-              {% elsif invoice.status == "Overdue" %}<span class="badge overdue">Vencida</span>
-              {% elsif invoice.status == "Cancelled" %}<span class="badge cancelled">Anulada</span>
-              {% else %}<span class="badge pending">Pendiente</span>{% endif %}
+              <strong>No. {{ invoice.number }}</strong><br />
+              Issued: {{ invoice.issueDate }}<br />
+              {% if invoice.dueDate != "" %}Due: {{ invoice.dueDate }}<br />{% endif %}
+              Tax year: {{ invoice.taxYear }}<br />
+              {% if invoice.status == "Paid" %}<span class="badge paid">Paid</span>
+              {% elsif invoice.status == "Voided" %}<span class="badge cancelled">Void</span>
+              {% elsif invoice.status == "PartiallyPaid" %}<span class="badge pending">Partially paid</span>
+              {% elsif invoice.status == "Overdue" %}<span class="badge overdue">Overdue</span>
+              {% else %}<span class="badge pending">Pending</span>{% endif %}
             </div>
           </div>
 
           <div class="parties">
             <div class="party">
-              <h2>Emisor</h2>
+              <h2>From</h2>
               <p><strong>{{ invoice.issuer.name }}</strong></p>
-              <p>NIF/RUC: {{ invoice.issuer.taxId }}</p>
+              {% if invoice.issuer.taxId != "" %}<p>Tax ID: {{ invoice.issuer.taxId }}</p>{% endif %}
               {% if invoice.issuer.address != "" %}<p>{{ invoice.issuer.address }}</p>{% endif %}
             </div>
             <div class="party">
-              <h2>Cliente</h2>
+              <h2>Bill to</h2>
               <p><strong>{{ invoice.customer.name }}</strong></p>
-              <p>NIF/RUC: {{ invoice.customer.taxId }}</p>
+              {% if invoice.customer.taxId != "" %}<p>Tax ID: {{ invoice.customer.taxId }}</p>{% endif %}
               {% if invoice.customer.address != "" %}<p>{{ invoice.customer.address }}</p>{% endif %}
             </div>
           </div>
@@ -136,10 +137,10 @@ internal static class EmbeddedDocumentTemplates
           <table>
             <thead>
               <tr>
-                <th>Descripción</th>
-                <th class="num">Cantidad</th>
-                <th class="num">Precio</th>
-                <th class="num">Importe</th>
+                <th>Description</th>
+                <th class="num">Qty</th>
+                <th class="num">Price</th>
+                <th class="num">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -156,7 +157,7 @@ internal static class EmbeddedDocumentTemplates
 
           <div class="totals">
             <div><span>Subtotal</span><span>{{ invoice.subtotal }} {{ invoice.currency }}</span></div>
-            <div><span>Impuestos</span><span>{{ invoice.taxAmount }} {{ invoice.currency }}</span></div>
+            <div><span>Tax</span><span>{{ invoice.taxAmount }} {{ invoice.currency }}</span></div>
             {% for adj in invoice.adjustments %}
             <div><span>{{ adj.label }}</span><span>-{{ adj.amount }} {{ invoice.currency }}</span></div>
             {% endfor %}
@@ -164,26 +165,26 @@ internal static class EmbeddedDocumentTemplates
           </div>
 
           {% if invoice.settlementType == "FullyCoveredByCode" %}
-          <div class="paid-note">✓ Cubierto al 100% por código — no se requirió pago.</div>
+          <div class="paid-note">✓ Fully covered by code — no payment required.</div>
           {% endif %}
 
           {% if invoice.status == "Paid" %}
-          <div class="paid-note">✓ Factura pagada{% if invoice.paidDate != "" %} el {{ invoice.paidDate }}{% endif %}. No se requiere ninguna acción.</div>
+          <div class="paid-note">✓ Invoice paid{% if invoice.paidDate != "" %} on {{ invoice.paidDate }}{% endif %}. No action required.</div>
           {% if invoice.receiptNumber != "" %}
           <div class="receipt">
-            <div class="receipt-title">Recibo de pago</div>
-            <div class="receipt-row"><span>N.º de recibo</span><strong>{{ invoice.receiptNumber }}</strong></div>
-            <div class="receipt-row"><span>Hash de verificación (SHA-256)</span><code>{{ invoice.receiptHash }}</code></div>
+            <div class="receipt-title">Payment receipt</div>
+            <div class="receipt-row"><span>Receipt no.</span><strong>{{ invoice.receiptNumber }}</strong></div>
+            <div class="receipt-row"><span>Verification hash (SHA-256)</span><code>{{ invoice.receiptHash }}</code></div>
           </div>
           {% endif %}
           {% elsif invoice.paymentUrl != "" %}
           <div class="pay">
             <div class="pay-body">
-              <h3>Pagar esta factura</h3>
-              <a class="pay-btn" href="{{ invoice.paymentUrl }}">Pagar {{ invoice.total }} {{ invoice.currency }}</a>
+              <h3>Pay this invoice</h3>
+              <a class="pay-btn" href="{{ invoice.paymentUrl }}">Pay {{ invoice.total }} {{ invoice.currency }}</a>
               <div class="pay-url">{{ invoice.paymentUrl }}</div>
             </div>
-            {% if invoice.paymentQr != "" %}<div class="pay-qr"><img src="{{ invoice.paymentQr }}" alt="QR de pago" /><span>Escaneá para pagar</span></div>{% endif %}
+            {% if invoice.paymentQr != "" %}<div class="pay-qr"><img src="{{ invoice.paymentQr }}" alt="Payment QR" /><span>Scan to pay</span></div>{% endif %}
           </div>
           {% endif %}
 

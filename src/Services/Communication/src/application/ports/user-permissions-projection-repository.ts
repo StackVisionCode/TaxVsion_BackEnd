@@ -59,6 +59,21 @@ export interface UserPermissionsProjectionRepository {
 
   findByUserId(userId: string): Promise<UserPermissionsProjectionSnapshot | null>;
 
+  /** Usuarios activos de un tenant que tienen un permiso efectivo concreto. */
+  findActiveByTenantAndPermission(
+    tenantId: string,
+    permissionCode: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]>;
+
+  /**
+   * Usuarios que deben atender soporte para el tenant plataforma. Incluye agentes con
+   * permiso explicito y PlatformAdmin, que por regla de dominio bypassea permisos.
+   */
+  findActiveSupportRecipients(
+    tenantId: string,
+    supportPermissionCode: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]>;
+
   markInactive(userId: string, now: Date): Promise<void>;
 
   /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: reactiva la fila SIN tocar
