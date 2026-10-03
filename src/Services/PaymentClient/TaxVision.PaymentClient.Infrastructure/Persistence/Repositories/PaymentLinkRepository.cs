@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
 
@@ -56,6 +56,21 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
             )
             .OrderByDescending(link => link.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    public Task<bool> AnyUsedForExternalReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .PaymentLinks.IgnoreQueryFilters()
+            .AnyAsync(
+                link =>
+                    link.TenantId == tenantId
+                    && link.Purpose.ExternalReferenceId == externalReferenceId
+                    && link.Status == PaymentLinkStatus.Used,
+                ct
+            );
 
     public async Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
         Guid tenantId,
