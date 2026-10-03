@@ -35,6 +35,13 @@ public sealed class TenantDirectoryBackfillService(
 {
     private const int PageSize = 100;
 
+    /// <summary>
+    /// Esperas entre intentos. <c>postmaster-api</c> NO depende de <c>auth-api</c> en el compose, así
+    /// que en un despliegue en frío pide el token M2M antes de que Auth escuche y se queda sin
+    /// backfill hasta el siguiente reinicio. Medido en prod el 2026-10-03.
+    /// </summary>
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
+
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -42,15 +49,31 @@ public sealed class TenantDirectoryBackfillService(
         var repository = scope.ServiceProvider.GetRequiredService<ITenantDirectoryRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        var added = await BackfillPlan.RunAsync(client, repository, PageSize, cancellationToken);
+        var outcome = await BackfillPlan.RunAsync(client, repository, PageSize, cancellationToken);
 
-        if (added == 0)
+        foreach (var delay in RetryDelays)
         {
-            logger.LogInformation("Tenant directory already complete; nothing to backfill.");
-            return;
+            if (outcome.TenantReachable || cancellationToken.IsCancellationRequested)
+                break;
+
+            logger.LogInformation("Tenant not reachable yet; retrying the directory backfill in {Delay}.", delay);
+            await Task.Delay(delay, cancellationToken);
+            outcome = await BackfillPlan.RunAsync(client, repository, PageSize, cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Backfilled {Count} tenant(s) into the Postmaster directory.", added);
+        if (outcome.Added > 0)
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Tres desenlaces distintos y tres mensajes distintos. Antes "no se pudo preguntar" se
+        // reportaba como "ya está completo", así que el log decía que todo iba bien con la tabla vacía.
+        if (!outcome.TenantReachable)
+            logger.LogWarning(
+                "Tenant directory backfill could NOT reach Tenant; wrote {Count} row(s) and will retry next boot.",
+                outcome.Added
+            );
+        else if (outcome.Added == 0)
+            logger.LogInformation("Tenant directory already complete; nothing to backfill.");
+        else
+            logger.LogInformation("Backfilled {Count} tenant(s) into the Postmaster directory.", outcome.Added);
     }
 }

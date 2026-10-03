@@ -1,4 +1,4 @@
-using TaxVision.Postmaster.Application.Abstractions;
+﻿using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Domain.Projections;
 using TaxVision.Postmaster.Infrastructure.Providers.TenantDirectory;
 using TaxVision.Postmaster.Infrastructure.Seed;
@@ -30,7 +30,7 @@ public sealed class TenantDirectoryBackfillTests
         await repository.UpsertAsync(known, "Ya proyectada", "ya", DateTime.UtcNow);
         var client = new PagedClient([new(known, "Ya proyectada", "ya"), new(missing, "Nueva", "nueva")]);
 
-        var added = await BackfillPlan.RunAsync(client, repository, pageSize: 100, CancellationToken.None);
+        var added = (await BackfillPlan.RunAsync(client, repository, pageSize: 100, CancellationToken.None)).Added;
 
         Assert.Equal(1, added);
         Assert.Equal(2, repository.Names.Count);
@@ -45,8 +45,8 @@ public sealed class TenantDirectoryBackfillTests
         var repository = new FakeDirectory();
         var client = new PagedClient([new(Guid.NewGuid(), "Una", "una"), new(Guid.NewGuid(), "Otra", "otra")]);
 
-        Assert.Equal(2, await BackfillPlan.RunAsync(client, repository, 100, CancellationToken.None));
-        Assert.Equal(0, await BackfillPlan.RunAsync(client, repository, 100, CancellationToken.None));
+        Assert.Equal(2, (await BackfillPlan.RunAsync(client, repository, 100, CancellationToken.None)).Added);
+        Assert.Equal(0, (await BackfillPlan.RunAsync(client, repository, 100, CancellationToken.None)).Added);
     }
 
     [Fact]
@@ -60,14 +60,14 @@ public sealed class TenantDirectoryBackfillTests
             .ToList();
         var repository = new FakeDirectory();
 
-        var added = await BackfillPlan.RunAsync(
+        var outcome = await BackfillPlan.RunAsync(
             new PagedClient(tenants),
             repository,
             pageSize: 2,
             CancellationToken.None
         );
 
-        Assert.Equal(5, added);
+        Assert.Equal(5, outcome.Added);
         Assert.Equal(5, repository.Names.Count);
     }
 
@@ -83,7 +83,7 @@ public sealed class TenantDirectoryBackfillTests
         var client = new PagedClient(tenants);
         var repository = new FakeDirectory();
 
-        Assert.Equal(4, await BackfillPlan.RunAsync(client, repository, pageSize: 2, CancellationToken.None));
+        Assert.Equal(4, (await BackfillPlan.RunAsync(client, repository, pageSize: 2, CancellationToken.None)).Added);
         Assert.Equal(3, client.PagesRequested);
     }
 
@@ -94,30 +94,40 @@ public sealed class TenantDirectoryBackfillTests
         // que ya hay: se reintenta en el siguiente boot.
         var repository = new FakeDirectory();
 
-        var added = await BackfillPlan.RunAsync(new SilentClient(), repository, 100, CancellationToken.None);
+        var outcome = await BackfillPlan.RunAsync(new SilentClient(), repository, 100, CancellationToken.None);
 
-        Assert.Equal(0, added);
+        Assert.Equal(0, outcome.Added);
         Assert.Empty(repository.Names);
+        // Lo que importa: el servicio tiene que poder decir "no pude preguntar" en vez de
+        // "ya estaba completo". Antes las dos eran 0 y el log mentia.
+        Assert.False(outcome.TenantReachable);
     }
 
     private sealed class PagedClient(IReadOnlyList<TenantDirectoryItem> all) : ITenantDirectoryClient
     {
         public int PagesRequested { get; private set; }
 
-        public Task<IReadOnlyList<TenantDirectoryItem>> GetPageAsync(int page, int size, CancellationToken ct = default)
-        {
-            PagesRequested++;
-            return Task.FromResult<IReadOnlyList<TenantDirectoryItem>>(all.Skip((page - 1) * size).Take(size).ToList());
-        }
-    }
-
-    private sealed class SilentClient : ITenantDirectoryClient
-    {
-        public Task<IReadOnlyList<TenantDirectoryItem>> GetPageAsync(
+        public Task<IReadOnlyList<TenantDirectoryItem>?> GetPageAsync(
             int page,
             int size,
             CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<TenantDirectoryItem>>([]);
+        )
+        {
+            PagesRequested++;
+            return Task.FromResult<IReadOnlyList<TenantDirectoryItem>?>(
+                all.Skip((page - 1) * size).Take(size).ToList()
+            );
+        }
+    }
+
+    /// <summary>Tenant caído: devuelve null, que NO es lo mismo que una página vacía.</summary>
+    private sealed class SilentClient : ITenantDirectoryClient
+    {
+        public Task<IReadOnlyList<TenantDirectoryItem>?> GetPageAsync(
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TenantDirectoryItem>?>(null);
     }
 
     private sealed class FakeDirectory : ITenantDirectoryRepository
