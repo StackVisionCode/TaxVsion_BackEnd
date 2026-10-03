@@ -289,6 +289,12 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully
