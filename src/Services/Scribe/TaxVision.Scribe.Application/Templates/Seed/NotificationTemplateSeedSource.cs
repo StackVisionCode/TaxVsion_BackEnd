@@ -1,4 +1,4 @@
-using TaxVision.Scribe.Domain.Templates;
+﻿using TaxVision.Scribe.Domain.Templates;
 
 namespace TaxVision.Scribe.Application.Templates.Seed;
 
@@ -23,7 +23,14 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 8
+    // v9: plantilla de factura, la primera sobre tenant-base.
+    int ContentVersion = 9,
+    /// <summary>
+    /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
+    /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
+    /// El scope sigue siendo System: una sola plantilla para todas, no una copia por oficina.
+    /// </summary>
+    string LayoutKey = "system-base"
 );
 
 /// <summary>
@@ -39,6 +46,7 @@ public static class NotificationTemplateSeedSource
     // `{ get; } = [...]` aquí capturaría null en cada una. `=>` evalúa on-access, ya inicializado.
     public static IReadOnlyList<NotificationTemplateSeed> All =>
         [
+            InvoiceSent,
             Invitation,
             PasswordReset,
             OtpCode,
@@ -1414,5 +1422,74 @@ public static class NotificationTemplateSeedSource
                 ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
             ]
+        );
+
+    /// <summary>
+    /// La factura que la OFICINA manda a su cliente. Primera plantilla sobre <c>tenant-base</c>: el
+    /// correo es de la oficina, no de la plataforma, así que lleva su cáscara y su logo.
+    ///
+    /// <para>Antes no existía — el CRM componía el HTML a mano y lo mandaba a
+    /// <c>/notifications/email/send</c>, por eso llegaba sin marca ni formato.</para>
+    /// </summary>
+    private static NotificationTemplateSeed InvoiceSent { get; } =
+        new(
+            EventKey: "billing.invoice_sent.v1",
+            TemplateKey: "billing.invoice_sent",
+            Name: "Billing — Factura enviada al cliente",
+            Subject: "Invoice {{ invoice_number }} from {{ tenant_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Invoice</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Invoice {{ invoice_number }}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ customer_name }}</strong>, here is your invoice from {{ tenant_name }}. A PDF copy is attached.</td></tr>
+              <tr>
+                <td style="padding:18px 0 4px 0;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E1E8EE;border-radius:10px;">
+                    <tr>
+                      <td style="padding:16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Amount due</td>
+                      <td align="right" style="padding:16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:bold;color:#23384B;">{{ amount_due }}</td>
+                    </tr>
+                    {% if due_date %}
+                    <tr>
+                      <td style="padding:0 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Due date</td>
+                      <td align="right" style="padding:0 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#496174;">{{ due_date }}</td>
+                    </tr>
+                    {% endif %}
+                  </table>
+                </td>
+              </tr>
+              {% if payment_link %}
+              <tr>
+                <td align="left" style="padding:26px 0 4px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ payment_link }}" style="height:46px;v-text-anchor:middle;width:200px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Pay online</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ payment_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Pay online</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              {% endif %}
+              <tr><td style="padding:22px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Thank you for your business.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("invoice_number", VariableType.String, true, null, "Numero de la factura (INV-2026-00005)."),
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente que recibe."),
+                ("tenant_name", VariableType.String, true, null, "Nombre de la oficina que factura."),
+                ("amount_due", VariableType.String, true, null, "Importe pendiente ya formateado con su moneda."),
+                (
+                    "due_date",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Fecha de vencimiento ya formateada. Vacia = no se muestra."
+                ),
+                ("payment_link", VariableType.Url, false, null, "URL estable de pago. Vacia = no se muestra el boton."),
+                ("preheader", VariableType.String, false, "Your invoice is ready.", "Linea de vista previa."),
+            ],
+            LayoutKey: "tenant-base"
         );
 }

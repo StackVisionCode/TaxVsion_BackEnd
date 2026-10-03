@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Infrastructure.Caching;
@@ -142,6 +142,11 @@ builder.Host.UseWolverine(options =>
     // Sin esto, bus.PublishAsync lo descartaría en silencio (Billing no publicaba integración hasta ahora).
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceVoidedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
+    // Envío de la factura al cliente → Notification la renderiza con la plantilla de Scribe y la manda.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
     options

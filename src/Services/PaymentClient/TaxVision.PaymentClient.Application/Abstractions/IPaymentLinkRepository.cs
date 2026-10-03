@@ -1,4 +1,4 @@
-using TaxVision.PaymentClient.Domain.PaymentLinks;
+﻿using TaxVision.PaymentClient.Domain.PaymentLinks;
 
 namespace TaxVision.PaymentClient.Application.Abstractions;
 
@@ -16,6 +16,18 @@ public interface IPaymentLinkRepository
     /// resolver estable para reusar un link vigente antes de acuñar uno nuevo. Tenant explícito +
     /// IgnoreQueryFilters (alcanzable desde el resolver público, sin tenant en contexto).</summary>
     Task<PaymentLink?> GetActiveByExternalReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// ¿Hubo ya un link CONSUMIDO para esta factura? Es prueba de cobro consumado:
+    /// <c>MarkAsUsed</c> exige que haya un pago asociado. Lo usa el resolver para no acuñar un link
+    /// nuevo sobre algo ya pagado — cubre también las facturas cobradas ANTES de que existiera
+    /// <c>InvoicePaidConsumer</c>, que no tienen evento que reemitir.
+    /// </summary>
+    Task<bool> AnyUsedForExternalReferenceAsync(
         Guid tenantId,
         string externalReferenceId,
         CancellationToken ct = default

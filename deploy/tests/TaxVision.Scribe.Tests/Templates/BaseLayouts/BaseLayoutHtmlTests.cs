@@ -1,4 +1,4 @@
-using System.Text.Encodings.Web;
+﻿using System.Text.Encodings.Web;
 using Fluid;
 using TaxVision.Scribe.Application.Templates.BaseLayouts;
 
@@ -31,8 +31,12 @@ public sealed class BaseLayoutHtmlTests
         Assert.Contains("TaxProffice", html);
     }
 
+    /// <summary>
+    /// Sin logo la cabecera cae al nombre de la oficina; con logo va la imagen inline. En ninguno de los
+    /// dos casos aparece el aviso de configuracion (v7): tenant-base lo lee el CLIENTE de la oficina.
+    /// </summary>
     [Fact]
-    public async Task TenantBaseV1_shows_the_banner_only_when_tenant_logo_missing_is_true()
+    public async Task TenantBaseV1_falls_back_to_the_office_name_without_leaking_setup_copy()
     {
         var parsed = Parser.TryParse(BaseLayoutHtml.TenantBaseV1, out var template, out var error);
         Assert.True(parsed, error);
@@ -43,8 +47,9 @@ public sealed class BaseLayoutHtmlTests
         withFallback.SetValue("tenant_address", "123 Main St");
         withFallback.SetValue("tenant_logo_missing", true);
         var htmlWithFallback = await template!.RenderAsync(withFallback, HtmlEncoder.Default);
-        Assert.Contains("Set your logo", htmlWithFallback);
         Assert.Contains("Acme &amp; Co", htmlWithFallback);
+        Assert.DoesNotContain("cid:logo-header", htmlWithFallback);
+        Assert.DoesNotContain("Set your logo", htmlWithFallback);
 
         var withOwnLogo = new TemplateContext();
         withOwnLogo.SetValue("body", "<p>Hola</p>");
@@ -52,6 +57,7 @@ public sealed class BaseLayoutHtmlTests
         withOwnLogo.SetValue("tenant_address", "123 Main St");
         withOwnLogo.SetValue("tenant_logo_missing", false);
         var htmlWithOwnLogo = await template.RenderAsync(withOwnLogo, HtmlEncoder.Default);
+        Assert.Contains("cid:logo-header", htmlWithOwnLogo);
         Assert.DoesNotContain("Set your logo", htmlWithOwnLogo);
     }
 }

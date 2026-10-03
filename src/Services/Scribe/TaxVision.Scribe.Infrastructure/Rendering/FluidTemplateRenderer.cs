@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -46,6 +46,24 @@ public sealed partial class FluidTemplateRenderer(
     private static readonly FluidParser Parser = new();
     private static readonly TimeSpan RenderTimeout = TimeSpan.FromSeconds(5);
     private static readonly TemplateOptions Options = new() { MaxRecursion = 100, MaxSteps = 10000 };
+
+    // El layout de la oficina. Quien renderiza sobre él lleva el logo del tenant, no el del sistema.
+    private const string TenantLayoutKey = "tenant-base";
+
+    /// <summary>
+    /// De quién es el logo. Lo decide el LAYOUT, no el scope de la plantilla: <c>tenant-base</c> es la
+    /// cáscara de la oficina, así que su header lleva el logo de la oficina aunque la plantilla sea
+    /// System (una sola plantilla sembrada sirve a todas). Fuera de ahí se respeta lo que pidió el caller.
+    /// </summary>
+    private static (LogoScope Scope, Guid? TenantId) ResolveLogoOwner(
+        string layoutKey,
+        LogoScope requested,
+        Guid? requestTenantId,
+        Guid? templateTenantId
+    ) =>
+        layoutKey == TenantLayoutKey
+            ? (LogoScope.Tenant, requestTenantId ?? templateTenantId)
+            : (requested, templateTenantId);
 
     public async Task<Result<RenderedContent>> RenderAsync(RenderRequest request, CancellationToken ct = default)
     {
@@ -95,6 +113,13 @@ public sealed partial class FluidTemplateRenderer(
             version.VersionNumber
         );
 
+        var logoOwner = ResolveLogoOwner(
+            layoutResult.Value.LayoutKey.Value,
+            request.LogoScope,
+            request.TenantId,
+            templateResult.Value.TenantId
+        );
+
         return await RenderVersionAsync(
             templateKey.Value,
             templateResult.Value.Scope.ToString(),
@@ -103,7 +128,8 @@ public sealed partial class FluidTemplateRenderer(
             layoutVersion,
             templateResult.Value.TenantId,
             request.Locale?.Value,
-            request.LogoScope,
+            logoOwner.Scope,
+            logoOwner.TenantId,
             NormalizeVariables(request.Variables),
             ct
         );
@@ -135,7 +161,12 @@ public sealed partial class FluidTemplateRenderer(
                 )
             );
 
-        var logoScope = template.TenantId is null ? LogoScope.System : LogoScope.Tenant;
+        var logoOwner = ResolveLogoOwner(
+            layoutResult.Value.LayoutKey.Value,
+            template.TenantId is null ? LogoScope.System : LogoScope.Tenant,
+            template.TenantId,
+            template.TenantId
+        );
 
         return await RenderVersionAsync(
             template.TemplateKey.Value,
@@ -145,7 +176,8 @@ public sealed partial class FluidTemplateRenderer(
             layoutVersion,
             template.TenantId,
             locale: null,
-            logoScope,
+            logoOwner.Scope,
+            logoOwner.TenantId,
             NormalizeVariables(sampleVariables),
             ct
         );
@@ -206,6 +238,7 @@ public sealed partial class FluidTemplateRenderer(
         Guid? tenantId,
         string? locale,
         LogoScope logoScope,
+        Guid? logoTenantId,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct
     )
@@ -227,6 +260,7 @@ public sealed partial class FluidTemplateRenderer(
                 tenantId,
                 locale,
                 logoScope,
+                logoTenantId,
                 variables,
                 layer => worstCacheLayer = WorstOf(worstCacheLayer, layer),
                 ct
@@ -257,6 +291,7 @@ public sealed partial class FluidTemplateRenderer(
         Guid? tenantId,
         string? locale,
         LogoScope logoScope,
+        Guid? logoTenantId,
         IReadOnlyDictionary<string, object?> variables,
         Action<CacheLayer> reportCacheLayer,
         CancellationToken ct
@@ -289,7 +324,7 @@ public sealed partial class FluidTemplateRenderer(
         if (bodyHtmlResult.IsFailure)
             return Result.Failure<RenderedContent>(bodyHtmlResult.Error);
 
-        var logoAsset = await logoResolver.ResolveAsync(logoScope, tenantId, ct);
+        var logoAsset = await logoResolver.ResolveAsync(logoScope, logoTenantId, ct);
 
         var layoutTemplateResult = await GetOrParseLayoutTemplateAsync(
             BuildCacheKey(tenantId, layoutKeyValue, layoutVersion.VersionNumber, "layout"),
