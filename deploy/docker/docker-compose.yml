@@ -891,6 +891,11 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      # El backfill del directorio de oficinas pide un token M2M nada mas arrancar. Sin esta
+      # espera, en un despliegue en frio pregunta antes de que Auth escuche y se queda sin
+      # correr hasta el siguiente reinicio (medido en prod 2026-10-03).
+      auth-api:
+        condition: service_healthy
     networks:
       - taxvision-network
 

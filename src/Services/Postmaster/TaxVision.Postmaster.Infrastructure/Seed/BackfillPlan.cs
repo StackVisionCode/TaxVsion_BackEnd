@@ -1,4 +1,4 @@
-using TaxVision.Postmaster.Application.Abstractions;
+﻿using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Infrastructure.Providers.TenantDirectory;
 
 namespace TaxVision.Postmaster.Infrastructure.Seed;
@@ -15,8 +15,13 @@ public static class BackfillPlan
     /// <summary>Tope de seguridad: 200 páginas son 20.000 oficinas. Llegar ahí es un bucle, no un dato.</summary>
     private const int MaxPages = 200;
 
-    /// <summary>Cuántas oficinas se escribieron. 0 = ya estaba completo (o Tenant no contestó).</summary>
-    public static async Task<int> RunAsync(
+    /// <summary>
+    /// Qué pasó. <paramref name="TenantReachable"/> separa "ya estaba completo" de "no se pudo ni
+    /// preguntar": las dos escriben 0 filas y confundirlas deja un log que miente.
+    /// </summary>
+    public readonly record struct BackfillOutcome(int Added, bool TenantReachable);
+
+    public static async Task<BackfillOutcome> RunAsync(
         ITenantDirectoryClient client,
         ITenantDirectoryRepository repository,
         int pageSize,
@@ -29,6 +34,9 @@ public static class BackfillPlan
         for (var page = 1; page <= MaxPages; page++)
         {
             var batch = await client.GetPageAsync(page, pageSize, ct);
+            if (batch is null)
+                return new BackfillOutcome(added, TenantReachable: false);
+
             if (batch.Count == 0)
                 break;
 
@@ -49,6 +57,6 @@ public static class BackfillPlan
                 break;
         }
 
-        return added;
+        return new BackfillOutcome(added, TenantReachable: true);
     }
 }

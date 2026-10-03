@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BuildingBlocks.Tenancy;
@@ -23,8 +23,12 @@ public sealed record TenantDirectoryItem(Guid Id, string Name, string Subdomain)
 
 public interface ITenantDirectoryClient
 {
-    /// <summary>Una página del listado. Lista vacía = no hay más (o no se pudo leer; ver el log).</summary>
-    Task<IReadOnlyList<TenantDirectoryItem>> GetPageAsync(int page, int size, CancellationToken ct = default);
+    /// <summary>
+    /// Una página del listado. Lista vacía = no hay más. <b>null = no se pudo leer</b> (Tenant caído,
+    /// sin token, 4xx). Son cosas distintas: confundirlas hace que el backfill reporte "ya está
+    /// completo" cuando en realidad no pudo ni preguntar.
+    /// </summary>
+    Task<IReadOnlyList<TenantDirectoryItem>?> GetPageAsync(int page, int size, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -45,7 +49,7 @@ public sealed class TenantDirectoryClient(
         PropertyNameCaseInsensitive = true,
     };
 
-    public async Task<IReadOnlyList<TenantDirectoryItem>> GetPageAsync(
+    public async Task<IReadOnlyList<TenantDirectoryItem>?> GetPageAsync(
         int page,
         int size,
         CancellationToken ct = default
@@ -57,7 +61,7 @@ public sealed class TenantDirectoryClient(
         if (string.IsNullOrWhiteSpace(token))
         {
             logger.LogWarning("No service token available; skipping the tenant directory backfill.");
-            return [];
+            return null;
         }
 
         var url = $"{options.Value.BaseUrl.TrimEnd('/')}/internal/tenants/directory?page={page}&size={size}";
@@ -74,7 +78,7 @@ public sealed class TenantDirectoryClient(
                     page,
                     (int)response.StatusCode
                 );
-                return [];
+                return null;
             }
 
             return await response.Content.ReadFromJsonAsync<List<TenantDirectoryItem>>(Json, ct) ?? [];
@@ -84,7 +88,7 @@ public sealed class TenantDirectoryClient(
             // Que Tenant no conteste al arrancar no puede impedir que Postmaster arranque: sin
             // backfill los correos siguen saliendo, solo que sin el nombre de la oficina en el From.
             logger.LogWarning(ex, "Could not read the tenant directory; backfill skipped this boot.");
-            return [];
+            return null;
         }
     }
 }
