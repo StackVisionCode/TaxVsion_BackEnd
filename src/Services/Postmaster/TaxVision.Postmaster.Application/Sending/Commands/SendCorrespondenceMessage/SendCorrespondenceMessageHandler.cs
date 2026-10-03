@@ -1,4 +1,4 @@
-using BuildingBlocks.Persistence;
+﻿using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
@@ -20,10 +20,10 @@ public static class SendCorrespondenceMessageHandler
 {
     public static async Task<Result<SendCorrespondenceMessageResult>> Handle(
         SendCorrespondenceMessageCommand command,
-        IOAuthProviderResolver oauthProviderResolver,
+        IConnectedMailboxResolver mailboxResolver,
         ISuppressionListRepository suppressionList,
         IOutboundAttachmentFetcher attachmentFetcher,
-        IOAuthEmailSender oauthEmailSender,
+        IConnectedMailboxSender mailboxSender,
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
@@ -36,7 +36,7 @@ public static class SendCorrespondenceMessageHandler
         if (replay is not null)
             return replay;
 
-        var resolveResult = await ResolveAccountAsync(command, oauthProviderResolver, ct);
+        var resolveResult = await ResolveAccountAsync(command, mailboxResolver, ct);
         if (resolveResult.IsFailure)
             return Result.Failure<SendCorrespondenceMessageResult>(resolveResult.Error);
         var provider = resolveResult.Value;
@@ -69,7 +69,7 @@ public static class SendCorrespondenceMessageHandler
             command,
             provider,
             attachmentFetcher,
-            oauthEmailSender,
+            mailboxSender,
             idempotencyKey,
             idempotencyGuard,
             sentMessages,
@@ -122,23 +122,19 @@ public static class SendCorrespondenceMessageHandler
 
     /// <summary>
     /// A diferencia del canal automático, la cuenta la elige explícitamente el preparador
-    /// (<see cref="SendCorrespondenceMessageCommand.AccountId"/>) — <see cref="IOAuthProviderResolver.ResolveByAccountIdAsync"/>
+    /// (<see cref="SendCorrespondenceMessageCommand.AccountId"/>) — <see cref="IConnectedMailboxResolver.ResolveByAccountIdAsync"/>
     /// ya valida tenant+activa (D3 Compose §11.4/§15), acá solo se traduce el resultado a error HTTP.
     /// </summary>
-    private static async Task<Result<ResolvedOAuthProvider>> ResolveAccountAsync(
+    private static async Task<Result<ResolvedMailbox>> ResolveAccountAsync(
         SendCorrespondenceMessageCommand command,
-        IOAuthProviderResolver oauthProviderResolver,
+        IConnectedMailboxResolver mailboxResolver,
         CancellationToken ct
     )
     {
-        var resolveResult = await oauthProviderResolver.ResolveByAccountIdAsync(
-            command.TenantId,
-            command.AccountId,
-            ct
-        );
-        return resolveResult.Status == OAuthResolutionStatus.Resolved
+        var resolveResult = await mailboxResolver.ResolveByAccountIdAsync(command.TenantId, command.AccountId, ct);
+        return resolveResult.Status == MailboxResolutionStatus.Resolved
             ? Result.Success(resolveResult.Provider!)
-            : Result.Failure<ResolvedOAuthProvider>(
+            : Result.Failure<ResolvedMailbox>(
                 new Error(
                     "SendCorrespondenceMessageHandler.AccountNotFound",
                     "The selected account is not connected or is not active for this tenant."
@@ -156,7 +152,7 @@ public static class SendCorrespondenceMessageHandler
     /// </summary>
     private static async Task<Result<SentMessage>> PersistQueuedMessageAsync(
         SendCorrespondenceMessageCommand command,
-        ResolvedOAuthProvider provider,
+        ResolvedMailbox provider,
         string idempotencyKey,
         ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
@@ -176,7 +172,7 @@ public static class SendCorrespondenceMessageHandler
             replyTo: null,
             templateKey: null,
             DateTime.UtcNow,
-            ProviderScope.TenantOAuth,
+            ProviderScope.TenantMailbox,
             command.CorrespondenceDraftId,
             command.InReplyToInternetMessageId,
             command.References
@@ -253,9 +249,9 @@ public static class SendCorrespondenceMessageHandler
     private static async Task<Result<SendResult>> FetchAttachmentsAndSendAsync(
         SentMessage message,
         SendCorrespondenceMessageCommand command,
-        ResolvedOAuthProvider provider,
+        ResolvedMailbox provider,
         IOutboundAttachmentFetcher attachmentFetcher,
-        IOAuthEmailSender oauthEmailSender,
+        IConnectedMailboxSender mailboxSender,
         string idempotencyKey,
         IIdempotencyGuard idempotencyGuard,
         ISentMessageRepository sentMessages,
@@ -280,7 +276,7 @@ public static class SendCorrespondenceMessageHandler
 
         message.MarkAsSending();
         var content = new RenderedContent(command.Subject, command.Html, command.Text);
-        var sendResult = await oauthEmailSender.SendAsync(
+        var sendResult = await mailboxSender.SendAsync(
             message,
             content,
             provider,

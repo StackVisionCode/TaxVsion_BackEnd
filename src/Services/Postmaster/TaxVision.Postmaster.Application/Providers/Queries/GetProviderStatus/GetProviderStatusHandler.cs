@@ -1,5 +1,4 @@
-using TaxVision.Postmaster.Application.Providers;
-using TaxVision.Postmaster.Domain.Providers;
+﻿using TaxVision.Postmaster.Application.Abstractions;
 
 namespace TaxVision.Postmaster.Application.Providers.Queries.GetProviderStatus;
 
@@ -8,33 +7,21 @@ public static class GetProviderStatusHandler
     public static async Task<ProviderStatusDto> Handle(
         GetProviderStatusQuery query,
         ISystemEmailProviderRepository systemProviders,
-        ITenantEmailProviderRepository tenantProviders,
-        IProviderHealthStatusRepository healthStatuses,
+        IConnectedMailboxRepository connectedAccounts,
         CancellationToken ct
     )
     {
         var systemLookup = await systemProviders.GetEnabledDefaultAsync(ct);
-        var tenantLookup = await tenantProviders.GetEnabledByTenantAsync(query.TenantId, ct);
 
-        if (tenantLookup.IsFailure)
-            return new ProviderStatusDto(systemLookup.IsSuccess, false, false, null, null);
-
-        var provider = tenantLookup.Value;
-        var healthLookup = await healthStatuses.GetAsync(
-            ProviderKind.Tenant,
-            query.TenantId,
-            provider.ProviderCode,
-            ct
-        );
-        var healthy = healthLookup.IsFailure || healthLookup.Value.CircuitBreakerState != CircuitBreakerState.Open;
-        var lastCheckAtUtc = healthLookup.IsSuccess ? healthLookup.Value.LastCheckAtUtc : (DateTime?)null;
+        // La misma fuente que usa el envío (IConnectedMailboxResolver): si la pantalla mirara otra cosa,
+        // podría decir "configurado" de un buzón por el que el correo no sale — que es exactamente el
+        // tipo de incoherencia que hizo falta un día entero para diagnosticar en el carril anterior.
+        var account = await connectedAccounts.FindActiveByTenantIdAsync(query.TenantId, ct);
 
         return new ProviderStatusDto(
             systemLookup.IsSuccess,
-            true,
-            healthy,
-            lastCheckAtUtc,
-            new TenantProviderConfigSummary(provider.FromAddressDefault, provider.Host)
+            account is not null,
+            account is null ? null : new ConnectedMailboxSummary(account.FromAddress, account.ProviderCode)
         );
     }
 }

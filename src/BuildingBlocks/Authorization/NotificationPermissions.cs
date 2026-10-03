@@ -1,4 +1,4 @@
-namespace BuildingBlocks.Authorization;
+﻿namespace BuildingBlocks.Authorization;
 
 /// <summary>
 /// Permisos del servicio de notificaciones/email. Mismo patrón que
@@ -7,9 +7,6 @@ namespace BuildingBlocks.Authorization;
 /// </summary>
 public static class NotificationPermissions
 {
-    // Configuración SMTP/API
-    public const string SettingsManage = "notification.settings.manage";
-
     // Envío y historial de correos
     public const string EmailSend = "notification.email.send";
     public const string EmailView = "notification.email.view";

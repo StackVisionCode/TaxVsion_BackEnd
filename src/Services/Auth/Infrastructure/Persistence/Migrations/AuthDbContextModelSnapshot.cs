@@ -2668,20 +2668,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000094"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
-                            Code = "notification.settings.manage",
-                            Description = "Manage the office's SMTP/API notification settings",
-                            IsAssignableByTenant = true,
-                            IsCustomerPortal = false,
-                            IsDangerous = false,
-                            IsReserved = false,
-                            MinPlanTier = 0,
-                            Module = "notification",
-                            PlatformOnly = false
-                        },
-                        new
-                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000095"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.email.send",

@@ -15,5 +15,5 @@ public sealed class CloudStorageClientOptions
 {
     public const string SectionName = "Scribe:CloudStorage";
 
-    public string BaseUrl { get; set; } = "http://localhost:5210";
+    public string BaseUrl { get; set; } = "http://localhost:5330";
 }

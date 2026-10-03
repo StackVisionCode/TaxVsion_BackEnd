@@ -39,6 +39,14 @@ public sealed class OutboundEmailMessage : TenantEntity
     public string? Error { get; private set; }
     public string? CorrelationId { get; private set; }
 
+    /// <summary>
+    /// A quién contesta el destinatario. Lo rellena el remitente humano (su propio correo) y es lo
+    /// que permite que Postmaster envíe por el proveedor del sistema en nombre de la oficina sin que
+    /// eso sea suplantación: el From dice la plataforma, el Reply-To dice la persona. Sin este dato,
+    /// Postmaster deniega ese escalón en vez de mandar un correo al que nadie puede responder.
+    /// </summary>
+    public string? ReplyTo { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
     public DateTime? DeliveredAtUtc { get; private set; }
@@ -61,7 +69,8 @@ public sealed class OutboundEmailMessage : TenantEntity
         Guid? templateVersionId,
         Guid? campaignId,
         string? correlationId,
-        int maxRetries = 3
+        int maxRetries = 3,
+        string? replyTo = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -99,6 +108,7 @@ public sealed class OutboundEmailMessage : TenantEntity
             CampaignId = campaignId,
             CorrelationId = correlationId is { Length: > 128 } ? correlationId[..128] : correlationId,
             MaxRetries = maxRetries,
+            ReplyTo = string.IsNullOrWhiteSpace(replyTo) ? null : replyTo.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
         };
         message.SetTenant(tenantId);

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Postmaster.Domain.Providers;
 
@@ -12,7 +12,7 @@ public sealed class ProviderHealthStatusConfiguration : IEntityTypeConfiguration
         builder.HasKey(h => h.Id);
         // Id es Guid client-generado (BaseEntity) — se crea en el primer health check y se actualiza en
         // cada uno posterior (ConsecutiveFailures/Successes, CircuitBreakerState), mismo patrón de
-        // doble-touch que TenantOAuthAccount. Ver SystemEmailProviderConfiguration.
+        // doble-touch que ConnectedMailbox. Ver SystemEmailProviderConfiguration.
         builder.Property(h => h.Id).ValueGeneratedNever();
         builder.Property(h => h.ProviderKind).HasConversion<string>().HasMaxLength(10).IsRequired();
         builder.Property(h => h.TenantId);

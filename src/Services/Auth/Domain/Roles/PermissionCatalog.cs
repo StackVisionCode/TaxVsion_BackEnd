@@ -178,7 +178,6 @@ public static class PermissionCatalog
     // Postmaster arriba: 8 de estos 9 permisos ya los exigían los 5 controllers de Notification
     // vía [HasPermission(...)], pero nunca se habían sembrado en este catálogo. LogView lo exige
     // ahora el GET de NotificationsController (historial del tenant para auditoría/soporte).
-    public const string NotificationSettingsManage = NotificationPermissions.SettingsManage;
     public const string NotificationEmailSend = NotificationPermissions.EmailSend;
     public const string NotificationEmailView = NotificationPermissions.EmailView;
     public const string NotificationTemplateView = NotificationPermissions.TemplateView;
@@ -1508,14 +1507,6 @@ public static class PermissionCatalog
             PostmasterProvidersWrite,
             "postmaster",
             "Configure the office's email provider (SMTP/API)",
-            false
-        ),
-        // Notification (mismo hallazgo, ver comentario junto a los const de arriba).
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000094"),
-            NotificationSettingsManage,
-            "notification",
-            "Manage the office's SMTP/API notification settings",
             false
         ),
         new(

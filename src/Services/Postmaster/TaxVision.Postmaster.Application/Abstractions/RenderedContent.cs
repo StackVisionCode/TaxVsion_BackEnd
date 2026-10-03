@@ -1,4 +1,4 @@
-using TaxVision.Postmaster.Domain.Sending;
+﻿using TaxVision.Postmaster.Domain.Sending;
 
 namespace TaxVision.Postmaster.Application.Abstractions;
 
@@ -14,7 +14,7 @@ namespace TaxVision.Postmaster.Application.Abstractions;
 /// (<c>NotificationsEmailSendRequestedConsumer</c>) las pasa tal cual a
 /// <c>IInlineAssetFetcher.FetchAllAsync</c> — mismo tipo exacto que ese método ya espera, sin mapeo —
 /// para obtener los bytes reales antes de invocar <c>IEmailSender.SendAsync</c>. Vacío por default:
-/// el path OAuth (<c>IOAuthEmailSender</c>) y el envío síncrono de Correspondence
+/// el path del buzón conectado (<c>IConnectedMailboxSender</c>) y el envío síncrono de Correspondence
 /// (<c>SendCorrespondenceMessageHandler</c>, fuera de alcance de esta fase) siguen sin soporte de
 /// logos inline.
 /// </param>
@@ -22,7 +22,7 @@ public sealed record RenderedContent(string Subject, string Html, string? Text, 
 {
     /// <summary>
     /// Preserva a los callers/tests que construían <c>RenderedContent</c> con los 3 argumentos
-    /// originales (path OAuth, Correspondence, y los tests existentes de Mime/Connectors) — quedan
+    /// originales (path del buzón conectado, Correspondence, y los tests existentes de Mime/Connectors) — quedan
     /// sin logos inline, comportamiento idéntico al de antes de esta fase.
     /// </summary>
     public RenderedContent(string Subject, string Html, string? Text)

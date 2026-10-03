@@ -4,5 +4,8 @@ namespace TaxVision.Billing.Infrastructure.Inventory;
 public sealed class BillingInventoryOptions
 {
     public const string SectionName = "Billing:Inventory";
-    public string BaseUrl { get; set; } = "http://localhost:5180";
+
+    // Puerto de Inventory en la flota local (scripts/start-fleet.ps1). En Docker lo pisa
+    // Billing__Inventory__BaseUrl.
+    public string BaseUrl { get; set; } = "http://localhost:5490";
 }

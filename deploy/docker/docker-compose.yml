@@ -776,14 +776,6 @@ services:
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
       Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
-      # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
-      # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
-      # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP
-      # directo de EmailDeliveryService/InProcessEmailDispatchGateway ganó su equivalente
-      # event-based). Rollback: setear NOTIFICATION_USE_POSTMASTER_DISPATCH=false en el .env de
-      # despliegue — el path in-process/SMTP-directo sigue vivo, sin eliminar (retiro real es
-      # trabajo futuro fuera de este plan, condicionado a confianza operacional en producción).
-      Notification__UsePostmasterDispatch: ${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}
       # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
       # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
@@ -863,6 +855,8 @@ services:
       Postmaster__ServiceAuth__ClientSecret: ${POSTMASTER_SERVICE_CLIENT_SECRET:?Set POSTMASTER_SERVICE_CLIENT_SECRET in .env}
       # Descarga de adjuntos/documentos desde CloudStorage (solo lectura, nunca sube).
       Postmaster__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Solo para el backfill de arranque del directorio de oficinas; el envío nunca llama a Tenant.
+      Postmaster__Tenant__BaseUrl: http://tenant-api:8080
       # Canal de envío #3 (TenantOAuth, D3) — M2M a Connectors para enviar vía Gmail/Graph conectado.
       Postmaster__Connectors__BaseUrl: http://connectors-api:8080
       # Proveedor SMTP real de plataforma (SystemEmailProviderSeeder.cs) — reconcilia la fila

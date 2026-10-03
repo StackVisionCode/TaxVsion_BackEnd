@@ -51,6 +51,8 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
+        // El Reply-To sale del token, nunca del body: es la identidad real de quien manda, y es lo
+        // que autoriza a Postmaster a enviar en nombre de la oficina si no hay proveedor propio.
         var command = new SendEmailCommand(
             tenantId,
             request.Subject,
@@ -58,7 +60,8 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
             request.TextBody,
             request.Priority,
             request.Recipients,
-            request.AttachmentFileIds
+            request.AttachmentFileIds,
+            ReplyTo: User.TryGetEmail(out var senderEmail) ? senderEmail : null
         );
         var result = await bus.InvokeAsync<Result<OutboundEmailResponse>>(command, ct);
         return result.IsSuccess

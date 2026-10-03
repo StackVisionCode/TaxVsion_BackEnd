@@ -66,10 +66,17 @@ public sealed record EmailDispatchResult(
         Status is NotificationDispatchAttemptStatus.Sent or NotificationDispatchAttemptStatus.Queued;
 }
 
+/// <summary>
+/// Qué identidad pide el envío. <c>System</c> = la plataforma habla por sí misma (invitaciones,
+/// recuperar contraseña, avisos de cobro). <c>Tenant</c> = exige el SMTP propio de la oficina y
+/// falla si no lo hay. <c>TenantPreferred</c> = correo de negocio de la oficina: Postmaster elige el
+/// transporte por la cadena y solo cae al sistema si el evento trae <c>ReplyTo</c>.
+/// </summary>
 public enum EmailDispatchScope
 {
     System,
     Tenant,
+    TenantPreferred,
 }
 
 public enum EmailDispatchStream
