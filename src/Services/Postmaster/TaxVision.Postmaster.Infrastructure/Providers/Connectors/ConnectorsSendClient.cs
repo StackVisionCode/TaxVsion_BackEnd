@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -13,7 +13,7 @@ using TaxVision.Postmaster.Infrastructure.Providers.Assets;
 namespace TaxVision.Postmaster.Infrastructure.Providers.Connectors;
 
 /// <summary>
-/// Implementación de <see cref="IOAuthEmailSender"/> vía el M2M de Connectors
+/// Implementación de <see cref="IConnectedMailboxSender"/> vía el M2M de Connectors
 /// (<c>POST /connectors/accounts/{accountId}/send</c>, D3 §4.4) — reusa el mismo
 /// <see cref="IPostmasterServiceTokenAcquirer"/> ya en producción para CloudStorage, mismo criterio de
 /// "un solo adquirente de tokens M2M por servicio". A diferencia de <c>SmtpEmailSender</c> no hay
@@ -24,7 +24,7 @@ public sealed class ConnectorsSendClient(
     HttpClient httpClient,
     IPostmasterServiceTokenAcquirer tokenAcquirer,
     ILogger<ConnectorsSendClient> logger
-) : IOAuthEmailSender
+) : IConnectedMailboxSender
 {
     private static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(60);
 
@@ -38,7 +38,7 @@ public sealed class ConnectorsSendClient(
     public async Task<SendResult> SendAsync(
         SentMessage message,
         RenderedContent content,
-        ResolvedOAuthProvider provider,
+        ResolvedMailbox provider,
         string? inReplyToInternetMessageId,
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,

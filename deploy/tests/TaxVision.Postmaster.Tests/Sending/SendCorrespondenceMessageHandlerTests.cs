@@ -1,4 +1,4 @@
-using BuildingBlocks.Results;
+﻿using BuildingBlocks.Results;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
@@ -13,10 +13,10 @@ namespace TaxVision.Postmaster.Tests.Sending;
 public sealed class SendCorrespondenceMessageHandlerTests
 {
     private sealed record Fixture(
-        FakeOAuthProviderResolver ProviderResolver,
+        FakeConnectedMailboxResolver ProviderResolver,
         FakeSuppressionListRepository SuppressionList,
         FakeOutboundAttachmentFetcher AttachmentFetcher,
-        FakeOAuthEmailSender EmailSender,
+        FakeConnectedMailboxSender EmailSender,
         FakeSentMessageRepository SentMessages,
         FakeIdempotencyGuard IdempotencyGuard,
         FakeUnitOfWork UnitOfWork
@@ -24,11 +24,11 @@ public sealed class SendCorrespondenceMessageHandlerTests
 
     private static Fixture CreateFixture()
     {
-        var providerResolver = new FakeOAuthProviderResolver
+        var providerResolver = new FakeConnectedMailboxResolver
         {
-            ResolveReturnValue = new OAuthResolveResult(
-                OAuthResolutionStatus.Resolved,
-                new ResolvedOAuthProvider(Guid.NewGuid(), "gmail", "office@tenant.example", "Front Office"),
+            ResolveReturnValue = new MailboxResolveResult(
+                MailboxResolutionStatus.Resolved,
+                new ResolvedMailbox(Guid.NewGuid(), "gmail", "office@tenant.example", "Front Office"),
                 null
             ),
         };
@@ -36,7 +36,7 @@ public sealed class SendCorrespondenceMessageHandlerTests
             providerResolver,
             new FakeSuppressionListRepository(),
             new FakeOutboundAttachmentFetcher(),
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeSentMessageRepository(),
             new FakeIdempotencyGuard(),
             new FakeUnitOfWork()
@@ -129,8 +129,8 @@ public sealed class SendCorrespondenceMessageHandlerTests
     public async Task Handle_AccountNotResolved_FailsCleanWithoutPersistingAnything()
     {
         var fixture = CreateFixture();
-        fixture.ProviderResolver.ResolveReturnValue = new OAuthResolveResult(
-            OAuthResolutionStatus.ProviderNotConfigured,
+        fixture.ProviderResolver.ResolveReturnValue = new MailboxResolveResult(
+            MailboxResolutionStatus.ProviderNotConfigured,
             null,
             "not found"
         );

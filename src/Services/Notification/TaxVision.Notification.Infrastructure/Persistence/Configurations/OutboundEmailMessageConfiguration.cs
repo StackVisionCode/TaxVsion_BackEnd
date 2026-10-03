@@ -20,6 +20,8 @@ public sealed class OutboundEmailMessageConfiguration : IEntityTypeConfiguration
         builder.Property(m => m.AttachmentFileIdsJson).IsRequired();
         builder.Property(m => m.Error).HasMaxLength(1024);
         builder.Property(m => m.CorrelationId).HasMaxLength(128);
+        // 320 = largo máximo de una dirección de correo (RFC 5321), igual que SentMessage en Postmaster.
+        builder.Property(m => m.ReplyTo).HasMaxLength(320);
         builder.Property(m => m.CreatedAtUtc).IsRequired();
 
         builder.HasMany(m => m.Recipients).WithOne().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);

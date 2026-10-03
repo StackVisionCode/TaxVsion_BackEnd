@@ -4,6 +4,10 @@ using TaxVision.Postmaster.Infrastructure.Providers;
 
 namespace TaxVision.Postmaster.Tests.Providers;
 
+/// <summary>
+/// El resolver por SMTP, que desde que se retiró <c>TenantEmailProvider</c> solo puede devolver el
+/// proveedor del sistema. Los escalones de oficina los prueba <see cref="TenantPreferredResolutionTests"/>.
+/// </summary>
 public sealed class ProviderResolverTests
 {
     private static SystemEmailProvider CreateSystemProvider() =>
@@ -24,144 +28,83 @@ public sealed class ProviderResolverTests
             )
             .Value;
 
-    private static TenantEmailProvider CreateTenantProvider(Guid tenantId) =>
-        TenantEmailProvider
-            .Create(
-                tenantId: tenantId,
-                providerCode: "tenant-smtp",
-                displayName: "Tenant SMTP",
-                providerType: EmailProviderType.Smtp,
-                fromAddressDefault: "billing@tenant.example",
-                fromDisplayNameDefault: "Tenant Corp",
-                host: "smtp.tenant.example",
-                port: 587,
-                useTls: true,
-                username: "tenant-user",
-                passwordCipher: "tenant-secret",
-                rateLimitPerMinute: 30,
-                createdByUserId: Guid.NewGuid(),
-                createdAtUtc: DateTime.UtcNow
-            )
-            .Value;
-
     [Fact]
     public async Task Resolve_returns_system_provider_when_scope_is_System()
     {
         var systemRepo = new FakeSystemEmailProviderRepository();
         await systemRepo.AddAsync(CreateSystemProvider());
-        var resolver = new ProviderResolver(
-            systemRepo,
-            new FakeTenantEmailProviderRepository(),
-            new FakeProviderHealthStatusRepository(),
-            new FakeSecretProtector()
-        );
-
-        var result = await resolver.ResolveAsync(Guid.NewGuid(), ProviderScope.System, null, CancellationToken.None);
-
-        Assert.Equal(ProviderResolutionStatus.Resolved, result.Status);
-        Assert.Equal("smtp-default", result.Provider!.ProviderCode);
-    }
-
-    [Fact]
-    public async Task Resolve_returns_tenant_provider_when_exists_and_scope_is_Tenant()
-    {
-        var tenantId = Guid.NewGuid();
-        var tenantRepo = new FakeTenantEmailProviderRepository();
-        await tenantRepo.AddAsync(CreateTenantProvider(tenantId));
-        var resolver = new ProviderResolver(
-            new FakeSystemEmailProviderRepository(),
-            tenantRepo,
-            new FakeProviderHealthStatusRepository(),
-            new FakeSecretProtector()
-        );
-
-        var result = await resolver.ResolveAsync(tenantId, ProviderScope.Tenant, null, CancellationToken.None);
-
-        Assert.Equal(ProviderResolutionStatus.Resolved, result.Status);
-        Assert.Equal("tenant-smtp", result.Provider!.ProviderCode);
-    }
-
-    [Fact]
-    public async Task Resolve_returns_ProviderNotConfigured_when_scope_is_Tenant_and_no_provider()
-    {
-        var resolver = new ProviderResolver(
-            new FakeSystemEmailProviderRepository(),
-            new FakeTenantEmailProviderRepository(),
-            new FakeProviderHealthStatusRepository(),
-            new FakeSecretProtector()
-        );
-
-        var result = await resolver.ResolveAsync(Guid.NewGuid(), ProviderScope.Tenant, null, CancellationToken.None);
-
-        Assert.Equal(ProviderResolutionStatus.ProviderNotConfigured, result.Status);
-        Assert.Null(result.Provider);
-    }
-
-    [Fact]
-    public async Task Resolve_returns_ProviderUnhealthy_when_tenant_circuit_breaker_is_open()
-    {
-        var tenantId = Guid.NewGuid();
-        var tenantProvider = CreateTenantProvider(tenantId);
-        var tenantRepo = new FakeTenantEmailProviderRepository();
-        await tenantRepo.AddAsync(tenantProvider);
-
-        var healthRepo = new FakeProviderHealthStatusRepository();
-        var health = ProviderHealthStatus
-            .Create(ProviderKind.Tenant, tenantId, tenantProvider.ProviderCode, DateTime.UtcNow)
-            .Value;
-        health.RecordFailure(DateTime.UtcNow);
-        health.RecordFailure(DateTime.UtcNow);
-        health.RecordFailure(DateTime.UtcNow); // 3 fallos consecutivos abre el circuit breaker
-        await healthRepo.AddAsync(health);
-
-        var resolver = new ProviderResolver(
-            new FakeSystemEmailProviderRepository(),
-            tenantRepo,
-            healthRepo,
-            new FakeSecretProtector()
-        );
-
-        var result = await resolver.ResolveAsync(tenantId, ProviderScope.Tenant, null, CancellationToken.None);
-
-        Assert.Equal(ProviderResolutionStatus.ProviderUnhealthy, result.Status);
-        Assert.Null(result.Provider);
-    }
-
-    [Fact]
-    public async Task Resolve_returns_SystemProviderMissing_when_no_system_provider_enabled()
-    {
-        var resolver = new ProviderResolver(
-            new FakeSystemEmailProviderRepository(),
-            new FakeTenantEmailProviderRepository(),
-            new FakeProviderHealthStatusRepository(),
-            new FakeSecretProtector()
-        );
-
-        var result = await resolver.ResolveAsync(Guid.NewGuid(), ProviderScope.System, null, CancellationToken.None);
-
-        Assert.Equal(ProviderResolutionStatus.SystemProviderMissing, result.Status);
-    }
-
-    [Fact]
-    public async Task Resolve_honors_ForceSystem_priority_hint_even_when_scope_is_Tenant()
-    {
-        var systemRepo = new FakeSystemEmailProviderRepository();
-        await systemRepo.AddAsync(CreateSystemProvider());
-        var resolver = new ProviderResolver(
-            systemRepo,
-            new FakeTenantEmailProviderRepository(),
-            new FakeProviderHealthStatusRepository(),
-            new FakeSecretProtector()
-        );
+        var resolver = new ProviderResolver(systemRepo, new FakeSecretProtector());
 
         var result = await resolver.ResolveAsync(
             Guid.NewGuid(),
-            ProviderScope.Tenant,
-            ProviderPriorityHint.ForceSystem,
+            ProviderScope.System,
+            null,
+            systemFallbackAllowed: false,
             CancellationToken.None
         );
 
         Assert.Equal(ProviderResolutionStatus.Resolved, result.Status);
         Assert.Equal("smtp-default", result.Provider!.ProviderCode);
+        Assert.Equal(ProviderScope.System, result.EffectiveScope);
+    }
+
+    [Fact]
+    public async Task Resolve_returns_SystemProviderMissing_when_no_system_provider_enabled()
+    {
+        var resolver = new ProviderResolver(new FakeSystemEmailProviderRepository(), new FakeSecretProtector());
+
+        var result = await resolver.ResolveAsync(
+            Guid.NewGuid(),
+            ProviderScope.System,
+            null,
+            systemFallbackAllowed: false,
+            CancellationToken.None
+        );
+
+        Assert.Equal(ProviderResolutionStatus.SystemProviderMissing, result.Status);
+        Assert.Null(result.Provider);
+    }
+
+    [Fact]
+    public async Task Resolve_honors_ForceSystem_priority_hint()
+    {
+        var systemRepo = new FakeSystemEmailProviderRepository();
+        await systemRepo.AddAsync(CreateSystemProvider());
+        var resolver = new ProviderResolver(systemRepo, new FakeSecretProtector());
+
+        var result = await resolver.ResolveAsync(
+            Guid.NewGuid(),
+            ProviderScope.TenantPreferred,
+            ProviderPriorityHint.ForceSystem,
+            systemFallbackAllowed: false,
+            CancellationToken.None
+        );
+
+        // El hint gana incluso sin permiso de fallback: es una orden explícita del caller, no el
+        // escalón automático de la cadena.
+        Assert.Equal(ProviderResolutionStatus.Resolved, result.Status);
+        Assert.Equal("smtp-default", result.Provider!.ProviderCode);
+    }
+
+    [Fact]
+    public async Task The_retired_Tenant_scope_is_answered_not_thrown()
+    {
+        // `Tenant` sobrevive en el enum solo para poder leer SentMessages de antes del retiro. Si un
+        // mensaje viejo se reencola, el consumer tiene que poder responderle: lanzar acá lo mandaría
+        // al dead letter por un scope que el propio sistema emitió en su día.
+        var systemRepo = new FakeSystemEmailProviderRepository();
+        await systemRepo.AddAsync(CreateSystemProvider());
+        var resolver = new ProviderResolver(systemRepo, new FakeSecretProtector());
+
+        var result = await resolver.ResolveAsync(
+            Guid.NewGuid(),
+            ProviderScope.Tenant,
+            null,
+            systemFallbackAllowed: true,
+            CancellationToken.None
+        );
+
+        Assert.Equal(ProviderResolutionStatus.ProviderNotConfigured, result.Status);
+        Assert.Null(result.Provider);
     }
 }

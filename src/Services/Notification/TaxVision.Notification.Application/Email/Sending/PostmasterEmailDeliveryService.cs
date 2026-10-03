@@ -75,17 +75,20 @@ namespace TaxVision.Notification.Application.Email.Sending;
 /// regresión introducida acá.
 /// </para>
 /// <para>
-/// <b>Scope de proveedor</b>: pide <c>ProviderScope.Tenant</c> (nunca <c>System</c>) porque estos son
-/// correos de negocio del tenant (envío ad-hoc del usuario o campaña propia), no notificaciones
-/// transaccionales de la plataforma. A diferencia del <c>ResolveAsync</c> tenant→sistema que usa
-/// <see cref="EmailDeliveryService"/> hoy, el resolver de Postmaster NUNCA cae a System para scope
-/// Tenant (política anti-spoofing documentada en <c>ProviderResolver</c>) — si el tenant no configuró
-/// su <c>TenantEmailProvider</c> en Postmaster, el callback es <c>ProviderNotConfigured</c> en vez de
-/// enviarse silenciosamente "From: TaxVision". Es un endurecimiento intencional, no un bug: evita que
-/// el correo de negocio de un tenant salga con la identidad del sistema. La migración operativa de las
-/// <c>EmailProviderConfigurations</c> existentes de Notification hacia el <c>TenantEmailProvider</c> de
-/// Postmaster es un prerrequisito de confianza operacional para la Fase 21 (flip del flag), no de esta
-/// fase (que solo construye el camino, sin activarlo por default).
+/// <b>Scope de proveedor</b>: pide <c>TenantPreferred</c> porque estos son correos de negocio de la
+/// oficina (envío ad-hoc del usuario o campaña), no notificaciones transaccionales de la plataforma —
+/// pero este servicio sabe DE QUIÉN es el correo, no qué transportes tiene configurados esa oficina.
+/// Eso solo lo sabe Postmaster, que tiene las dos fuentes en local, así que la elección del
+/// transporte es suya: cuenta conectada en Connectors → SMTP propio → sistema en nombre de la oficina.
+///
+/// <para>Hasta 2026-10-02 pedía <c>Tenant</c> fijo, que exige una fila <c>TenantEmailProvider</c>; esa
+/// fila solo se crea por un endpoint que ninguna pantalla llama, así que todo envío por este camino
+/// moría en <c>ProviderNotConfigured</c>. La intención original era anti-spoofing y era correcta, pero
+/// le faltaba la pieza que la hacía viable: sin <c>ReplyTo</c> en el contrato, caer a System era
+/// mandar un correo con la identidad de la plataforma al que nadie podía contestar. Con
+/// <see cref="OutboundEmailMessage.ReplyTo"/> ya no: el From dice la plataforma y el Reply-To dice la
+/// persona, que es envío delegado y no suplantación. El escalón de sistema sigue cerrado para las
+/// campañas (<c>Stream.Bulk</c>) — ver <c>ProviderScope.TenantPreferred</c>.</para>
 /// </para>
 /// </remarks>
 public sealed class PostmasterEmailDeliveryService(
@@ -122,8 +125,9 @@ public sealed class PostmasterEmailDeliveryService(
             HtmlBody = message.HtmlBody,
             TextBody = message.TextBody,
             TemplateKey = message.TemplateId?.ToString() ?? DefaultTemplateKey(message),
-            RequiredProviderScope = EmailDispatchScope.Tenant.ToString(),
+            RequiredProviderScope = EmailDispatchScope.TenantPreferred.ToString(),
             LogoScope = EmailDispatchScope.Tenant.ToString(),
+            ReplyTo = message.ReplyTo,
             Stream = (
                 message.CampaignId is null ? EmailDispatchStream.Transactional : EmailDispatchStream.Bulk
             ).ToString(),

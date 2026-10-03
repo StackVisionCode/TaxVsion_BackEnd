@@ -1,10 +1,10 @@
-using TaxVision.Postmaster.Domain.Sending;
+﻿using TaxVision.Postmaster.Domain.Sending;
 
 namespace TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 
 /// <summary>
 /// Envío directo iniciado por un preparador desde Correspondence (D3 Compose §14/§16 Fase 5) — a
-/// diferencia de <c>NotificationsEmailSendRequestedIntegrationEvent</c>, siempre vía cuenta OAuth/manual
+/// diferencia de <c>NotificationsEmailSendRequestedIntegrationEvent</c>, siempre vía el buzón conectado de la oficina
 /// elegida explícitamente (<see cref="AccountId"/>), nunca el canal automático del sistema.
 /// </summary>
 public sealed record SendCorrespondenceMessageCommand(

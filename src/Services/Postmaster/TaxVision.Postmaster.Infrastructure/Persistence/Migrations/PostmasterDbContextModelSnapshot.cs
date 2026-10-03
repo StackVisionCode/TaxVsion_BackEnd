@@ -124,7 +124,7 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Postmaster.Domain.Projections.TenantOAuthAccount", b =>
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Projections.ConnectedMailbox", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
@@ -164,7 +164,30 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "IsActive", "ConnectedAtUtc");
 
-                    b.ToTable("TenantOAuthAccounts", (string)null);
+                    b.ToTable("ConnectedMailboxes", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Projections.TenantDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SubDomain")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantDirectory", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Providers.ProviderHealthStatus", b =>
@@ -289,81 +312,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("SystemEmailProviders", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Postmaster.Domain.Providers.TenantEmailProvider", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("BulkRateLimitPerMinute")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("FromAddressDefault")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("FromDisplayNameDefault")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Host")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PasswordCipher")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("Port")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ProviderCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("ProviderType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("RateLimitPerMinute")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("UseTls")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Username")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "ProviderCode")
-                        .IsUnique();
-
-                    b.ToTable("TenantEmailProviders", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Postmaster.Domain.RateLimiting.TenantPlanCodeProjection", b =>

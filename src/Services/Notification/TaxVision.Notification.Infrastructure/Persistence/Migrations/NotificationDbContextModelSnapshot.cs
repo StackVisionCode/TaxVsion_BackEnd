@@ -164,96 +164,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("UserEmailDirectoryEntries", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Configurations.EmailProviderConfiguration", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ApiKeyCipher")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.Property<string>("ClientId")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("ClientSecretCipher")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("FromEmail")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("FromName")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("Host")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("PasswordCipher")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.Property<int?>("Port")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ProviderType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("Scope")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<Guid?>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("TenantProviderId")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("UseSsl")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Username")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Scope", "TenantId")
-                        .IsUnique()
-                        .HasFilter("[IsDefault] = 1");
-
-                    b.HasIndex("TenantId", "Scope");
-
-                    b.ToTable("EmailProviderConfigurations", (string)null);
-                });
-
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Layouts.EmailLayout", b =>
                 {
                     b.Property<Guid>("Id")
@@ -439,6 +349,10 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<string>("ProviderType")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ReplyTo")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
 
                     b.Property<int>("RetryCount")
                         .HasColumnType("int");

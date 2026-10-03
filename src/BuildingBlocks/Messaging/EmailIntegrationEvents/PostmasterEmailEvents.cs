@@ -42,8 +42,20 @@ public sealed record NotificationsEmailSendRequestedIntegrationEvent : Integrati
     public required string TextBody { get; init; }
     public required string TemplateKey { get; init; }
 
-    /// <summary>System = credenciales SMTP de TaxVision. Tenant = SMTP del tenant. Ver plan §14.5.</summary>
+    /// <summary>
+    /// System = credenciales SMTP de TaxVision. Tenant = SMTP propio del tenant. TenantPreferred =
+    /// la cadena (cuenta conectada en Connectors → SMTP propio → sistema en nombre de la oficina).
+    /// Ver plan §14.5 y el doc-comment de <c>ProviderScope</c>.
+    /// </summary>
     public required string RequiredProviderScope { get; init; }
+
+    /// <summary>
+    /// Dónde debe responder el destinatario. Es lo que hace que el escalón de sistema de
+    /// <c>TenantPreferred</c> NO sea spoofing: el correo sale con la identidad del sistema pero la
+    /// respuesta va a la oficina, y la cabecera lo dice. Sin esto, Postmaster deniega el fallback
+    /// (ver <c>ProviderResolver</c>) en vez de mandar un correo al que nadie puede contestar.
+    /// </summary>
+    public string? ReplyTo { get; init; }
 
     /// <summary>System = logo TaxVision. Tenant = logo del tenant. Ver plan §14.5.</summary>
     public required string LogoScope { get; init; }

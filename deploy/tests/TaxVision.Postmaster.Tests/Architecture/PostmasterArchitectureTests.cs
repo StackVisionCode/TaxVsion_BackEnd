@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
@@ -177,13 +177,16 @@ public sealed class PostmasterArchitectureTests
     /// <c>...Providers.Assets.CloudStorageOutboundAttachmentFetcher</c> y
     /// <c>...Providers.Connectors.ConnectorsSendClient</c> (confirmados por la Fase 13 de este mismo
     /// plan y por grep exhaustivo de <c>System.Net.Http</c>/<c>HttpClient</c> sobre todo el ensamblado
-    /// de Infrastructure) — pueden depender de <c>System.Net.Http</c>. <c>DependencyInjection.cs</c>
+    /// de Infrastructure) y <c>...Providers.TenantDirectory.TenantDirectoryClient</c> (2026-10-02, el
+    /// quinto: lee el listado de oficinas de Tenant SOLO para el backfill de arranque del directorio;
+    /// el camino de envío nunca sale por red a buscar el nombre de una oficina) — pueden depender de
+    /// <c>System.Net.Http</c>. <c>DependencyInjection.cs</c>
     /// (composition root) queda excluido a propósito, igual que en
     /// <c>CorrespondenceArchitectureTests.Only_PostmasterClient_should_reference_the_concrete_postmaster_http_client</c>,
     /// porque registrar los <c>HttpClient</c> tipados vía <c>AddHttpClient&lt;TInterface,
     /// TImplementation&gt;</c> es su trabajo. Deliberadamente NO se excluye el resto de
     /// <c>Providers</c> (<c>ProviderResolver</c>, <c>Providers/Smtp/SmtpEmailSender</c>,
-    /// <c>Providers/Connectors/OAuthProviderResolver</c>) — ninguno de ellos necesita HTTP saliente
+    /// <c>Providers/Connectors/ConnectedMailboxResolver</c>) — ninguno de ellos necesita HTTP saliente
     /// hoy (SMTP usa MailKit, no <c>HttpClient</c>), así que quedan protegidos por esta misma regla en
     /// vez de heredar una excepción de namespace más amplia de la necesaria.
     ///
@@ -205,6 +208,8 @@ public sealed class PostmasterArchitectureTests
             .DoNotResideInNamespace("TaxVision.Postmaster.Infrastructure.Providers.Assets")
             .And()
             .DoNotResideInNamespace("TaxVision.Postmaster.Infrastructure.Providers.Connectors")
+            .And()
+            .DoNotResideInNamespace("TaxVision.Postmaster.Infrastructure.Providers.TenantDirectory")
             .And()
             .DoNotHaveName(["DependencyInjection"])
             .Should()

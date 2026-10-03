@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -43,7 +43,7 @@ namespace TaxVision.Postmaster.Application.Consumers;
 /// (vía <c>LogoScope</c> en el momento del render, Scribe Fase 4.5) como referencias dentro de
 /// <c>evt.InlineAssets</c>. Este consumer solo las valida (<see cref="ParseInlineAssetReferences"/>)
 /// y descarga los bytes reales (<see cref="FetchInlineAssetBytesAsync"/>) — solo en el path SMTP
-/// (<see cref="SendAndFinalizeAsync"/>); el path OAuth (<see cref="SendViaOAuthAndFinalizeAsync"/>)
+/// (<see cref="SendAndFinalizeAsync"/>); el path del buzón conectado (<see cref="SendViaMailboxAndFinalizeAsync"/>)
 /// sigue sin soporte, ver su propio comentario.
 /// </item>
 /// </list>
@@ -63,13 +63,14 @@ public static class NotificationsEmailSendRequestedConsumer
         NotificationsEmailSendRequestedIntegrationEvent evt,
         IIdempotencyGuard idempotencyGuard,
         IProviderResolver providerResolver,
-        IOAuthProviderResolver oauthProviderResolver,
+        IConnectedMailboxResolver mailboxResolver,
         ISuppressionListRepository suppressionList,
         IEmailProviderRateLimiter rateLimiter,
         IEmailSender emailSender,
-        IOAuthEmailSender oauthEmailSender,
+        IConnectedMailboxSender mailboxSender,
         IInlineAssetFetcher inlineAssetFetcher,
         ISentMessageRepository sentMessages,
+        ITenantDirectoryRepository tenantDirectory,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         IMessageBus bus,
@@ -105,14 +106,30 @@ public static class NotificationsEmailSendRequestedConsumer
                     break;
             }
 
-            if (ParseProviderScope(evt.RequiredProviderScope) == ProviderScope.TenantOAuth)
+            // Escalón 1 de la cadena. Se decide acá y no en ProviderResolver porque el canal del buzón conectado no
+            // envía por SMTP: no produce un ResolvedEmailProvider y tiene su propio camino de envío,
+            // así que la elección es de carril, no de provider.
+            var requiredScope = ParseProviderScope(evt.RequiredProviderScope);
+            var mailboxResult = requiredScope is ProviderScope.TenantMailbox or ProviderScope.TenantPreferred
+                ? await mailboxResolver.ResolveAsync(evt.TenantId, ct)
+                : null;
+
+            // TenantMailbox es estricto: sin cuenta conectada falla acá y NO baja a SMTP.
+            // TenantPreferred sin cuenta sigue a los escalones 2 y 3.
+            if (
+                mailboxResult is not null
+                && (
+                    mailboxResult.Status == MailboxResolutionStatus.Resolved
+                    || requiredScope == ProviderScope.TenantMailbox
+                )
+            )
             {
-                await HandleTenantOAuthPathAsync(
+                await HandleConnectedMailboxPathAsync(
                     evt,
                     delivery,
-                    oauthProviderResolver,
+                    mailboxResult,
                     suppressionList,
-                    oauthEmailSender,
+                    mailboxSender,
                     sentMessages,
                     idempotencyGuard,
                     unitOfWork,
@@ -131,6 +148,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 emailSender,
                 inlineAssetFetcher,
                 sentMessages,
+                tenantDirectory,
                 idempotencyGuard,
                 unitOfWork,
                 bus,
@@ -149,6 +167,7 @@ public static class NotificationsEmailSendRequestedConsumer
         IEmailSender emailSender,
         IInlineAssetFetcher inlineAssetFetcher,
         ISentMessageRepository sentMessages,
+        ITenantDirectoryRepository tenantDirectory,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -160,6 +179,7 @@ public static class NotificationsEmailSendRequestedConsumer
             evt.TenantId,
             ParseProviderScope(evt.RequiredProviderScope),
             ParsePriorityHint(evt.PriorityHint),
+            SystemFallbackAllowed(evt),
             ct
         );
         if (resolveResult.Status != ProviderResolutionStatus.Resolved)
@@ -168,7 +188,14 @@ public static class NotificationsEmailSendRequestedConsumer
             return;
         }
 
-        var message = await QueueAndPersistAsync(evt, resolveResult.Provider!, sentMessages, unitOfWork, ct);
+        // Solo se consulta cuando el correo acabó saliendo por el sistema: en los otros escalones el
+        // From ya es el de la oficina y la consulta sería trabajo tirado en cada envío.
+        var onBehalfOf =
+            resolveResult.EffectiveScope == ProviderScope.System
+                ? (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name
+                : null;
+
+        var message = await QueueAndPersistAsync(evt, resolveResult, onBehalfOf, sentMessages, unitOfWork, ct);
         if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
             return;
 
@@ -204,16 +231,16 @@ public static class NotificationsEmailSendRequestedConsumer
 
     /// <summary>
     /// Sin control de cupo propio a diferencia de <see cref="HandleSmtpPathAsync"/>: el rate limit del
-    /// canal OAuth ya lo aplica Connectors por (tenant, cuenta) en su M2M de envío (D3 §4.4/§7,
+    /// canal del buzón conectado ya lo aplica Connectors por (tenant, cuenta) en su M2M de envío (D3 §4.4/§7,
     /// <c>ISendRateLimiter</c>, default 20/min) — duplicarlo acá sería el mismo cupo enforced dos veces
     /// con configuraciones potencialmente divergentes.
     /// </summary>
-    private static async Task HandleTenantOAuthPathAsync(
+    private static async Task HandleConnectedMailboxPathAsync(
         NotificationsEmailSendRequestedIntegrationEvent evt,
         int delivery,
-        IOAuthProviderResolver oauthProviderResolver,
+        MailboxResolveResult resolveResult,
         ISuppressionListRepository suppressionList,
-        IOAuthEmailSender oauthEmailSender,
+        IConnectedMailboxSender mailboxSender,
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
@@ -221,23 +248,22 @@ public static class NotificationsEmailSendRequestedConsumer
         CancellationToken ct
     )
     {
-        var resolveResult = await oauthProviderResolver.ResolveAsync(evt.TenantId, ct);
-        if (resolveResult.Status != OAuthResolutionStatus.Resolved)
+        if (resolveResult.Status != MailboxResolutionStatus.Resolved)
         {
-            await PublishOAuthProviderNotConfiguredCallbackAsync(bus, evt, ct);
+            await PublishMailboxNotConfiguredCallbackAsync(bus, evt, ct);
             return;
         }
 
-        var message = await QueueAndPersistOAuthAsync(evt, resolveResult.Provider!, sentMessages, unitOfWork, ct);
+        var message = await QueueAndPersistMailboxAsync(evt, resolveResult.Provider!, sentMessages, unitOfWork, ct);
         if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
             return;
 
-        await SendViaOAuthAndFinalizeAsync(
+        await SendViaMailboxAndFinalizeAsync(
             message,
             evt,
             delivery,
             resolveResult.Provider!,
-            oauthEmailSender,
+            mailboxSender,
             sentMessages,
             idempotencyGuard,
             unitOfWork,
@@ -407,12 +433,16 @@ public static class NotificationsEmailSendRequestedConsumer
 
     private static async Task<SentMessage> QueueAndPersistAsync(
         NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolvedEmailProvider provider,
+        ResolveResult resolved,
+        string? onBehalfOfDisplayName,
         ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
+        var provider = resolved.Provider!;
+        var effectiveScope = resolved.EffectiveScope ?? ParseProviderScope(evt.RequiredProviderScope);
+
         var queueResult = SentMessage.Queue(
             evt.TenantId,
             evt.IdempotencyKey,
@@ -422,11 +452,13 @@ public static class NotificationsEmailSendRequestedConsumer
             provider.ProviderCode,
             evt.NotificationLogId,
             evt.CorrelationId,
-            provider.FromDisplayName,
-            replyTo: null,
+            FromDisplayNameFor(onBehalfOfDisplayName, provider, effectiveScope),
+            ReplyToFor(evt, effectiveScope),
             evt.TemplateKey,
             DateTime.UtcNow,
-            ParseProviderScope(evt.RequiredProviderScope),
+            // Lo que pasó, no lo que se pidió: con TenantPreferred el scope del evento no dice por
+            // cuál transporte salió, y el historial de envíos existe para responder justo eso.
+            effectiveScope,
             correspondenceDraftId: null,
             inReplyToInternetMessageId: null,
             references: null,
@@ -445,9 +477,9 @@ public static class NotificationsEmailSendRequestedConsumer
         return message;
     }
 
-    private static async Task<SentMessage> QueueAndPersistOAuthAsync(
+    private static async Task<SentMessage> QueueAndPersistMailboxAsync(
         NotificationsEmailSendRequestedIntegrationEvent evt,
-        ResolvedOAuthProvider provider,
+        ResolvedMailbox provider,
         ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -466,7 +498,7 @@ public static class NotificationsEmailSendRequestedConsumer
             replyTo: null,
             evt.TemplateKey,
             DateTime.UtcNow,
-            ProviderScope.TenantOAuth,
+            ProviderScope.TenantMailbox,
             campaignId: evt.CampaignId
         );
         if (queueResult.IsFailure)
@@ -571,12 +603,12 @@ public static class NotificationsEmailSendRequestedConsumer
 
     /// <summary>
     /// A diferencia de <see cref="PublishUnresolvedProviderCallbackAsync"/> no hay caso
-    /// SystemProviderMissing/ProviderUnhealthy: <see cref="OAuthResolutionStatus"/> solo distingue
+    /// SystemProviderMissing/ProviderUnhealthy: <see cref="MailboxResolutionStatus"/> solo distingue
     /// Resolved de ProviderNotConfigured (D3 §4.3) — la proyección local es la única fuente y no hay
     /// "salud" que evaluar ahí, la reserva de idempotencia también queda sin completar por el mismo
     /// motivo que en el camino SMTP.
     /// </summary>
-    private static ValueTask PublishOAuthProviderNotConfiguredCallbackAsync(
+    private static ValueTask PublishMailboxNotConfiguredCallbackAsync(
         IMessageBus bus,
         NotificationsEmailSendRequestedIntegrationEvent evt,
         CancellationToken ct
@@ -596,23 +628,23 @@ public static class NotificationsEmailSendRequestedConsumer
     /// <summary>
     /// Sin threading en v1 (D3 §11, pendiente documentado): el evento de Notification no trae
     /// identificadores nativos del proveedor para responder un hilo existente, así que los 3
-    /// parámetros de threading de <see cref="IOAuthEmailSender.SendAsync"/> van null — mismo criterio
+    /// parámetros de threading de <see cref="IConnectedMailboxSender.SendAsync"/> van null — mismo criterio
     /// de incrementalidad que Postmaster ya usó para inline assets en Fase 3.5.
     ///
     /// Hardening Fase 9: a diferencia de <see cref="SendAndFinalizeAsync"/> (path SMTP), acá NO se
-    /// resuelven <c>evt.InlineAssets</c> — <see cref="IOAuthEmailSender.SendAsync"/> no tiene ningún
+    /// resuelven <c>evt.InlineAssets</c> — <see cref="IConnectedMailboxSender.SendAsync"/> no tiene ningún
     /// parámetro de inline assets (Connectors envía vía Gmail/Graph API, no arma el MIME multipart/
     /// related que <c>MimeMessageBuilder</c> construye para SMTP). Agregar soporte de logo CID al path
-    /// OAuth es una pieza de plomería genuinamente nueva (extender el contrato de
-    /// <see cref="IOAuthEmailSender"/> y el M2M de envío de Connectors) — fuera del alcance declarado
+    /// El canal del buzón conectado es una pieza de plomería genuinamente nueva (extender el contrato de
+    /// <see cref="IConnectedMailboxSender"/> y el M2M de envío de Connectors) — fuera del alcance declarado
     /// de esta fase ("conectar lo ya construido", no construir una capacidad nueva).
     /// </summary>
-    private static async Task SendViaOAuthAndFinalizeAsync(
+    private static async Task SendViaMailboxAndFinalizeAsync(
         SentMessage message,
         NotificationsEmailSendRequestedIntegrationEvent evt,
         int delivery,
-        ResolvedOAuthProvider provider,
-        IOAuthEmailSender oauthEmailSender,
+        ResolvedMailbox provider,
+        IConnectedMailboxSender mailboxSender,
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
@@ -622,7 +654,7 @@ public static class NotificationsEmailSendRequestedConsumer
     {
         message.MarkAsSending();
         var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody);
-        var sendResult = await oauthEmailSender.SendAsync(
+        var sendResult = await mailboxSender.SendAsync(
             message,
             content,
             provider,
@@ -847,6 +879,47 @@ public static class NotificationsEmailSendRequestedConsumer
 
     private static ProviderPriorityHint? ParsePriorityHint(string? value) =>
         Enum.TryParse<ProviderPriorityHint>(value, ignoreCase: true, out var hint) ? hint : null;
+
+    /// <summary>
+    /// Las dos condiciones que hacen seguro el último escalón de <see cref="ProviderScope.TenantPreferred"/>.
+    ///
+    /// <para><b>Reply-To</b>: sin él el correo sale con la identidad del sistema y nadie sabe a quién
+    /// contestarle — eso sí sería el spoofing silencioso que la política evita. Con él, la cabecera
+    /// dice la verdad: lo manda la plataforma, responde a la oficina.</para>
+    ///
+    /// <para><b>Transaccional</b>: una campaña que cayera acá mandaría su volumen por el dominio de
+    /// la plataforma. Si un tenant quema su lista, el que acaba en la blacklist es el remitente del
+    /// sistema, y con él el correo transaccional de TODAS las oficinas. Una campaña sin provider
+    /// propio falla visible, que es reparable; la reputación de envío quemada no lo es.</para>
+    /// </summary>
+    private static bool SystemFallbackAllowed(NotificationsEmailSendRequestedIntegrationEvent evt) =>
+        !string.IsNullOrWhiteSpace(evt.ReplyTo) && ParseEmailStream(evt.Stream) == EmailStream.Transactional;
+
+    /// <summary>
+    /// Solo se anuncia a la oficina cuando el correo acabó saliendo por el sistema EN SU NOMBRE. En
+    /// los otros escalones el From ya es el de la oficina y repetirlo sobraría.
+    /// </summary>
+    private static string? FromDisplayNameFor(
+        string? onBehalfOf,
+        ResolvedEmailProvider provider,
+        ProviderScope effectiveScope
+    )
+    {
+        if (effectiveScope != ProviderScope.System || string.IsNullOrWhiteSpace(onBehalfOf))
+            return provider.FromDisplayName;
+
+        var platform = provider.FromDisplayName;
+        return string.IsNullOrWhiteSpace(platform) ? onBehalfOf.Trim() : $"{onBehalfOf.Trim()} (via {platform})";
+    }
+
+    /// <summary>
+    /// El Reply-To solo tiene sentido cuando el From no es ya el de la oficina: en los escalones de
+    /// tenant, ponerlo apuntaría a la misma dirección que ya firma el correo.
+    /// </summary>
+    private static string? ReplyToFor(
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        ProviderScope effectiveScope
+    ) => effectiveScope == ProviderScope.System ? evt.ReplyTo : null;
 
     /// <summary>
     /// Tenant a usar para el fetch M2M de los inline assets en CloudStorage — NO siempre es
