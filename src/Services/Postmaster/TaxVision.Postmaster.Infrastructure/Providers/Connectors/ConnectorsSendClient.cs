@@ -43,6 +43,7 @@ public sealed class ConnectorsSendClient(
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,
         IReadOnlyList<OutboundAttachmentBytes> attachments,
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
         CancellationToken ct
     )
     {
@@ -59,7 +60,8 @@ public sealed class ConnectorsSendClient(
             inReplyToInternetMessageId,
             references,
             replyToProviderMessageId,
-            attachments
+            attachments,
+            inlineAssets
         );
         try
         {
@@ -79,7 +81,8 @@ public sealed class ConnectorsSendClient(
         string? inReplyToInternetMessageId,
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,
-        IReadOnlyList<OutboundAttachmentBytes> attachments
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
+        IReadOnlyList<InlineAssetBytes> inlineAssets
     ) =>
         new(
             message.TenantId,
@@ -93,11 +96,16 @@ public sealed class ConnectorsSendClient(
             inReplyToInternetMessageId,
             references,
             replyToProviderMessageId,
-            attachments.Count == 0 ? null : attachments.Select(ToAttachmentDto).ToList()
+            attachments.Count == 0 ? null : attachments.Select(ToAttachmentDto).ToList(),
+            inlineAssets.Count == 0 ? null : inlineAssets.Select(ToInlineAssetDto).ToList()
         );
 
     private static SendMessageAttachmentRequestDto ToAttachmentDto(OutboundAttachmentBytes attachment) =>
         new(attachment.Filename, attachment.ContentType, Convert.ToBase64String(attachment.Content));
+
+    // El FileName no viaja: un inline se referencia por ContentId, no se descarga.
+    private static SendMessageInlineAssetRequestDto ToInlineAssetDto(InlineAssetBytes inline) =>
+        new(inline.ContentId, inline.ContentType, Convert.ToBase64String(inline.Bytes));
 
     private static IReadOnlyList<string> AddressesOf(SentMessage message, RecipientType type) =>
         message
@@ -201,10 +209,13 @@ public sealed class ConnectorsSendClient(
         string? InReplyToInternetMessageId,
         IReadOnlyList<string>? References,
         string? ReplyToProviderMessageId,
-        IReadOnlyList<SendMessageAttachmentRequestDto>? Attachments
+        IReadOnlyList<SendMessageAttachmentRequestDto>? Attachments,
+        IReadOnlyList<SendMessageInlineAssetRequestDto>? InlineAssets
     );
 
     private sealed record SendMessageAttachmentRequestDto(string Filename, string ContentType, string ContentBase64);
+
+    private sealed record SendMessageInlineAssetRequestDto(string ContentId, string ContentType, string ContentBase64);
 
     private sealed record SendMessageResultDto(string? ProviderMessageId, string? ProviderThreadId, DateTime SentAtUtc);
 

@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.Resilience;
+﻿using BuildingBlocks.Infrastructure.Resilience;
 using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -50,7 +50,7 @@ public sealed class SmtpManualClient(
         MimeMessage mime;
         try
         {
-            mime = BuildMimeMessage(fromAddress, fromDisplayName, message);
+            mime = OutboundMimeBuilder.Build(fromAddress, fromDisplayName, message);
         }
         catch (ParseException ex)
         {
@@ -125,40 +125,4 @@ public sealed class SmtpManualClient(
         );
 
     /// <summary>Sin threadId nativo (SMTP no tiene uno) — solo headers RFC 2822/5322 References/In-Reply-To, igual que cualquier MUA estándar.</summary>
-    private static MimeMessage BuildMimeMessage(string fromAddress, string? fromDisplayName, OutboundMessage message)
-    {
-        var mime = new MimeMessage();
-        mime.From.Add(new MailboxAddress(fromDisplayName ?? string.Empty, fromAddress));
-
-        var atIndex = fromAddress.IndexOf('@');
-        var fromDomain = atIndex >= 0 ? fromAddress[(atIndex + 1)..] : "taxvision.local";
-        mime.MessageId = MimeUtils.GenerateMessageId(fromDomain);
-
-        foreach (var to in message.To)
-            mime.To.Add(MailboxAddress.Parse(to));
-        foreach (var cc in message.Cc)
-            mime.Cc.Add(MailboxAddress.Parse(cc));
-        foreach (var bcc in message.Bcc)
-            mime.Bcc.Add(MailboxAddress.Parse(bcc));
-        if (!string.IsNullOrWhiteSpace(message.ReplyToDisplayAddress))
-            mime.ReplyTo.Add(MailboxAddress.Parse(message.ReplyToDisplayAddress));
-
-        mime.Subject = message.Subject;
-
-        if (!string.IsNullOrWhiteSpace(message.InReplyToInternetMessageId))
-            mime.InReplyTo = message.InReplyToInternetMessageId;
-        foreach (var reference in message.References ?? [])
-            mime.References.Add(reference);
-
-        var bodyBuilder = new BodyBuilder { HtmlBody = message.Html, TextBody = message.Text };
-        foreach (var attachment in message.Attachments)
-            bodyBuilder.Attachments.Add(
-                attachment.Filename,
-                attachment.Content,
-                ContentType.Parse(attachment.ContentType)
-            );
-
-        mime.Body = bodyBuilder.ToMessageBody();
-        return mime;
-    }
 }

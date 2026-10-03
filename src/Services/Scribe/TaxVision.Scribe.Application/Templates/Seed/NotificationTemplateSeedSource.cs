@@ -24,7 +24,7 @@ public sealed record NotificationTemplateSeed(
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
     // v9: plantilla de factura, la primera sobre tenant-base.
-    int ContentVersion = 9,
+    int ContentVersion = 10,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -1442,7 +1442,7 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Invoice</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Invoice {{ invoice_number }}</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ customer_name }}</strong>, here is your invoice from {{ tenant_name }}. A PDF copy is attached.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ customer_name }}</strong>, here is your invoice from {{ tenant_name }}.{% if has_pdf %} A PDF copy is attached.{% endif %}</td></tr>
               <tr>
                 <td style="padding:18px 0 4px 0;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E1E8EE;border-radius:10px;">
@@ -1478,7 +1478,7 @@ public static class NotificationTemplateSeedSource
             [
                 ("invoice_number", VariableType.String, true, null, "Numero de la factura (INV-2026-00005)."),
                 ("customer_name", VariableType.String, true, null, "Nombre del cliente que recibe."),
-                ("tenant_name", VariableType.String, true, null, "Nombre de la oficina que factura."),
+                ("tenant_name", VariableType.String, false, null, "Lo inyecta el renderer desde la proyeccion."),
                 ("amount_due", VariableType.String, true, null, "Importe pendiente ya formateado con su moneda."),
                 (
                     "due_date",
@@ -1488,6 +1488,7 @@ public static class NotificationTemplateSeedSource
                     "Fecha de vencimiento ya formateada. Vacia = no se muestra."
                 ),
                 ("payment_link", VariableType.Url, false, null, "URL estable de pago. Vacia = no se muestra el boton."),
+                ("has_pdf", VariableType.Bool, false, null, "Falso = no se promete un adjunto que no va."),
                 ("preheader", VariableType.String, false, "Your invoice is ready.", "Linea de vista previa."),
             ],
             LayoutKey: "tenant-base"

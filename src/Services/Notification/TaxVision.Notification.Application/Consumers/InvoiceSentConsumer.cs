@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -12,9 +12,9 @@ namespace TaxVision.Notification.Application.Consumers;
 /// el correo lo firma la oficina, así que lleva su cáscara y su logo, no los de la plataforma. El
 /// idioma es el de la oficina, como el resto de plantillas de tenant.</para>
 ///
-/// <para><c>Scope = TenantPreferred</c> hace dos cosas de una vez: elige el transporte (buzón
-/// conectado de la oficina, y si no lo hay el del sistema en su nombre) y marca el logo como del
-/// tenant — Postmaster resuelve los assets contra el tenant salvo que el scope diga System.</para>
+/// <para>El carril sale del render, no de acá: lo decide el layout. <c>TenantPreferred</c> elige el
+/// transporte (buzón conectado de la oficina, y si no lo hay el del sistema en su nombre) y marca el
+/// logo como del tenant.</para>
 ///
 /// <para>Antes de 2026-10-03 esto no pasaba por acá: el CRM componía el HTML a mano y lo mandaba al
 /// endpoint genérico de envío, por eso el cliente recibía texto plano sin marca.</para>
@@ -46,29 +46,26 @@ public static class InvoiceSentConsumer
                     {
                         ["invoice_number"] = evt.InvoiceNumber,
                         ["customer_name"] = evt.CustomerName,
-                        ["tenant_name"] = evt.TenantName,
                         ["amount_due"] = FormatAmount(evt.AmountDueCents, evt.Currency),
                         ["due_date"] = evt.DueDateUtc?.ToString("MMM d, yyyy"),
                         ["payment_link"] = evt.PaymentLink,
+                        ["has_pdf"] = evt.PdfFileId is not null,
                     },
                     ct
                 )
             ).EnsureRendered(EventKey);
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.CustomerEmail,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: TemplateKey,
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    Scope: EmailDispatchScope.TenantPreferred,
-                    AttachmentFileIds: evt.PdfFileId is { } pdf ? [pdf] : null,
-                    InlineAssets: render.InlineAssets
-                ),
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.CustomerEmail,
+                    templateKey: TemplateKey,
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
+                ) with
+                {
+                    AttachmentFileIds = evt.PdfFileId is { } pdf ? [pdf] : null,
+                },
                 ct
             );
         }

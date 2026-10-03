@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -78,17 +78,16 @@ public static class SignerVerificationChallengeIssuedConsumer
         CancellationToken ct
     )
     {
-        string subject,
-            html;
-        string? text;
-        IReadOnlyList<EmailInlineAssetReference> inlineAssets;
+        // Las dos ramas producen un ScribeRenderedEmail aunque una no pase por Scribe: asi el pedido
+        // de envio sale de un solo sitio (ToDispatchRequest) en vez de copiarse campo por campo.
+        ScribeRenderedEmail render;
         if (evt.Method == "EmailOtp")
         {
             // Fase 8: el contenido OTP ya no se arma localmente — se renderiza en Scribe.
             // Hardening Fase 7: un OTP de firma es tiempo-sensible; un render fallido silenciado
             // acá dejaba al firmante sin código y sin ningún rastro del fallo. EnsureRendered lanza
             // para que Wolverine reintente en vez de completar sin haber enviado el OTP.
-            var render = (
+            render = (
                 await scribeClient.RenderAsync(
                     "sig.verification_challenge_issued.v1",
                     evt.TenantId,
@@ -102,28 +101,22 @@ public static class SignerVerificationChallengeIssuedConsumer
                     ct
                 )
             ).EnsureRendered("sig.verification_challenge_issued.v1");
-            (subject, html, text) = (render.Subject, render.Html, render.Text);
-            inlineAssets = render.InlineAssets;
         }
         else
         {
-            // KbaQuiz: mensaje simple, único, sin catálogo — se queda igual que antes. Nunca pasa por
-            // Scribe, así que no hay logo que propagar (Hardening Fase 9).
-            (subject, html, text) = BuildKbaEmail(evt);
-            inlineAssets = [];
+            // KbaQuiz: mensaje simple, único, sin catálogo. Nunca pasa por Scribe, así que no hay logo
+            // que propagar y el carril es el del sistema — justo lo que da el ctor de 3 argumentos.
+            var (subject, html, text) = BuildKbaEmail(evt);
+            render = new ScribeRenderedEmail(subject, html, text);
         }
 
         var result = await gateway.QueueEmailAsync(
-            new EmailDispatchRequest(
-                TenantId: evt.TenantId,
-                To: evt.DeliveryAddress,
-                Subject: subject,
-                HtmlBody: html,
-                TextBody: text ?? string.Empty,
-                TemplateKey: TemplateKey,
-                RelatedEventId: evt.EventId,
-                CorrelationId: correlationId,
-                InlineAssets: inlineAssets
+            render.ToDispatchRequest(
+                tenantId: evt.TenantId,
+                to: evt.DeliveryAddress,
+                templateKey: TemplateKey,
+                relatedEventId: evt.EventId,
+                correlationId: correlationId
             ),
             ct
         );

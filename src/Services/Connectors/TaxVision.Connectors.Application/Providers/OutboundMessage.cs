@@ -1,4 +1,4 @@
-namespace TaxVision.Connectors.Application.Providers;
+﻿namespace TaxVision.Connectors.Application.Providers;
 
 /// <summary>
 /// DTO normalizado que cruza el M2M de envío (D3 §3.2/§4.4) — nunca MIME crudo, porque Graph no lo
@@ -19,8 +19,12 @@ public sealed record OutboundMessage(
     string? InReplyToInternetMessageId,
     IReadOnlyList<string>? References,
     string? ReplyToProviderMessageId,
-    IReadOnlyList<OutboundAttachment>? Attachments = null
+    IReadOnlyList<OutboundAttachment>? Attachments = null,
+    IReadOnlyList<OutboundInlineAsset>? InlineAssets = null
 )
 {
     public IReadOnlyList<OutboundAttachment> Attachments { get; init; } = Attachments ?? [];
+
+    /// <summary>Imagenes embebidas por Content-ID. Vacio = el cuerpo no referencia ninguna.</summary>
+    public IReadOnlyList<OutboundInlineAsset> InlineAssets { get; init; } = InlineAssets ?? [];
 }

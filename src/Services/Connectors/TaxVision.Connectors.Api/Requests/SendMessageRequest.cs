@@ -1,4 +1,4 @@
-namespace TaxVision.Connectors.Api.Requests;
+﻿namespace TaxVision.Connectors.Api.Requests;
 
 /// <summary>Body de <c>POST /connectors/accounts/{accountId}/send</c> (D3 §3.7) — espejo plano de <c>OutboundMessage</c>.</summary>
 public sealed record SendMessageRequest(
@@ -13,8 +13,13 @@ public sealed record SendMessageRequest(
     string? InReplyToInternetMessageId,
     IReadOnlyList<string>? References,
     string? ReplyToProviderMessageId,
-    IReadOnlyList<SendMessageAttachmentRequest>? Attachments = null
+    IReadOnlyList<SendMessageAttachmentRequest>? Attachments = null,
+    IReadOnlyList<SendMessageInlineAssetRequest>? InlineAssets = null
 );
 
 /// <summary>Contenido en base64 (D3 Compose §16 Fase 1) — consistente con el resto de payloads binarios M2M del repo (ej. <c>EmailLayoutsController.PreviewPngBase64</c>).</summary>
 public sealed record SendMessageAttachmentRequest(string Filename, string ContentType, string ContentBase64);
+
+/// <summary>Imagen <c>cid:</c> del cuerpo. Separada de los adjuntos: no debe aparecer como archivo
+/// descargable. Mismo base64.</summary>
+public sealed record SendMessageInlineAssetRequest(string ContentId, string ContentType, string ContentBase64);

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Caching.Memory;
@@ -113,6 +113,7 @@ public sealed class ScribeTelemetryTests
             new FakeEmailLayoutRepository(layout),
             cloudStorage,
             new FakeLogoResolver(logo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

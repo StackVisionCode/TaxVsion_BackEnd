@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -60,16 +60,12 @@ public static class InvitationCreatedConsumer
             ).EnsureRendered("auth.invitation_created.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "auth.invitation",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "auth.invitation",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -119,16 +115,12 @@ public static class PasswordResetRequestedConsumer
             ).EnsureRendered("auth.password_reset_requested.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "auth.password_reset",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "auth.password_reset",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -171,16 +163,12 @@ public static class TenantRecoveryRequestedConsumer
             ).EnsureRendered("auth.tenant_recovery_requested.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "auth.tenant_recovery",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "auth.tenant_recovery",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -244,16 +232,12 @@ public static class MfaChallengeRequestedConsumer
             ).EnsureRendered("auth.mfa_otp_requested.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Destination,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "auth.otp_code",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Destination,
+                    templateKey: "auth.otp_code",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -304,16 +288,12 @@ public static class EmailChangeRequestedConsumer
             ).EnsureRendered("auth.email_change_requested.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.NewEmail,
-                    Subject: confirmRender.Subject,
-                    HtmlBody: confirmRender.Html,
-                    TextBody: confirmRender.Text ?? string.Empty,
-                    TemplateKey: "auth.email_change",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: confirmRender.InlineAssets
+                confirmRender.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.NewEmail,
+                    templateKey: "auth.email_change",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -336,16 +316,12 @@ public static class EmailChangeRequestedConsumer
             ).EnsureRendered("auth.email_change_security_alert.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.CurrentEmail,
-                    Subject: warningRender.Subject,
-                    HtmlBody: warningRender.Html,
-                    TextBody: warningRender.Text ?? string.Empty,
-                    TemplateKey: "auth.security_alert",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: warningRender.InlineAssets
+                warningRender.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.CurrentEmail,
+                    templateKey: "auth.security_alert",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -424,16 +400,12 @@ public static class UserRegisteredConsumer
             ).EnsureRendered("auth.user_registered.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "auth.welcome",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "auth.welcome",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );

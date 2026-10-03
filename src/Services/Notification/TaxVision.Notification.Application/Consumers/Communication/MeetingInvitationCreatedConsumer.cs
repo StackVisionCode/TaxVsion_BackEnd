@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -76,16 +76,12 @@ public static class MeetingInvitationCreatedConsumer
             ).EnsureRendered("communication.meeting.invitation_created.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.InviteeEmail!,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "communication.meeting.invitation",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.InviteeEmail!,
+                    templateKey: "communication.meeting.invitation",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );

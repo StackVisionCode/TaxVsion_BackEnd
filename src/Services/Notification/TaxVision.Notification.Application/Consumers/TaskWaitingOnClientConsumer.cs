@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -67,16 +67,12 @@ public static class TaskWaitingOnClientConsumer
             ).EnsureRendered(TemplateKey);
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: customer.NormalizedEmail,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: TemplateKey,
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: customer.NormalizedEmail,
+                    templateKey: TemplateKey,
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );

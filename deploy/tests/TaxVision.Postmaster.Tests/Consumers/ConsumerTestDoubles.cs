@@ -196,17 +196,20 @@ internal sealed class FakeEmailSender : IEmailSender
     /// <summary>Hardening Fase 9 — captura lo que el consumer realmente pasó, para probar que las
     /// referencias del evento efectivamente llegan como bytes hasta acá.</summary>
     public IReadOnlyList<InlineAssetBytes>? LastInlineAssets { get; private set; }
+    public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
 
     public Task<SendResult> SendAsync(
         SentMessage message,
         RenderedContent content,
         ResolvedEmailProvider provider,
         IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
         CancellationToken ct
     )
     {
         LastMessage = message;
         LastInlineAssets = inlineAssets;
+        LastAttachments = attachments;
         return Task.FromResult(SendReturnValue);
     }
 }
@@ -277,6 +280,9 @@ internal sealed class FakeConnectedMailboxSender : IConnectedMailboxSender
 {
     public SendResult SendReturnValue { get; set; } = new(true, "connectors-msg-1", null, []);
     public SentMessage? LastMessage { get; private set; }
+    public RenderedContent? LastContent { get; private set; }
+    public IReadOnlyList<InlineAssetBytes> LastInlineAssets { get; private set; } = [];
+    public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
 
     public Task<SendResult> SendAsync(
         SentMessage message,
@@ -286,10 +292,14 @@ internal sealed class FakeConnectedMailboxSender : IConnectedMailboxSender
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,
         IReadOnlyList<OutboundAttachmentBytes> attachments,
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
         CancellationToken ct
     )
     {
         LastMessage = message;
+        LastContent = content;
+        LastInlineAssets = inlineAssets;
+        LastAttachments = attachments;
         return Task.FromResult(SendReturnValue);
     }
 }
@@ -299,11 +309,35 @@ internal sealed class FakeOutboundAttachmentFetcher : IOutboundAttachmentFetcher
     public Result<IReadOnlyList<OutboundAttachmentBytes>> FetchReturnValue { get; set; } =
         Result.Success<IReadOnlyList<OutboundAttachmentBytes>>([]);
 
+    /// <summary>Si queda null, resuelve un adjunto sintetico por id (como hace el inline fetcher).</summary>
+    public Result<IReadOnlyList<OutboundAttachmentBytes>>? FetchByIdsReturnValue { get; set; }
+    public IReadOnlyList<Guid> LastRequestedFileIds { get; private set; } = [];
+
     public Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchAllAsync(
         Guid tenantId,
         IReadOnlyList<OutboundAttachmentRef> attachments,
         CancellationToken ct
     ) => Task.FromResult(FetchReturnValue);
+
+    public Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchByFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> fileIds,
+        CancellationToken ct
+    )
+    {
+        LastRequestedFileIds = fileIds;
+        if (FetchByIdsReturnValue is not null)
+            return Task.FromResult(FetchByIdsReturnValue);
+
+        var bytes = fileIds
+            .Select(id => new OutboundAttachmentBytes(
+                $"{id:N}.pdf",
+                "application/pdf",
+                Encoding.UTF8.GetBytes($"fake-bytes-{id:N}")
+            ))
+            .ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<OutboundAttachmentBytes>>(bytes));
+    }
 }
 
 /// <summary>

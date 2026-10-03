@@ -321,6 +321,78 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "SetDispatchScope (PlatformAdmin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"scope\": \"TenantPreferred\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/scribe/templates/billing.invoice_sent/dispatch-scope",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"scribe",
+								"templates",
+								"billing.invoice_sent",
+								"dispatch-scope"
+							]
+						},
+						"description": "Fija a mano desde que buzon sale la plantilla. PlatformAdmin-only. `scope`: `System` (plataforma) o `TenantPreferred` (buzon de la oficina, con caida al sistema). Rechaza `System` sobre una plantilla que renderiza en `tenant-base`: ese correo lleva la cascara y el logo de la oficina, mandarlo desde la plataforma lo convierte en un mensaje que se presenta como de la oficina y sale de otro buzon."
+					},
+					"response": []
+				},
+				{
+					"name": "ReleaseDispatchScope (PlatformAdmin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"scope\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/scribe/templates/billing.invoice_sent/dispatch-scope",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"scribe",
+								"templates",
+								"billing.invoice_sent",
+								"dispatch-scope"
+							]
+						},
+						"description": "Suelta el override y devuelve la decision al layout, que es lo normal: `tenant-base` sale por el buzon de la oficina y el resto por el del sistema."
+					},
+					"response": []
 				}
 			]
 		},

@@ -1,4 +1,4 @@
-using TaxVision.Scribe.Domain;
+﻿using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.ValueObjects;
 
 namespace TaxVision.Scribe.Application.Rendering;
@@ -18,9 +18,27 @@ public sealed record RenderRequest(
     LogoScope LogoScope = LogoScope.System
 );
 
+/// <param name="DispatchScope">
+/// De quien sale el correo, decidido por el LAYOUT: <c>tenant-base</c> es la cascara de la oficina, asi
+/// que sale por su buzon. Viaja como string, no como enum: el enum real vive en Notification y una
+/// diferencia de serializacion aca se pierde en silencio, que es como se perdio InlineAssets entero.
+/// </param>
 public sealed record RenderedContent(
     string Subject,
     string Html,
     string? Text,
-    IReadOnlyList<InlineAsset> InlineAssets
-);
+    IReadOnlyList<InlineAsset> InlineAssets,
+    string DispatchScope
+)
+{
+    /// <summary>Preserva a los callers y tests anteriores al carril por layout.</summary>
+    public RenderedContent(string Subject, string Html, string? Text, IReadOnlyList<InlineAsset> InlineAssets)
+        : this(Subject, Html, Text, InlineAssets, DispatchScopes.System) { }
+}
+
+/// <summary>Los dos carriles que el layout puede pedir. Strings, porque cruzan HTTP.</summary>
+public static class DispatchScopes
+{
+    public const string System = "System";
+    public const string TenantPreferred = "TenantPreferred";
+}

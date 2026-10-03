@@ -76,8 +76,6 @@ public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationE
     public required string CustomerName { get; init; }
 
     /// <summary>Nombre de la oficina que factura — va en el asunto y en el cuerpo.</summary>
-    public required string TenantName { get; init; }
-
     /// <summary>Importe pendiente en centavos — Notification lo formatea con la moneda.</summary>
     public required long AmountDueCents { get; init; }
     public required string Currency { get; init; }

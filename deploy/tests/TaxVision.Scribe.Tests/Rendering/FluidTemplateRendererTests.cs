@@ -1,4 +1,4 @@
-using BuildingBlocks.Results;
+﻿using BuildingBlocks.Results;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.EventMappings;
@@ -93,6 +93,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(_layout),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             l1Cache,
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -195,6 +196,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(layout),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -311,6 +313,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(layout),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -421,6 +424,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(_layout),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -441,6 +445,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(_layout),
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -468,6 +473,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(_layout),
             _cloudStorage,
             new FakeLogoResolver(fallbackLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -493,6 +499,7 @@ public sealed class FluidTemplateRendererTests
             new FakeEmailLayoutRepository(_layout),
             _cloudStorage,
             new FakeLogoResolver(ownLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance

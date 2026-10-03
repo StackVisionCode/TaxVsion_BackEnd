@@ -28,7 +28,6 @@ public sealed class InvoiceSentConsumerTests
         await Handle(render, gateway, Invoice("client@example.com", pdf));
 
         Assert.Equal("billing.invoice_sent.v1", render.LastEventKey);
-        Assert.Equal("Manfer Tax Office", render.LastVariables["tenant_name"]);
         Assert.Equal("100.00 USD", render.LastVariables["amount_due"]);
 
         var email = Assert.Single(gateway.Queued);
@@ -65,7 +64,6 @@ public sealed class InvoiceSentConsumerTests
             InvoiceNumber = "INV-2026-00005",
             CustomerEmail = email,
             CustomerName = "Client",
-            TenantName = "Manfer Tax Office",
             AmountDueCents = 10000,
             Currency = "usd",
             DueDateUtc = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc),
@@ -90,7 +88,12 @@ public sealed class InvoiceSentConsumerTests
             Calls++;
             LastEventKey = eventKey;
             LastVariables = variables;
-            return Task.FromResult(Result.Success(new ScribeRenderedEmail("subject", "<p>html</p>", "text")));
+            // Lo que devolveria Scribe para una plantilla sobre tenant-base: el carril viene del render.
+            return Task.FromResult(
+                Result.Success(
+                    new ScribeRenderedEmail("subject", "<p>html</p>", "text", [], EmailDispatchScope.TenantPreferred)
+                )
+            );
         }
     }
 

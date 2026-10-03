@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -89,6 +89,9 @@ public sealed class TemplateWarmupServiceTests
         services.AddSingleton<TaxVision.Scribe.Application.Abstractions.ICloudStorageClient>(cloudStorage);
         services.AddSingleton<ILogoResolver>(
             new FakeLogoResolver(new LogoAsset(Guid.NewGuid(), "image/png", 1024, false))
+        );
+        services.AddSingleton<TaxVision.Scribe.Application.Abstractions.ITenantProfileRefRepository>(
+            new Rendering.FakeTenantProfileRefRepository()
         );
         services.AddSingleton<IMemoryCache>(l1Cache);
         services.AddSingleton<ITemplateSourceCache, FakeTemplateSourceCache>();

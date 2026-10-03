@@ -16,7 +16,6 @@ public static class SendInvoiceToCustomerHandler
     public static async Task<Result> Handle(
         SendInvoiceToCustomerCommand command,
         IInvoiceRepository invoices,
-        IIssuerProfileRepository issuers,
         IOptions<BillingVisibilityOptions> visibility,
         ICorrelationContext correlation,
         IMessageBus bus,
@@ -36,9 +35,6 @@ public static class SendInvoiceToCustomerHandler
         if (string.IsNullOrWhiteSpace(email))
             return Result.Failure(new Error("Billing.Invoice.CustomerHasNoEmail", "This client has no email on file."));
 
-        // El nombre de la oficina va en el asunto y en el cuerpo: el correo lo firma ella, no la plataforma.
-        var issuer = await issuers.GetByTenantAsync(command.TenantId, ct);
-
         await bus.PublishAsync(
             new InvoiceSentToCustomerIntegrationEvent
             {
@@ -48,7 +44,6 @@ public static class SendInvoiceToCustomerHandler
                 InvoiceNumber = invoice.InvoiceNumber,
                 CustomerEmail = email,
                 CustomerName = invoice.Customer.Name,
-                TenantName = issuer?.Name ?? string.Empty,
                 AmountDueCents = invoice.AmountDue.AmountCents,
                 Currency = invoice.Currency,
                 DueDateUtc = invoice.DueDateUtc,

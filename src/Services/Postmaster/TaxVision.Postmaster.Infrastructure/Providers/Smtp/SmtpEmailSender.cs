@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.Resilience;
+﻿using BuildingBlocks.Infrastructure.Resilience;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Logging;
@@ -45,10 +45,11 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
         RenderedContent content,
         ResolvedEmailProvider provider,
         IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
         CancellationToken ct
     )
     {
-        var mimeMessage = MimeMessageBuilder.Build(message, content, provider, inlineAssets);
+        var mimeMessage = MimeMessageBuilder.Build(message, content, provider, inlineAssets, attachments);
         var breaker = circuitBreakers.GetOrCreate(provider.ProviderCode);
 
         try
