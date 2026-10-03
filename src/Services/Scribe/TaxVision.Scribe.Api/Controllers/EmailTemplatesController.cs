@@ -1,4 +1,4 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Commands;
+using TaxVision.Scribe.Application.Templates.Commands.SetDispatchScope;
 using TaxVision.Scribe.Application.Templates.Validation;
 using TaxVision.Scribe.Domain;
 using Wolverine;
@@ -45,6 +46,36 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
     );
 
     public sealed record PreviewRequest(IReadOnlyDictionary<string, object?> SampleVariables);
+
+    /// <summary><c>scope</c> null suelta el override y devuelve la decision al layout.</summary>
+    public sealed record SetDispatchScopeRequest(string? Scope);
+
+    /// <summary>
+    /// Fija a mano desde que buzon sale esta plantilla. PlatformAdmin-only (el atributo a nivel de
+    /// accion acota el del controlador): el carril vale para todas las oficinas, no para una.
+    ///
+    /// <para>El handler rechaza <c>System</c> sobre una plantilla que vive en <c>tenant-base</c>: ese
+    /// correo lleva la cascara y el logo de la oficina.</para>
+    /// </summary>
+    [HttpPut("{templateKey}/dispatch-scope")]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
+    [HasPermission(ScribePermissions.TemplatesWrite)]
+    [RateLimit("scribe.g.template_manage")]
+    [ProducesResponseType<SetTemplateDispatchScopeResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetDispatchScope(
+        string templateKey,
+        [FromBody] SetDispatchScopeRequest request,
+        CancellationToken ct
+    )
+    {
+        User.TryGetUserId(out var userId);
+
+        var result = await bus.InvokeAsync<Result<SetTemplateDispatchScopeResult>>(
+            new SetTemplateDispatchScopeCommand(templateKey, request.Scope, userId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 
     [HttpPost]
     [HasPermission(ScribePermissions.TemplatesWrite)]

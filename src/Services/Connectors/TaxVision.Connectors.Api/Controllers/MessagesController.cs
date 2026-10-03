@@ -1,4 +1,4 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
@@ -96,11 +96,19 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
             return Forbid();
 
         List<OutboundAttachment> attachments;
+        List<OutboundInlineAsset> inlineAssets;
         try
         {
             attachments = (body.Attachments ?? [])
                 .Select(a => new OutboundAttachment(
                     a.Filename,
+                    a.ContentType,
+                    Convert.FromBase64String(a.ContentBase64)
+                ))
+                .ToList();
+            inlineAssets = (body.InlineAssets ?? [])
+                .Select(a => new OutboundInlineAsset(
+                    a.ContentId,
                     a.ContentType,
                     Convert.FromBase64String(a.ContentBase64)
                 ))
@@ -127,7 +135,8 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
             body.InReplyToInternetMessageId,
             body.References,
             body.ReplyToProviderMessageId,
-            attachments
+            attachments,
+            inlineAssets
         );
 
         var result = await bus.InvokeAsync<Result<SendMessageResult>>(

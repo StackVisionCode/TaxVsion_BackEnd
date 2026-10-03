@@ -896,6 +896,16 @@ services:
       # correr hasta el siguiente reinicio (medido en prod 2026-10-03).
       auth-api:
         condition: service_healthy
+      # El carril del buzon conectado manda el correo POR connectors-api, y desde 2026-10-03 le pasa
+      # ademas los inline assets. Sin esta espera, un correo encolado durante el arranque se va contra
+      # un Connectors que todavia no escucha: Wolverine reintenta, pero son reintentos evitables.
+      connectors-api:
+        condition: service_healthy
+      # Los logos inline y los adjuntos se bajan de CloudStorage al momento de enviar. Los adjuntos
+      # fallan CERRADO (el correo no sale), asi que arrancar antes que el convierte un arranque en
+      # frio en una tanda de envios fallidos.
+      cloudstorage-api:
+        condition: service_healthy
     networks:
       - taxvision-network
 
@@ -923,6 +933,8 @@ services:
       Scribe__ServiceAuth__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
       Scribe__ServiceAuth__ClientSecret: ${SCRIBE_SERVICE_CLIENT_SECRET:?Set SCRIBE_SERVICE_CLIENT_SECRET in .env}
       Scribe__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Solo para el backfill de nombres de oficina al arrancar; el render lee la proyeccion local.
+      Scribe__Tenant__BaseUrl: http://tenant-api:8080
       # Credenciales MinIO propias (IAM scoped a taxvision-temp/scribe/*, ver
       # deploy/docker/minio/policies/scribe-source.json + provision-service-accounts.sh).
       # NUNCA MINIO_ROOT_USER/PASSWORD. AddSingleton<IMinioClient> es incondicional —
@@ -962,6 +974,10 @@ services:
       auth-api:
         condition: service_healthy
       cloudstorage-api:
+        condition: service_healthy
+      # TenantProfileBackfillService lee el directorio de oficinas al arrancar. Reintenta solo, pero
+      # sin esto un despliegue en frio se queda sin nombres hasta el siguiente reinicio.
+      tenant-api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -1038,6 +1054,12 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully

@@ -69,6 +69,7 @@ public static class NotificationsEmailSendRequestedConsumer
         IEmailSender emailSender,
         IConnectedMailboxSender mailboxSender,
         IInlineAssetFetcher inlineAssetFetcher,
+        IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
         ITenantDirectoryRepository tenantDirectory,
         IUnitOfWork unitOfWork,
@@ -130,10 +131,14 @@ public static class NotificationsEmailSendRequestedConsumer
                     mailboxResult,
                     suppressionList,
                     mailboxSender,
+                    inlineAssetFetcher,
+                    attachmentFetcher,
                     sentMessages,
+                    tenantDirectory,
                     idempotencyGuard,
                     unitOfWork,
                     bus,
+                    logger,
                     ct
                 );
                 return;
@@ -147,6 +152,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 rateLimiter,
                 emailSender,
                 inlineAssetFetcher,
+                attachmentFetcher,
                 sentMessages,
                 tenantDirectory,
                 idempotencyGuard,
@@ -166,6 +172,7 @@ public static class NotificationsEmailSendRequestedConsumer
         IEmailProviderRateLimiter rateLimiter,
         IEmailSender emailSender,
         IInlineAssetFetcher inlineAssetFetcher,
+        IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
         ITenantDirectoryRepository tenantDirectory,
         IIdempotencyGuard idempotencyGuard,
@@ -221,6 +228,7 @@ public static class NotificationsEmailSendRequestedConsumer
             resolveResult.Provider!,
             emailSender,
             inlineAssetFetcher,
+            attachmentFetcher,
             idempotencyGuard,
             unitOfWork,
             bus,
@@ -241,10 +249,14 @@ public static class NotificationsEmailSendRequestedConsumer
         MailboxResolveResult resolveResult,
         ISuppressionListRepository suppressionList,
         IConnectedMailboxSender mailboxSender,
+        IInlineAssetFetcher inlineAssetFetcher,
+        IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
+        ITenantDirectoryRepository tenantDirectory,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -254,7 +266,14 @@ public static class NotificationsEmailSendRequestedConsumer
             return;
         }
 
-        var message = await QueueAndPersistMailboxAsync(evt, resolveResult.Provider!, sentMessages, unitOfWork, ct);
+        // La proyeccion del buzon no guarda nombre, solo la direccion: el From salia pelado. El nombre
+        // de la oficina es el del directorio, el mismo que el carril SMTP ya usa.
+        var provider = resolveResult.Provider! with
+        {
+            FromDisplayName = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name,
+        };
+
+        var message = await QueueAndPersistMailboxAsync(evt, provider, sentMessages, unitOfWork, ct);
         if (await ApplySuppressionAsync(message, evt, suppressionList, idempotencyGuard, unitOfWork, bus, ct))
             return;
 
@@ -262,12 +281,15 @@ public static class NotificationsEmailSendRequestedConsumer
             message,
             evt,
             delivery,
-            resolveResult.Provider!,
+            provider,
             mailboxSender,
+            inlineAssetFetcher,
+            attachmentFetcher,
             sentMessages,
             idempotencyGuard,
             unitOfWork,
             bus,
+            logger,
             ct
         );
     }
@@ -413,6 +435,39 @@ public static class NotificationsEmailSendRequestedConsumer
     /// <summary>Bulk nunca cae al cupo Transactional por defecto — null hasta que un admin lo configure explícitamente.</summary>
     private static int? ResolveStreamQuota(EmailStream stream, ResolvedEmailProvider provider) =>
         stream == EmailStream.Bulk ? provider.BulkRateLimitPerMinute : provider.RateLimitPerMinute;
+
+    /// <summary>
+    /// Los adjuntos fallan CERRADO, al reves que el logo: si no se pueden bajar, el correo no sale.
+    /// Un logo roto es cosmetico; una factura que dice "A PDF copy is attached" y llega sin el PDF es
+    /// un mensaje equivocado. Devuelve null cuando fallo y el carril ya marco el mensaje.
+    /// </summary>
+    private static async Task<IReadOnlyList<OutboundAttachmentBytes>?> FetchAttachmentsOrFailAsync(
+        SentMessage message,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        IOutboundAttachmentFetcher attachmentFetcher,
+        IIdempotencyGuard idempotencyGuard,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        if (evt.AttachmentFileIds is not { Count: > 0 } fileIds)
+            return [];
+
+        var fetched = await attachmentFetcher.FetchByFileIdsAsync(evt.TenantId, fileIds, ct);
+        if (fetched.IsSuccess)
+            return fetched.Value;
+
+        logger.LogWarning(
+            "Failed to fetch {Count} attachment(s) for tenant {TenantId}: {Error}. The email will not be sent.",
+            fileIds.Count,
+            evt.TenantId,
+            fetched.Error.Message
+        );
+        await FailAndPublishAsync(message, evt, fetched.Error.Message, idempotencyGuard, unitOfWork, bus, ct);
+        return null;
+    }
 
     private static async Task FailAndPublishAsync(
         SentMessage message,
@@ -631,13 +686,9 @@ public static class NotificationsEmailSendRequestedConsumer
     /// parámetros de threading de <see cref="IConnectedMailboxSender.SendAsync"/> van null — mismo criterio
     /// de incrementalidad que Postmaster ya usó para inline assets en Fase 3.5.
     ///
-    /// Hardening Fase 9: a diferencia de <see cref="SendAndFinalizeAsync"/> (path SMTP), acá NO se
-    /// resuelven <c>evt.InlineAssets</c> — <see cref="IConnectedMailboxSender.SendAsync"/> no tiene ningún
-    /// parámetro de inline assets (Connectors envía vía Gmail/Graph API, no arma el MIME multipart/
-    /// related que <c>MimeMessageBuilder</c> construye para SMTP). Agregar soporte de logo CID al path
-    /// El canal del buzón conectado es una pieza de plomería genuinamente nueva (extender el contrato de
-    /// <see cref="IConnectedMailboxSender"/> y el M2M de envío de Connectors) — fuera del alcance declarado
-    /// de esta fase ("conectar lo ya construido", no construir una capacidad nueva).
+    /// Los inline assets salen por este carril igual que por el SMTP. Antes acá se armaba el
+    /// <c>RenderedContent</c> de 3 args y el logo llegaba roto, sin que nada lo delatara: el envío
+    /// daba "exitoso". <c>MailboxLaneParityTests</c> fija la paridad entre los dos carriles.
     /// </summary>
     private static async Task SendViaMailboxAndFinalizeAsync(
         SentMessage message,
@@ -645,15 +696,39 @@ public static class NotificationsEmailSendRequestedConsumer
         int delivery,
         ResolvedMailbox provider,
         IConnectedMailboxSender mailboxSender,
+        IInlineAssetFetcher inlineAssetFetcher,
+        IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ILogger logger,
         CancellationToken ct
     )
     {
         message.MarkAsSending();
-        var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody);
+        var inlineAssetRefs = ParseInlineAssetReferences(evt, logger);
+        var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody, inlineAssetRefs);
+        var inlineAssetBytes = await FetchInlineAssetBytesAsync(
+            ResolveInlineAssetTenantId(evt),
+            inlineAssetRefs,
+            inlineAssetFetcher,
+            logger,
+            ct
+        );
+        var attachments = await FetchAttachmentsOrFailAsync(
+            message,
+            evt,
+            attachmentFetcher,
+            idempotencyGuard,
+            unitOfWork,
+            bus,
+            logger,
+            ct
+        );
+        if (attachments is null)
+            return;
+
         var sendResult = await mailboxSender.SendAsync(
             message,
             content,
@@ -661,7 +736,8 @@ public static class NotificationsEmailSendRequestedConsumer
             inReplyToInternetMessageId: null,
             references: null,
             replyToProviderMessageId: null,
-            attachments: [],
+            attachments,
+            inlineAssetBytes,
             ct
         );
 
@@ -714,6 +790,7 @@ public static class NotificationsEmailSendRequestedConsumer
         ResolvedEmailProvider provider,
         IEmailSender emailSender,
         IInlineAssetFetcher inlineAssetFetcher,
+        IOutboundAttachmentFetcher attachmentFetcher,
         IIdempotencyGuard idempotencyGuard,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -731,7 +808,20 @@ public static class NotificationsEmailSendRequestedConsumer
             logger,
             ct
         );
-        var sendResult = await emailSender.SendAsync(message, content, provider, inlineAssetBytes, ct);
+        var attachments = await FetchAttachmentsOrFailAsync(
+            message,
+            evt,
+            attachmentFetcher,
+            idempotencyGuard,
+            unitOfWork,
+            bus,
+            logger,
+            ct
+        );
+        if (attachments is null)
+            return;
+
+        var sendResult = await emailSender.SendAsync(message, content, provider, inlineAssetBytes, attachments, ct);
 
         var now = DateTime.UtcNow;
         if (sendResult.Success)

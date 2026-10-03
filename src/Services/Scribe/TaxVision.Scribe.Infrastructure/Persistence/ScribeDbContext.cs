@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
@@ -44,6 +44,7 @@ public sealed class ScribeDbContext(DbContextOptions<ScribeDbContext> options, I
     public DbSet<EmailLayoutVersion> EmailLayoutVersions => Set<EmailLayoutVersion>();
     public DbSet<EventTemplateMapping> EventTemplateMappings => Set<EventTemplateMapping>();
     public DbSet<TenantLogoRef> TenantLogoRefs => Set<TenantLogoRef>();
+    public DbSet<TenantProfileRef> TenantProfileRefs => Set<TenantProfileRef>();
     public DbSet<TenantLogoMissingNotification> TenantLogoMissingNotifications => Set<TenantLogoMissingNotification>();
     public DbSet<SystemAssetRef> SystemAssetRefs => Set<SystemAssetRef>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();

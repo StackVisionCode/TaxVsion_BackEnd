@@ -29,13 +29,12 @@ public sealed class SendInvoiceToCustomerHandlerTests
         invoice.AttachPaymentLink(Guid.NewGuid(), "https://manfer.taxproffice.com/payments-client/invoices/abc", Now);
         var bus = new FakeMessageBus();
 
-        var result = await HandleAsync(invoice, bus, issuerName: "Manfer Tax Office");
+        var result = await HandleAsync(invoice, bus);
 
         Assert.True(result.IsSuccess);
         var evt = Assert.IsType<InvoiceSentToCustomerIntegrationEvent>(Assert.Single(bus.Published));
         Assert.Equal("INV-2026-00005", evt.InvoiceNumber);
         Assert.Equal("client@example.com", evt.CustomerEmail);
-        Assert.Equal("Manfer Tax Office", evt.TenantName);
         Assert.Equal("https://manfer.taxproffice.com/payments-client/invoices/abc", evt.PaymentLink);
         Assert.Equal(10000, evt.AmountDueCents);
     }
@@ -74,7 +73,6 @@ public sealed class SendInvoiceToCustomerHandlerTests
         await SendInvoiceToCustomerHandler.Handle(
             new SendInvoiceToCustomerCommand(Tenant, Guid.NewGuid(), Actor, CanViewAll: false),
             invoices,
-            new StubIssuers(null),
             Options.Create(new BillingVisibilityOptions { Enabled = true }),
             new NoOpCorrelation(),
             new FakeMessageBus(),
@@ -84,15 +82,10 @@ public sealed class SendInvoiceToCustomerHandlerTests
         Assert.Equal(Actor, invoices.AskedFor);
     }
 
-    private static async Task<BuildingBlocks.Results.Result> HandleAsync(
-        Invoice invoice,
-        FakeMessageBus bus,
-        string? issuerName = null
-    ) =>
+    private static async Task<BuildingBlocks.Results.Result> HandleAsync(Invoice invoice, FakeMessageBus bus) =>
         await SendInvoiceToCustomerHandler.Handle(
             new SendInvoiceToCustomerCommand(Tenant, invoice.Id, Actor, CanViewAll: true),
             new RecordingInvoices(invoice),
-            new StubIssuers(issuerName),
             Options.Create(new BillingVisibilityOptions { Enabled = true }),
             new NoOpCorrelation(),
             bus,
@@ -147,22 +140,6 @@ public sealed class SendInvoiceToCustomerHandlerTests
         ) => throw new NotSupportedException();
 
         public Task AddAsync(Invoice invoice, CancellationToken ct = default) => throw new NotSupportedException();
-    }
-
-    private sealed class StubIssuers(string? name) : IIssuerProfileRepository
-    {
-        public Task<IssuerProfile?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default)
-        {
-            if (name is null)
-                return Task.FromResult<IssuerProfile?>(null);
-
-            var profile = IssuerProfile.Create(tenantId, Now);
-            profile.Update(name, null, null, null, null, null, null, "USD", Now);
-            return Task.FromResult<IssuerProfile?>(profile);
-        }
-
-        public Task AddAsync(IssuerProfile profile, CancellationToken ct = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class NoOpCorrelation : ICorrelationContext

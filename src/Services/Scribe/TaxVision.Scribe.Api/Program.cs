@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Infrastructure.Caching;
@@ -101,6 +101,9 @@ builder.Services.AddHostedService<ScribeNotificationTemplateSeeder>();
 // Sube el logo de header de plataforma (Assets/SystemLogo/deploy.png) y persiste el FileId en
 // SystemAssetRef — reemplaza la config estática Scribe:SystemAssets.
 builder.Services.AddHostedService<ScribeSystemAssetSeeder>();
+
+// Nombres de las oficinas que ya existian antes de esta tabla: sin esto, sus correos salen sin firma.
+builder.Services.AddHostedService<TenantProfileBackfillService>();
 
 // Precarga en cache (L1+L2) todo template Published (Fase 6) — igual que los 3 seeders de
 // arriba, difiere su ejecución a ApplicationStarted (ver DeferredStartupHostedService) porque pide

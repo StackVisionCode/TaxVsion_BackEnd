@@ -91,6 +91,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -128,6 +129,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -161,6 +163,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -189,6 +192,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -226,6 +230,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [new OutboundAttachmentBytes("invoice.pdf", "application/pdf", attachmentBytes)],
+            inlineAssets: [],
             CancellationToken.None
         );
 

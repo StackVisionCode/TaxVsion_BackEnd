@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -60,6 +60,81 @@ public sealed class CloudStorageOutboundAttachmentFetcher(
         }
 
         return Result.Success<IReadOnlyList<OutboundAttachmentBytes>>(results);
+    }
+
+    public async Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchByFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> fileIds,
+        CancellationToken ct
+    )
+    {
+        if (fileIds.Count == 0)
+            return Result.Success<IReadOnlyList<OutboundAttachmentBytes>>([]);
+
+        var tokenResult = await AcquireTokenAsync(tenantId, ct);
+        if (tokenResult.IsFailure)
+            return Result.Failure<IReadOnlyList<OutboundAttachmentBytes>>(tokenResult.Error);
+
+        var refs = new List<OutboundAttachmentRef>(fileIds.Count);
+        foreach (var fileId in fileIds)
+        {
+            var metadata = await FetchMetadataAsync(fileId, tokenResult.Value, ct);
+            if (metadata.IsFailure)
+                return Result.Failure<IReadOnlyList<OutboundAttachmentBytes>>(metadata.Error);
+
+            refs.Add(metadata.Value);
+        }
+
+        return await FetchAllAsync(tenantId, refs, ct);
+    }
+
+    /// <summary>
+    /// Nombre y content-type del archivo. El que vale es <c>DetectedContentType</c> cuando existe: el
+    /// declarado lo manda quien sube, y es lo que el cliente de correo usa para decidir como abrirlo.
+    /// </summary>
+    private async Task<Result<OutboundAttachmentRef>> FetchMetadataAsync(
+        Guid fileId,
+        string token,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"storage/files/{fileId}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await httpClient.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "CloudStorage metadata call failed ({Status}) for attachment {FileId}.",
+                    (int)response.StatusCode,
+                    fileId
+                );
+                return Result.Failure<OutboundAttachmentRef>(
+                    new Error("OutboundAttachmentFetcher.Metadata", "attachment metadata request failed.")
+                );
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<FileMetadataResponseDto>(Json, ct);
+            if (payload is null)
+                return Result.Failure<OutboundAttachmentRef>(
+                    new Error("OutboundAttachmentFetcher.Metadata", "Empty response from attachment metadata.")
+                );
+
+            return OutboundAttachmentRef.Create(
+                fileId,
+                payload.OriginalName,
+                payload.DetectedContentType ?? payload.DeclaredContentType,
+                payload.SizeBytes
+            );
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "CloudStorage metadata call errored for attachment {FileId}.", fileId);
+            return Result.Failure<OutboundAttachmentRef>(
+                new Error("OutboundAttachmentFetcher.Metadata", "attachment metadata request failed.")
+            );
+        }
     }
 
     private async Task<Result<OutboundAttachmentBytes>> FetchOneAsync(
@@ -179,4 +254,11 @@ public sealed class CloudStorageOutboundAttachmentFetcher(
     }
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
+
+    private sealed record FileMetadataResponseDto(
+        string OriginalName,
+        string DeclaredContentType,
+        string? DetectedContentType,
+        long SizeBytes
+    );
 }

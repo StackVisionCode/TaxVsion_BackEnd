@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
@@ -51,22 +51,21 @@ public static class SubscriptionLifecycleEmailConsumer
             ).EnsureRendered(eventKey);
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: templateKey,
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: templateKey,
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
+                ) with
+                {
                     // El recordatorio lo publica un job: cada pasada trae un EventId nuevo, así que la
                     // deduplicación por evento no sirve. La clave se ancla al tenant y a la fecha de fin.
-                    IdempotencyKey: templateKey == "subscription.access_ending"
-                        ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}"
-                        : null,
-                    InlineAssets: render.InlineAssets
-                ),
+                    IdempotencyKey =
+                        templateKey == "subscription.access_ending"
+                            ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}"
+                            : null,
+                },
                 ct
             );
 

@@ -333,6 +333,29 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantLogoRefs", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Scribe.Domain.Projections.TenantProfileRef", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SubDomain")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantProfileRefs", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Scribe.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -382,6 +405,16 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("DispatchScopeOverride")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("DispatchScopeOverrideAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DispatchScopeOverrideByUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Name")
                         .IsRequired()

@@ -15,8 +15,8 @@ public interface IConnectedMailboxSender
     /// <paramref name="inReplyToInternetMessageId"/>/<paramref name="references"/>/<paramref name="replyToProviderMessageId"/>
     /// forman el bloque de threading (D3 §6) — todos opcionales, null si el envío no es un reply.
     /// <paramref name="attachments"/> ya viene descargado por <see cref="IOutboundAttachmentFetcher"/>
-    /// (D3 Compose §11.3/§Fase 4) — vacío por default para no romper el canal de notificaciones
-    /// automáticas, que nunca adjunta nada.
+    /// (D3 Compose §11.3/§Fase 4). <paramref name="inlineAssets"/> son las imágenes <c>cid:</c> del
+    /// cuerpo, por <see cref="IInlineAssetFetcher"/>. Sin ellas el logo llega roto.
     /// </summary>
     Task<SendResult> SendAsync(
         SentMessage message,
@@ -26,6 +26,7 @@ public interface IConnectedMailboxSender
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,
         IReadOnlyList<OutboundAttachmentBytes> attachments,
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
         CancellationToken ct
     );
 }

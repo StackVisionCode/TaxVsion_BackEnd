@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -80,16 +80,12 @@ public static class SignerInvitedConsumer
             ).EnsureRendered("sig.signer_invited.v1");
 
             var result = await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: TemplateKey,
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: TemplateKey,
+                    relatedEventId: evt.EventId,
+                    correlationId: correlationId
                 ),
                 ct
             );

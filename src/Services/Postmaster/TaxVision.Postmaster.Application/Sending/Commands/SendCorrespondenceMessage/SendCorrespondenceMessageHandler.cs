@@ -284,6 +284,8 @@ public static class SendCorrespondenceMessageHandler
             command.References,
             command.ReplyToProviderMessageId,
             fetchResult.Value,
+            // Correspondence manda lo que escribio el usuario: no hay cascara de plantilla ni logo cid.
+            inlineAssets: [],
             ct
         );
         return Result.Success(sendResult);

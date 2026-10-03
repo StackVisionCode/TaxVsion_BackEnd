@@ -176,6 +176,7 @@ public sealed class TenantPreferredLaneTests
                 Sender,
                 MailboxSender,
                 new FakeInlineAssetFetcher(),
+                new FakeOutboundAttachmentFetcher(),
                 new FakeSentMessageRepository(),
                 TenantDirectory,
                 new FakeUnitOfWork(),

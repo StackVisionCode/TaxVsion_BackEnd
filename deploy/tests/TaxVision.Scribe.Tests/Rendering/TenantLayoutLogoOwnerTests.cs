@@ -1,4 +1,4 @@
-using BuildingBlocks.Results;
+﻿using BuildingBlocks.Results;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.EventMappings;
@@ -27,6 +27,9 @@ public sealed class TenantLayoutLogoOwnerTests
 
     private static readonly LogoAsset Logo = new(Guid.NewGuid(), "image/png", 512, IsFallback: false);
 
+    // Compartida para poder sembrar el nombre de la oficina desde los tests.
+    private static readonly FakeTenantProfileRefRepository Profiles = new();
+
     [Theory]
     [InlineData("tenant-base", LogoScope.Tenant, true)]
     [InlineData("system-base", LogoScope.System, false)]
@@ -54,7 +57,62 @@ public sealed class TenantLayoutLogoOwnerTests
         Assert.Equal(expectsTenantId ? tenantId : null, resolver.LastTenantId);
     }
 
-    private static FluidTemplateRenderer BuildRenderer(string layoutKey, ILogoResolver logoResolver)
+    [Theory]
+    [InlineData("tenant-base", DispatchScopes.TenantPreferred)]
+    [InlineData("system-base", DispatchScopes.System)]
+    public async Task The_layout_also_decides_the_dispatch_lane(string layoutKey, string expectedScope)
+    {
+        // Misma regla que el logo: tenant-base es la cascara de la oficina, asi que sale por su buzon.
+        var renderer = BuildRenderer(layoutKey, new RecordingLogoResolver(Logo));
+
+        var result = await renderer.RenderAsync(
+            new RenderRequest(EventKeyValue, Guid.NewGuid(), Locale: null, new Dictionary<string, object?>())
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedScope, result.Value.DispatchScope);
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public async Task A_tenant_layout_only_attaches_a_logo_it_will_reference(bool isFallback, int expectedAssets)
+    {
+        // Sin logo propio (o con SVG) tenant-base pinta el nombre en texto y nunca usa el cid:. Adjuntarlo
+        // igual deja una parte huerfana que algunos clientes muestran como adjunto.
+        var renderer = BuildRenderer("tenant-base", new RecordingLogoResolver(Logo with { IsFallback = isFallback }));
+
+        var result = await renderer.RenderAsync(
+            new RenderRequest(EventKeyValue, Guid.NewGuid(), Locale: null, Variables: new Dictionary<string, object?>())
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedAssets, result.Value.InlineAssets.Count);
+    }
+
+    [Fact]
+    public async Task A_PlatformAdmin_override_beats_the_layout()
+    {
+        // La puerta de escape de F5: para lo que el layout no puede saber.
+        var renderer = BuildRenderer(
+            "system-base",
+            new RecordingLogoResolver(Logo),
+            dispatchOverride: DispatchScopes.TenantPreferred
+        );
+
+        var result = await renderer.RenderAsync(
+            new RenderRequest(EventKeyValue, Guid.NewGuid(), Locale: null, new Dictionary<string, object?>())
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DispatchScopes.TenantPreferred, result.Value.DispatchScope);
+    }
+
+    private static FluidTemplateRenderer BuildRenderer(
+        string layoutKey,
+        ILogoResolver logoResolver,
+        string? dispatchOverride = null
+    )
     {
         var htmlFileId = Guid.NewGuid();
         var layoutHtmlFileId = Guid.NewGuid();
@@ -114,6 +172,8 @@ public sealed class TenantLayoutLogoOwnerTests
             )
             .Value;
         template.PublishVersion(templateVersion.Id, Guid.NewGuid(), DateTime.UtcNow);
+        if (dispatchOverride is not null)
+            template.OverrideDispatchScope(dispatchOverride, Guid.NewGuid(), DateTime.UtcNow);
 
         var cloudStorage = new FakeCloudStorageClient();
         cloudStorage.Seed(htmlFileId, "<p>Invoice {{ invoice_number }}.</p>");
@@ -125,6 +185,7 @@ public sealed class TenantLayoutLogoOwnerTests
             new FakeEmailLayoutRepository(layout),
             cloudStorage,
             logoResolver,
+            Profiles,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -56,16 +56,12 @@ public static class OnboardingOtpRequestedConsumer
             ).EnsureRendered("onboarding.otp_requested.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "onboarding.otp_code",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "onboarding.otp_code",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -135,16 +131,12 @@ public static class OnboardingRegistrationReadyConsumer
             ).EnsureRendered("onboarding.registration_ready.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "onboarding.registration_ready",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "onboarding.registration_ready",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -208,16 +200,12 @@ public static class OnboardingReceiptReadyConsumer
             ).EnsureRendered("onboarding.receipt_ready.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "onboarding.receipt_ready",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "onboarding.receipt_ready",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
@@ -259,16 +247,12 @@ public static class OnboardingPaymentFailedNotificationConsumer
             ).EnsureRendered("onboarding.payment_failed.v1");
 
             await gateway.QueueEmailAsync(
-                new EmailDispatchRequest(
-                    TenantId: evt.TenantId,
-                    To: evt.Email,
-                    Subject: render.Subject,
-                    HtmlBody: render.Html,
-                    TextBody: render.Text ?? string.Empty,
-                    TemplateKey: "onboarding.payment_failed",
-                    RelatedEventId: evt.EventId,
-                    CorrelationId: correlation.CorrelationId,
-                    InlineAssets: render.InlineAssets
+                render.ToDispatchRequest(
+                    tenantId: evt.TenantId,
+                    to: evt.Email,
+                    templateKey: "onboarding.payment_failed",
+                    relatedEventId: evt.EventId,
+                    correlationId: correlation.CorrelationId
                 ),
                 ct
             );
