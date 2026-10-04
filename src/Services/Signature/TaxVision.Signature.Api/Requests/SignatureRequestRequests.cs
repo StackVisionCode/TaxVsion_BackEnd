@@ -58,6 +58,9 @@ public sealed record PlaceFieldBody(
 
 public sealed record CancelSignatureRequestBody(string? Reason);
 
+// F3 — programar envío. UTC siempre; la UI convierte desde la zona de la oficina.
+public sealed record ScheduleSendBody(DateTime ScheduledSendAtUtc);
+
 public sealed record ExtendExpirationBody(int AdditionalHours);
 
 public sealed record SetPractitionerPinBody(string Pin);
@@ -78,3 +81,40 @@ public sealed record PlacePreparerFieldBody(
 public sealed record SetPreparerSignatureBody(Guid? SignatureFileId);
 
 public sealed record PlaceLegalHoldBody(string Reason);
+
+// Autosave: estado completo del editor en un solo POST. ExpectedUpdatedAtUtc = optimistic concurrency.
+public sealed record UpsertDraftBody(
+    DateTime? ExpectedUpdatedAtUtc,
+    string Title,
+    string? Description,
+    string Category,
+    int TokenExpirationHours,
+    bool? SendSignedDocumentToSigners,
+    bool? SendCertificateToSigners,
+    bool? AutoRemindersEnabled,
+    int? ReminderIntervalHours,
+    IReadOnlyList<UpsertDraftSignerBody> Signers,
+    IReadOnlyList<UpsertDraftFieldBody> Fields
+);
+
+public sealed record UpsertDraftSignerBody(
+    Guid? Id,
+    string Email,
+    string FullName,
+    string? PhoneNumber,
+    string? Language,
+    SignerVerificationMethod? VerificationMethod
+);
+
+public sealed record UpsertDraftFieldBody(
+    Guid? Id,
+    int SignerIndex,
+    SignatureFieldKind Kind,
+    int Page,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    string? Label,
+    bool IsRequired
+);

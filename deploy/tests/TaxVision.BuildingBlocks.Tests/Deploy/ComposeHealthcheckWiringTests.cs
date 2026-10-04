@@ -25,7 +25,11 @@ public sealed class ComposeHealthcheckWiringTests
         var withHealthcheck = ServicesDefiningAHealthcheck(compose);
 
         var offenders = Regex
-            .Matches(compose, @"^      (?<target>[a-z0-9-]+):\r?\n\s+condition:\s*service_healthy", RegexOptions.Multiline)
+            .Matches(
+                compose,
+                @"^      (?<target>[a-z0-9-]+):\r?\n\s+condition:\s*service_healthy",
+                RegexOptions.Multiline
+            )
             .Select(m => m.Groups["target"].Value)
             .Distinct()
             .Where(target => !withHealthcheck.Contains(target))
@@ -62,7 +66,8 @@ public sealed class ComposeHealthcheckWiringTests
         Assert.True(
             offenders.Count == 0,
             "Healthcheck con curl sobre una imagen que no lo instala — el contenedor queda unhealthy "
-                + "para siempre: " + string.Join(", ", offenders)
+                + "para siempre: "
+                + string.Join(", ", offenders)
         );
     }
 

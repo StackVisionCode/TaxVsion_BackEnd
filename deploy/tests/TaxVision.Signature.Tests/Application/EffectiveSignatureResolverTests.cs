@@ -21,7 +21,7 @@ public sealed class EffectiveSignatureResolverTests
             new FakeProfiles(personalDefault: personal, officeDefault: office)
         );
 
-        var result = await resolver.ResolveAsync(Tenant, User);
+        var result = await resolver.ResolveAsync(Tenant, User, actorHasSignOwn: true);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(personal.Id, result.Value.Id);
@@ -36,7 +36,7 @@ public sealed class EffectiveSignatureResolverTests
             new FakeProfiles(personalDefault: null, officeDefault: office)
         );
 
-        var result = await resolver.ResolveAsync(Tenant, User);
+        var result = await resolver.ResolveAsync(Tenant, User, actorHasSignOwn: true);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(office.Id, result.Value.Id);
@@ -52,7 +52,7 @@ public sealed class EffectiveSignatureResolverTests
             new FakeProfiles(personalDefault: personal, officeDefault: office)
         );
 
-        var result = await resolver.ResolveAsync(Tenant, User);
+        var result = await resolver.ResolveAsync(Tenant, User, actorHasSignOwn: true);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(office.Id, result.Value.Id);
@@ -66,7 +66,7 @@ public sealed class EffectiveSignatureResolverTests
             new FakeProfiles(personalDefault: null, officeDefault: null)
         );
 
-        var result = await resolver.ResolveAsync(Tenant, User);
+        var result = await resolver.ResolveAsync(Tenant, User, actorHasSignOwn: true);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Profile.NoEffective", result.Error.Code);

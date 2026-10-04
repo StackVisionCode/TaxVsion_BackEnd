@@ -32,11 +32,13 @@ public static class TenantBrandingProjectionConsumer
             {
                 var branding = TenantBrandingRef.Create(evt.NewTenantId, now);
                 branding.SetOfficeName(evt.Name, now);
+                branding.SetSubDomain(evt.SubDomain, now);
                 await repository.AddAsync(branding, ct);
             }
             else
             {
                 existing.SetOfficeName(evt.Name, now);
+                existing.SetSubDomain(evt.SubDomain, now);
             }
 
             await unitOfWork.SaveChangesAsync(ct);

@@ -331,6 +331,56 @@
           "response": []
         },
         {
+          "name": "UpsertSignatureDraft",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.updatedAtUtc, 'updatedAtUtc returned').to.be.a('string');",
+                  "pm.collectionVariables.set('signatureDraftUpdatedAtUtc', body.updatedAtUtc);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedUpdatedAtUtc\": \"{{signatureDraftUpdatedAtUtc}}\",\n  \"title\": \"Consent to Disclose 2026 (autosave)\",\n  \"description\": null,\n  \"category\": \"ConsentToDisclose\",\n  \"tokenExpirationHours\": 72,\n  \"sendSignedDocumentToSigners\": true,\n  \"sendCertificateToSigners\": false,\n  \"autoRemindersEnabled\": true,\n  \"reminderIntervalHours\": 48,\n  \"signers\": [\n    { \"id\": null, \"email\": \"alice@example.com\", \"fullName\": \"Alice A\", \"phoneNumber\": null, \"language\": \"En\", \"verificationMethod\": null }\n  ],\n  \"fields\": [\n    { \"id\": null, \"signerIndex\": 0, \"kind\": \"Signature\", \"page\": 1, \"x\": 0.1, \"y\": 0.1, \"width\": 0.2, \"height\": 0.05, \"label\": null, \"isRequired\": true }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/draft",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "signature",
+                "requests",
+                "{{signatureRequestId}}",
+                "draft"
+              ]
+            },
+            "description": "F2.5 autoguardado del borrador. Reconcilia metadata + signers + fields en UNA transaccion. 'signerIndex' en cada field ata al firmante por su posicion en el payload (sirve para firmantes recien creados sin Id). 'expectedUpdatedAtUtc' = optimistic concurrency: enviar el que vino en el GET; si otra pestania guardo, el server devuelve 409 'Signature.Request.VersionConflict' y la UI debe recargar. Solo opera sobre Draft; InProgress/terminales devuelven 400. 200 con el nuevo updatedAtUtc para el proximo autosave. Requiere signature.request.create + ownership."
+          },
+          "response": []
+        },
+        {
           "name": "DeleteSignatureRequest",
           "event": [
             {
@@ -596,6 +646,65 @@
               }
             }
           ]
+        },
+        {
+          "name": "ScheduleSend (F3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledSendAtUtc\": \"2026-12-01T15:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/schedule",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "requests", "{{signatureRequestId}}", "schedule" ]
+            },
+            "description": "F3 — Programa el envio para una fecha/hora UTC futura. Mismas precondiciones que Send (hash + firmantes + >=1 campo). Un job de polling (ScheduledSendScheduler, cada minuto) la mueve a InProgress cuando llega la hora. Errores: 409 'Signature.Request.NotSchedulable' si no es Draft; 400 'Signature.Request.ScheduleInPast' si la fecha es pasada o actual. Requiere signature.request.create + ownership."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelSchedule (F3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/schedule",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "requests", "{{signatureRequestId}}", "schedule" ]
+            },
+            "description": "F3 — Cancela la programacion de envio y devuelve la solicitud a Draft. Error 409 'Signature.Request.NotScheduled' si no estaba programada. Requiere signature.request.create + ownership."
+          },
+          "response": []
         },
         {
           "name": "SendSignatureRequest_AsNonOwner_Returns403 (RBAC Fase 4, requiere Authorization:ResourceOwnership:Enabled=true)",
@@ -1931,7 +2040,21 @@
                 "{{signerToken}}"
               ]
             },
-            "description": "Vista inicial: metadata, campos, URL temporal del PDF."
+            "description": "Vista inicial de la ceremonia: metadata, estado y campos del firmante.\n\nDevuelve TAMBIEN `tenantSubDomain` (string, posiblemente vacio para tenants pre-F1.C) para que la pantalla final pueda redirigir al host de la oficina sin confiar en valores manipulables del cliente. Cuando el campo viene vacio, la UI cae a su URL base.\n\nF5: el documento se sirve en GET /signature/public/{token}/document (ver mas abajo)."
+          },
+          "response": []
+        },
+        {
+          "name": "GetDocument (F5)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/signature/public/{{signerToken}}/document",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "public", "{{signerToken}}", "document" ]
+            },
+            "description": "F5 — Sirve el PDF original al firmante autenticado por token. Valida token+epoch+expiry, exige verificacion completa (403 'Signature.Document.VerificationRequired' si falta) y exige que el archivo este FileScanStatus.Available (409 'Signature.Document.NotAvailable' en otro caso). Descarga por M2M de Signature y hace streaming (Content-Type: application/pdf). Registra el evento SignerDocumentViewed en el audit chain (semantica distinta a SignerViewed del enlace). Rate limit propio 'public-signature-document' (30/min)."
           },
           "response": []
         },

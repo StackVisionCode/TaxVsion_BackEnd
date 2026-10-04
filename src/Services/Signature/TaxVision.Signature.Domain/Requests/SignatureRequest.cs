@@ -1,3 +1,7 @@
+// F2: SignatureRequestStatus.Ready está obsoleto pero la lógica lo tolera para filas históricas
+// (ver anotación [Obsolete] en el enum). Silenciamos CS0618 en el archivo entero porque esa
+// tolerancia es intencional en cada mutación y en los predicados "pre-envío".
+#pragma warning disable CS0618
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -122,6 +126,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
+
+    /// <summary>F3 — hora UTC a la que el job debe transicionar la solicitud a InProgress.</summary>
+    public DateTime? ScheduledSendAtUtc { get; private set; }
     public DateTime? CanceledAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
     public DateTime? RejectedAtUtc { get; private set; }
@@ -606,30 +613,41 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     // Progresión de estado
     // ------------------------------------------------------------------
 
-    /// <summary>
-    /// Marca el request como <c>Ready</c> cuando <c>OriginalFileId</c> confirmó estar
-    /// disponible en CloudStorage (proyección local <c>FileMetadataRef</c>).
-    /// </summary>
-    public Result MarkReadyForSending(DocumentHash originalHash)
+    /// <summary>Adjunta el hash del documento original. No cambia Status: Draft sigue siendo Draft.</summary>
+    public Result AttachOriginalHash(DocumentHash originalHash)
     {
         ArgumentNullException.ThrowIfNull(originalHash);
 
         if (Status != SignatureRequestStatus.Draft)
             return Result.Failure(
-                new Error("Signature.Request.NotDraft", "Only a Draft request can transition to Ready.")
+                new Error("Signature.Request.NotDraft", "Only a Draft request can attach its original hash.")
             );
 
         DocumentHashPre = originalHash;
-        Status = SignatureRequestStatus.Ready;
         Touch();
         return Result.Success();
     }
 
-    /// <summary>Transiciona <c>Ready → InProgress</c> al enviar la solicitud.</summary>
+    /// <summary>Draft con documento, firmantes y al menos un campo de firma. Vive derivado del estado.</summary>
+    public bool IsReadyToSend =>
+        Status == SignatureRequestStatus.Draft
+        && DocumentHashPre is not null
+        && _signers.Count >= MinSigners
+        && HasAnyRequiredSignatureField();
+
+    /// <summary>Transiciona Draft/Scheduled → InProgress validando documento, firmantes y campos.</summary>
     public Result Send(DateTime sentAtUtc)
     {
-        if (Status != SignatureRequestStatus.Ready)
-            return Result.Failure(new Error("Signature.Request.NotReady", "Only a Ready request can be sent."));
+        if (
+            Status
+            is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready or SignatureRequestStatus.Scheduled)
+        )
+            return Result.Failure(new Error("Signature.Request.NotEditable", "Only an editable request can be sent."));
+
+        if (DocumentHashPre is null)
+            return Result.Failure(
+                new Error("Signature.Request.NoDocumentHash", "The original document must be attached before sending.")
+            );
 
         if (_signers.Count < MinSigners)
             return Result.Failure(
@@ -646,8 +664,75 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
         Status = SignatureRequestStatus.InProgress;
         SentAtUtc = sentAtUtc;
+        // Al enviar efectivamente la solicitud ya no "espera" por un reloj futuro: se limpia la fecha.
+        ScheduledSendAtUtc = null;
         // El reloj de expiración corre desde el envío, no desde la creación: los borradores no expiran.
         ExpiresAtUtc = sentAtUtc.AddHours(TokenExpirationHours);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// F3 — Programa el envío a una fecha/hora futura. Exige las mismas precondiciones que
+    /// <see cref="Send"/>: hash + firmantes + ≥1 campo de firma. Timezone: la UI pasa UTC.
+    /// </summary>
+    public Result ScheduleSend(DateTime scheduledSendAtUtc, DateTime nowUtc)
+    {
+        // Draft (actual), Ready (histórico pre-F2, mismo significado editorial) y Scheduled
+        // (re-programar). Cualquier otro estado no admite programación.
+        if (
+            Status
+            is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready or SignatureRequestStatus.Scheduled)
+        )
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.NotSchedulable",
+                    $"Only a draft or scheduled request can be scheduled (current status: {Status})."
+                )
+            );
+
+        if (scheduledSendAtUtc <= nowUtc)
+            return Result.Failure(
+                new Error("Signature.Request.ScheduleInPast", "The scheduled time must be in the future.")
+            );
+
+        if (DocumentHashPre is null)
+            return Result.Failure(
+                new Error("Signature.Request.NoDocumentHash", "The original document must be attached before sending.")
+            );
+
+        if (_signers.Count < MinSigners)
+            return Result.Failure(
+                new Error("Signature.Request.NoSigners", "The request must have at least one signer.")
+            );
+
+        if (!HasAnyRequiredSignatureField())
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.NoSignatureField",
+                    "The request must have at least one Signature or Initials field placed."
+                )
+            );
+
+        Status = SignatureRequestStatus.Scheduled;
+        ScheduledSendAtUtc = scheduledSendAtUtc;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>F3 — Cancela la programación de envío. Vuelve a Draft explícitamente.</summary>
+    public Result CancelSchedule()
+    {
+        if (Status != SignatureRequestStatus.Scheduled)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.NotScheduled",
+                    $"Only a scheduled request can be unscheduled (current status: {Status})."
+                )
+            );
+
+        Status = SignatureRequestStatus.Draft;
+        ScheduledSendAtUtc = null;
         Touch();
         return Result.Success();
     }
@@ -1030,6 +1115,32 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
         signer.RecordFirstView(viewedAtUtc, clientIp, userAgent);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// F5 — Marca la primera vez que el firmante vio el DOCUMENTO. Semántica distinta a
+    /// <see cref="RecordSignerFirstView"/>: ésta se dispara al servir los bytes del PDF.
+    /// Idempotente. Permitida en no-terminal.
+    /// </summary>
+    public Result RecordSignerDocumentFirstView(
+        Guid signerId,
+        DateTime viewedAtUtc,
+        string? clientIp,
+        string? userAgent
+    )
+    {
+        if (IsTerminal())
+            return Result.Failure(
+                new Error("Signature.Request.Terminal", "Cannot record document view on a terminal request.")
+            );
+
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        signer.RecordDocumentFirstView(viewedAtUtc, clientIp, userAgent);
         Touch();
         return Result.Success();
     }
@@ -1453,14 +1564,20 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     }
 
     private Result EnsureCanBeEdited() =>
-        Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready
-            ? Result.Success()
-            : Result.Failure(
+        Status is SignatureRequestStatus.Draft or SignatureRequestStatus.Ready ? Result.Success()
+        : Status == SignatureRequestStatus.Scheduled
+            ? Result.Failure(
                 new Error(
-                    "Signature.Request.NotEditable",
-                    $"This request can no longer be edited (status {Status}); only draft or ready requests can be changed."
+                    "Signature.Request.Scheduled",
+                    "This request is scheduled to send. Cancel the schedule to edit it."
                 )
-            );
+            )
+        : Result.Failure(
+            new Error(
+                "Signature.Request.NotEditable",
+                $"This request can no longer be edited (status {Status}); only draft or ready requests can be changed."
+            )
+        );
 
     /// <summary>
     /// Registra el jti del token recién emitido para un firmante y devuelve el jti anterior (o

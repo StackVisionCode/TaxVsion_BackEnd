@@ -19,7 +19,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureSettingsUpdatedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Tenant cuya configuración fue actualizada.</summary>
-    public required Guid TenantId { get; init; }
+    public required new Guid TenantId { get; init; }
 
     /// <summary>UserId del tenant admin que realizó el cambio (del JWT).</summary>
     public required Guid ChangedByUserId { get; init; }

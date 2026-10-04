@@ -9,5 +9,7 @@ public sealed record SetPreparerSignatureCommand(
     Guid SignatureRequestId,
     Guid ActorUserId,
     bool ActorIsAdmin,
+    // F4 — permiso signature.sign_own del actor; false = limitado a la firma de oficina.
+    bool ActorHasSignOwn,
     Guid? SignatureFileId
 );

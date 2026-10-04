@@ -17,14 +17,17 @@ public sealed class EffectiveSignatureResolver(
     public async Task<Result<SignatureProfile>> ResolveAsync(
         Guid tenantId,
         Guid preparerUserId,
+        bool actorHasSignOwn,
         CancellationToken ct = default
     )
     {
         var settings = await settingsRepository.GetByTenantIdAsync(tenantId, ct);
-        // Sin settings (tenant recién creado sin proyección aún) → se asume el default: firma propia permitida.
-        var allowOwn = settings?.AllowEmployeeOwnSignature ?? true;
+        // F4: dos capas. Kill-switch del tenant corta a todos; sin kill, exige permiso por-usuario
+        // (admin bypass se resuelve antes de llegar aquí vía actorHasSignOwn=true).
+        var tenantAllows = settings?.AllowEmployeeOwnSignature ?? true;
+        var canUsePersonal = tenantAllows && actorHasSignOwn;
 
-        if (allowOwn)
+        if (canUsePersonal)
         {
             var personal = await profileRepository.GetDefaultAsync(tenantId, preparerUserId, ct);
             if (personal is not null)

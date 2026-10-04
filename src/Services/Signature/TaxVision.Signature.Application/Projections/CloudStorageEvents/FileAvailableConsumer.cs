@@ -14,9 +14,9 @@ using Wolverine;
 namespace TaxVision.Signature.Application.Projections.CloudStorageEvents;
 
 /// <summary>
-/// El archivo pasó el scan de virus y está listo en MinIO. Actualiza la proyección
-/// local <see cref="FileMetadataRef"/> y, si hay <c>SignatureRequest</c>s en Draft
-/// esperando por este archivo, los promueve a <c>Ready</c>.
+/// El archivo pasó el scan y está disponible. Actualiza la proyección local y, si hay
+/// <c>SignatureRequest</c>s en Draft esperando por este archivo, les adjunta el hash
+/// original. El Status sigue en Draft hasta que el preparador envíe.
 /// </summary>
 public static class FileAvailableConsumer
 {
@@ -35,9 +35,9 @@ public static class FileAvailableConsumer
         using (correlation.Push(correlationId))
         {
             await UpsertProjection(evt, projectionRepo, ct);
-            var promoted = await PromoteWaitingDrafts(evt, requestRepo, logger, ct);
+            var withHash = await AttachHashToWaitingDrafts(evt, requestRepo, logger, ct);
             await unitOfWork.SaveChangesAsync(ct);
-            await PublishReadyEvents(promoted, correlationId, messageBus);
+            await PublishReadyEvents(withHash, correlationId, messageBus);
         }
     }
 
@@ -69,7 +69,7 @@ public static class FileAvailableConsumer
         }
     }
 
-    private static async Task<List<SignatureRequest>> PromoteWaitingDrafts(
+    private static async Task<List<SignatureRequest>> AttachHashToWaitingDrafts(
         FileAvailableIntegrationEvent evt,
         ISignatureRequestRepository repo,
         ILogger logger,
@@ -84,22 +84,22 @@ public static class FileAvailableConsumer
         if (hashResult.IsFailure)
         {
             logger.LogWarning(
-                "FileAvailable {FileId} carries an invalid checksum; drafts will not be promoted: {Error}",
+                "FileAvailable {FileId} carries an invalid checksum; hash will not be attached to drafts: {Error}",
                 evt.FileId,
                 hashResult.Error.Message
             );
             return new List<SignatureRequest>(0);
         }
 
-        var promoted = new List<SignatureRequest>(drafts.Count);
+        var attached = new List<SignatureRequest>(drafts.Count);
         foreach (var draft in drafts)
         {
-            var transition = draft.MarkReadyForSending(hashResult.Value);
-            if (transition.IsSuccess)
+            var result = draft.AttachOriginalHash(hashResult.Value);
+            if (result.IsSuccess)
             {
-                promoted.Add(draft);
+                attached.Add(draft);
                 logger.LogInformation(
-                    "SignatureRequest {RequestId} promoted Draft → Ready by FileAvailable {FileId}.",
+                    "SignatureRequest {RequestId} hash attached by FileAvailable {FileId} (still Draft until send).",
                     draft.Id,
                     evt.FileId
                 );
@@ -107,14 +107,14 @@ public static class FileAvailableConsumer
             else
             {
                 logger.LogWarning(
-                    "SignatureRequest {RequestId} failed to promote Draft → Ready: {Error}",
+                    "SignatureRequest {RequestId} failed to attach original hash: {Error}",
                     draft.Id,
-                    transition.Error.Message
+                    result.Error.Message
                 );
             }
         }
 
-        return promoted;
+        return attached;
     }
 
     private static Task PublishReadyEvents(

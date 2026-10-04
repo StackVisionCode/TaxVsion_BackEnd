@@ -15,6 +15,7 @@ using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
+using TaxVision.Signature.Application.Requests.Commands.CancelSchedule;
 using TaxVision.Signature.Application.Requests.Commands.ClearPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.ClearPreparer;
 using TaxVision.Signature.Application.Requests.Commands.Create;
@@ -27,11 +28,13 @@ using TaxVision.Signature.Application.Requests.Commands.RemoveField;
 using TaxVision.Signature.Application.Requests.Commands.RemoveSigner;
 using TaxVision.Signature.Application.Requests.Commands.ReorderSigners;
 using TaxVision.Signature.Application.Requests.Commands.ResendSignerInvitation;
+using TaxVision.Signature.Application.Requests.Commands.ScheduleSend;
 using TaxVision.Signature.Application.Requests.Commands.Send;
 using TaxVision.Signature.Application.Requests.Commands.SetPractitionerPin;
 using TaxVision.Signature.Application.Requests.Commands.SetPreparer;
 using TaxVision.Signature.Application.Requests.Commands.SignAsPreparer;
 using TaxVision.Signature.Application.Requests.Commands.Update;
+using TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
 using TaxVision.Signature.Domain.Requests;
@@ -394,8 +397,10 @@ public sealed class SignatureRequestsController(
             return forbidden;
 
         var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
+        // F4: el claim "signature.sign_own" habilita firmar con la propia; sin él, el handler cae a la de oficina.
+        var hasSignOwn = isAdmin || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.SignOwn, ct);
         var result = await bus.InvokeAsync<Result>(
-            new SetPreparerSignatureCommand(tenantId, id, userId, isAdmin, body.SignatureFileId),
+            new SetPreparerSignatureCommand(tenantId, id, userId, isAdmin, hasSignOwn, body.SignatureFileId),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -418,6 +423,51 @@ public sealed class SignatureRequestsController(
 
         var result = await bus.InvokeAsync<Result>(new SendSignatureRequestCommand(tenantId, id), ct);
         return result.IsSuccess ? Accepted() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- POST /signature/requests/{id}/schedule ----------
+    // F3: programa el envío a futuro. UTC. Mismo permiso + ownership que Send.
+    [HttpPost("{id:guid}/schedule")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Schedule(
+        [FromRoute] Guid id,
+        [FromBody] ScheduleSendBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(new ScheduleSendCommand(tenantId, id, body.ScheduledSendAtUtc), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id}/schedule ----------
+    // F3: cancela la programación y vuelve a Draft. Mismo permiso + ownership que Schedule.
+    [HttpDelete("{id:guid}/schedule")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CancelSchedule([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(new CancelScheduleCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- POST /signature/requests/{id}/cancel ----------
@@ -482,6 +532,74 @@ public sealed class SignatureRequestsController(
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id}/draft ----------
+    // Autosave: reconcilia metadata + signers + fields en una sola transacción. Misma autoridad y
+    // ownership que un Update de metadata. Devuelve el UpdatedAtUtc para el próximo autosave.
+    [HttpPut("{id:guid}/draft")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<UpsertSignatureDraftResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> UpsertDraft(
+        [FromRoute] Guid id,
+        [FromBody] UpsertDraftBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var signers = body
+            .Signers.Select(s => new DraftSignerSpec(
+                s.Id,
+                s.Email,
+                s.FullName,
+                s.PhoneNumber,
+                s.Language,
+                s.VerificationMethod
+            ))
+            .ToList();
+        var fields = body
+            .Fields.Select(f => new DraftFieldSpec(
+                f.Id,
+                f.SignerIndex,
+                f.Kind,
+                f.Page,
+                f.X,
+                f.Y,
+                f.Width,
+                f.Height,
+                f.Label,
+                f.IsRequired
+            ))
+            .ToList();
+
+        var result = await bus.InvokeAsync<Result<UpsertSignatureDraftResponse>>(
+            new UpsertSignatureDraftCommand(
+                tenantId,
+                id,
+                body.ExpectedUpdatedAtUtc,
+                body.Title,
+                body.Description,
+                body.Category,
+                body.TokenExpirationHours,
+                body.SendSignedDocumentToSigners,
+                body.SendCertificateToSigners,
+                body.AutoRemindersEnabled,
+                body.ReminderIntervalHours,
+                signers,
+                fields
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- DELETE /signature/requests/{id} ----------

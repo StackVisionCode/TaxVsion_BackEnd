@@ -16,5 +16,8 @@ public sealed record CreateSignatureRequestFromTemplateCommand(
     Guid TemplateId,
     Guid? OriginalFileId,
     IReadOnlyList<SlotBinding> SlotBindings,
-    string? DescriptionOverride
+    string? DescriptionOverride,
+    // F4 — permiso signature.sign_own del actor; con admin true (bypass) o permiso explícito, se
+    // intenta la firma propia; en otro caso se cae a la firma de oficina.
+    bool ActorCanSignOwn = false
 );

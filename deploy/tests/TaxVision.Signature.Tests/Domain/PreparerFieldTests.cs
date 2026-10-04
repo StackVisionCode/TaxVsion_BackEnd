@@ -31,7 +31,7 @@ public sealed class PreparerFieldTests
             .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
             .Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, Pos(), null, false);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }

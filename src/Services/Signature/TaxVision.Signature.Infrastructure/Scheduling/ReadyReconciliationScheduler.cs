@@ -13,17 +13,17 @@ using Wolverine;
 namespace TaxVision.Signature.Infrastructure.Scheduling;
 
 /// <summary>
-/// Red de seguridad para la promoción Draft → Ready. Normalmente la promoción ocurre al crear la
-/// solicitud (si el archivo ya está disponible) o al recibir <c>FileAvailable</c>. Pero cuando el
-/// escaneo es muy rápido hay una CARRERA: el <c>FileAvailable</c> llega y busca borradores
-/// esperando ese archivo ANTES de que la solicitud exista, y el <c>create</c> lee la proyección
-/// justo cuando el consumer la está actualizando → nadie promueve y la solicitud queda atascada en
-/// Draft para siempre.
+/// Red de seguridad para adjuntar el hash original a borradores atascados. Lo normal es que
+/// el hash se adjunte al crear la solicitud (si el archivo ya está disponible) o al recibir
+/// <c>FileAvailable</c>. Pero hay una CARRERA cuando el escaneo es muy rápido: el evento llega
+/// buscando borradores que aún no existen y el <c>create</c> lee la proyección justo cuando el
+/// consumer la actualiza → el borrador queda sin hash para siempre.
 ///
 /// <para>
 /// Este job barre periódicamente los borradores con cierta antigüedad (el corte evita pisar
-/// creaciones en vuelo) cuyo archivo YA está <c>Available</c> en la proyección local, y los
-/// promueve. Es idempotente y cross-tenant. Mismo patrón que <see cref="ExpirationScheduler"/>.
+/// creaciones en vuelo) cuyo archivo YA está <c>Available</c> en la proyección local y les
+/// adjunta el hash. Idempotente y cross-tenant. El Status NO cambia: la solicitud sigue en
+/// Draft hasta que el preparador decida enviar. Mismo patrón que <see cref="ExpirationScheduler"/>.
 /// </para>
 /// </summary>
 public sealed class ReadyReconciliationScheduler(
@@ -91,8 +91,8 @@ public sealed class ReadyReconciliationScheduler(
             if (hashResult.IsFailure)
                 continue;
 
-            var transition = request.MarkReadyForSending(hashResult.Value);
-            if (transition.IsFailure)
+            var attach = request.AttachOriginalHash(hashResult.Value);
+            if (attach.IsFailure)
                 continue;
 
             eventsToPublish.Add(
@@ -116,7 +116,7 @@ public sealed class ReadyReconciliationScheduler(
             await bus.PublishAsync(evt);
 
         logger.LogInformation(
-            "ReadyReconciliationScheduler rescued {Count} stranded Draft requests to Ready.",
+            "ReadyReconciliationScheduler attached original hash to {Count} stranded Draft requests.",
             eventsToPublish.Count
         );
     }

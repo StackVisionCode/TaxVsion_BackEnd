@@ -87,6 +87,7 @@ public static class PermissionCatalog
     public const string SignatureTemplateDelete = SignaturePermissions.TemplateDelete;
     public const string SignatureSettingsManage = SignaturePermissions.SettingsManage;
     public const string SignaturePreparerManage = SignaturePermissions.PreparerManage;
+    public const string SignatureSignOwn = SignaturePermissions.SignOwn;
     public const string SignatureCertificateVerify = SignaturePermissions.CertificateVerify;
 
     // Techos de plan (signature.constraints.manage) — nunca estuvo en este catálogo pese a que
@@ -1190,6 +1191,17 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // F4 — Aplicar la firma propia del empleado. El kill-switch de tenant
+            // AllowEmployeeOwnSignature sigue arriba: apagado, nadie puede aunque tenga el permiso.
+            // Asignable por el tenant; sembrado por default a TenantEmployee (transición segura:
+            // hoy todos pueden; el admin decide luego a quién quitárselo).
+            new Guid("a1000000-0000-0000-0000-0000000000a4"),
+            SignatureSignOwn,
+            "signature",
+            "Apply the employee's own signature to a document",
+            false
+        ),
+        new(
             new Guid("a1000000-0000-0000-0000-000000000044"),
             // Es un endpoint PÚBLICO (anónimo): no hay usuario a quien exigirle un permiso,
             // así que este código nunca podrá aplicarse tal como esta. Reservado.
@@ -2222,6 +2234,10 @@ public static class PermissionCatalog
                 // Su propia firma persistente. Antes bastaba con request.create, así que todo preparador
                 // ya la administraba; sin esto, "My Signature" dejaría de funcionar para el empleado.
                 SignaturePreparerManage,
+                // F4 — Antes la "firma propia" solo dependía del kill-switch AllowEmployeeOwnSignature;
+                // ahora además se gatea por este permiso. Sembrado para TODOS los empleados (transición
+                // segura: nadie pierde capacidad al desplegar; el admin lo quita cuando quiera).
+                SignatureSignOwn,
                 SignatureDocumentPrepare,
                 SignatureDocumentSign,
                 // view/download salen del bundle al quedar reservados: no gatean nada (ver documento es
