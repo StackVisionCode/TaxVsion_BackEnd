@@ -91,7 +91,7 @@ public sealed class DeleteSignatureRequestHandlerTests
             .Value;
         var position = FieldPosition.Create(1, 0.5, 0.5, 0.1, 0.05).Value;
         request.PlaceField(signer.Id, SignatureFieldKind.Signature, position, null, false);
-        request.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        request.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         return request;
     }
 
@@ -154,6 +154,12 @@ public sealed class DeleteSignatureRequestHandlerTests
 
         public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
             Guid tenantId,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
+        public Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(
+            DateTime nowUtc,
+            int batchSize,
             CancellationToken ct = default
         ) => throw new NotImplementedException();
     }

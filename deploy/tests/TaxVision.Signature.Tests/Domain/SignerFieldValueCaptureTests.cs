@@ -124,7 +124,7 @@ public sealed class SignerFieldValueCaptureTests
         var textPos = FieldPosition.Create(1, 0.1, 0.3, 0.3, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Text, textPos, "Relationship", isRequired);
 
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
 
         var textFieldId = signer.Fields.First(f => f.Kind == SignatureFieldKind.Text).Id;

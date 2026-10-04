@@ -101,4 +101,14 @@ public interface ISignatureRequestRepository
     Task AddAsync(SignatureRequest request, CancellationToken ct = default);
 
     void Remove(SignatureRequest request);
+
+    /// <summary>
+    /// F3 — Solicitudes <c>Scheduled</c> cuyo <c>ScheduledSendAtUtc</c> ya pasó. Consumida por
+    /// el <c>ScheduledSendScheduler</c>. Scan cross-tenant (filtro global desactivado).
+    /// </summary>
+    Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
 }

@@ -12,9 +12,9 @@ using Wolverine;
 namespace TaxVision.Signature.Application.Requests.Commands.Create;
 
 /// <summary>
-/// Fases explícitas: (1) invocar factory del aggregate, (2) opcionalmente promover a
-/// Ready si el archivo ya está disponible en CloudStorage, (3) persistir, (4) publicar
-/// el evento de creación. Cada fase en un método privado con nombre autoexplicativo.
+/// Fases: (1) factory del aggregate, (2) si el archivo ya está disponible en CloudStorage
+/// se adjunta el hash original, (3) persistir, (4) publicar el evento de creación.
+/// La disponibilidad del documento es un flag derivado — no mueve el Status.
 /// </summary>
 public static class CreateSignatureRequestHandler
 {
@@ -49,7 +49,7 @@ public static class CreateSignatureRequestHandler
             return Result.Failure<SignatureRequestResponse>(draftResult.Error);
 
         var request = draftResult.Value;
-        await TryPromoteToReadyIfFileAvailable(request, cmd, fileRepository, ct);
+        await TryAttachHashIfFileAvailable(request, cmd, fileRepository, ct);
         await PersistRequestAsync(request, repository, unitOfWork, ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, cmd, correlation, bus);
@@ -82,13 +82,10 @@ public static class CreateSignatureRequestHandler
             reminderIntervalHours: reminderIntervalHours
         );
 
-    // ============== Fase 2: promoción opcional Draft → Ready ==============
-    //
-    // Si el archivo ya está disponible al momento de crear la solicitud, promovemos
-    // directamente a Ready. Si aún no ha llegado FileAvailable, quedará en Draft y el
-    // consumer se encargará luego.
-    //
-    private static async Task TryPromoteToReadyIfFileAvailable(
+    // ============== Fase 2: adjuntar hash si el archivo ya está disponible ==============
+    // Si FileAvailable ya llegó, adjuntamos el hash ahora. Si no, el consumer lo hará.
+    // En ambos casos la solicitud sigue en Draft hasta que el preparador decida enviar.
+    private static async Task TryAttachHashIfFileAvailable(
         SignatureRequest request,
         CreateSignatureRequestCommand cmd,
         IFileMetadataRefRepository fileRepository,
@@ -106,7 +103,7 @@ public static class CreateSignatureRequestHandler
         if (hashResult.IsFailure)
             return;
 
-        request.MarkReadyForSending(hashResult.Value);
+        request.AttachOriginalHash(hashResult.Value);
     }
 
     // ============== Fase 3: persistir ==============

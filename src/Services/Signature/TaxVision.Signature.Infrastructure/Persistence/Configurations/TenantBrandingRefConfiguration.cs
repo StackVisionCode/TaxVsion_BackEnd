@@ -13,6 +13,7 @@ public sealed class TenantBrandingRefConfiguration : IEntityTypeConfiguration<Te
         builder.Property(r => r.TenantId).ValueGeneratedNever();
 
         builder.Property(r => r.OfficeName).HasMaxLength(256).IsRequired();
+        builder.Property(r => r.SubDomain).HasMaxLength(100).IsRequired();
         builder.Property(r => r.LogoContentType).HasMaxLength(100);
         builder.Property(r => r.UpdatedAtUtc).IsRequired();
     }

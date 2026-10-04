@@ -66,6 +66,13 @@ public sealed class Signer : BaseEntity
     /// <summary>Timestamp de la primera apertura del enlace público por el firmante (audit trail).</summary>
     public DateTime? FirstViewedAtUtc { get; private set; }
 
+    /// <summary>
+    /// F5 — Timestamp de la primera vez que el firmante vio el DOCUMENTO (no solo el enlace).
+    /// Semántica distinta a <see cref="FirstViewedAtUtc"/>: éste se emite al servir los bytes del
+    /// PDF al firmante, no al abrir el link. Las actas lo pintan como línea aparte.
+    /// </summary>
+    public DateTime? DocumentFirstViewedAtUtc { get; private set; }
+
     /// <summary>Método de captura de la firma (Typed/Drawn/Uploaded). <c>null</c> hasta que el firmante firme.</summary>
     public SignatureCaptureMethod? CaptureMethod { get; private set; }
 
@@ -424,6 +431,19 @@ public sealed class Signer : BaseEntity
             return;
 
         FirstViewedAtUtc = viewedAtUtc;
+        if (ClientIp is null)
+            ClientIp = TruncateIp(clientIp);
+        if (UserAgent is null)
+            UserAgent = TruncateUserAgent(userAgent);
+    }
+
+    /// <summary>F5 — Marca la primera vez que vio el PDF (no el enlace). Idempotente.</summary>
+    internal void RecordDocumentFirstView(DateTime viewedAtUtc, string? clientIp, string? userAgent)
+    {
+        if (DocumentFirstViewedAtUtc is not null)
+            return;
+
+        DocumentFirstViewedAtUtc = viewedAtUtc;
         if (ClientIp is null)
             ClientIp = TruncateIp(clientIp);
         if (UserAgent is null)

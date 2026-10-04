@@ -36,5 +36,8 @@ public sealed record PublicSignerView(
     DateTime? PinLockedUntilUtc,
     SignerVerificationMethod? RequiredVerificationMethod,
     bool IsVerificationCompleted,
-    IReadOnlyList<PublicSignerFieldView> Fields
+    IReadOnlyList<PublicSignerFieldView> Fields,
+    // Subdominio resuelto en el backend desde TenantBrandingRef. Vacío si no está proyectado:
+    // la UI cae a su propia URL base y evita redirigir a un host inválido.
+    string TenantSubDomain
 );

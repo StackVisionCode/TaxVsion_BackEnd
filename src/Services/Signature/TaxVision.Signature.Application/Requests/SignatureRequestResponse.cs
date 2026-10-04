@@ -69,6 +69,8 @@ public sealed record SignatureRequestResponse(
     DateTime? CompletedAtUtc,
     DateTime? CanceledAtUtc,
     DateTime? ExpiredAtUtc,
+    // F3 — hora UTC programada para el envío (null si no está Scheduled).
+    DateTime? ScheduledSendAtUtc,
     // Estado del preparador (canal paralelo Form 8879) — para rehidratar el editor y mostrar su firma.
     bool IsPreparerSigned,
     DateTime? PreparerSignedAtUtc,
@@ -109,6 +111,7 @@ public sealed record SignatureRequestResponse(
             request.CompletedAtUtc,
             request.CanceledAtUtc,
             request.ExpiredAtUtc,
+            request.ScheduledSendAtUtc,
             request.IsPreparerSigned,
             request.PreparerSignedAtUtc,
             request.PreparerSignatureFileId,

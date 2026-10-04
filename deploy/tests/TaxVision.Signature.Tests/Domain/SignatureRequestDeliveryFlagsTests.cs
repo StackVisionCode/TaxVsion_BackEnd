@@ -110,7 +110,7 @@ public sealed class SignatureRequestDeliveryFlagsTests
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         draft.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
         return draft;

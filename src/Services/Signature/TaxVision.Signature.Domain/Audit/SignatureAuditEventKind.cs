@@ -10,6 +10,9 @@ public enum SignatureAuditEventKind
     RequestCreated,
     RequestSent,
     SignerViewed,
+
+    /// <summary>F5 — El firmante vio el documento original (no solo el enlace). Semántica distinta a SignerViewed.</summary>
+    DocumentViewed,
     ConsentAccepted,
     PinVerified,
     PinFailed,

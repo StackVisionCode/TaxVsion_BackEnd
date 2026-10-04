@@ -35,7 +35,10 @@ if (-not (Test-Path $logs)) { New-Item -ItemType Directory $logs | Out-Null }
 
 function Start-One($s) {
   $wd = Join-Path $root $s.d
-  $binDir = Join-Path $wd "bin\Debug\net10.0"
+  # F3 wiring + feedback_fleet_restart_from_release_binaries.md: la flota se arranca desde
+  # bin\Release\net10.0 para que los endpoints nuevos (schedule, draft upsert, document, ...)
+  # aparezcan sin requerir compilar Debug con el proceso vivo (MSB3027 lock).
+  $binDir = Join-Path $wd "bin\Release\net10.0"
   $dll = Get-ChildItem -Path $binDir -Filter "TaxVision.*.dll" -ErrorAction SilentlyContinue |
          Where-Object { $_.BaseName -eq "TaxVision.$($s.n).Api" -or $_.BaseName -eq "TaxVision.$($s.n)" } |
          Select-Object -First 1

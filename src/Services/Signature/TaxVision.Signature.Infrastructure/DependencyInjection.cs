@@ -120,6 +120,8 @@ public static class DependencyInjection
         // borradores cuyo archivo ya está disponible pero se quedaron sin promover.
         services.AddHostedService<ReadyReconciliationScheduler>();
         services.AddHostedService<ReminderScheduler>();
+        // F3 — Scheduled Send: barre Scheduled cuya hora llegó y las envía vía SendCommand.
+        services.AddHostedService<ScheduledSendScheduler>();
         services.AddOptions<PurgeSchedulerOptions>().Bind(configuration.GetSection(PurgeSchedulerOptions.SectionName));
         services.AddHostedService<PurgeScheduler>();
         // Retención de borradores sin enviar (default 30 días); los borradores no expiran por reloj de firma.

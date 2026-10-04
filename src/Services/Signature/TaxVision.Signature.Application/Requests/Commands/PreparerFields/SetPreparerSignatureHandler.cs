@@ -30,7 +30,11 @@ public static class SetPreparerSignatureHandler
             // Solo se acepta el FileId de una firma que el actor puede ver (no un id arbitrario).
             // Con el toggle de firma propia apagado, un empleado no-admin no ve sus personales: se rechaza.
             var settings = await settingsRepository.GetByTenantIdAsync(cmd.TenantId, ct);
-            var canUsePersonal = SignatureVisibilityPolicy.CanUsePersonal(cmd.ActorIsAdmin, settings);
+            var canUsePersonal = SignatureVisibilityPolicy.CanUsePersonal(
+                cmd.ActorIsAdmin,
+                cmd.ActorHasSignOwn,
+                settings
+            );
             var visible = await profileRepository.ListVisibleAsync(
                 cmd.TenantId,
                 cmd.ActorUserId,
@@ -46,8 +50,14 @@ public static class SetPreparerSignatureHandler
         }
         else
         {
-            // Sin elección explícita: la firma efectiva (personal si el tenant lo permite, o la de oficina).
-            var effective = await effectiveResolver.ResolveAsync(cmd.TenantId, cmd.ActorUserId, ct);
+            // Sin elección explícita: la firma efectiva (personal si el tenant lo permite y el actor
+            // tiene signature.sign_own; en otro caso, la de oficina).
+            var effective = await effectiveResolver.ResolveAsync(
+                cmd.TenantId,
+                cmd.ActorUserId,
+                cmd.ActorIsAdmin || cmd.ActorHasSignOwn,
+                ct
+            );
             if (effective.IsFailure)
                 return Result.Failure(effective.Error);
             fileId = effective.Value.FileId;

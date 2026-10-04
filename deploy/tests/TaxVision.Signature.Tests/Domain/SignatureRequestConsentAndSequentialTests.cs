@@ -167,7 +167,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
         AddSignerWithField(draft, "one@example.com", "Signer One");
         AddSignerWithField(draft, "two@example.com", "Signer Two");
         var hash = DocumentHash.Create(new string('b', 64)).Value;
-        draft.MarkReadyForSending(hash);
+        draft.AttachOriginalHash(hash);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -176,7 +176,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
     {
         AddSignerWithField(request, email, "Some Name");
         var hash = DocumentHash.Create(new string('a', 64)).Value;
-        request.MarkReadyForSending(hash);
+        request.AttachOriginalHash(hash);
     }
 
     private static void AddSignerWithField(SignatureRequest request, string email, string name)

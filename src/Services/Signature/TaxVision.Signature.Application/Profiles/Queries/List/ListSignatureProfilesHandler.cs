@@ -12,7 +12,11 @@ public static class ListSignatureProfilesHandler
     )
     {
         var settings = await settingsRepository.GetByTenantIdAsync(query.TenantId, ct);
-        var canUsePersonal = SignatureVisibilityPolicy.CanUsePersonal(query.ActorIsAdmin, settings);
+        var canUsePersonal = SignatureVisibilityPolicy.CanUsePersonal(
+            query.ActorIsAdmin,
+            query.ActorHasSignOwn,
+            settings
+        );
         var profiles = await repository.ListVisibleAsync(
             query.TenantId,
             query.UserId,

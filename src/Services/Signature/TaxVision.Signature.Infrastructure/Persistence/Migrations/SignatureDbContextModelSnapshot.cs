@@ -509,6 +509,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("SubDomain")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -718,6 +723,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevocationEpoch")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("ScheduledSendAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("SealedFileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -811,6 +819,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<string>("CurrentTokenId")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("DocumentFirstViewedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("FirstViewedAtUtc")
                         .HasColumnType("datetime2");

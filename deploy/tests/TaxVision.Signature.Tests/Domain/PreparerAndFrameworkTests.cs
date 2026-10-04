@@ -164,7 +164,7 @@ public sealed class PreparerAndFrameworkTests
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent", preparerUserId).Value);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -366,7 +366,7 @@ public sealed class PreparerAndFrameworkTests
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -384,7 +384,7 @@ public sealed class PreparerAndFrameworkTests
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
@@ -398,7 +398,7 @@ public sealed class PreparerAndFrameworkTests
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent").Value);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }
