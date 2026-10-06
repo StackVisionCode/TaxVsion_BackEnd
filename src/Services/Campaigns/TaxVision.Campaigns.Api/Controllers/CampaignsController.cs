@@ -35,6 +35,10 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
 {
     private const int DefaultSize = 20;
 
+    /// <summary>Mapea el contenido por canal del body al input de Application (canal como string).</summary>
+    private static IReadOnlyList<ChannelContentInput>? MapContents(IReadOnlyList<CampaignContentRequest>? contents) =>
+        contents?.Select(c => new ChannelContentInput(c.Channel.ToString(), c.Subject, c.Title, c.Body)).ToList();
+
     [HttpPost]
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.g.create")]
@@ -51,7 +55,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 request.Name,
                 request.ToChannelsFlag(),
                 request.Message,
-                request.Subject
+                request.Subject,
+                MapContents(request.Contents)
             ),
             ct
         );
@@ -111,7 +116,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 request.Name,
                 request.ToChannelsFlag(),
                 request.Message,
-                request.Subject
+                request.Subject,
+                MapContents(request.Contents)
             ),
             ct
         );

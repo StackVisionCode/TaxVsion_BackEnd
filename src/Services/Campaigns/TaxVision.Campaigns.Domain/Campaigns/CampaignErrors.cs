@@ -13,6 +13,15 @@ public static class CampaignErrors
     public static readonly Error MessageRequired = new("Campaign.Message", "Message content is required.");
     public static readonly Error MessageTooLong = new("Campaign.MessageTooLong", "Message exceeds the maximum length.");
     public static readonly Error SubjectTooLong = new("Campaign.SubjectTooLong", "Subject exceeds the maximum length.");
+    public static readonly Error TitleTooLong = new("Campaign.TitleTooLong", "Title exceeds the maximum length.");
+    public static readonly Error ContentChannelNotSelected = new(
+        "Campaign.ContentChannelNotSelected",
+        "The content's channel is not one of the campaign's channels."
+    );
+    public static readonly Error ContentChannelInvalid = new(
+        "Campaign.ContentChannelInvalid",
+        "Content must target exactly one channel."
+    );
     public static readonly Error NotDraft = new("Campaign.NotDraft", "The campaign can only be edited while in Draft.");
     public static readonly Error NotReady = new("Campaign.NotReady", "The campaign is not in a Ready state.");
     public static readonly Error Archived = new("Campaign.Archived", "The campaign is archived.");

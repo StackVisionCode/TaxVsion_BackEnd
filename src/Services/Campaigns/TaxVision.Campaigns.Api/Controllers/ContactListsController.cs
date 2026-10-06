@@ -103,6 +103,22 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpGet("{id:guid}/members")]
+    [HasPermission(CampaignsPermissions.View)]
+    [RateLimit("campaigns.f.list")]
+    [ProducesResponseType<IReadOnlyList<ContactResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListMembers(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<ContactResponse>>>(
+            new ListContactListMembersQuery(tenantId, id),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{id:guid}/members")]
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.g.create")]
@@ -144,11 +160,27 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        // Etapa C: reenviamos el token de la sesión para crear cada contacto como cliente en Customer
+        // (on-behalf-of). POST /customers solo acepta actores humanos, así que va el bearer del usuario.
+        var bearer = ExtractBearerToken();
+
         var result = await bus.InvokeAsync<Result<ImportContactsResponse>>(
-            new ImportContactsCommand(tenantId, id, request.Csv ?? string.Empty),
+            new ImportContactsCommand(tenantId, id, request.Csv ?? string.Empty, bearer),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>El bearer crudo de la petición actual, sin el prefijo "Bearer ". Null si no viene.</summary>
+    private string? ExtractBearerToken()
+    {
+        var header = Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(header))
+            return null;
+        const string prefix = "Bearer ";
+        return header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? header[prefix.Length..].Trim()
+            : header.Trim();
     }
 
     private static int NormalizePage(int page) => page < 1 ? 1 : page;

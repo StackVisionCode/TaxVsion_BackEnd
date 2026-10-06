@@ -14,6 +14,7 @@ using TaxVision.Campaigns.Application.RateLimiting.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Application.Senders.Abstractions;
+using TaxVision.Campaigns.Application.Templates.Abstractions;
 using TaxVision.Campaigns.Infrastructure.Customers;
 using TaxVision.Campaigns.Infrastructure.Jobs;
 using TaxVision.Campaigns.Infrastructure.Permissions;
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IContactListRepository, ContactListRepository>();
         services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();
+        services.AddScoped<ICampaignTemplateRepository, CampaignTemplateRepository>();
         services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
 
         // Audiencia desde Customer (M2M): cliente HTTP al endpoint interno del directorio de clientes.
@@ -49,6 +51,17 @@ public static class DependencyInjection
             .AddOptions<CustomerServiceOptions>()
             .Bind(configuration.GetSection(CustomerServiceOptions.SectionName));
         services.AddHttpClient<ICustomerAudienceClient, CustomerAudienceClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CustomerServiceOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
+        // Etapa C — provisión de clientes al importar contactos (on-behalf-of): reenvía el bearer del
+        // usuario (que el controller lee de la petición y pasa en el comando) a POST /customers.
+        services.AddHttpClient<ICustomerDirectoryClient, CustomerDirectoryClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<CustomerServiceOptions>>().Value;
@@ -67,6 +80,10 @@ public static class DependencyInjection
             .AddOptions<Application.Runs.Audience.CampaignsVisibilityOptions>()
             .Bind(configuration.GetSection(Application.Runs.Audience.CampaignsVisibilityOptions.SectionName));
         services.AddScoped<ICampaignCustomerAssignmentReader, CampaignCustomerAssignmentReader>();
+
+        // Proyección local del directorio de clientes (mantenida por los consumers de eventos de Customer):
+        // fuente de verdad local para audiencia + regla contacto⇔cliente.
+        services.AddScoped<ICustomerDirectoryStore, Customers.Directory.CustomerDirectoryStore>();
 
         // Scheduler durable (SendMode Scheduled/Recurring): lease-based claim + fan-out por disparo.
         services.AddHostedService<CampaignSchedulerService>();

@@ -53,5 +53,23 @@ public sealed record ContactListResponse(
         new(l.Id, l.TenantId, l.Name, l.Description, l.Members.Count, l.CreatedAtUtc, l.UpdatedAtUtc);
 }
 
-/// <summary>Resultado de un import CSV: cuántos contactos se crearon, se reusaron (dedupe) o se descartaron por inválidos, y cuántas membresías se agregaron.</summary>
-public sealed record ImportContactsResponse(int Created, int Reused, int Invalid, int MembersAdded);
+/// <summary>
+/// Resultado de un import CSV. Parte "contactos": cuántos se crearon, se reusaron (dedupe) o se
+/// descartaron por inválidos, y cuántas membresías se agregaron a la lista. Parte "clientes" (Etapa C):
+/// cada fila con email se provisiona además como cliente en el servicio Customer (on-behalf-of, con el
+/// token del usuario que importa) — <see cref="CustomersCreated"/>/<see cref="CustomersExisting"/> y, si
+/// algo no pudo, <see cref="CustomersSkippedNoEmail"/>/<see cref="CustomersFailed"/>.
+/// <see cref="CustomerPermissionDenied"/> en <c>true</c> = el usuario no tiene permiso para crear clientes
+/// (los contactos locales igual se importaron).
+/// </summary>
+public sealed record ImportContactsResponse(
+    int Created,
+    int Reused,
+    int Invalid,
+    int MembersAdded,
+    int CustomersCreated = 0,
+    int CustomersExisting = 0,
+    int CustomersSkippedNoEmail = 0,
+    int CustomersFailed = 0,
+    bool CustomerPermissionDenied = false
+);

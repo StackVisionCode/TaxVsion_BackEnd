@@ -14,6 +14,7 @@ using TaxVision.Campaigns.Domain.RateLimiting;
 using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
 using TaxVision.Campaigns.Domain.Senders;
+using TaxVision.Campaigns.Domain.Templates;
 
 namespace TaxVision.Campaigns.Infrastructure.Persistence;
 
@@ -32,6 +33,7 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<ContactList> ContactLists => Set<ContactList>();
     public DbSet<SenderProfile> SenderProfiles => Set<SenderProfile>();
+    public DbSet<CampaignTemplate> CampaignTemplates => Set<CampaignTemplate>();
     public DbSet<CampaignSchedule> CampaignSchedules => Set<CampaignSchedule>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
@@ -40,6 +42,11 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Acota la audiencia "Clients".
     public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
+    // Proyección local del directorio de clientes (id+nombre+email+teléfono+estado), mantenida por los
+    // eventos Customer Created/Updated/Archived/… — fuente de verdad local de "quién es cliente".
+    public DbSet<Customers.Directory.CustomerDirectoryEntry> CustomerDirectoryEntries =>
+        Set<Customers.Directory.CustomerDirectoryEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -67,7 +67,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasMaxLength(20000)
+                        .HasMaxLength(500000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
@@ -97,6 +97,42 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Campaigns_TenantId_Status");
 
                     b.ToTable("Campaigns", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignContent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(500000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CampaignContents_CampaignId_Channel");
+
+                    b.ToTable("CampaignContents", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignSenderSelection", b =>
@@ -379,6 +415,10 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("PhoneE164")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -602,6 +642,133 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.ToTable("SenderProfiles", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Templates.CampaignTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Channels")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_CampaignTemplates_TenantId_CreatedAtUtc");
+
+                    b.ToTable("CampaignTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Templates.CampaignTemplateContent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(500000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CampaignTemplateContents_TemplateId_Channel");
+
+                    b.ToTable("CampaignTemplateContents", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Infrastructure.Customers.Directory.CustomerDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("PhoneE164")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Email");
+
+                    b.ToTable("CustomerDirectoryEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignContent", b =>
+                {
+                    b.HasOne("TaxVision.Campaigns.Domain.Campaigns.Campaign", null)
+                        .WithMany("Contents")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.CampaignSenderSelection", b =>
                 {
                     b.HasOne("TaxVision.Campaigns.Domain.Campaigns.Campaign", null)
@@ -629,8 +796,19 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Templates.CampaignTemplateContent", b =>
+                {
+                    b.HasOne("TaxVision.Campaigns.Domain.Templates.CampaignTemplate", null)
+                        .WithMany("Contents")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.Campaign", b =>
                 {
+                    b.Navigation("Contents");
+
                     b.Navigation("Senders");
                 });
 
@@ -642,6 +820,11 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Runs.CampaignRun", b =>
                 {
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Templates.CampaignTemplate", b =>
+                {
+                    b.Navigation("Contents");
                 });
 #pragma warning restore 612, 618
         }
