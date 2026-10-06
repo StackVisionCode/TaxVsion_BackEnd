@@ -17,6 +17,8 @@ public sealed class CampaignRecipient
     public CampaignChannel Channel { get; }
     public string? Email { get; }
     public string? PhoneE164 { get; }
+    /// <summary>Nombre del destinatario (Customer/Contact) — para personalizar {{first_name}}/… en los ejecutores.</summary>
+    public string? Name { get; }
     public string DispatchId { get; } = default!;
     public int AttemptNo { get; }
     public DispatchState State { get; private set; }
@@ -35,7 +37,8 @@ public sealed class CampaignRecipient
         string contactRef,
         CampaignChannel channel,
         string? email,
-        string? phoneE164
+        string? phoneE164,
+        string? name
     )
     {
         Id = id;
@@ -45,6 +48,7 @@ public sealed class CampaignRecipient
         Channel = channel;
         Email = email;
         PhoneE164 = phoneE164;
+        Name = name;
         AttemptNo = 1;
         DispatchId = $"{id:N}-{AttemptNo}";
     }
@@ -55,10 +59,11 @@ public sealed class CampaignRecipient
         string contactRef,
         CampaignChannel channel,
         string? email,
-        string? phoneE164
+        string? phoneE164,
+        string? name
     )
     {
-        var recipient = new CampaignRecipient(Guid.NewGuid(), runId, tenantId, contactRef, channel, email, phoneE164);
+        var recipient = new CampaignRecipient(Guid.NewGuid(), runId, tenantId, contactRef, channel, email, phoneE164, name);
         if (recipient.HasDestination())
         {
             recipient.State = DispatchState.Pending;

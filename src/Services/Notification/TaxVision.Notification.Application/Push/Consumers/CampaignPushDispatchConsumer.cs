@@ -31,8 +31,10 @@ public static class CampaignPushDispatchConsumer
         if (!Guid.TryParse(evt.ContactRef, out var userId) || userId == Guid.Empty)
             return ToResult(evt, "Skipped", "push_requires_user_id");
 
-        var title = string.IsNullOrWhiteSpace(evt.Subject) ? "TaxProffice" : evt.Subject!;
-        var body = evt.Body ?? string.Empty;
+        // Personalización por destinatario: {{first_name}}/{{full_name}}/… → datos del cliente.
+        var renderedTitle = CampaignPersonalization.Render(evt.Subject, evt.RecipientName, evt.Email, evt.PhoneE164);
+        var title = string.IsNullOrWhiteSpace(renderedTitle) ? "TaxProffice" : renderedTitle!;
+        var body = CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
 
         var result = await dispatcher.SendPushAsync(
             evt.TenantId,

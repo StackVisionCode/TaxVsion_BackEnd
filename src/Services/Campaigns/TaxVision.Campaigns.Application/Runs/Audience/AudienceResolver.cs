@@ -65,7 +65,13 @@ public static class AudienceResolver
                     if (!seen.Add($"{channel}|{destination}"))
                         continue;
                     units.Add(
-                        new RunRecipientDraft(contact.Id.ToString("N"), channel, contact.Email, contact.PhoneE164)
+                        new RunRecipientDraft(
+                            contact.Id.ToString("N"),
+                            channel,
+                            contact.Email,
+                            contact.PhoneE164,
+                            contact.Name
+                        )
                     );
                 }
             }
@@ -100,7 +106,15 @@ public static class AudienceResolver
                         continue;
                     if (!seen.Add($"{channel}|{destination}"))
                         continue;
-                    units.Add(new RunRecipientDraft(customer.CustomerId.ToString("N"), channel, custEmail, custPhone));
+                    units.Add(
+                        new RunRecipientDraft(
+                            customer.CustomerId.ToString("N"),
+                            channel,
+                            custEmail,
+                            custPhone,
+                            customer.DisplayName
+                        )
+                    );
                 }
             }
         }

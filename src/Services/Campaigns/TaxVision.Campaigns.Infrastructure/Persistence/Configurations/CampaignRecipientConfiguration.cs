@@ -19,6 +19,7 @@ public sealed class CampaignRecipientConfiguration : IEntityTypeConfiguration<Ca
         builder.Property(r => r.Channel).HasConversion<int>().IsRequired();
         builder.Property(r => r.Email).HasMaxLength(320);
         builder.Property(r => r.PhoneE164).HasMaxLength(20);
+        builder.Property(r => r.Name).HasMaxLength(200);
         builder.Property(r => r.DispatchId).HasMaxLength(80).IsRequired();
         builder.Property(r => r.AttemptNo).IsRequired();
         builder.Property(r => r.State).HasConversion<int>().IsRequired();

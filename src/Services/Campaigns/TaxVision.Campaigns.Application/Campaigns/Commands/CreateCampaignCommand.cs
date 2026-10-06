@@ -15,7 +15,8 @@ public sealed record CreateCampaignCommand(
     string Name,
     CampaignChannel Channels,
     string Message,
-    string? Subject
+    string? Subject,
+    IReadOnlyList<ChannelContentInput>? Contents = null
 );
 
 public static class CreateCampaignHandler
@@ -39,6 +40,11 @@ public static class CreateCampaignHandler
             return Result.Failure<CampaignResponse>(campaignResult.Error);
 
         var campaign = campaignResult.Value;
+
+        var contentResult = CampaignContentApplier.Apply(campaign, command.Contents);
+        if (contentResult.IsFailure)
+            return Result.Failure<CampaignResponse>(contentResult.Error);
+
         await campaigns.AddAsync(campaign, ct);
         await unitOfWork.SaveChangesAsync(ct);
 

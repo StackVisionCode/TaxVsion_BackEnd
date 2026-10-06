@@ -334,6 +334,10 @@ services:
       # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
       # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
       TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # DEV LOCAL: el Gateway no reenvia el Host original del subdominio, asi que la resolucion
+      # de tenant por Host falla y /auth/login devuelve 404. Con esto el login acepta el tenantId
+      # del body (flujo de dev). En prod real (subdominios reales) debe quedar en true (appsettings.json).
+      TenantDomains__EnforceHostResolution: ${AUTH_ENFORCE_HOST_RESOLUTION:-false}
       # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.

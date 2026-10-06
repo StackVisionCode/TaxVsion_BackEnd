@@ -16,11 +16,14 @@ public sealed class Campaign : TenantEntity
     public const int MaxNameLength = 200;
 
     private readonly List<CampaignSenderSelection> _senders = [];
+    private readonly List<CampaignContent> _contents = [];
 
     private Campaign() { }
 
     public const int MaxSubjectLength = 300;
-    public const int MaxMessageLength = 20_000;
+    public const int MaxTitleLength = 200;
+    // Generoso para permitir HTML de email con imágenes embebidas (dataURL). La columna ya es nvarchar(max).
+    public const int MaxMessageLength = 500_000;
 
     public string Name { get; private set; } = default!;
     public Guid CreatedByUserId { get; private set; }
@@ -37,6 +40,9 @@ public sealed class Campaign : TenantEntity
 
     /// <summary>Remitente seleccionado por canal (0..1 por canal). La campaña solo referencia el <c>SenderProfile</c> por id.</summary>
     public IReadOnlyCollection<CampaignSenderSelection> Senders => _senders.AsReadOnly();
+
+    /// <summary>Contenido por canal (0..1 por canal). Si un canal no tiene contenido propio, el dispatch cae al <c>Message</c>/<c>Subject</c> base.</summary>
+    public IReadOnlyCollection<CampaignContent> Contents => _contents.AsReadOnly();
 
     // ------------------------------------------------------------------
     // Factory
@@ -177,6 +183,59 @@ public sealed class Campaign : TenantEntity
     }
 
     // ------------------------------------------------------------------
+    // Contenido por canal (override multicanal) — solo en Draft
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Define (upsert) el contenido de UN canal. El canal debe ser un flag único y estar entre los canales
+    /// de la campaña. <paramref name="subject"/> aplica a Email, <paramref name="title"/> a Push; el
+    /// <paramref name="body"/> es obligatorio para todos. Solo en <c>Draft</c>.
+    /// </summary>
+    public Result SetChannelContent(CampaignChannel channel, string? subject, string? title, string body)
+    {
+        var guard = EnsureDraft();
+        if (guard.IsFailure)
+            return guard;
+
+        if (channel == CampaignChannel.None || (channel & (channel - 1)) != 0)
+            return Result.Failure(CampaignErrors.ContentChannelInvalid);
+        if (!Channels.HasFlag(channel))
+            return Result.Failure(CampaignErrors.ContentChannelNotSelected);
+
+        var normalized = NormalizeChannelContent(subject, title, body);
+        if (normalized.IsFailure)
+            return Result.Failure(normalized.Error);
+
+        var (nSubject, nTitle, nBody) = normalized.Value;
+        var existing = _contents.Find(c => c.Channel == channel);
+        if (existing is null)
+            _contents.Add(new CampaignContent(Id, TenantId, channel, nSubject, nTitle, nBody));
+        else
+            existing.Update(nSubject, nTitle, nBody);
+
+        Touch();
+        return Result.Success();
+    }
+
+    public Result ClearChannelContent(CampaignChannel channel)
+    {
+        var guard = EnsureDraft();
+        if (guard.IsFailure)
+            return guard;
+
+        var existing = _contents.Find(c => c.Channel == channel);
+        if (existing is not null)
+        {
+            _contents.Remove(existing);
+            Touch();
+        }
+        return Result.Success();
+    }
+
+    /// <summary>Contenido propio del canal, o <c>null</c> si el canal cae al <c>Message</c>/<c>Subject</c> base.</summary>
+    public CampaignContent? GetContentFor(CampaignChannel channel) => _contents.Find(c => c.Channel == channel);
+
+    // ------------------------------------------------------------------
     // Ciclo de vida
     // ------------------------------------------------------------------
 
@@ -252,6 +311,28 @@ public sealed class Campaign : TenantEntity
             return Result.Failure<(string, string?)>(CampaignErrors.SubjectTooLong);
 
         return Result.Success((message, normalizedSubject));
+    }
+
+    private static Result<(string? Subject, string? Title, string Body)> NormalizeChannelContent(
+        string? subject,
+        string? title,
+        string body
+    )
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return Result.Failure<(string?, string?, string)>(CampaignErrors.MessageRequired);
+        if (body.Length > MaxMessageLength)
+            return Result.Failure<(string?, string?, string)>(CampaignErrors.MessageTooLong);
+
+        var nSubject = string.IsNullOrWhiteSpace(subject) ? null : subject.Trim();
+        if (nSubject is { Length: > MaxSubjectLength })
+            return Result.Failure<(string?, string?, string)>(CampaignErrors.SubjectTooLong);
+
+        var nTitle = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        if (nTitle is { Length: > MaxTitleLength })
+            return Result.Failure<(string?, string?, string)>(CampaignErrors.TitleTooLong);
+
+        return Result.Success((nSubject, nTitle, body));
     }
 
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;

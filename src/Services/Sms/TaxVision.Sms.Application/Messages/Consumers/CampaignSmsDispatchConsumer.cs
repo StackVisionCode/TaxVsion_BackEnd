@@ -38,13 +38,16 @@ public static class CampaignSmsDispatchConsumer
                     new SmsSendItemDto(
                         ResolveCustomerId(evt.ContactRef),
                         evt.PhoneE164!,
-                        evt.Body ?? string.Empty,
+                        // Personalización por destinatario: {{first_name}}/{{full_name}}/… → datos del cliente.
+                        CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164)
+                            ?? string.Empty,
                         Media: null,
                         IdempotencyKey: evt.DispatchId,
                         // El SourceContext viaja de vuelta en los eventos SmsMessage* del servicio de SMS
                         // (Accepted/Delivered/Failed). Llevamos el dispatchId para correlacionar el DLR
                         // (webhook infobip → SmsMessageDelivered) de vuelta a la unidad de campaña.
-                        SourceContext: $"campaign:{evt.DispatchId}"
+                        SourceContext: $"campaign:{evt.DispatchId}",
+                        RecipientName: evt.RecipientName
                     ),
                 ],
                 // Actor de sistema: no hay usuario cuyo alcance medir.

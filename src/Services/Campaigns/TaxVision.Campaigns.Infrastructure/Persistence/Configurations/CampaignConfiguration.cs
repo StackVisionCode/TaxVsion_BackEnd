@@ -26,6 +26,32 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.HasMany(c => c.Senders).WithOne().HasForeignKey(s => s.CampaignId).OnDelete(DeleteBehavior.Cascade);
         builder.Metadata.FindNavigation(nameof(Campaign.Senders))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(c => c.Contents).WithOne().HasForeignKey(c => c.CampaignId).OnDelete(DeleteBehavior.Cascade);
+        builder.Metadata.FindNavigation(nameof(Campaign.Contents))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+public sealed class CampaignContentConfiguration : IEntityTypeConfiguration<CampaignContent>
+{
+    public void Configure(EntityTypeBuilder<CampaignContent> builder)
+    {
+        builder.ToTable("CampaignContents");
+        builder.HasKey(c => c.Id);
+        // Id generado en dominio (guardrail 10): sin esto EF haría UPDATE en vez de INSERT al agregar hijos.
+        builder.Property(c => c.Id).ValueGeneratedNever();
+
+        builder.Property(c => c.CampaignId).IsRequired();
+        builder.Property(c => c.TenantId).IsRequired();
+        builder.Property(c => c.Channel).HasConversion<int>().IsRequired();
+        builder.Property(c => c.Subject).HasMaxLength(Campaign.MaxSubjectLength);
+        builder.Property(c => c.Title).HasMaxLength(Campaign.MaxTitleLength);
+        builder.Property(c => c.Body).HasMaxLength(Campaign.MaxMessageLength).IsRequired();
+
+        builder
+            .HasIndex(c => new { c.CampaignId, c.Channel })
+            .IsUnique()
+            .HasDatabaseName("UX_CampaignContents_CampaignId_Channel");
     }
 }
 

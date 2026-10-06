@@ -14,6 +14,7 @@ public sealed class CampaignRepository(CampaignsDbContext db) : ICampaignReposit
         db
             .Campaigns.IgnoreQueryFilters()
             .Include(c => c.Senders)
+            .Include(c => c.Contents)
             .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
 
     public async Task<PagedResult<Campaign>> ListAsync(
