@@ -16,7 +16,13 @@ public sealed record UpdateSignatureSettingsBody(
     // Default 48h (cada 2 días); opcional para retro-compat con clientes que no lo envían.
     int DefaultReminderIntervalHours = 48,
     // Gobernanza de firma del preparador (My Signature); opcional, default true (norma industria).
-    bool AllowEmployeeOwnSignature = true
+    bool AllowEmployeeOwnSignature = true,
+    // F7 — defaults de entrega. Opcionales para retro-compat; omitirlos = no tocar.
+    bool? SendPartialCopyDefault = null,
+    // "All" o "Specific". Specific sin lista es inválido como default; lo rechaza el dominio.
+    string? PartialCopyDefaultAudienceKind = null,
+    bool? SendSealedDocumentDefault = null,
+    bool? ExpirationEnabledByDefault = null
 );
 
 public sealed record DocumentLimitsBody(long MaxPdfBytes, long MaxImageBytes, int MaxPagesPerDocument);

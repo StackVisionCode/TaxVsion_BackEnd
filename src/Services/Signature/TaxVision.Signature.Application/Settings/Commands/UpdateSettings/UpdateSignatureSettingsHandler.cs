@@ -149,6 +149,16 @@ public static class UpdateSignatureSettingsHandler
         else
             settings.DisableEmployeeOwnSignature();
 
+        // F7 — nuevos defaults; solo se aplican si vinieron en el body.
+        if (cmd.SendPartialCopyDefault is { } partialDefault)
+            settings.SetSendPartialCopyDefault(partialDefault);
+        if (cmd.PartialCopyDefaultAudienceKind is { } audienceKind)
+            settings.SetPartialCopyDefaultAudienceKind(audienceKind);
+        if (cmd.SendSealedDocumentDefault is { } sealedDefault)
+            settings.SetSendSealedDocumentDefault(sealedDefault);
+        if (cmd.ExpirationEnabledByDefault is { } expDefault)
+            settings.SetExpirationEnabledByDefault(expDefault);
+
         var pdfResult = DocumentLimits.Default().WithMaxPdfBytes(cmd.MaxPdfBytes);
         if (pdfResult.IsFailure)
             return Result.Failure(pdfResult.Error);

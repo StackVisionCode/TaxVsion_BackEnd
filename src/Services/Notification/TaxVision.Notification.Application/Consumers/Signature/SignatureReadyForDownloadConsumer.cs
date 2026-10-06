@@ -28,7 +28,7 @@ public static class SignatureReadyForDownloadConsumer
     )
     {
         // P2: la request puede desactivar la entrega del documento firmado a los firmantes.
-        if (!evt.SendSignedDocumentToSigners)
+        if (!evt.SendSealedDocumentToSigners)
             return;
 
         var correlationId = ResolveCorrelationId(evt);

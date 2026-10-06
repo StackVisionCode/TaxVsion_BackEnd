@@ -15,4 +15,7 @@ public static class SignatureTemplateCatalog
     public const string ExpiredKey = "sig.expired.v1";
     public const string DeclinedKey = "sig.declined.v1";
     public const string VerificationChallengeKey = "sig.verification-challenge.v1";
+
+    // F7 — copia inmediata al firmante tras su firma.
+    public const string PartialCopyKey = "sig.partial_copy.v1";
 }

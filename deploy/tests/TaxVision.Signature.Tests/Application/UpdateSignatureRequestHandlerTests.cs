@@ -118,7 +118,7 @@ public sealed class UpdateSignatureRequestHandlerTests
             null,
             "Fiscal",
             72,
-            SendSignedDocumentToSigners: true,
+            SendSealedDocumentToSigners: true,
             SendCertificateToSigners: false,
             AutoRemindersEnabled: true,
             ReminderIntervalHours: 48

@@ -11,28 +11,38 @@ public sealed record CreateSignatureRequestBody(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    // Default true = comportamiento histórico (se emailaba el documento firmado siempre). El gate de
-    // permiso vive en el controller: sin signature.document.send estos quedan forzados a false.
-    bool SendSignedDocumentToSigners = true,
+    // null = default del tenant. El gate de permiso vive en el controller: sin signature.document.send
+    // estos quedan forzados a false.
+    bool? SendSealedDocumentToSigners = null,
     bool SendCertificateToSigners = false,
-    // Recordatorios automáticos a firmantes: null = usar el default del tenant; con valor = override.
+    // Recordatorios automáticos: null = usar el default del tenant; con valor = override.
     bool? AutoRemindersEnabled = null,
-    int? ReminderIntervalHours = null
+    int? ReminderIntervalHours = null,
+    // F7 — copia parcial + expiración opcional. null = default del tenant.
+    bool? SendPartialCopyOnEachSignature = null,
+    PartialCopyAudienceBody? PartialCopyAudience = null,
+    bool? ExpirationEnabled = null
 );
 
 // Edición de metadata de un borrador (Draft/Ready). GenerateCertificate y el documento no se editan
-// aquí: son decisiones de creación. Los flags de entrega/reminders son OPCIONALES (null = no tocar),
-// porque el detalle no los devuelve y no queremos pisarlos al editar solo título/categoría.
+// aquí: son decisiones de creación. Los flags son OPCIONALES (null = no tocar).
 public sealed record UpdateSignatureRequestBody(
     string Title,
     string? Description,
     string Category,
     int TokenExpirationHours,
-    bool? SendSignedDocumentToSigners = null,
+    bool? SendSealedDocumentToSigners = null,
     bool? SendCertificateToSigners = null,
     bool? AutoRemindersEnabled = null,
-    int? ReminderIntervalHours = null
+    int? ReminderIntervalHours = null,
+    // F7 — null = no tocar.
+    bool? SendPartialCopyOnEachSignature = null,
+    PartialCopyAudienceBody? PartialCopyAudience = null,
+    bool? ExpirationEnabled = null
 );
+
+/// <summary>F7 — audiencia de la copia parcial. Kind=All ignora SignerIds; Kind=Specific exige lista no vacía.</summary>
+public sealed record PartialCopyAudienceBody(string Kind, IReadOnlyList<Guid>? SignerIds = null);
 
 public sealed record AddSignerBody(
     string Email,
@@ -89,12 +99,16 @@ public sealed record UpsertDraftBody(
     string? Description,
     string Category,
     int TokenExpirationHours,
-    bool? SendSignedDocumentToSigners,
+    bool? SendSealedDocumentToSigners,
     bool? SendCertificateToSigners,
     bool? AutoRemindersEnabled,
     int? ReminderIntervalHours,
     IReadOnlyList<UpsertDraftSignerBody> Signers,
-    IReadOnlyList<UpsertDraftFieldBody> Fields
+    IReadOnlyList<UpsertDraftFieldBody> Fields,
+    // F7 — null = no tocar.
+    bool? SendPartialCopyOnEachSignature = null,
+    PartialCopyAudienceBody? PartialCopyAudience = null,
+    bool? ExpirationEnabled = null
 );
 
 public sealed record UpsertDraftSignerBody(

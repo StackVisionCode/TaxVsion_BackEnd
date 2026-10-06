@@ -26,4 +26,10 @@ public enum SignatureAuditEventKind
     RequestCompleted,
     RequestSealed,
     PreparerSigned,
+
+    /// <summary>F7 — copia inmediata entregada a un firmante tras su firma.</summary>
+    PartialCopyDelivered,
+
+    /// <summary>F7 — fallo irrecuperable al entregar la copia parcial (no bloquea el flujo).</summary>
+    PartialCopyFailed,
 }

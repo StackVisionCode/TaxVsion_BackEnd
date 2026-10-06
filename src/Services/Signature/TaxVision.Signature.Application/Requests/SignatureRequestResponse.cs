@@ -10,7 +10,12 @@ public sealed record SignerResponse(
     int Order,
     SignerStatus Status,
     DateTime? SignedAtUtc,
-    IReadOnlyList<SignatureFieldResponse> Fields
+    IReadOnlyList<SignatureFieldResponse> Fields,
+    // F7 — estado de la copia inmediata que recibe este firmante tras firmar.
+    DateTime? PartialCopyRequestedAtUtc,
+    DateTime? PartialCopySentAtUtc,
+    Guid? PartialCopyFileId,
+    string? PartialCopyFailureReason
 );
 
 public sealed record SignatureFieldResponse(
@@ -54,14 +59,19 @@ public sealed record SignatureRequestResponse(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    bool SendSignedDocumentToSigners,
+    bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
     int ReminderIntervalHours,
     bool RequiresPractitionerPin,
     DateTime? PractitionerPinSetAtUtc,
-    int TokenExpirationHours,
-    DateTime ExpiresAtUtc,
+    // F7 — null si la expiración está desactivada.
+    int? TokenExpirationHours,
+    DateTime? ExpiresAtUtc,
+    bool ExpirationEnabled,
+    bool SendPartialCopyOnEachSignature,
+    string PartialCopyAudienceKind,
+    IReadOnlyList<Guid> PartialCopyAudienceSignerIds,
     int RevocationEpoch,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
@@ -96,7 +106,7 @@ public sealed record SignatureRequestResponse(
             request.RequiresSequentialSigning,
             request.RequiresConsent,
             request.GenerateCertificate,
-            request.SendSignedDocumentToSigners,
+            request.SendSealedDocumentToSigners,
             request.SendCertificateToSigners,
             request.AutoRemindersEnabled,
             request.ReminderIntervalHours,
@@ -104,6 +114,10 @@ public sealed record SignatureRequestResponse(
             request.PractitionerPinSetAtUtc,
             request.TokenExpirationHours,
             request.ExpiresAtUtc,
+            request.ExpirationEnabled,
+            request.SendPartialCopyOnEachSignature,
+            request.PartialCopyAudience.Kind.ToString(),
+            [.. request.PartialCopyAudience.SpecificSignerIds],
             request.RevocationEpoch,
             request.CreatedAtUtc,
             request.UpdatedAtUtc,
@@ -140,7 +154,11 @@ public sealed record SignatureRequestResponse(
             signer.Order,
             signer.Status,
             signer.SignedAtUtc,
-            signer.Fields.Select(f => MapField(signer.Id, f)).ToList()
+            signer.Fields.Select(f => MapField(signer.Id, f)).ToList(),
+            signer.PartialCopyRequestedAtUtc,
+            signer.PartialCopySentAtUtc,
+            signer.PartialCopyFileId,
+            signer.PartialCopyFailureReason
         );
 
     private static SignatureFieldResponse MapField(Guid signerId, SignatureField field) =>

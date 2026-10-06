@@ -61,10 +61,33 @@ public static class SubmitSignatureHandler
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(request.TenantId, ct);
         await PublishSignedAsync(request, signer, signedAt, cmd.ClientIp, correlation, bus);
+        // F7 — si el aggregate dejó enganchada la copia parcial, dispara el pipeline de delivery.
+        if (signer.PartialCopyRequestedAtUtc is not null)
+            await PublishPartialCopyRequestedAsync(request, signer, correlation, bus);
         if (request.Status == SignatureRequestStatus.Completed)
             await PublishCompletedAsync(request, correlation, bus);
         return Result.Success();
     }
+
+    private static Task PublishPartialCopyRequestedAsync(
+        SignatureRequest request,
+        Signer signer,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    ) =>
+        bus.PublishAsync(
+                new SignerPartialCopyRequestedIntegrationEvent
+                {
+                    TenantId = request.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                    SignatureRequestId = request.Id,
+                    SignerId = signer.Id,
+                    SignedAtUtc = signer.SignedAtUtc ?? DateTime.UtcNow,
+                    // v1 inicial; cada "resend" del preparador incrementa el sufijo.
+                    IdempotencyKey = $"signature.partial_copy:{request.Id:N}:{signer.Id:N}:v1",
+                }
+            )
+            .AsTask();
 
     // ------------------------------------------------------------------
     // Métodos privados: una única responsabilidad por método

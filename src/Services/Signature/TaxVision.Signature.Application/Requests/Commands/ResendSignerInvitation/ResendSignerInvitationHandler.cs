@@ -59,7 +59,11 @@ public static class ResendSignerInvitationHandler
         var token = tokenService.Issue(payload);
         var previousJti = request.RotateSignerToken(signer.Id, payload.TokenId);
         if (previousJti is not null)
-            await denylist.RevokeAsync(previousJti, request.ExpiresAtUtc, ct);
+        {
+            // F7 — sin expiración del request, el denylist no caduca por reloj: usamos un TTL enorme.
+            var denylistUntil = request.ExpiresAtUtc ?? DateTime.UtcNow.AddYears(100);
+            await denylist.RevokeAsync(previousJti, denylistUntil, ct);
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
         await PublishInvitationAsync(request, signer, token, correlation, bus);

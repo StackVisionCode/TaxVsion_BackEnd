@@ -64,7 +64,10 @@ public static class ViewPublicSignerHandler
             IsVerificationCompleted: signer.RequiredVerificationMethod is { } method
                 && signer.HasCompletedVerification(method),
             Fields: signer.Fields.Select(MapField).ToList(),
-            TenantSubDomain: tenantSubDomain
+            TenantSubDomain: tenantSubDomain,
+            // F7 — true si la configuración del request incluye a este signer en la audiencia.
+            PartialCopyWillBeSent: request.SendPartialCopyOnEachSignature
+                && request.PartialCopyAudience.Includes(signer.Id)
         );
 
     private static bool IsNextInSequence(SignatureRequest request, Signer signer)

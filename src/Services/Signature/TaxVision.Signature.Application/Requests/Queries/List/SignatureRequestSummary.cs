@@ -9,7 +9,7 @@ public sealed record SignatureRequestSummary(
     SignatureRequestStatus Status,
     Guid OriginalFileId,
     int SignerCount,
-    DateTime ExpiresAtUtc,
+    DateTime? ExpiresAtUtc,
     DateTime CreatedAtUtc,
     DateTime? SentAtUtc,
     DateTime? CompletedAtUtc,

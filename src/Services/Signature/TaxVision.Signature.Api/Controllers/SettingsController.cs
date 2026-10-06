@@ -10,6 +10,7 @@ using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Settings;
 using TaxVision.Signature.Application.Settings.Commands.UpdateSettings;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
 using Wolverine;
 
@@ -93,6 +94,21 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
                 )
             );
 
+        // F7 — parsea el Kind si vino en el body. Valor inválido = 400.
+        PartialCopyAudienceKind? audienceKind = null;
+        if (body.PartialCopyDefaultAudienceKind is { Length: > 0 } raw)
+        {
+            if (!Enum.TryParse<PartialCopyAudienceKind>(raw, ignoreCase: true, out var parsed))
+                return BadRequest(
+                    new
+                    {
+                        error = "Signature.Settings.PartialCopyAudienceKindInvalid",
+                        message = "PartialCopyDefaultAudienceKind must be 'All' or 'Specific'.",
+                    }
+                );
+            audienceKind = parsed;
+        }
+
         var cmd = new UpdateSignatureSettingsCommand(
             tenantId,
             userId,
@@ -107,7 +123,11 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             body.DocumentLimits.MaxImageBytes,
             body.DocumentLimits.MaxPagesPerDocument,
             body.RetentionPolicy.RetentionYears,
-            body.RetentionPolicy.AllowPurge
+            body.RetentionPolicy.AllowPurge,
+            body.SendPartialCopyDefault,
+            audienceKind,
+            body.SendSealedDocumentDefault,
+            body.ExpirationEnabledByDefault
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);

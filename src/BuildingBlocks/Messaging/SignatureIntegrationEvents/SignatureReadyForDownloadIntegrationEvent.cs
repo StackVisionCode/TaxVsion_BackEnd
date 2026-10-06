@@ -26,5 +26,5 @@ public sealed record SignatureReadyForDownloadIntegrationEvent : IntegrationEven
     /// Si la request pidió entregar el documento firmado a los firmantes (P2). Default <c>true</c> =
     /// comportamiento histórico. Notification omite la entrega cuando es <c>false</c>.
     /// </summary>
-    public bool SendSignedDocumentToSigners { get; init; } = true;
+    public bool SendSealedDocumentToSigners { get; init; } = true;
 }

@@ -24,7 +24,10 @@ public sealed record NotificationTemplateSeed(
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
     // v9: plantilla de factura, la primera sobre tenant-base.
-    int ContentVersion = 10,
+    // v11: F7 — nueva plantilla sig.partial_copy.v1 (copia inmediata al firmar).
+    // v12: F7 — adapta copy del partial_copy cuando total_signers == 1 + robustez del download_link.
+    // v13: F7 — no promete el PDF sellado cuando el preparador no lo va a enviar.
+    int ContentVersion = 13,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -57,6 +60,7 @@ public static class NotificationTemplateSeedSource
             SignatureInvitation,
             SignatureReminder,
             SignatureCompleted,
+            SignaturePartialCopy,
             SignatureCertificateReady,
             SignatureExpired,
             SignatureDeclined,
@@ -101,6 +105,7 @@ public static class NotificationTemplateSeedSource
         ["sig.invitation.v1"] = "A document is waiting for your signature. It only takes a minute.",
         ["sig.reminder.v1"] = "A friendly reminder: your signature is still pending.",
         ["sig.completed.v1"] = "All signatures are in — your document is complete.",
+        ["sig.partial_copy.v1"] = "Here's your signed copy — others may still be finishing.",
         ["sig.certificate.v1"] = "Your signature certificate of completion is ready to download.",
         ["sig.expired.v1"] = "This signature request has expired. Reach out if you still need to sign.",
         ["sig.declined.v1"] = "A signature request was cancelled. Here are the details.",
@@ -606,6 +611,78 @@ public static class NotificationTemplateSeedSource
                     "URL pública de descarga del documento firmado (opcional)."
                 ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+            ]
+        );
+
+    // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
+    // todavía no hayan terminado. Subject y copy dejan claro que es "in progress".
+    private static NotificationTemplateSeed SignaturePartialCopy { get; } =
+        new(
+            EventKey: "sig.partial_copy_ready.v1",
+            TemplateKey: "sig.partial_copy.v1",
+            Name: "Signature — Copia inmediata al firmar",
+            Subject: "{% if language == 'Es' %}Tu copia firmada de \"{{ document_title }}\" (en progreso){% else %}Your signed copy of \"{{ document_title }}\" (in progress){% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              {% if language == 'Es' %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu copia de lo que firmaste</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por firmar <strong>{{ document_title }}</strong> el {{ signed_at }} UTC.</td></tr>
+              {% if total_signers and total_signers > 1 %}
+              {% if send_sealed_to_signers %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>. Guárdala como constancia de tu firma.</td></tr>
+              {% endif %}
+              {% else %}
+              {% if send_sealed_to_signers %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Esta es tu copia con tu firma estampada. En breve recibirás el PDF final sellado con los sellos legales.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Esta es tu copia con tu firma estampada. Guárdala como constancia de tu firma.</td></tr>
+              {% endif %}
+              {% endif %}
+              {% else %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your copy of what you signed</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for signing <strong>{{ document_title }}</strong> on {{ signed_at }} UTC.</td></tr>
+              {% if total_signers and total_signers > 1 %}
+              {% if send_sealed_to_signers %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>. Keep it as a record of your signature.</td></tr>
+              {% endif %}
+              {% else %}
+              {% if send_sealed_to_signers %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">This is your copy with your signature stamped. The final sealed PDF with legal evidence will arrive shortly.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">This is your copy with your signature stamped. Keep it as a record of your signature.</td></tr>
+              {% endif %}
+              {% endif %}
+              {% endif %}
+              {% if download_link != nil and download_link != blank %}
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ download_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Descargar mi copia{% else %}Download my copy{% endif %}</a></td></tr></table>
+                </td>
+              </tr>
+              {% endif %}
+            </table>
+            """,
+            Variables:
+            [
+                ("full_name", VariableType.String, true, null, "Nombre del firmante destinatario."),
+                ("document_title", VariableType.String, true, null, "Título del documento firmado."),
+                ("signed_at", VariableType.String, true, null, "Fecha de firma del destinatario (UTC)."),
+                ("download_link", VariableType.Url, false, null, "URL de descarga del PDF parcial (opcional)."),
+                ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+                ("total_signers", VariableType.Number, false, "1", "Cantidad total de firmantes del request."),
+                (
+                    "send_sealed_to_signers",
+                    VariableType.Bool,
+                    false,
+                    "false",
+                    "True si el preparador va a enviar el PDF sellado al final."
+                ),
             ]
         );
 

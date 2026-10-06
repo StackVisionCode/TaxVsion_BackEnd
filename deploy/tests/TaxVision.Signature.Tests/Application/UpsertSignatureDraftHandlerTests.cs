@@ -147,7 +147,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             Description: null,
             Category: "ConsentToDisclose",
             TokenExpirationHours: 72,
-            SendSignedDocumentToSigners: null,
+            SendSealedDocumentToSigners: null,
             SendCertificateToSigners: null,
             AutoRemindersEnabled: null,
             ReminderIntervalHours: null,

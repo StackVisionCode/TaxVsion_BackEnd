@@ -14,7 +14,7 @@ public sealed record CreateSignatureTemplateCommand(
     bool RequiresConsent,
     bool GenerateCertificate,
     Guid? BaseDocumentFileId = null,
-    bool SendSignedDocumentToSigners = true,
+    bool SendSealedDocumentToSigners = true,
     bool SendCertificateToSigners = false,
     bool AutoRemindersEnabled = true,
     int ReminderIntervalHours = SignatureTemplate.DefaultReminderIntervalHours

@@ -125,7 +125,8 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
             Email = signer.Email.Value,
             FullName = signer.FullName.Value,
             Language = signer.Language,
-            ExpiresAtUtc = request.ExpiresAtUtc,
+            // Si no hay expiración, IsReminderDue ya filtró — nunca llegamos aquí sin valor.
+            ExpiresAtUtc = request.ExpiresAtUtc!.Value,
             RemindersSent = request.RemindersSent,
             PublicToken = token,
             PhoneE164 = signer.PhoneNumber?.Value,

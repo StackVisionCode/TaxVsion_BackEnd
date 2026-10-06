@@ -52,7 +52,7 @@ public static class ExtendExpirationHandler
                     CreatedByUserId = request.CreatedByUserId,
                     ExtendedByUserId = cmd.ExtendedByUserId,
                     AdditionalHours = cmd.AdditionalHours,
-                    NewExpiresAtUtc = request.ExpiresAtUtc,
+                    NewExpiresAtUtc = request.ExpiresAtUtc!.Value,
                     RevocationEpoch = request.RevocationEpoch,
                 }
             )

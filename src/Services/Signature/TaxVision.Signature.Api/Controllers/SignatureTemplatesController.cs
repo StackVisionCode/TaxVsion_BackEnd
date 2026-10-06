@@ -68,7 +68,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
             body.RequiresConsent,
             body.GenerateCertificate,
             body.BaseDocumentFileId,
-            body.SendSignedDocumentToSigners,
+            body.SendSealedDocumentToSigners,
             body.SendCertificateToSigners,
             body.AutoRemindersEnabled,
             body.ReminderIntervalHours
@@ -164,7 +164,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
                 body.RequiresSequentialSigning,
                 body.RequiresConsent,
                 body.GenerateCertificate,
-                body.SendSignedDocumentToSigners,
+                body.SendSealedDocumentToSigners,
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
                 body.ReminderIntervalHours

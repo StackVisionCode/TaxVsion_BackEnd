@@ -253,7 +253,7 @@ public sealed class SignatureRequestTests
         var sentAt = DateTime.UtcNow.AddDays(3);
         request.Send(sentAt);
 
-        Assert.Equal(sentAt.AddHours(request.TokenExpirationHours), request.ExpiresAtUtc);
+        Assert.Equal(sentAt.AddHours(request.TokenExpirationHours!.Value), request.ExpiresAtUtc);
     }
 
     [Fact]
@@ -360,7 +360,7 @@ public sealed class SignatureRequestTests
     public void ExtendExpiration_bumps_revocation_epoch_and_extends_expiry()
     {
         var request = NewDraft().Value;
-        var initial = request.ExpiresAtUtc;
+        var initial = request.ExpiresAtUtc!.Value;
 
         var result = request.ExtendExpiration(24);
 

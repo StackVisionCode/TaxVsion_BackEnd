@@ -234,7 +234,7 @@ public static class CreateSignatureRequestFromTemplateHandler
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
             generateCertificate: template.GenerateCertificate,
-            sendSignedDocumentToSigners: template.SendSignedDocumentToSigners,
+            sendSealedDocumentToSigners: template.SendSealedDocumentToSigners,
             sendCertificateToSigners: template.SendCertificateToSigners,
             autoRemindersEnabled: template.AutoRemindersEnabled,
             reminderIntervalHours: template.ReminderIntervalHours

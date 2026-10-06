@@ -40,7 +40,7 @@ public static class CreateSignatureTemplateHandler
             requiresConsent: cmd.RequiresConsent,
             generateCertificate: cmd.GenerateCertificate,
             baseDocumentFileId: cmd.BaseDocumentFileId,
-            sendSignedDocumentToSigners: cmd.SendSignedDocumentToSigners,
+            sendSealedDocumentToSigners: cmd.SendSealedDocumentToSigners,
             sendCertificateToSigners: cmd.SendCertificateToSigners,
             autoRemindersEnabled: cmd.AutoRemindersEnabled,
             reminderIntervalHours: cmd.ReminderIntervalHours

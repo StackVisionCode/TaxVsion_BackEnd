@@ -68,7 +68,10 @@ public sealed class SigningTokenService : ISigningTokenService
 
     private static string SerializePayload(SigningTokenPayload payload)
     {
-        var exp = new DateTimeOffset(payload.ExpiresAtUtc, TimeSpan.Zero).ToUnixTimeSeconds();
+        // F7 — sin expiración se omite el claim `exp` (JWT RFC 7519 lo permite opcional).
+        long? exp = payload.ExpiresAtUtc is DateTime at
+            ? new DateTimeOffset(at, TimeSpan.Zero).ToUnixTimeSeconds()
+            : null;
         var dto = new PayloadDto(
             payload.TenantId,
             payload.SignatureRequestId,
@@ -93,7 +96,7 @@ public sealed class SigningTokenService : ISigningTokenService
                 dto.r,
                 dto.s,
                 dto.e,
-                DateTimeOffset.FromUnixTimeSeconds(dto.exp).UtcDateTime,
+                dto.exp is long seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime : null,
                 dto.jti
             );
         }
@@ -152,5 +155,5 @@ public sealed class SigningTokenService : ISigningTokenService
 
     private sealed record HeaderDto(string alg, string typ, string kid);
 
-    private sealed record PayloadDto(Guid t, Guid r, Guid s, int e, long exp, string jti);
+    private sealed record PayloadDto(Guid t, Guid r, Guid s, int e, long? exp, string jti);
 }
