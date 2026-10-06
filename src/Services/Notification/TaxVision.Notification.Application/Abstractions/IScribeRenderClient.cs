@@ -1,10 +1,12 @@
-using BuildingBlocks.Messaging.EmailIntegrationEvents;
+﻿using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Notification.Application.Abstractions;
 
 /// <summary>
 /// Email ya renderizado (subject + HTML + texto plano opcional) devuelto por Scribe.
+/// <paramref name="DispatchScope"/> es de quien sale el correo, y lo decide el LAYOUT en Scribe, no el
+/// consumer — ver <c>EmailDispatchScope</c>.
 /// <paramref name="InlineAssets"/> son las referencias a logos/imágenes CID que Scribe resolvió para
 /// este render (Scribe Fase 4.5) — reusa <see cref="EmailInlineAssetReference"/> (BuildingBlocks)
 /// porque es el mismo tipo que después viaja sin cambios dentro de
@@ -17,11 +19,20 @@ public sealed record ScribeRenderedEmail(
     string Subject,
     string Html,
     string? Text,
-    IReadOnlyList<EmailInlineAssetReference> InlineAssets
+    IReadOnlyList<EmailInlineAssetReference> InlineAssets,
+    EmailDispatchScope DispatchScope
 )
 {
     public ScribeRenderedEmail(string Subject, string Html, string? Text)
-        : this(Subject, Html, Text, []) { }
+        : this(Subject, Html, Text, [], EmailDispatchScope.System) { }
+
+    public ScribeRenderedEmail(
+        string Subject,
+        string Html,
+        string? Text,
+        IReadOnlyList<EmailInlineAssetReference> InlineAssets
+    )
+        : this(Subject, Html, Text, InlineAssets, EmailDispatchScope.System) { }
 }
 
 /// <summary>

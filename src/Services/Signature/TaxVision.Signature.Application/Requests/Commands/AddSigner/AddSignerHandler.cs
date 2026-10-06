@@ -117,6 +117,10 @@ public static class AddSignerHandler
                     f.Label,
                     f.IsRequired
                 ))
-                .ToList()
+                .ToList(),
+            signer.PartialCopyRequestedAtUtc,
+            signer.PartialCopySentAtUtc,
+            signer.PartialCopyFileId,
+            signer.PartialCopyFailureReason
         );
 }

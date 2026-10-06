@@ -24,6 +24,18 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
         // Default true en la BD: los tenants existentes conservan el comportamiento actual (firma propia permitida).
         builder.Property(settings => settings.AllowEmployeeOwnSignature).HasDefaultValue(true).IsRequired();
 
+        // F7 — defaults por tenant.
+        builder.Property(settings => settings.SendPartialCopyDefault).HasDefaultValue(false).IsRequired();
+        builder
+            .Property(settings => settings.PartialCopyDefaultAudienceKind)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasDefaultValue(Domain.Requests.ValueObjects.PartialCopyAudienceKind.All)
+            .IsRequired();
+        // Default true en BD: tenants existentes mantienen el comportamiento histórico (sealed = ON).
+        builder.Property(settings => settings.SendSealedDocumentDefault).HasDefaultValue(true).IsRequired();
+        builder.Property(settings => settings.ExpirationEnabledByDefault).HasDefaultValue(true).IsRequired();
+
         builder.Property(settings => settings.AuditSecretEncrypted).HasMaxLength(512).IsRequired();
         builder.Property(settings => settings.AuditKeyVersion).IsRequired();
 

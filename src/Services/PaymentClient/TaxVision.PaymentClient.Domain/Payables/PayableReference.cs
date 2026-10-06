@@ -35,6 +35,15 @@ public sealed class PayableReference : TenantEntity
     /// <summary>True si el payable fue revocado (factura anulada) → el checkout debe rechazarlo.</summary>
     public bool IsRevoked => RevokedAtUtc is not null;
 
+    /// <summary>Fecha en que la factura quedó pagada. null = sigue cobrable.</summary>
+    public DateTime? SettledAtUtc { get; private set; }
+
+    /// <summary>
+    /// True si ya se cobró. Distinto de <see cref="IsRevoked"/> a propósito: anulada y pagada son
+    /// dos cosas, y al cliente hay que decirle cuál de las dos es.
+    /// </summary>
+    public bool IsSettled => SettledAtUtc is not null;
+
     private PayableReference() { }
 
     public static Result<PayableReference> Create(
@@ -99,6 +108,12 @@ public sealed class PayableReference : TenantEntity
     public void Revoke(DateTime nowUtc)
     {
         RevokedAtUtc ??= nowUtc;
+    }
+
+    /// <summary>Marca el payable como cobrado. Idempotente: el evento puede reentregarse.</summary>
+    public void Settle(DateTime nowUtc)
+    {
+        SettledAtUtc ??= nowUtc;
     }
 
     private static string GenerateReference()

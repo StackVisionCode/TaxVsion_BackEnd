@@ -9,10 +9,14 @@ public sealed record SignatureRequestSummary(
     SignatureRequestStatus Status,
     Guid OriginalFileId,
     int SignerCount,
-    DateTime ExpiresAtUtc,
+    DateTime? ExpiresAtUtc,
     DateTime CreatedAtUtc,
     DateTime? SentAtUtc,
-    DateTime? CompletedAtUtc
+    DateTime? CompletedAtUtc,
+    // F2.5: distingue el borrador propio del actor para pintarlo como "In preparation".
+    bool IsOwnedByActor,
+    // F3: hora UTC programada (si Status == Scheduled); null en otro caso.
+    DateTime? ScheduledSendAtUtc
 );
 
 public sealed record ListSignatureRequestsResult(

@@ -5,5 +5,5 @@ namespace TaxVision.Billing.Infrastructure.Payments;
 public sealed class BillingPaymentClientOptions
 {
     public const string SectionName = "Billing:PaymentClient";
-    public string BaseUrl { get; set; } = "http://localhost:5175";
+    public string BaseUrl { get; set; } = "http://localhost:5420";
 }

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Requests.Public;
+using TaxVision.Signature.Application.Requests.Public.GetDocument;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -45,6 +46,30 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
         var (ip, ua) = ExtractClientContext();
         var result = await bus.InvokeAsync<Result<PublicSignerView>>(new ViewPublicSignerCommand(token, ip, ua), ct);
         return MapResult(result);
+    }
+
+    // ---------- GET /signature/public/{token}/document ----------
+    // F5 — Sirve el PDF original al firmante autenticado por token. Gate real (403) si la
+    // verificación requerida no está completa: antes de F5 era solo UI y, al servir, el
+    // bypass por URL habría devuelto el documento sin verificar.
+    [HttpGet("{token}/document")]
+    [RateLimitExempt(PublicExemptReason)]
+    [EnableRateLimiting("public-signature-document")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetDocument([FromRoute] string token, CancellationToken ct)
+    {
+        var (ip, ua) = ExtractClientContext();
+        var result = await bus.InvokeAsync<Result<PublicDocumentStream>>(
+            new GetPublicDocumentCommand(token, ip, ua),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        var stream = result.Value;
+        return File(stream.Content, stream.ContentType, stream.FileName);
     }
 
     // ---------- POST /signature/public/{token}/consent ----------

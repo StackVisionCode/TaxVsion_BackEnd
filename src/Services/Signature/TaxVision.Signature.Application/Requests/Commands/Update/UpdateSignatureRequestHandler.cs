@@ -33,9 +33,9 @@ public static class UpdateSignatureRequestHandler
             return metadata;
 
         // Flags de entrega/reminders: solo se tocan si vienen en el body (edición parcial).
-        if (cmd.SendSignedDocumentToSigners is { } signedDelivery)
+        if (cmd.SendSealedDocumentToSigners is { } signedDelivery)
         {
-            var applied = request.SetSignedDocumentDelivery(signedDelivery);
+            var applied = request.SetSealedDocumentDelivery(signedDelivery);
             if (applied.IsFailure)
                 return applied;
         }
@@ -53,6 +53,20 @@ public static class UpdateSignatureRequestHandler
                 remindersEnabled,
                 cmd.ReminderIntervalHours ?? request.ReminderIntervalHours
             );
+            if (applied.IsFailure)
+                return applied;
+        }
+
+        if (cmd.SendPartialCopyOnEachSignature is { } partialOn)
+        {
+            var applied = request.SetSendPartialCopy(partialOn, cmd.PartialCopyAudience);
+            if (applied.IsFailure)
+                return applied;
+        }
+
+        if (cmd.ExpirationEnabled is { } expOn)
+        {
+            var applied = expOn ? request.EnableExpiration(cmd.TokenExpirationHours) : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }

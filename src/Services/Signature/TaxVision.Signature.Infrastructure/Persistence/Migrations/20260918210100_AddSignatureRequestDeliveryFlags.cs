@@ -21,7 +21,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             // Default TRUE: preserva el comportamiento histórico (el documento firmado siempre se
             // emailaba). Las filas existentes backfillean a true; el default C# del aggregate también es true.
             migrationBuilder.AddColumn<bool>(
-                name: "SendSignedDocumentToSigners",
+                name: "SendSealedDocumentToSigners",
                 table: "SignatureRequests",
                 type: "bit",
                 nullable: false,
@@ -34,7 +34,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropColumn(name: "SendCertificateToSigners", table: "SignatureRequests");
 
-            migrationBuilder.DropColumn(name: "SendSignedDocumentToSigners", table: "SignatureRequests");
+            migrationBuilder.DropColumn(name: "SendSealedDocumentToSigners", table: "SignatureRequests");
         }
     }
 }

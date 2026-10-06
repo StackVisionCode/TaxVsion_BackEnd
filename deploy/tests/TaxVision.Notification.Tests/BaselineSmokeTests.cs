@@ -1,6 +1,7 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -20,7 +21,8 @@ namespace TaxVision.Notification.Tests;
 /// Baseline smoke suite exigida por Notifications Fase 0 (Notifications_Service_Responsibility_Cleanup_Plan §36).
 /// Se actualiza en Fase 3: los consumers de email ahora reciben <see cref="IEmailDispatchGateway"/> en vez de
 /// <see cref="NotificationDispatcher"/>. El comportamiento observable a nivel de aggregate es idéntico
-/// (NotificationLog + attempt + status Sent) — el gateway InProcess reproduce el flujo del dispatcher.
+/// (NotificationLog + attempt) — desde 2026-10-02 el único gateway es EventBased: encola y publica
+/// hacia Postmaster, y el Sent real lo escribe el callback, así que el status observable es Queued.
 ///
 /// <para>
 /// Alcance: fake-based unit tests que invocan directamente el método Handle de cada consumer
@@ -32,14 +34,14 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task PasswordReset_Consumer_Invokes_Gateway_And_Records_Sent()
     {
-        var emailSender = new RecordingEmailSender();
+        var publisher = new RecordingIntegrationEventPublisher();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
-        var gateway = new InProcessEmailDispatchGateway(
-            emailSender,
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
             logRepo,
             uow,
-            NullLogger<InProcessEmailDispatchGateway>.Instance
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var portal = Options.Create(new PortalOptions { BaseUrl = "https://app.test", ProductName = "TaxVision" });
         var correlation = new NoOpCorrelationContext();
@@ -64,14 +66,18 @@ public sealed class BaselineSmokeTests
             CancellationToken.None
         );
 
-        Assert.Single(emailSender.Sent);
-        Assert.Equal("user@test.com", emailSender.Sent[0].To);
+        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
+            Assert.Single(publisher.Published)
+        );
+        Assert.Equal("user@test.com", request.To);
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
         Assert.Equal(NotificationChannel.Email, log.Channel);
-        Assert.Equal(NotificationStatus.Sent, log.Status);
+        // Pending, no Sent: desde que Postmaster es el único transporte, el gateway encola y el
+        // Sent real lo escribe el callback de Postmaster (PostmasterOutboundEmailCallbackConsumers).
+        Assert.Equal(NotificationStatus.Pending, log.Status);
         Assert.Single(log.Attempts);
-        Assert.Equal(NotificationDispatchAttemptStatus.Sent, log.Attempts.First().Status);
+        Assert.Equal(NotificationDispatchAttemptStatus.Queued, log.Attempts.First().Status);
         Assert.Equal(evt.TenantId, log.TenantId);
         Assert.Equal(1, uow.SaveCount);
     }
@@ -79,14 +85,14 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task SignerInvited_Consumer_Invokes_Gateway_And_Records_Sent()
     {
-        var emailSender = new RecordingEmailSender();
+        var publisher = new RecordingIntegrationEventPublisher();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
-        var gateway = new InProcessEmailDispatchGateway(
-            emailSender,
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
             logRepo,
             uow,
-            NullLogger<InProcessEmailDispatchGateway>.Instance
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
         var correlation = new NoOpCorrelationContext();
         var scribeClient = new FakeScribeRenderClient();
@@ -119,14 +125,18 @@ public sealed class BaselineSmokeTests
             CancellationToken.None
         );
 
-        Assert.Single(emailSender.Sent);
-        Assert.Equal("signer@customer.com", emailSender.Sent[0].To);
+        var request = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
+            Assert.Single(publisher.Published)
+        );
+        Assert.Equal("signer@customer.com", request.To);
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
         Assert.Equal(NotificationChannel.Email, log.Channel);
-        Assert.Equal(NotificationStatus.Sent, log.Status);
+        // Pending, no Sent: desde que Postmaster es el único transporte, el gateway encola y el
+        // Sent real lo escribe el callback de Postmaster (PostmasterOutboundEmailCallbackConsumers).
+        Assert.Equal(NotificationStatus.Pending, log.Status);
         Assert.Single(log.Attempts);
-        Assert.Equal(NotificationDispatchAttemptStatus.Sent, log.Attempts.First().Status);
+        Assert.Equal(NotificationDispatchAttemptStatus.Queued, log.Attempts.First().Status);
         Assert.Equal(evt.TenantId, log.TenantId);
         Assert.Equal(1, uow.SaveCount);
     }
@@ -134,7 +144,6 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task MeetingRecordingReady_Consumer_Records_InApp_NotificationLog()
     {
-        var emailSender = new RecordingEmailSender();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
@@ -162,7 +171,6 @@ public sealed class BaselineSmokeTests
 
         await MeetingRecordingReadyConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
 
-        Assert.Empty(emailSender.Sent); // in-app no envía email
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
         Assert.Equal(NotificationChannel.InApp, log.Channel);
@@ -175,7 +183,6 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task MeetingRecordingFailed_Consumer_Records_InApp_NotificationLog_For_Host()
     {
-        var emailSender = new RecordingEmailSender();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
@@ -200,7 +207,6 @@ public sealed class BaselineSmokeTests
 
         await MeetingRecordingFailedConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
 
-        Assert.Empty(emailSender.Sent);
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
         Assert.Equal(NotificationChannel.InApp, log.Channel);
@@ -212,7 +218,6 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task CallRecordingReady_Consumer_Records_InApp_NotificationLog_For_Both_Participants()
     {
-        var emailSender = new RecordingEmailSender();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
@@ -239,7 +244,6 @@ public sealed class BaselineSmokeTests
 
         await CallRecordingReadyConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
 
-        Assert.Empty(emailSender.Sent);
         Assert.Equal(2, logRepo.Logs.Count);
         Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CallerUserId:N}");
         Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CalleeUserId:N}");
@@ -251,7 +255,6 @@ public sealed class BaselineSmokeTests
     [Fact]
     public async Task CallRecordingFailed_Consumer_Records_InApp_NotificationLog_For_Both_Participants()
     {
-        var emailSender = new RecordingEmailSender();
         var logRepo = new RecordingNotificationLogRepository();
         var uow = new NoOpUnitOfWork();
         var correlation = new NoOpCorrelationContext();
@@ -277,7 +280,6 @@ public sealed class BaselineSmokeTests
 
         await CallRecordingFailedConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
 
-        Assert.Empty(emailSender.Sent);
         Assert.Equal(2, logRepo.Logs.Count);
         Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CallerUserId:N}");
         Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CalleeUserId:N}");
@@ -298,17 +300,6 @@ public sealed class BaselineSmokeTests
             IReadOnlyDictionary<string, object?> variables,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success(new ScribeRenderedEmail("Test subject", "<p>Test body</p>", "Test body")));
-    }
-
-    private sealed class RecordingEmailSender : IEmailSender
-    {
-        public List<EmailMessage> Sent { get; } = new();
-
-        public Task<Result> SendAsync(EmailMessage message, CancellationToken ct = default)
-        {
-            Sent.Add(message);
-            return Task.FromResult(Result.Success());
-        }
     }
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
@@ -429,5 +420,17 @@ public sealed class BaselineSmokeTests
 
         public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class RecordingIntegrationEventPublisher : IIntegrationEventPublisher
+    {
+        public List<object> Published { get; } = new();
+
+        public Task PublishAsync<T>(T integrationEvent, CancellationToken ct = default)
+            where T : class
+        {
+            Published.Add(integrationEvent);
+            return Task.CompletedTask;
+        }
     }
 }

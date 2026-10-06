@@ -1,4 +1,4 @@
-using BuildingBlocks.Results;
+﻿using BuildingBlocks.Results;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
 

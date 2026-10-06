@@ -32,7 +32,7 @@ public static class CreateSignatureProfileHandler
         if (cmd.OwnerUserId is not null)
         {
             var settings = await settingsRepository.GetByTenantIdAsync(cmd.TenantId, ct);
-            if (!SignatureVisibilityPolicy.CanUsePersonal(cmd.ActorIsAdmin, settings))
+            if (!SignatureVisibilityPolicy.CanUsePersonal(cmd.ActorIsAdmin, cmd.ActorHasSignOwn, settings))
                 return Result.Failure<SignatureProfileResponse>(SignatureProfileErrors.OwnSignatureDisabled);
         }
 

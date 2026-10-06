@@ -51,6 +51,11 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
 
         builder.Property(signer => signer.CurrentTokenId).HasMaxLength(64);
         builder.Property(signer => signer.SignedAtUtc);
+        // F7 — una sola vez: cuando el aggregate decide enganchar la copia parcial para este signer.
+        builder.Property(signer => signer.PartialCopyRequestedAtUtc);
+        builder.Property(signer => signer.PartialCopySentAtUtc);
+        builder.Property(signer => signer.PartialCopyFileId);
+        builder.Property(signer => signer.PartialCopyFailureReason).HasMaxLength(500);
         builder.Property(signer => signer.RejectedAtUtc);
         builder.Property(signer => signer.RejectReason).HasMaxLength(2000);
         builder.Property(signer => signer.ClientIp).HasMaxLength(45);

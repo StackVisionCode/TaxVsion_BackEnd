@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
@@ -118,16 +118,12 @@ public static class ReminderDueConsumer
         ).EnsureRendered("reminder.due.v1");
 
         await gateway.QueueEmailAsync(
-            new EmailDispatchRequest(
-                TenantId: evt.TenantId,
-                To: email,
-                Subject: render.Subject,
-                HtmlBody: render.Html,
-                TextBody: render.Text ?? string.Empty,
-                TemplateKey: TemplateKey,
-                RelatedEventId: evt.EventId,
-                CorrelationId: correlation.CorrelationId,
-                InlineAssets: render.InlineAssets
+            render.ToDispatchRequest(
+                tenantId: evt.TenantId,
+                to: email,
+                templateKey: TemplateKey,
+                relatedEventId: evt.EventId,
+                correlationId: correlation.CorrelationId
             ),
             ct
         );

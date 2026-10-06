@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using BuildingBlocks.Caching;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -97,26 +98,39 @@ public sealed class IntellipayGateway(
         fields["merchantkey"] = Options.MerchantKey;
         fields["apikey"] = Options.ApiKey;
 
-        using var response = await http.PostAsync(Options.BaseUrl, new FormUrlEncodedContent(fields), ct);
-
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            logger.LogWarning("Intellipay {Method} returned HTTP {StatusCode}", method, (int)response.StatusCode);
-            return new IntellipayResponse
-            {
-                Status = "0",
-                Response = "http_error",
-                Message = $"HTTP {(int)response.StatusCode}",
-            };
-        }
+            using var response = await http.PostAsync(Options.BaseUrl, new FormUrlEncodedContent(fields), ct);
 
-        var parsed = await response.Content.ReadFromJsonAsync<IntellipayResponse>(ct);
-        return parsed
-            ?? new IntellipayResponse
+            if (!response.IsSuccessStatusCode)
             {
-                Status = "0",
-                Response = "parse_error",
-                Message = "Empty or invalid Intellipay response.",
-            };
+                logger.LogWarning("Intellipay {Method} returned HTTP {StatusCode}", method, (int)response.StatusCode);
+                return Failed("http_error", $"HTTP {(int)response.StatusCode}");
+            }
+
+            var parsed = await response.Content.ReadFromJsonAsync<IntellipayResponse>(ct);
+            return parsed ?? Failed("parse_error", "Empty or invalid Intellipay response.");
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Intellipay {Method} returned invalid JSON.", method);
+            return Failed("parse_error", "Invalid Intellipay response.");
+        }
+        catch (Exception ex) when (IsTransportFailure(ex, ct))
+        {
+            logger.LogWarning(ex, "Intellipay {Method} request failed.", method);
+            return Failed("http_error", "Intellipay request failed.");
+        }
     }
+
+    private static IntellipayResponse Failed(string response, string message) =>
+        new()
+        {
+            Status = "0",
+            Response = response,
+            Message = message,
+        };
+
+    private static bool IsTransportFailure(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested && ex is OperationCanceledException or HttpRequestException or TimeoutException;
 }

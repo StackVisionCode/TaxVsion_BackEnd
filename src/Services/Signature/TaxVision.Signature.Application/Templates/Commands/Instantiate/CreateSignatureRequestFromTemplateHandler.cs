@@ -234,7 +234,7 @@ public static class CreateSignatureRequestFromTemplateHandler
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
             generateCertificate: template.GenerateCertificate,
-            sendSignedDocumentToSigners: template.SendSignedDocumentToSigners,
+            sendSealedDocumentToSigners: template.SendSealedDocumentToSigners,
             sendCertificateToSigners: template.SendCertificateToSigners,
             autoRemindersEnabled: template.AutoRemindersEnabled,
             reminderIntervalHours: template.ReminderIntervalHours
@@ -296,7 +296,12 @@ public static class CreateSignatureRequestFromTemplateHandler
                 return placed;
         }
 
-        var effective = await effectiveResolver.ResolveAsync(cmd.TenantId, cmd.CreatedByUserId, ct);
+        var effective = await effectiveResolver.ResolveAsync(
+            cmd.TenantId,
+            cmd.CreatedByUserId,
+            cmd.ActorCanSignOwn,
+            ct
+        );
         if (effective.IsSuccess)
             request.SetPreparerSignature(effective.Value.FileId);
 
@@ -325,7 +330,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (hashResult.IsFailure)
             return;
 
-        request.MarkReadyForSending(hashResult.Value);
+        request.AttachOriginalHash(hashResult.Value);
     }
 
     private static Task PublishCreatedEventAsync(

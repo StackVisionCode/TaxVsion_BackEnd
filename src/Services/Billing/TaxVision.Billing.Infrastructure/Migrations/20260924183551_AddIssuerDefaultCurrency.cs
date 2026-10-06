@@ -17,16 +17,14 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 type: "nvarchar(3)",
                 maxLength: 3,
                 nullable: false,
-                defaultValue: "USD");
+                defaultValue: "USD"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DefaultCurrency",
-                schema: "billing",
-                table: "IssuerProfiles");
+            migrationBuilder.DropColumn(name: "DefaultCurrency", schema: "billing", table: "IssuerProfiles");
         }
     }
 }

@@ -155,19 +155,4 @@ public static partial class RateLimitPolicyCatalog
         RateLimitAlgorithm.TokenBucket,
         overlayQuota: 600
     );
-
-    // Único endpoint del servicio que hace un handshake SMTP síncrono dentro del propio request
-    // (invoca ISmtpSendClient directo, no pasa por IEmailDeliveryService) — a diferencia de los
-    // "envíos" G de arriba, acá el HTTP en sí NO es barato y puede disparar throttling/blacklist
-    // del proveedor SMTP si se abusa. Cuota ajustada, mismo criterio que customer.i.imports.
-    public static readonly RateLimitPolicyDefinition NotificationConfigurationTest = Define(
-        "notification.i.configuration_test",
-        RateLimitCategory.I,
-        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
-        [RateLimitPartitionDimension.Tenant],
-        quota: 15,
-        windowSeconds: 3600,
-        RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 40
-    );
 }

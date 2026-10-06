@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "8a4e1f2d-6c7b-4d5a-9f8e-3b2c1d0a9e7f",
 		"name": "TaxVision - Postmaster",
-		"description": "Coleccion del microservicio Postmaster de TaxVision (envio de email transaccional, providers de tenant/sistema, suppression list, timeline de eventos de un SentMessage). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). 4 controllers reales, 11 acciones en total: MessagesController (1, HTTP normal con [HasPermission]), ProvidersController (6, HTTP normal, uno de ellos PlatformAdmin-only), SuppressionController (3, HTTP normal), CorrespondenceMessagesController (1, M2M puro con policy ServiceOnly — ver carpeta 'Correspondence Messages (M2M)' mas abajo, NO debe llamarse con un token de usuario normal). Postmaster no expone ningun endpoint de 'send' generico para uso directo del frontend: el envio real llega por dos caminos que no estan en esta coleccion porque no son HTTP invocables manualmente — (1) el consumer de eventos `notifications.email_send_requested.v1` (canal automatico, Notification -> Postmaster via Wolverine/broker) y (2) el M2M sincrono que si esta documentado acá (Correspondence -> Postmaster). Fase 16.5 (hardening): los 4 codigos de error 'NotFound' propios de Postmaster (SentMessage.NotFound, TenantEmailProvider.NotFound, SystemEmailProvider.NotFound, SuppressionListEntry.NotFound) ya estan mapeados a 404 en BuildingBlocks.Web.Results.ErrorHttpMapping.cs — el gap documentado en la Fase 16 original (los 4 cayendo al default 400) quedo cerrado, y los pm.test de esta coleccion esperan 404 en los casos donde el recurso no existe.",
+		"description": "Coleccion del microservicio Postmaster de TaxVision (envio de email transaccional, provider del sistema, suppression list, timeline de eventos de un SentMessage). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). 4 controllers reales, 11 acciones en total: MessagesController (1, HTTP normal con [HasPermission]), ProvidersController (6, HTTP normal, uno de ellos PlatformAdmin-only), SuppressionController (3, HTTP normal), CorrespondenceMessagesController (1, M2M puro con policy ServiceOnly — ver carpeta 'Correspondence Messages (M2M)' mas abajo, NO debe llamarse con un token de usuario normal). Postmaster no expone ningun endpoint de 'send' generico para uso directo del frontend: el envio real llega por dos caminos que no estan en esta coleccion porque no son HTTP invocables manualmente — (1) el consumer de eventos `notifications.email_send_requested.v1` (canal automatico, Notification -> Postmaster via Wolverine/broker) y (2) el M2M sincrono que si esta documentado acá (Correspondence -> Postmaster). Fase 16.5 (hardening): los 4 codigos de error 'NotFound' propios de Postmaster (SentMessage.NotFound, TenantEmailProvider.NotFound, SystemEmailProvider.NotFound, SuppressionListEntry.NotFound) ya estan mapeados a 404 en BuildingBlocks.Web.Results.ErrorHttpMapping.cs — el gap documentado en la Fase 16 original (los 4 cayendo al default 400) quedo cerrado, y los pm.test de esta coleccion esperan 404 en los casos donde el recurso no existe.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -87,7 +87,7 @@
 								}
 							]
 						},
-						"description": "Resumen de estado para la UI de configuracion (nunca expone el password, ni cifrado): hasSystemProvider, hasTenantProvider, tenantProviderHealthy, lastCheckAtUtc, tenantProviderConfig{fromAddress,host}. No devuelve un Result — siempre 200 si TryResolveTenantId resuelve, 403 (Forbid) si no. Requiere postmaster.providers.read."
+						"description": "De donde sale el correo de esta oficina: hasSystemProvider, hasConnectedMailbox, connectedMailbox{emailAddress,providerCode}. Nunca expone secretos.\n\nSi la oficina tiene buzon conectado en Connectors (Gmail, Graph o SMTP manual), el correo sale desde su direccion. Si no, sale por el remitente del sistema EN SU NOMBRE, con Reply-To a quien lo manda -- salvo campanas, que no caen al sistema.\n\nAntes informaba sobre TenantEmailProvider (tabla de SMTP por oficina): retirada el 2026-10-02 por redundante con el buzon de Connectors; sus 4 endpoints (GET/POST/PUT/DELETE postmaster/tenants/{tenantId}/provider) ya no existen.\n\nNo devuelve un Result: siempre 200 si TryResolveTenantId resuelve, 403 (Forbid) si no. Requiere postmaster.providers.read."
 					},
 					"response": [],
 					"event": [
@@ -103,194 +103,6 @@
 									"    pm.expect([403]).to.include(pm.response.code);",
 									"  }",
 									"});"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "GetTenantProvider",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/postmaster/tenants/{{tenantId}}/provider?providerCode={{postmasterProviderCode}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"postmaster",
-								"tenants",
-								"{{tenantId}}",
-								"provider"
-							],
-							"query": [
-								{
-									"key": "providerCode",
-									"value": "{{postmasterProviderCode}}"
-								}
-							]
-						},
-						"description": "Config del provider del tenant identificado por `providerCode` (nunca incluye el password, ni siquiera cifrado). Requiere postmaster.providers.read. Errores reales: TenantEmailProvider.NotFound (404, Fase 16.5), Forbid si el tenantId de la ruta no coincide con el del JWT y el caller no es PlatformAdmin (403)."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test(\"status 200 with providerCode, or documented error\", () => {",
-									"  if (pm.response.code === 200) {",
-									"    pm.expect(pm.response.json()).to.have.property(\"providerCode\");",
-									"  } else {",
-									"    pm.expect([403, 404]).to.include(pm.response.code);",
-									"  }",
-									"});"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "CreateTenantProvider",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"providerCode\": \"{{postmasterProviderCode}}\",\n  \"displayName\": \"SMTP corporativo\",\n  \"providerType\": \"Smtp\",\n  \"fromAddressDefault\": \"no-reply@miempresa.com\",\n  \"fromDisplayNameDefault\": \"MiEmpresa\",\n  \"host\": \"smtp.miempresa.com\",\n  \"port\": 587,\n  \"useTls\": true,\n  \"username\": \"no-reply@miempresa.com\",\n  \"password\": \"{{postmasterProviderPassword}}\",\n  \"rateLimitPerMinute\": 60\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/postmaster/tenants/{{tenantId}}/provider",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"postmaster",
-								"tenants",
-								"{{tenantId}}",
-								"provider"
-							]
-						},
-						"description": "Upsert full-replace del provider propio del tenant (mismo handler que Update — POST y PUT comparten UpsertTenantEmailProviderCommand). `providerType` es `Smtp` | `GmailSend` | `GraphSend`; `host` es obligatorio solo para `Smtp`. `password` llega en claro en el body y Postmaster lo cifra (`ISecretProtector`) antes de persistir — nunca se devuelve en ninguna respuesta. Requiere postmaster.providers.write. Errores reales: TenantEmailProvider.DisplayName / FromAddressDefault / Host / RateLimitPerMinute (400, validacion de dominio), Forbid si el tenantId de la ruta no coincide con el del JWT (403)."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test(\"status 204 or documented error\", () => [204, 400, 403].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "UpdateTenantProvider",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"providerCode\": \"{{postmasterProviderCode}}\",\n  \"displayName\": \"SMTP corporativo\",\n  \"providerType\": \"Smtp\",\n  \"fromAddressDefault\": \"no-reply@miempresa.com\",\n  \"fromDisplayNameDefault\": \"MiEmpresa\",\n  \"host\": \"smtp.miempresa.com\",\n  \"port\": 587,\n  \"useTls\": true,\n  \"username\": \"no-reply@miempresa.com\",\n  \"password\": \"{{postmasterProviderPassword}}\",\n  \"rateLimitPerMinute\": 120\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/postmaster/tenants/{{tenantId}}/provider",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"postmaster",
-								"tenants",
-								"{{tenantId}}",
-								"provider"
-							]
-						},
-						"description": "Mismo cuerpo y mismo handler que Create (upsert full-replace, UpsertTenantEmailProviderCommand) — el metodo HTTP es la unica diferencia semantica, ambos crean si no existe y reemplazan si existe. Requiere postmaster.providers.write. Mismos errores reales que Create."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test(\"status 204 or documented error\", () => [204, 400, 403].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "DisableTenantProvider",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/postmaster/tenants/{{tenantId}}/provider?providerCode={{postmasterProviderCode}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"postmaster",
-								"tenants",
-								"{{tenantId}}",
-								"provider"
-							],
-							"query": [
-								{
-									"key": "providerCode",
-									"value": "{{postmasterProviderCode}}"
-								}
-							]
-						},
-						"description": "Deshabilita (soft, no borra la fila) el provider del tenant identificado por `providerCode`. Requiere postmaster.providers.write. Errores reales: TenantEmailProvider.NotFound (404, Fase 16.5), Forbid si el tenantId de la ruta no coincide con el del JWT (403)."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test(\"status 204 or documented error\", () => [204, 403, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
 								]
 							}
 						}

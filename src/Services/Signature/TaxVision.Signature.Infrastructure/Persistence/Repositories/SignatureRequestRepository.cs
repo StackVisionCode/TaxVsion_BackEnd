@@ -120,7 +120,8 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .Take(batchSize)
             .ToListAsync(ct);
 
-    // Retención de borradores: Draft/Ready sin enviar, sin LegalHold y sin tocar desde el corte.
+    // Retención: Draft sin enviar, sin LegalHold y sin tocar desde el corte. Incluye Ready
+    // históricos (obsoleto desde F2) con la misma semántica para no dejarlos huérfanos.
     public async Task<IReadOnlyList<SignatureRequest>> ListStaleUnsentAsync(
         DateTime olderThanUtc,
         int batchSize,
@@ -130,7 +131,11 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .SignatureRequests.IgnoreQueryFilters()
             .Where(r =>
                 !r.LegalHold
-                && (r.Status == SignatureRequestStatus.Draft || r.Status == SignatureRequestStatus.Ready)
+                && (r.Status == SignatureRequestStatus.Draft
+#pragma warning disable CS0618
+                    || r.Status == SignatureRequestStatus.Ready
+#pragma warning restore CS0618
+                )
                 && r.UpdatedAtUtc <= olderThanUtc
             )
             .OrderBy(r => r.UpdatedAtUtc)
@@ -157,4 +162,22 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         await db.SignatureRequests.AddAsync(request, ct);
 
     public void Remove(SignatureRequest request) => db.SignatureRequests.Remove(request);
+
+    // F3: Scheduled cuya hora ya llegó. Include(Signers) porque Send() los itera para rotar tokens.
+    public async Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(r => r.Signers)
+            .Where(r =>
+                r.Status == SignatureRequestStatus.Scheduled
+                && r.ScheduledSendAtUtc != null
+                && r.ScheduledSendAtUtc <= nowUtc
+            )
+            .OrderBy(r => r.ScheduledSendAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
 }

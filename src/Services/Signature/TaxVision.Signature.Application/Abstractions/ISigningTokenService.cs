@@ -13,7 +13,8 @@ public sealed record SigningTokenPayload(
     Guid SignatureRequestId,
     Guid SignerId,
     int RevocationEpoch,
-    DateTime ExpiresAtUtc,
+    // F7 — null cuando la request no tiene expiración (el token tampoco añade `exp` al JWT).
+    DateTime? ExpiresAtUtc,
     string TokenId
 );
 

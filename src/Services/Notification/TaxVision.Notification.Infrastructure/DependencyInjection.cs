@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -13,7 +13,6 @@ using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending;
 using TaxVision.Notification.Application.RateLimiting.Abstractions;
 using TaxVision.Notification.Infrastructure.Directory;
-using TaxVision.Notification.Infrastructure.Email;
 using TaxVision.Notification.Infrastructure.Permissions;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
@@ -39,7 +38,6 @@ public static class DependencyInjection
         services.AddDbContext<NotificationDbContext>(options => options.UseSqlServer(connectionString));
 
         services.Configure<PortalOptions>(configuration.GetSection(PortalOptions.SectionName));
-        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
@@ -88,7 +86,6 @@ public static class DependencyInjection
         services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();
         services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
         services.AddScoped<UserEmailResolver>();
-        services.AddScoped<IEmailSender, SmtpEmailSender>();
 
         // SMS: por defecto se usa el puente real al microservicio Sms (Infobip resuelve proveedor,
         // opt-out, idempotencia). `Notification:UseSmsBridge=false` cae al stub que solo loguea —
@@ -126,66 +123,19 @@ public static class DependencyInjection
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
 
-        // Notification:UsePostmasterDispatch selecciona el gateway de envío:
-        // - true (default): publica notifications.email_send_requested.v1 hacia Postmaster; los
-        //   callbacks PostmasterEmailDelivery* actualizan el NotificationDispatchAttempt.
-        // - false (rollback explícito): gateway in-process, envío via SmtpEmailSender directo —
-        //   InProcessEmailDispatchGateway se mantiene como fallback, no se elimina.
-        //
-        // GetValue<bool> con la clave ausente resuelve a false — por eso el default real está
-        // fijado explícitamente en appsettings.json y en el fallback de docker-compose.yml, no
-        // solo acá.
-        var usePostmasterDispatch = configuration.GetValue<bool>("Notification:UsePostmasterDispatch");
-        if (usePostmasterDispatch)
-        {
-            services.AddScoped<IEmailDispatchGateway, EventBasedEmailDispatchGateway>();
-        }
-        else
-        {
-            services.AddScoped<IEmailDispatchGateway, InProcessEmailDispatchGateway>();
-        }
-
-        // Mismo flag, segundo punto de invocación: EmailDeliveryService es el transporte real
-        // detrás de POST /notifications/email/send y de EmailCampaigns. Se reusa
-        // Notification:UsePostmasterDispatch en vez de un flag propio porque ambos interruptores
-        // responden la misma pregunta operacional ("¿Postmaster ya es el único transporte de
-        // salida de Notification?") — tenerlos separados solo crearía combinaciones a medio
-        // migrar sin ningún beneficio real.
-        //
-        // - true (default): PostmasterEmailDeliveryService — publica
-        //   notifications.email_send_requested.v1; los callbacks los resuelve
-        //   PostmasterOutboundEmailCallbackConsumers (resuelve contra OutboundEmailMessage, no
-        //   contra NotificationLog como el gateway de arriba).
-        // - false (rollback explícito): EmailDeliveryService — resuelve EmailProviderConfiguration
-        //   propia y envía via ISmtpSendClient/SystemNetSmtpSendClient.
-        if (usePostmasterDispatch)
-        {
-            services.AddScoped<IEmailDeliveryService, PostmasterEmailDeliveryService>();
-        }
-        else
-        {
-            services.AddScoped<IEmailDeliveryService, EmailDeliveryService>();
-        }
+        // Postmaster es el ÚNICO transporte de salida. Hasta 2026-10-02 esto colgaba del flag
+        // Notification:UsePostmasterDispatch, cuya rama `false` resolvía contra
+        // EmailProviderConfigurations — una tabla vacía en dev y en producción, así que el
+        // "rollback" no encendía nada. Un interruptor de emergencia que no funciona es peor que no
+        // tenerlo: el día que algo arda, alguien lo gira y pierde una hora entendiendo por qué no
+        // pasó nada. Se retiró el flag, sus dos ramas y toda la cadena que las sostenía.
+        services.AddScoped<IEmailDispatchGateway, EventBasedEmailDispatchGateway>();
+        services.AddScoped<IEmailDeliveryService, PostmasterEmailDeliveryService>();
         services.AddScoped<INotificationLogQueryRepository, NotificationLogQueryRepository>();
         services.AddScoped<IIntegrationEventPublisher, Messaging.WolverineIntegrationEventPublisher>();
 
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.
         services.AddSecretProtection();
-
-        // Módulo de configuración SMTP/API (proveedores de envío). No se retira aunque el default
-        // ya sea Postmaster: mientras el flag siga existiendo como rollback,
-        // EmailProviderConfigurationRepository/EmailConfigurationResolver/SystemNetSmtpSendClient
-        // tienen que seguir registrados y funcionales. También los sigue usando
-        // TestEmailConfiguration (POST /notifications/email/configurations/{id}/test), que no pasa
-        // por EmailDeliveryService ni por el flag. Retiro completo condicionado a una fase futura,
-        // cuando haya confianza operacional real para eliminar InProcessEmailDispatchGateway/
-        // EmailDeliveryService y el flag mismo.
-        // SmtpEmailSender (IEmailSender, distinto de ISmtpSendClient) no es parte de esta cadena —
-        // lo usa InProcessEmailDispatchGateway (el otro path) vía SmtpOptions global, nada que ver
-        // con EmailProviderConfiguration por tenant.
-        services.AddScoped<IEmailProviderConfigurationRepository, EmailProviderConfigurationRepository>();
-        services.AddScoped<IEmailConfigurationResolver, EmailConfigurationResolver>();
-        services.AddScoped<ISmtpSendClient, SystemNetSmtpSendClient>();
 
         // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage). Se conserva
         // por su superficie HTTP de gestión de plantillas (GET/POST /notifications/email/templates),

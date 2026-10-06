@@ -59,6 +59,7 @@ public sealed class SignatureProfileHandlersTests
                 Tenant,
                 User,
                 ActorIsAdmin: false,
+                ActorHasSignOwn: true,
                 OwnerUserId: User,
                 "Blue",
                 MinimalPng()
@@ -87,6 +88,7 @@ public sealed class SignatureProfileHandlersTests
                 Tenant,
                 User,
                 ActorIsAdmin: false,
+                ActorHasSignOwn: true,
                 OwnerUserId: User,
                 "Second",
                 MinimalPng()
@@ -114,6 +116,7 @@ public sealed class SignatureProfileHandlersTests
                 Tenant,
                 User,
                 ActorIsAdmin: false,
+                ActorHasSignOwn: true,
                 OwnerUserId: User,
                 "Extra",
                 MinimalPng()
@@ -137,6 +140,7 @@ public sealed class SignatureProfileHandlersTests
                 Tenant,
                 User,
                 ActorIsAdmin: false,
+                ActorHasSignOwn: true,
                 OwnerUserId: null,
                 "Office",
                 MinimalPng()
@@ -156,7 +160,15 @@ public sealed class SignatureProfileHandlersTests
     public async Task Create_rejects_a_non_png_image()
     {
         var result = await CreateSignatureProfileHandler.Handle(
-            new CreateSignatureProfileCommand(Tenant, User, ActorIsAdmin: false, OwnerUserId: User, "Bad", [1, 2, 3]),
+            new CreateSignatureProfileCommand(
+                Tenant,
+                User,
+                ActorIsAdmin: false,
+                ActorHasSignOwn: true,
+                OwnerUserId: User,
+                "Bad",
+                [1, 2, 3]
+            ),
             new FakeRepository(),
             Settings(),
             new FakeCloudStorage(),
@@ -247,6 +259,7 @@ public sealed class SignatureProfileHandlersTests
                 Tenant,
                 User,
                 ActorIsAdmin: false,
+                ActorHasSignOwn: true,
                 OwnerUserId: User,
                 "Mine",
                 MinimalPng()
@@ -263,13 +276,16 @@ public sealed class SignatureProfileHandlersTests
     }
 
     [Fact]
-    public async Task Admin_can_create_personal_even_when_own_signatures_are_disabled()
+    public async Task Kill_switch_blocks_everyone_including_admins()
     {
+        // F4 — AllowEmployeeOwnSignature apagado es el interruptor maestro: nadie firma con la propia,
+        // ni siquiera un admin con todos los permisos. Antes de F4 el admin se bypassaba; ya no.
         var result = await CreateSignatureProfileHandler.Handle(
             new CreateSignatureProfileCommand(
                 Tenant,
                 User,
                 ActorIsAdmin: true,
+                ActorHasSignOwn: true,
                 OwnerUserId: User,
                 "Admin mine",
                 MinimalPng()
@@ -281,7 +297,58 @@ public sealed class SignatureProfileHandlersTests
             CancellationToken.None
         );
 
-        Assert.True(result.IsSuccess);
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Profile.OwnSignatureDisabled", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Employee_without_sign_own_permission_cannot_create_personal_even_with_kill_switch_on()
+    {
+        // F4 — sin el permiso signature.sign_own, el empleado no puede crear su firma personal,
+        // aunque el tenant lo permita (kill-switch on). Antes de F4 bastaba con el kill-switch.
+        var result = await CreateSignatureProfileHandler.Handle(
+            new CreateSignatureProfileCommand(
+                Tenant,
+                User,
+                ActorIsAdmin: false,
+                ActorHasSignOwn: false,
+                OwnerUserId: User,
+                "Mine",
+                MinimalPng()
+            ),
+            new FakeRepository(),
+            Settings(allowOwn: true),
+            new FakeCloudStorage(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Profile.OwnSignatureDisabled", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task List_hides_personal_signatures_when_employee_lacks_sign_own_permission()
+    {
+        var repo = new FakeRepository();
+        repo.Seed(MakeProfile(User, isDefault: true));
+        repo.Seed(MakeProfile(owner: null, isDefault: true));
+
+        var result = await ListSignatureProfilesHandler.Handle(
+            new ListSignatureProfilesQuery(
+                Tenant,
+                User,
+                ActorIsAdmin: false,
+                ActorHasSignOwn: false,
+                IncludeArchived: false
+            ),
+            repo,
+            Settings(allowOwn: true),
+            CancellationToken.None
+        );
+
+        Assert.False(result.CanManageOwnSignature);
+        Assert.Single(result.Profiles);
     }
 
     [Fact]
@@ -294,7 +361,13 @@ public sealed class SignatureProfileHandlersTests
         repo.Seed(office);
 
         var result = await ListSignatureProfilesHandler.Handle(
-            new ListSignatureProfilesQuery(Tenant, User, ActorIsAdmin: false, IncludeArchived: false),
+            new ListSignatureProfilesQuery(
+                Tenant,
+                User,
+                ActorIsAdmin: false,
+                ActorHasSignOwn: true,
+                IncludeArchived: false
+            ),
             repo,
             Settings(allowOwn: false),
             CancellationToken.None
@@ -313,7 +386,13 @@ public sealed class SignatureProfileHandlersTests
         repo.Seed(MakeProfile(owner: null, isDefault: true));
 
         var result = await ListSignatureProfilesHandler.Handle(
-            new ListSignatureProfilesQuery(Tenant, User, ActorIsAdmin: false, IncludeArchived: false),
+            new ListSignatureProfilesQuery(
+                Tenant,
+                User,
+                ActorIsAdmin: false,
+                ActorHasSignOwn: true,
+                IncludeArchived: false
+            ),
             repo,
             Settings(allowOwn: true),
             CancellationToken.None
@@ -428,6 +507,15 @@ public sealed class SignatureProfileHandlersTests
             DateTime expiresAtUtc,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success(string.Empty));
+
+        public Task<Result<SignatureFileMetadata>> GetFileAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                Result.Failure<SignatureFileMetadata>(new Error("Test.NotImplemented", "Not used by these tests."))
+            );
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

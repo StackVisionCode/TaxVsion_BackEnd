@@ -42,6 +42,15 @@ public static class SignatureRequestCompletedConsumer
     /// </summary>
     private static readonly TimeSpan MaxSignatureImageScanWait = TimeSpan.FromMinutes(2);
 
+    // El 99% de las "carreras" entre SignatureRequestCompleted y FileAvailable son de ~500 ms:
+    // el `/sign` publica Completed inmediatamente, el PNG ya está en MinIO y Clam escanea en
+    // paralelo. Antes de rendirnos y pedirle a Wolverine un redelivery (que ensucia el log con
+    // Error y dobla el handler), aguantamos aquí mismo con un poll corto: refresca la proyección
+    // cada 300 ms hasta 5 s. Si en ese plazo el FileAvailable propagó, el consumer sigue sin
+    // romper nada; si no, tira la excepción y el redelivery de Wolverine actúa como lo hacía.
+    private static readonly TimeSpan InProcessScanPollBudget = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan InProcessScanPollInterval = TimeSpan.FromMilliseconds(300);
+
     public static async Task Handle(
         SignatureRequestCompletedIntegrationEvent evt,
         ISignatureRequestRepository repository,
@@ -173,6 +182,36 @@ public static class SignatureRequestCompletedConsumer
     ///     cae al sello tipográfico. No se reintenta porque no va a mejorar.</description></item>
     /// </list>
     /// </summary>
+    /// <summary>
+    /// Resuelve la proyección de scan absorbiendo la carrera corta entre `SignatureRequestCompleted`
+    /// (publicado al firmar) y `FileAvailable` (publicado por el escáner de CloudStorage). Si al primer
+    /// vistazo la proyección sigue en Pending/ausente, hace poll in-process cada
+    /// <see cref="InProcessScanPollInterval"/> hasta agotar <see cref="InProcessScanPollBudget"/>. Al
+    /// terminar devuelve el último snapshot — el llamador decide qué hacer con un Pending residual.
+    /// </summary>
+    private static async Task<FileMetadataRef?> WaitForScanOutcomeAsync(
+        Guid tenantId,
+        Guid fileId,
+        IFileMetadataRefRepository fileRefRepository,
+        CancellationToken ct
+    )
+    {
+        var projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
+        if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+            return projection;
+
+        var deadline = DateTime.UtcNow + InProcessScanPollBudget;
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(InProcessScanPollInterval, ct);
+            projection = await fileRefRepository.GetByFileIdAsync(tenantId, fileId, ct);
+            if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
+                return projection;
+        }
+
+        return projection;
+    }
+
     private static async Task<IReadOnlySet<Guid>> ResolveScannedSignatureImagesAsync(
         SignatureRequest request,
         IFileMetadataRefRepository fileRefRepository,
@@ -186,7 +225,7 @@ public static class SignatureRequestCompletedConsumer
             if (signer.SignatureImageFileId is not { } imageFileId)
                 continue;
 
-            var projection = await fileRefRepository.GetByFileIdAsync(request.TenantId, imageFileId, ct);
+            var projection = await WaitForScanOutcomeAsync(request.TenantId, imageFileId, fileRefRepository, ct);
             switch (projection?.Status)
             {
                 case FileScanStatus.Available:

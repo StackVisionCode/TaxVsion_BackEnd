@@ -27,7 +27,7 @@ public sealed record SignerInvitedIntegrationEvent : IntegrationEvent
     public string PreferredChannel { get; init; } = "Email";
 
     public required string PublicToken { get; init; }
-    public required DateTime ExpiresAtUtc { get; init; }
+    public required DateTime? ExpiresAtUtc { get; init; }
     public required int RevocationEpoch { get; init; }
     public required bool RequiresConsent { get; init; }
     public required bool RequiresSequentialSigning { get; init; }

@@ -1,4 +1,4 @@
-namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
+﻿namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 
 /// <summary>Publicado cuando una factura se emite (Draft → Issued).</summary>
 public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
@@ -10,19 +10,6 @@ public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
     public required long TotalAmountCents { get; init; }
     public required string Currency { get; init; }
     public required DateTime DueDateUtc { get; init; }
-}
-
-/// <summary>Publicado cuando una factura se envía. Notification lo consume para el email al cliente.</summary>
-public sealed record InvoiceSentIntegrationEvent : BillingIntegrationEvent
-{
-    public override string EventType => "billing.invoice.sent";
-    public required Guid InvoiceId { get; init; }
-    public required string InvoiceNumber { get; init; }
-    public required Guid CustomerId { get; init; }
-    public string? CustomerEmail { get; init; }
-    public Guid? PdfFileId { get; init; }
-    public string? PayUrl { get; init; }
-    public required string PaymentMethod { get; init; }
 }
 
 /// <summary>Publicado cuando una factura queda totalmente pagada.</summary>
@@ -70,6 +57,35 @@ public sealed record InvoiceRefundedIntegrationEvent : BillingIntegrationEvent
     public required long RefundAmountCents { get; init; }
     public required string Currency { get; init; }
     public Guid? ReceiptId { get; init; }
+}
+
+/// <summary>
+/// La oficina manda su factura al cliente. Lo publica Billing; Notification lo renderiza con la
+/// plantilla <c>billing.invoice_sent</c> de Scribe, que va sobre <c>tenant-base</c> — el correo es de
+/// la oficina, no de la plataforma.
+///
+/// <para>Antes no existía: el CRM componía el HTML a mano y lo mandaba a
+/// <c>/notifications/email/send</c>, por eso llegaba sin marca ni formato.</para>
+/// </summary>
+public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationEvent
+{
+    public override string EventType => "billing.invoice_sent.v1";
+    public required Guid InvoiceId { get; init; }
+    public required string InvoiceNumber { get; init; }
+    public required string CustomerEmail { get; init; }
+    public required string CustomerName { get; init; }
+
+    /// <summary>Nombre de la oficina que factura — va en el asunto y en el cuerpo.</summary>
+    /// <summary>Importe pendiente en centavos — Notification lo formatea con la moneda.</summary>
+    public required long AmountDueCents { get; init; }
+    public required string Currency { get; init; }
+    public DateTime? DueDateUtc { get; init; }
+
+    /// <summary>URL ESTABLE de pago (la que vive años). Null si la factura no tiene cobro online.</summary>
+    public string? PaymentLink { get; init; }
+
+    /// <summary>PDF en CloudStorage para adjuntar. Null si todavía no se generó.</summary>
+    public Guid? PdfFileId { get; init; }
 }
 
 /// <summary>Publicado cuando una factura se anula.</summary>

@@ -122,6 +122,31 @@ builder.Services.AddRateLimiter(options =>
     // genérico "public-signature". Misma partición IP+patrón-de-ruta (el token va en el path pero el
     // patrón "/{token}/signature-image" es estable, no enumerable). Un firmante legítimo sube su firma
     // una o dos veces; 8/min deja margen para reintentos sin permitir flooding de objetos.
+    // F5 — descarga del documento original. Más barata que la subida pero puede dispararse varias
+    // veces por sesión (el visor puede re-pedir). Misma partición IP+patrón-de-ruta. 30/min deja
+    // margen razonable para la ceremonia; subir el límite abre carga en MinIO.
+    options.AddPolicy(
+        "public-signature-document",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:{routeKey}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+
     options.AddPolicy(
         "public-signature-upload",
         context =>
@@ -223,7 +248,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestExpirationExtendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerInvitedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerConsentAcceptedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // F5 — document viewed por el firmante (semántica distinta a FirstViewed del enlace).
+    options.PublishMessage<SignerDocumentViewedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // F7 — copia inmediata al firmar.
+    options.PublishMessage<SignerPartialCopyRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignerPartialCopyReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");

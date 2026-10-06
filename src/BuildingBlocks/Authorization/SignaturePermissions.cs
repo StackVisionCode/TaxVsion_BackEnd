@@ -51,6 +51,11 @@ public static class SignaturePermissions
     // Firma persistente del preparador (imagen aplicada por el CRM)
     public const string PreparerManage = "signature.preparer.manage";
 
+    // F4 — Aplicar la FIRMA PROPIA del empleado en una solicitud. Sin este permiso, el empleado
+    // queda limitado a la firma de la oficina. El kill-switch de tenant
+    // `AllowEmployeeOwnSignature` sigue vigente: apagado = nadie puede, aunque tenga el permiso.
+    public const string SignOwn = "signature.sign_own";
+
     // Verificación pública de un certificado (link con token)
     public const string CertificateVerify = "signature.certificate.verify";
 

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -51,9 +51,14 @@ public sealed class ScribeNotificationTemplateSeeder(
             var storageService = scope.ServiceProvider.GetRequiredService<ITemplateStorageService>();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
+            // Dos layouts, no uno: las plantillas de la plataforma van sobre system-base y las que
+            // manda la OFICINA (la factura) sobre tenant-base. Cada seed dice cuál quiere.
             var systemBaseKey = LayoutKey.Create("system-base").Value;
+            var tenantBaseKey = LayoutKey.Create("tenant-base").Value;
             EmailLayout? systemBaseLayout = null;
             EmailLayoutVersion? publishedLayoutVersion = null;
+            EmailLayout? tenantBaseLayout = null;
+            EmailLayoutVersion? publishedTenantLayoutVersion = null;
             for (var attempt = 1; attempt <= SeedDependencyWaitAttempts; attempt++)
             {
                 systemBaseLayout = await dbContext
@@ -66,21 +71,39 @@ public sealed class ScribeNotificationTemplateSeeder(
                     ?.Versions.Where(v => v.Status == EmailVersionStatus.Published)
                     .OrderByDescending(v => v.VersionNumber)
                     .FirstOrDefault();
+
+                tenantBaseLayout = await dbContext
+                    .EmailLayouts.Include(l => l.Versions)
+                    .FirstOrDefaultAsync(
+                        l => l.Scope == TemplateScope.System && l.LayoutKey == tenantBaseKey,
+                        cancellationToken
+                    );
+                publishedTenantLayoutVersion = tenantBaseLayout
+                    ?.Versions.Where(v => v.Status == EmailVersionStatus.Published)
+                    .OrderByDescending(v => v.VersionNumber)
+                    .FirstOrDefault();
                 // Esperar a que el layout seeder haya republicado system-base a la versión de contenido
                 // actual: los dos seeders corren concurrentes en ApplicationStarted, y capturar una
                 // versión vieja deja a los templates pineados a un layout archivado.
                 if (
                     publishedLayoutVersion is not null
                     && (publishedLayoutVersion.SeedContentVersion ?? 0) >= BaseLayoutHtml.SystemBaseVersion
+                    && publishedTenantLayoutVersion is not null
+                    && (publishedTenantLayoutVersion.SeedContentVersion ?? 0) >= BaseLayoutHtml.TenantBaseVersion
                 )
                     break;
 
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             }
-            if (systemBaseLayout is null || publishedLayoutVersion is null)
+            if (
+                systemBaseLayout is null
+                || publishedLayoutVersion is null
+                || tenantBaseLayout is null
+                || publishedTenantLayoutVersion is null
+            )
             {
                 logger.LogWarning(
-                    "ScribeNotificationTemplateSeeder skipped after waiting {Seconds}s: 'system-base' layout is not published.",
+                    "ScribeNotificationTemplateSeeder skipped after waiting {Seconds}s: system-base or tenant-base is not published.",
                     SeedDependencyWaitAttempts
                 );
                 return;
@@ -89,13 +112,14 @@ public sealed class ScribeNotificationTemplateSeeder(
             var seeded = 0;
             foreach (var definition in NotificationTemplateSeedSource.All)
             {
+                var onTenantBase = definition.LayoutKey == "tenant-base";
                 var ok = await SeedIfMissingAsync(
                     dbContext,
                     storageService,
                     unitOfWork,
                     definition,
-                    systemBaseLayout.Id,
-                    publishedLayoutVersion.VersionNumber,
+                    onTenantBase ? tenantBaseLayout.Id : systemBaseLayout.Id,
+                    onTenantBase ? publishedTenantLayoutVersion.VersionNumber : publishedLayoutVersion.VersionNumber,
                     cancellationToken
                 );
                 if (ok)

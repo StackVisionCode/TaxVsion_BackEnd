@@ -11,6 +11,7 @@ public static class ViewPublicSignerHandler
         ViewPublicSignerCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        ITenantBrandingRefRepository branding,
         IJtiDenylist denylist,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -24,7 +25,8 @@ public static class ViewPublicSignerHandler
         RecordFirstView(request, signer, cmd);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(BuildView(request, signer));
+        var tenantBranding = await branding.GetByTenantIdAsync(request.TenantId, ct);
+        return Result.Success(BuildView(request, signer, tenantBranding?.SubDomain ?? string.Empty));
     }
 
     // ------------------------------------------------------------------
@@ -37,7 +39,7 @@ public static class ViewPublicSignerHandler
         request.RecordSignerFirstView(signer.Id, viewedAt, cmd.ClientIp, cmd.UserAgent);
     }
 
-    private static PublicSignerView BuildView(SignatureRequest request, Signer signer) =>
+    private static PublicSignerView BuildView(SignatureRequest request, Signer signer, string tenantSubDomain) =>
         new(
             SignatureRequestId: request.Id,
             SignerId: signer.Id,
@@ -61,7 +63,11 @@ public static class ViewPublicSignerHandler
             RequiredVerificationMethod: signer.RequiredVerificationMethod,
             IsVerificationCompleted: signer.RequiredVerificationMethod is { } method
                 && signer.HasCompletedVerification(method),
-            Fields: signer.Fields.Select(MapField).ToList()
+            Fields: signer.Fields.Select(MapField).ToList(),
+            TenantSubDomain: tenantSubDomain,
+            // F7 — true si la configuración del request incluye a este signer en la audiencia.
+            PartialCopyWillBeSent: request.SendPartialCopyOnEachSignature
+                && request.PartialCopyAudience.Includes(signer.Id)
         );
 
     private static bool IsNextInSequence(SignatureRequest request, Signer signer)

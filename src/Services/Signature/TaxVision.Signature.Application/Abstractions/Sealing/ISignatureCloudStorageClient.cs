@@ -14,6 +14,19 @@ public sealed record SignatureFileUpload(
 );
 
 /// <summary>
+/// Metadata mínima de un file en CloudStorage; la proyección local se puede regenerar desde esto
+/// cuando el bus (FileAvailable) la dejó stale.
+/// </summary>
+public sealed record SignatureFileMetadata(
+    Guid Id,
+    string Status,
+    string? ChecksumSha256,
+    string? ContentType,
+    long SizeBytes,
+    string? ObjectKey
+);
+
+/// <summary>
 /// Cliente del microservicio CloudStorage acotado a lo que necesita el sealing worker:
 /// descargar el PDF original por FileId y subir el sellado + certificate como archivos
 /// nuevos. No expone flujos ajenos al sealing (search, quotas, etc.).
@@ -48,4 +61,11 @@ public interface ISignatureCloudStorageClient
         DateTime expiresAtUtc,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// GET /storage/files/{id}: fuente autoritaria del estado real del file. Se usa como fallback
+    /// cuando la proyección local está vacía o stale — p.ej. tras un restart de Signature se perdió
+    /// un <c>FileAvailable</c>, o la proyección quedó <c>Deleted</c> por un evento ruidoso.
+    /// </summary>
+    Task<Result<SignatureFileMetadata>> GetFileAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 }

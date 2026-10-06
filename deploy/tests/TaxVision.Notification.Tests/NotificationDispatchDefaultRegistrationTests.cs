@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Notification.Application.Abstractions;
@@ -9,33 +9,31 @@ using TaxVision.Notification.Infrastructure;
 namespace TaxVision.Notification.Tests;
 
 /// <summary>
-/// Hardening Fase 21 (2026-07-18) — cierra un hueco de cobertura real: antes de esta fase ningún test
-/// ejercitaba <c>AddNotificationInfrastructure</c> tal como lo ve el proceso real. Todos los tests
-/// existentes de <see cref="EventBasedEmailDispatchGateway"/>/<see cref="PostmasterEmailDeliveryService"/>
-/// (y de sus contrapartes <see cref="InProcessEmailDispatchGateway"/>/<see cref="EmailDeliveryService"/>,
-/// esta última sin test propio) construían la clase directo — nunca pasaban por el <c>if/else</c> de
-/// resolución de DI que decide cuál implementación gana según <c>Notification:UsePostmasterDispatch</c>.
+/// Qué implementaciones de envío registra <c>AddNotificationInfrastructure</c> tal como lo ve el
+/// proceso real (antes nadie pasaba por ahí: los tests construían las clases directo).
+///
+/// <para>Hasta 2026-10-02 esta clase probaba que el flag <c>Notification:UsePostmasterDispatch</c>
+/// elegía entre dos caminos. El camino `false` se retiró —resolvía contra
+/// <c>EmailProviderConfigurations</c>, una tabla vacía en dev y en producción, así que el "rollback"
+/// no encendía nada— y con él el flag. Lo que estos tests fijan ahora es lo contrario de lo que
+/// fijaban antes: que **no hay nada que elegir**. Si alguien vuelve a meter una rama condicional
+/// acá, el segundo test lo caza.</para>
 /// </summary>
 /// <remarks>
 /// Se inspeccionan los <see cref="ServiceDescriptor"/> registrados en vez de construir el
 /// <see cref="IServiceProvider"/> completo y resolver: <c>AddNotificationInfrastructure</c> registra
 /// dependencias (repositorios, <c>NotificationDbContext</c>) que solo se pueden resolver end-to-end
 /// contra una conexión SQL Server real, algo fuera de alcance de un test unitario de "qué implementación
-/// se registró". Inspeccionar <see cref="ServiceDescriptor.ImplementationType"/> alcanza para probar la
-/// decisión sin acoplar el test a infraestructura real.
+/// se registró".
 /// </remarks>
 public sealed class NotificationDispatchDefaultRegistrationTests
 {
     /// <summary>
-    /// El test que prueba el default REAL, no un default hardcodeado a mano en el test: carga el
-    /// <c>appsettings.json</c> que de verdad se despliega con <c>TaxVision.Notification.Api</c> — el
-    /// mismo archivo que la Fase 21 editó para fijar <c>"UsePostmasterDispatch": true</c> — y confirma
-    /// que, con esa configuración shippeada, `AddNotificationInfrastructure` registra los dos paths
-    /// basados en Postmaster. Si alguien revierte el valor en el JSON, este test lo detecta sin que
-    /// nadie tenga que acordarse de mantenerlo sincronizado a mano.
+    /// El default REAL, no uno hardcodeado en el test: carga el <c>appsettings.json</c> que de verdad
+    /// se despliega con <c>TaxVision.Notification.Api</c>.
     /// </summary>
     [Fact]
-    public void Shipped_Notification_Api_appsettings_json_defaults_both_dispatch_paths_to_Postmaster()
+    public void The_shipped_appsettings_registers_both_Postmaster_paths()
     {
         var appsettingsPath = GetShippedNotificationApiAppSettingsPath();
         Assert.True(File.Exists(appsettingsPath), $"No se encontró appsettings.json en '{appsettingsPath}'.");
@@ -45,10 +43,6 @@ public sealed class NotificationDispatchDefaultRegistrationTests
             .AddInMemoryCollection(RequiredBootstrapConfig())
             .Build();
 
-        // Sanity check explícito antes de mirar DI: si esto falla, el JSON shippeado cambió el default,
-        // no el código de este test.
-        Assert.True(configuration.GetValue<bool>("Notification:UsePostmasterDispatch"));
-
         var services = new ServiceCollection();
         services.AddNotificationInfrastructure(configuration);
 
@@ -56,53 +50,30 @@ public sealed class NotificationDispatchDefaultRegistrationTests
         AssertLastRegisteredImplementation<IEmailDeliveryService, PostmasterEmailDeliveryService>(services);
     }
 
-    [Fact]
-    public void AddNotificationInfrastructure_with_flag_explicitly_true_registers_Postmaster_based_paths()
+    /// <summary>
+    /// El invariante que reemplaza al flag: ninguna configuración —ni el flag viejo puesto a
+    /// <c>false</c> a mano, ni una config completamente vacía— puede hacer que se registre otra cosa.
+    ///
+    /// <para>Importa el caso de <c>false</c>: el valor puede seguir vivo en el <c>.env</c> de alguien
+    /// o en un secret de GitHub después del despliegue. Que ahora se ignore no puede ser un accidente
+    /// que nadie compruebe — si alguna vez vuelve a tener efecto, el correo saldría por un camino que
+    /// ya no existe.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("false")]
+    [InlineData("true")]
+    [InlineData(null)]
+    public void No_configuration_can_register_anything_else(string? legacyFlagValue)
     {
-        var services = new ServiceCollection();
-        var configuration = BuildInMemoryConfiguration(usePostmasterDispatch: "true");
+        var values = RequiredBootstrapConfig();
+        if (legacyFlagValue is not null)
+            values["Notification:UsePostmasterDispatch"] = legacyFlagValue;
 
-        services.AddNotificationInfrastructure(configuration);
+        var services = new ServiceCollection();
+        services.AddNotificationInfrastructure(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
 
         AssertLastRegisteredImplementation<IEmailDispatchGateway, EventBasedEmailDispatchGateway>(services);
         AssertLastRegisteredImplementation<IEmailDeliveryService, PostmasterEmailDeliveryService>(services);
-    }
-
-    /// <summary>
-    /// El rollback operacional (ver DependencyInjection.cs y README §28.1) sigue vivo: overridear el
-    /// flag a `false` explícitamente tiene que seguir cayendo a los paths in-process/SMTP-directo
-    /// originales — este test es la garantía de que la Fase 21 no rompió esa vía de escape.
-    /// </summary>
-    [Fact]
-    public void AddNotificationInfrastructure_with_flag_explicitly_false_falls_back_to_InProcess_paths()
-    {
-        var services = new ServiceCollection();
-        var configuration = BuildInMemoryConfiguration(usePostmasterDispatch: "false");
-
-        services.AddNotificationInfrastructure(configuration);
-
-        AssertLastRegisteredImplementation<IEmailDispatchGateway, InProcessEmailDispatchGateway>(services);
-        AssertLastRegisteredImplementation<IEmailDeliveryService, EmailDeliveryService>(services);
-    }
-
-    /// <summary>
-    /// Caso degenerado, distinto del default real de la aplicación: si a <c>AddNotificationInfrastructure</c>
-    /// se le pasa un <see cref="IConfiguration"/> que NO tiene la clave en absoluto (ni siquiera vía
-    /// <c>appsettings.json</c>), <c>GetValue&lt;bool&gt;</c> resuelve al default de C#, <c>false</c> — tal
-    /// como documenta el comentario en <c>DependencyInjection.cs</c>. Es exactamente por esto que el
-    /// default real de la app no depende de este fallback: está fijado explícitamente en
-    /// <c>appsettings.json</c> (ver el primer test de esta clase) y en <c>docker-compose.yml</c>.
-    /// </summary>
-    [Fact]
-    public void AddNotificationInfrastructure_with_key_entirely_absent_falls_back_to_InProcess_paths()
-    {
-        var services = new ServiceCollection();
-        var configuration = BuildInMemoryConfiguration(usePostmasterDispatch: null);
-
-        services.AddNotificationInfrastructure(configuration);
-
-        AssertLastRegisteredImplementation<IEmailDispatchGateway, InProcessEmailDispatchGateway>(services);
-        AssertLastRegisteredImplementation<IEmailDeliveryService, EmailDeliveryService>(services);
     }
 
     // ------------------------------------------------------------------
@@ -128,22 +99,11 @@ public sealed class NotificationDispatchDefaultRegistrationTests
     private static Dictionary<string, string?> RequiredBootstrapConfig() =>
         new()
         {
-            // AddNotificationInfrastructure exige esta clave (throw si falta) — no relacionada con el
-            // flag bajo prueba, solo un requisito de arranque del método.
+            // AddNotificationInfrastructure exige esta clave (throw si falta) — solo un requisito
+            // de arranque del método.
             ["ConnectionStrings:Default"] =
                 "Server=(local);Database=TaxVisionNotificationTest;Trusted_Connection=True;",
         };
-
-    private static IConfiguration BuildInMemoryConfiguration(string? usePostmasterDispatch)
-    {
-        var values = RequiredBootstrapConfig();
-        if (usePostmasterDispatch is not null)
-        {
-            values["Notification:UsePostmasterDispatch"] = usePostmasterDispatch;
-        }
-
-        return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-    }
 
     private static void AssertLastRegisteredImplementation<TService, TExpectedImplementation>(
         IServiceCollection services

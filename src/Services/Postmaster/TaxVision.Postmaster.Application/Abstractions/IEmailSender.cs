@@ -1,4 +1,4 @@
-using TaxVision.Postmaster.Application.Sending;
+﻿using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
 
 namespace TaxVision.Postmaster.Application.Abstractions;
@@ -14,13 +14,14 @@ public interface IEmailSender
     /// leen de <c>message.Recipients</c> — no se duplican como parámetro separado (deviation
     /// justificada respecto al texto literal del plan §Fase 3, que los pasaba dos veces).
     /// <paramref name="inlineAssets"/> ya viene descargado por <see cref="IInlineAssetFetcher"/>
-    /// (Fase 3.5) — vacío por default para no romper el flujo de Fase 3 sin logos.
+    /// (Fase 3.5); <paramref name="attachments"/> por <see cref="IOutboundAttachmentFetcher"/>.
     /// </summary>
     Task<SendResult> SendAsync(
         SentMessage message,
         RenderedContent content,
         ResolvedEmailProvider provider,
         IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
         CancellationToken ct
     );
 }

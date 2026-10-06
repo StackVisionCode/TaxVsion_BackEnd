@@ -288,7 +288,8 @@ public static class ErrorHttpMapping
             or "SignatureRequest.NotOwner"
             or "Signature.Profile.Forbidden"
             or "Signature.Profile.NotVisible"
-            or "Signature.Profile.OwnSignatureDisabled" => StatusCodes.Status403Forbidden,
+            or "Signature.Profile.OwnSignatureDisabled"
+            or "Signature.Document.VerificationRequired" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -368,7 +369,12 @@ public static class ErrorHttpMapping
             or "Referrals.OperationInProgress"
             or "Growth.Idempotency.FingerprintConflict"
             or "Growth.Idempotency.OperationInProgress"
-            or "Growth.Idempotency.ReplayUnavailable" => StatusCodes.Status409Conflict,
+            or "Growth.Idempotency.ReplayUnavailable"
+            or "Signature.Request.VersionConflict"
+            or "Signature.Request.Scheduled"
+            or "Signature.Request.NotSchedulable"
+            or "Signature.Request.NotScheduled"
+            or "Signature.Document.NotAvailable" => StatusCodes.Status409Conflict,
             var code
                 when (
                     code.StartsWith("Codes.", StringComparison.Ordinal)

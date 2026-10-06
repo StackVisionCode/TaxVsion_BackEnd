@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Text;
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
@@ -9,6 +9,7 @@ using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Application.Suppression;
+using TaxVision.Postmaster.Domain.Projections;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.Suppression;
 using Wolverine;
@@ -168,12 +169,23 @@ internal sealed class FakeProviderResolver : IProviderResolver
     public ResolveResult ResolveReturnValue { get; set; } =
         new(ProviderResolutionStatus.SystemProviderMissing, null, "not configured");
 
+    /// <summary>Lo que el consumer pidió. Sin esto no se puede probar que una campaña NO autoriza el
+    /// escalón de sistema: el doble devolvería lo mismo pidiera lo que pidiera.</summary>
+    public TaxVision.Postmaster.Domain.Providers.ProviderScope? LastRequestedScope { get; private set; }
+    public bool? LastSystemFallbackAllowed { get; private set; }
+
     public Task<ResolveResult> ResolveAsync(
         Guid tenantId,
         TaxVision.Postmaster.Domain.Providers.ProviderScope requiredScope,
         ProviderPriorityHint? priorityHint,
+        bool systemFallbackAllowed,
         CancellationToken ct
-    ) => Task.FromResult(ResolveReturnValue);
+    )
+    {
+        LastRequestedScope = requiredScope;
+        LastSystemFallbackAllowed = systemFallbackAllowed;
+        return Task.FromResult(ResolveReturnValue);
+    }
 }
 
 internal sealed class FakeEmailSender : IEmailSender
@@ -184,17 +196,20 @@ internal sealed class FakeEmailSender : IEmailSender
     /// <summary>Hardening Fase 9 — captura lo que el consumer realmente pasó, para probar que las
     /// referencias del evento efectivamente llegan como bytes hasta acá.</summary>
     public IReadOnlyList<InlineAssetBytes>? LastInlineAssets { get; private set; }
+    public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
 
     public Task<SendResult> SendAsync(
         SentMessage message,
         RenderedContent content,
         ResolvedEmailProvider provider,
         IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
         CancellationToken ct
     )
     {
         LastMessage = message;
         LastInlineAssets = inlineAssets;
+        LastAttachments = attachments;
         return Task.FromResult(SendReturnValue);
     }
 }
@@ -249,35 +264,42 @@ internal sealed class FakeEmailProviderRateLimiter : IEmailProviderRateLimiter
     }
 }
 
-internal sealed class FakeOAuthProviderResolver : IOAuthProviderResolver
+internal sealed class FakeConnectedMailboxResolver : IConnectedMailboxResolver
 {
-    public OAuthResolveResult ResolveReturnValue { get; set; } =
-        new(OAuthResolutionStatus.ProviderNotConfigured, null, "not configured");
+    public MailboxResolveResult ResolveReturnValue { get; set; } =
+        new(MailboxResolutionStatus.ProviderNotConfigured, null, "not configured");
 
-    public Task<OAuthResolveResult> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+    public Task<MailboxResolveResult> ResolveAsync(Guid tenantId, CancellationToken ct) =>
         Task.FromResult(ResolveReturnValue);
 
-    public Task<OAuthResolveResult> ResolveByAccountIdAsync(Guid tenantId, Guid accountId, CancellationToken ct) =>
+    public Task<MailboxResolveResult> ResolveByAccountIdAsync(Guid tenantId, Guid accountId, CancellationToken ct) =>
         Task.FromResult(ResolveReturnValue);
 }
 
-internal sealed class FakeOAuthEmailSender : IOAuthEmailSender
+internal sealed class FakeConnectedMailboxSender : IConnectedMailboxSender
 {
     public SendResult SendReturnValue { get; set; } = new(true, "connectors-msg-1", null, []);
     public SentMessage? LastMessage { get; private set; }
+    public RenderedContent? LastContent { get; private set; }
+    public IReadOnlyList<InlineAssetBytes> LastInlineAssets { get; private set; } = [];
+    public IReadOnlyList<OutboundAttachmentBytes> LastAttachments { get; private set; } = [];
 
     public Task<SendResult> SendAsync(
         SentMessage message,
         RenderedContent content,
-        ResolvedOAuthProvider provider,
+        ResolvedMailbox provider,
         string? inReplyToInternetMessageId,
         IReadOnlyList<string>? references,
         string? replyToProviderMessageId,
         IReadOnlyList<OutboundAttachmentBytes> attachments,
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
         CancellationToken ct
     )
     {
         LastMessage = message;
+        LastContent = content;
+        LastInlineAssets = inlineAssets;
+        LastAttachments = attachments;
         return Task.FromResult(SendReturnValue);
     }
 }
@@ -287,11 +309,35 @@ internal sealed class FakeOutboundAttachmentFetcher : IOutboundAttachmentFetcher
     public Result<IReadOnlyList<OutboundAttachmentBytes>> FetchReturnValue { get; set; } =
         Result.Success<IReadOnlyList<OutboundAttachmentBytes>>([]);
 
+    /// <summary>Si queda null, resuelve un adjunto sintetico por id (como hace el inline fetcher).</summary>
+    public Result<IReadOnlyList<OutboundAttachmentBytes>>? FetchByIdsReturnValue { get; set; }
+    public IReadOnlyList<Guid> LastRequestedFileIds { get; private set; } = [];
+
     public Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchAllAsync(
         Guid tenantId,
         IReadOnlyList<OutboundAttachmentRef> attachments,
         CancellationToken ct
     ) => Task.FromResult(FetchReturnValue);
+
+    public Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchByFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> fileIds,
+        CancellationToken ct
+    )
+    {
+        LastRequestedFileIds = fileIds;
+        if (FetchByIdsReturnValue is not null)
+            return Task.FromResult(FetchByIdsReturnValue);
+
+        var bytes = fileIds
+            .Select(id => new OutboundAttachmentBytes(
+                $"{id:N}.pdf",
+                "application/pdf",
+                Encoding.UTF8.GetBytes($"fake-bytes-{id:N}")
+            ))
+            .ToList();
+        return Task.FromResult(Result.Success<IReadOnlyList<OutboundAttachmentBytes>>(bytes));
+    }
 }
 
 /// <summary>
@@ -376,4 +422,31 @@ internal sealed class FakeSuppressionListRepository : ISuppressionListRepository
 
     public Task<bool> RemoveAsync(Guid tenantId, string emailAddress, CancellationToken ct = default) =>
         throw new NotImplementedException();
+}
+
+internal sealed class FakeTenantDirectoryRepository : ITenantDirectoryRepository
+{
+    public Dictionary<Guid, string> Names { get; } = [];
+
+    public Task<TenantDirectoryEntry?> FindAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(
+            Names.TryGetValue(tenantId, out var name)
+                ? TenantDirectoryEntry.Create(tenantId, name, "oficina", DateTime.UtcNow)
+                : null
+        );
+
+    public Task UpsertAsync(
+        Guid tenantId,
+        string name,
+        string subDomain,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        Names[tenantId] = name;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlySet<Guid>> GetKnownTenantIdsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlySet<Guid>>(Names.Keys.ToHashSet());
 }

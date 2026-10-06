@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 namespace TaxVision.Signature.Domain.Settings;
 
@@ -63,6 +64,21 @@ public sealed class TenantSignatureSettings : BaseEntity
     /// </summary>
     public bool AllowEmployeeOwnSignature { get; private set; }
 
+    /// <summary>F7 — default por tenant: enviar la copia inmediata al firmar.</summary>
+    public bool SendPartialCopyDefault { get; private set; }
+
+    /// <summary>
+    /// F7 — audiencia por defecto cuando el flag arriba está ON. Solo `Kind`; una lista específica
+    /// no tiene sentido como default del tenant (los SignerIds dependen de cada request).
+    /// </summary>
+    public PartialCopyAudienceKind PartialCopyDefaultAudienceKind { get; private set; }
+
+    /// <summary>F7 — default por tenant: enviar el PDF sellado final al completarse.</summary>
+    public bool SendSealedDocumentDefault { get; private set; }
+
+    /// <summary>F7 — default por tenant: las requests nuevas expiran (ON) o viven indefinido (OFF).</summary>
+    public bool ExpirationEnabledByDefault { get; private set; }
+
     /// <summary>Límites de documento (tamaño, páginas). Value Object inmutable.</summary>
     public DocumentLimits DocumentLimits { get; private set; } = default!;
 
@@ -122,6 +138,11 @@ public sealed class TenantSignatureSettings : BaseEntity
                 DefaultReminderIntervalHoursValue = DefaultReminderIntervalHours,
                 GenerateCertificateByDefault = true,
                 AllowEmployeeOwnSignature = true,
+                // F7 — defaults de entrega: tenants nuevos arrancan con todo apagado salvo expiración.
+                SendPartialCopyDefault = false,
+                PartialCopyDefaultAudienceKind = PartialCopyAudienceKind.All,
+                SendSealedDocumentDefault = false,
+                ExpirationEnabledByDefault = true,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
                 PlanConstraints = SignaturePlanConstraints.Default(),
@@ -219,6 +240,42 @@ public sealed class TenantSignatureSettings : BaseEntity
             return;
 
         RemindersEnabledByDefault = false;
+        Touch();
+    }
+
+    /// <summary>F7 — enciende/apaga el default por tenant de la copia parcial.</summary>
+    public void SetSendPartialCopyDefault(bool enabled)
+    {
+        if (SendPartialCopyDefault == enabled)
+            return;
+        SendPartialCopyDefault = enabled;
+        Touch();
+    }
+
+    /// <summary>F7 — audiencia por defecto. Específica sin lista no tiene sentido como default; solo guardamos el Kind.</summary>
+    public void SetPartialCopyDefaultAudienceKind(PartialCopyAudienceKind kind)
+    {
+        if (PartialCopyDefaultAudienceKind == kind)
+            return;
+        PartialCopyDefaultAudienceKind = kind;
+        Touch();
+    }
+
+    /// <summary>F7 — enciende/apaga el default por tenant del PDF sellado final.</summary>
+    public void SetSendSealedDocumentDefault(bool enabled)
+    {
+        if (SendSealedDocumentDefault == enabled)
+            return;
+        SendSealedDocumentDefault = enabled;
+        Touch();
+    }
+
+    /// <summary>F7 — enciende/apaga el default por tenant de la expiración de nuevos links.</summary>
+    public void SetExpirationEnabledByDefault(bool enabled)
+    {
+        if (ExpirationEnabledByDefault == enabled)
+            return;
+        ExpirationEnabledByDefault = enabled;
         Touch();
     }
 

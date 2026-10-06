@@ -1,4 +1,4 @@
-using BuildingBlocks.Tenancy;
+﻿using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Infrastructure.Persistence;
@@ -11,7 +11,7 @@ namespace TaxVision.Postmaster.Tests.Persistence;
 /// como aggregate ITenantOwned representativo — el mecanismo genérico aplica igual a
 /// <c>SentMessageRecipient</c>/<c>SentMessageEvent</c>/<c>TenantEmailProvider</c>.
 /// <c>SystemEmailProvider</c>/<c>ProviderHealthStatus</c> (cross-tenant por diseño) y
-/// <c>EmailIdempotency</c>/<c>SuppressionListEntry</c>/<c>TenantOAuthAccount</c> (TenantId propio
+/// <c>EmailIdempotency</c>/<c>SuppressionListEntry</c>/<c>ConnectedMailbox</c> (TenantId propio
 /// pero sin ITenantOwned, repos siempre filtran explícito) no implementan ITenantOwned, así que el
 /// filtro no los alcanza.
 /// </summary>

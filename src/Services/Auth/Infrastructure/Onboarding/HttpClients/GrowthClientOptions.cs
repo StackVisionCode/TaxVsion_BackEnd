@@ -7,5 +7,5 @@ public sealed class GrowthClientOptions
 {
     public const string SectionName = "Auth:Growth";
 
-    public string BaseUrl { get; set; } = "http://localhost:5300";
+    public string BaseUrl { get; set; } = "http://localhost:5410";
 }

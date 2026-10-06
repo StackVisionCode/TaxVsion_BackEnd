@@ -24,7 +24,12 @@ public sealed record SendEmailCommand(
     // Correlación opaca de vuelta hacia Campaigns (seam CampaignId, PostmasterEmailEvents). El
     // orquestador de campañas la usa para correlacionar los delivery events de Postmaster con la
     // unidad destinatario/canal. Null para correos ad-hoc que no son de campaña.
-    Guid? CampaignId = null
+    Guid? CampaignId = null,
+    // Correo del humano que manda. Lo pone el controller desde el token, no el body: si viniera del
+    // request, cualquiera podría hacer que las respuestas de un correo salido del dominio de la
+    // plataforma fueran a parar a donde quisiera. Null en envíos M2M (campañas), que por eso tampoco
+    // pueden usar el escalón de sistema.
+    string? ReplyTo = null
 );
 
 public static class SendEmailHandler
@@ -60,7 +65,8 @@ public static class SendEmailHandler
             templateId: null,
             templateVersionId: null,
             campaignId: command.CampaignId,
-            correlationId: correlation.CorrelationId
+            correlationId: correlation.CorrelationId,
+            replyTo: command.ReplyTo
         );
         if (result.IsFailure)
             return Result.Failure<OutboundEmailResponse>(result.Error);

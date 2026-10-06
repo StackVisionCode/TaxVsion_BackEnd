@@ -26,6 +26,8 @@ function setup() {
     upsert: vi.fn(),
     upsertIdentityPreservingPermissions: vi.fn(),
     findByUserId: vi.fn(),
+    findActiveByTenantAndPermission: vi.fn(),
+    findActiveSupportRecipients: vi.fn(),
     markInactive: vi.fn(),
     markActive: vi.fn(),
     findActiveByTenantAndRoleId: vi.fn(),

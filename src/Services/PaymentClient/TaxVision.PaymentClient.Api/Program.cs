@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.Infrastructure.Caching;
@@ -186,6 +186,10 @@ builder.Host.UseWolverine(options =>
     // assembly a veces omite consumers de clase estática (bug real visto en otros servicios).
     options.Discovery.IncludeType(
         typeof(TaxVision.PaymentClient.Application.Payables.IntegrationEvents.InvoiceVoidedConsumer)
+    );
+    // Mismo motivo: sin este registro una factura pagada seguiría acuñando links de checkout.
+    options.Discovery.IncludeType(
+        typeof(TaxVision.PaymentClient.Application.Payables.IntegrationEvents.InvoicePaidConsumer)
     );
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 

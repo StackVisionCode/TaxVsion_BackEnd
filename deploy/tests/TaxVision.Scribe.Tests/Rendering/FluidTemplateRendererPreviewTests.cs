@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.Rendering;
@@ -100,6 +100,7 @@ public sealed class FluidTemplateRendererPreviewTests
             new FakeEmailLayoutRepository(layout),
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -144,6 +145,7 @@ public sealed class FluidTemplateRendererPreviewTests
             new FakeEmailLayoutRepository(layout),
             new FakeCloudStorageClient(),
             new FakeLogoResolver(SystemLogo),
+            new FakeTenantProfileRefRepository(),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

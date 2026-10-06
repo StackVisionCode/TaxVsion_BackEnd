@@ -3,10 +3,8 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Signature.Domain.Projections;
 
 /// <summary>
-/// Proyección local de la marca de un tenant para el certificado: nombre de la oficina (para
-/// "Issued by") y, si la subió, el logo (fileId en CloudStorage). La fuente de verdad es Tenant;
-/// esta fila se alimenta de <c>TenantCreatedIntegrationEvent</c> (nombre) y
-/// <c>TenantLogoUpdatedIntegrationEvent</c> (logo). PK simple TenantId — es 1:1.
+/// Proyección local del tenant: nombre, subdominio y logo. La fuente de verdad es Tenant; esto se
+/// alimenta de <c>TenantCreatedIntegrationEvent</c> y <c>TenantLogoUpdatedIntegrationEvent</c>.
 /// </summary>
 public sealed class TenantBrandingRef : ITenantOwned
 {
@@ -17,6 +15,7 @@ public sealed class TenantBrandingRef : ITenantOwned
 
     public Guid TenantId { get; private set; }
     public string OfficeName { get; private set; } = string.Empty;
+    public string SubDomain { get; private set; } = string.Empty;
     public Guid? LogoFileId { get; private set; }
     public string? LogoContentType { get; private set; }
     public long? LogoSizeBytes { get; private set; }
@@ -28,6 +27,12 @@ public sealed class TenantBrandingRef : ITenantOwned
     public void SetOfficeName(string officeName, DateTime updatedAtUtc)
     {
         OfficeName = officeName?.Trim() ?? string.Empty;
+        UpdatedAtUtc = updatedAtUtc;
+    }
+
+    public void SetSubDomain(string subDomain, DateTime updatedAtUtc)
+    {
+        SubDomain = subDomain?.Trim().ToLowerInvariant() ?? string.Empty;
         UpdatedAtUtc = updatedAtUtc;
     }
 

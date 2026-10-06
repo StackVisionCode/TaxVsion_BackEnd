@@ -42,9 +42,18 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
             // En vez de devolver JSON crudo (lo abre un humano en el navegador), redirige a la PÁGINA de
             // checkout del frontend con el motivo, para que muestre un mensaje amable (factura anulada,
             // enlace vencido, etc.) en vez de un 404 técnico.
-            var pageBase = PayablePublicUrls.CheckoutPageUrl(options.Value, subDomain: null, reference);
-            var reason = Uri.EscapeDataString(result.Error.Code);
-            return Redirect($"{pageBase}?unavailable={reason}");
+            //
+            // El host de ESTA petición decide el destino: acá no hay payable del que sacar el tenant,
+            // pero el navegador ya está en el de la oficina. Antes iba `null` fijo y un link anulado
+            // mandaba al cliente a la base por path — en prod, localhost:4200.
+            return Redirect(
+                PayablePublicUrls.UnavailableCheckoutUrl(
+                    options.Value,
+                    Request.Host.Value,
+                    reference,
+                    result.Error.Code
+                )
+            );
         }
 
         // 302 a la PÁGINA de checkout del frontend (que consume GET /payments-client/checkout/{token} y

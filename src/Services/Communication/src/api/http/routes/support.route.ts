@@ -16,11 +16,14 @@ import {
   reopenSupportTicket,
 } from '../../../application/use-cases/support-actions.js';
 import {
+  getSupportTicket,
   listSupportTicketsForAgent,
   listSupportTicketsForCustomer,
 } from '../../../application/use-cases/support-queries.js';
 import { getSupportAgentMessages } from '../../../application/use-cases/get-support-agent-messages.js';
+import { searchSupportAgents } from '../../../application/use-cases/search-support-agents.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
+import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 
 const OpenBody = z.object({
   subject: z.string().min(1).max(200),
@@ -39,6 +42,11 @@ const ListQuery = z.object({
   includeClosed: z.coerce.boolean().optional(),
   view: z.enum(['customer', 'agent']).optional(),
   mine: z.coerce.boolean().optional(),
+});
+
+const AgentSearchQuery = z.object({
+  q: z.string().trim().min(1).max(100),
+  limit: z.coerce.number().int().min(1).max(25).optional(),
 });
 
 const IdParams = z.object({ id: z.string().uuid() });
@@ -64,11 +72,13 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
         .send({ code: 'Support.PlatformCannotOpen', message: 'Platform users open tickets from a customer tenant only.' });
     }
     const body = OpenBody.parse(request.body);
+    const openerEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
+    const openerDisplayName = await resolveDisplayName(container.userDirectory, principal.userId, openerEmail);
     const result = await openSupportTicket(
       {
         tenantId: principal.tenantId,
         correlationId: request.id,
-        opener: { userId: principal.userId, displayName: principal.userId, actorType: principal.actorType },
+        opener: { userId: principal.userId, displayName: openerDisplayName, actorType: principal.actorType },
         subject: body.subject,
         category: body.category,
         priority: body.priority,
@@ -100,7 +110,9 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
       const result = await listSupportTicketsForAgent(
         {
           agentTenantId: container.platform.getPlatformTenantId(),
-          assignedAgentId: query.mine === true ? principal.userId : null,
+          actorUserId: principal.userId,
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+          ...(query.mine === true ? { assignedAgentId: principal.userId } : {}),
           page: query.page,
           size: query.size,
           ...(query.includeClosed !== undefined ? { includeClosed: query.includeClosed } : {}),
@@ -125,6 +137,60 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     );
     if (!result.isSuccess) {
       return reply.code(400).send({ code: result.error.code, message: result.error.message });
+    }
+    return reply.send(result.value);
+  });
+
+  // GET /communication/support/agents — lookup de agentes elegibles para reassign.
+  app.get('/communication/support/agents', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const isPlatformTenant = principal.tenantId === container.platform.getPlatformTenantId();
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    if (!isPlatformTenant || (!hasAgentPerm && !isPlatformAdminActorType(principal.actorType))) {
+      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
+    }
+
+    const query = AgentSearchQuery.parse(request.query);
+    const result = await searchSupportAgents(
+      {
+        agentTenantId: container.platform.getPlatformTenantId(),
+        query: query.q,
+        ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      },
+      container,
+    );
+    return reply.send(result);
+  });
+
+  // GET /communication/support/:id — detalle del ticket para customer/agente autorizado.
+  app.get('/communication/support/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = IdParams.parse(request.params);
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const result = await getSupportTicket(
+      {
+        ticketId: params.id,
+        actor: {
+          userId: principal.userId,
+          tenantId: principal.tenantId,
+          hasAgentPermission: hasAgentPerm,
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+        },
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      const status =
+        result.error.code === 'Support.NotFound'
+          ? 404
+          : result.error.code === 'Auth.Forbidden'
+            ? 403
+            : 400;
+      return reply.code(status).send({ code: result.error.code, message: result.error.message });
     }
     return reply.send(result.value);
   });

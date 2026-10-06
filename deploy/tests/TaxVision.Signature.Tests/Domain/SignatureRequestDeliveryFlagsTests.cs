@@ -10,11 +10,12 @@ namespace TaxVision.Signature.Tests.Domain;
 public sealed class SignatureRequestDeliveryFlagsTests
 {
     [Fact]
-    public void Defaults_deliver_signed_document_but_not_certificate()
+    public void Defaults_do_not_deliver_sealed_or_certificate()
     {
+        // F7 — ambos defaults de entrega quedan OFF; el tenant/preparador los activa de forma explícita.
         var request = NewDraft(generateCertificate: true);
 
-        Assert.True(request.SendSignedDocumentToSigners);
+        Assert.False(request.SendSealedDocumentToSigners);
         Assert.False(request.SendCertificateToSigners);
     }
 
@@ -33,7 +34,7 @@ public sealed class SignatureRequestDeliveryFlagsTests
                 requiresSequentialSigning: false,
                 requiresConsent: false,
                 generateCertificate: false,
-                sendSignedDocumentToSigners: true,
+                sendSealedDocumentToSigners: true,
                 sendCertificateToSigners: true
             )
             .Value;
@@ -43,14 +44,14 @@ public sealed class SignatureRequestDeliveryFlagsTests
     }
 
     [Fact]
-    public void SetSignedDocumentDelivery_toggles_in_draft()
+    public void SetSealedDocumentDelivery_toggles_in_draft()
     {
         var request = NewDraft(generateCertificate: false);
 
-        var result = request.SetSignedDocumentDelivery(false);
+        var result = request.SetSealedDocumentDelivery(false);
 
         Assert.True(result.IsSuccess);
-        Assert.False(request.SendSignedDocumentToSigners);
+        Assert.False(request.SendSealedDocumentToSigners);
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public sealed class SignatureRequestDeliveryFlagsTests
     {
         var request = NewInProgressCompleted();
 
-        var result = request.SetSignedDocumentDelivery(false);
+        var result = request.SetSealedDocumentDelivery(false);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.NotEditable", result.Error.Code);
@@ -110,7 +111,7 @@ public sealed class SignatureRequestDeliveryFlagsTests
             .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
-        draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
+        draft.AttachOriginalHash(DocumentHash.Create(new string('a', 64)).Value);
         draft.Send(DateTime.UtcNow);
         draft.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
         return draft;

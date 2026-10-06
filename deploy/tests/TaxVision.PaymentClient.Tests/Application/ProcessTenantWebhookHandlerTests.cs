@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
@@ -283,6 +283,12 @@ file sealed class FakePaymentAdapterFactory(IPaymentProvider provider) : IPaymen
 
 file sealed class FakePaymentLinkRepository : IPaymentLinkRepository
 {
+    public Task<bool> AnyUsedForExternalReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) => Task.FromResult(false);
+
     public Task<PaymentLink?> GetByIdAsync(Guid paymentLinkId, Guid tenantId, CancellationToken ct = default) =>
         throw new NotImplementedException();
 

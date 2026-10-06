@@ -59,12 +59,34 @@ public sealed class Signer : BaseEntity
     public string? ClientIp { get; private set; }
     public string? UserAgent { get; private set; }
 
+    /// <summary>
+    /// F7 — timestamp de la primera vez que el aggregate decidió emitir la copia parcial para
+    /// este firmante. Idempotente: si ya tiene valor, no se vuelve a enganchar.
+    /// </summary>
+    public DateTime? PartialCopyRequestedAtUtc { get; private set; }
+
+    /// <summary>F7 — cuando el consumer terminó de subir el PDF a CloudStorage.</summary>
+    public DateTime? PartialCopySentAtUtc { get; private set; }
+
+    /// <summary>F7 — FileId del PDF rendeado (para que el preparador también lo pueda descargar).</summary>
+    public Guid? PartialCopyFileId { get; private set; }
+
+    /// <summary>F7 — motivo del último fallo. Null si no falló o ya quedó entregado.</summary>
+    public string? PartialCopyFailureReason { get; private set; }
+
     /// <summary>Marca si el firmante ya aceptó el disclosure/consent (aplica cuando la solicitud lo exige).</summary>
     public bool HasAcceptedConsent { get; private set; }
     public DateTime? ConsentAcceptedAtUtc { get; private set; }
 
     /// <summary>Timestamp de la primera apertura del enlace público por el firmante (audit trail).</summary>
     public DateTime? FirstViewedAtUtc { get; private set; }
+
+    /// <summary>
+    /// F5 — Timestamp de la primera vez que el firmante vio el DOCUMENTO (no solo el enlace).
+    /// Semántica distinta a <see cref="FirstViewedAtUtc"/>: éste se emite al servir los bytes del
+    /// PDF al firmante, no al abrir el link. Las actas lo pintan como línea aparte.
+    /// </summary>
+    public DateTime? DocumentFirstViewedAtUtc { get; private set; }
 
     /// <summary>Método de captura de la firma (Typed/Drawn/Uploaded). <c>null</c> hasta que el firmante firme.</summary>
     public SignatureCaptureMethod? CaptureMethod { get; private set; }
@@ -430,6 +452,19 @@ public sealed class Signer : BaseEntity
             UserAgent = TruncateUserAgent(userAgent);
     }
 
+    /// <summary>F5 — Marca la primera vez que vio el PDF (no el enlace). Idempotente.</summary>
+    internal void RecordDocumentFirstView(DateTime viewedAtUtc, string? clientIp, string? userAgent)
+    {
+        if (DocumentFirstViewedAtUtc is not null)
+            return;
+
+        DocumentFirstViewedAtUtc = viewedAtUtc;
+        if (ClientIp is null)
+            ClientIp = TruncateIp(clientIp);
+        if (UserAgent is null)
+            UserAgent = TruncateUserAgent(userAgent);
+    }
+
     // ------------------------------------------------------------------
     // Practitioner PIN — cada regla en su método
     // ------------------------------------------------------------------
@@ -538,6 +573,26 @@ public sealed class Signer : BaseEntity
         Status = SignerStatus.Expired;
         return Result.Success();
     }
+
+    /// <summary>F7 — idempotente: solo setea la primera vez. Devuelve true si fue el primer enganche.</summary>
+    internal bool MarkPartialCopyRequested(DateTime requestedAtUtc)
+    {
+        if (PartialCopyRequestedAtUtc is not null)
+            return false;
+        PartialCopyRequestedAtUtc = requestedAtUtc;
+        return true;
+    }
+
+    /// <summary>F7 — el consumer registra que la copia se rendeó y subió a CloudStorage.</summary>
+    internal void MarkPartialCopySent(Guid fileId, DateTime sentAtUtc)
+    {
+        PartialCopyFileId = fileId;
+        PartialCopySentAtUtc = sentAtUtc;
+        PartialCopyFailureReason = null;
+    }
+
+    /// <summary>F7 — el consumer registra el motivo del último fallo.</summary>
+    internal void MarkPartialCopyFailed(string reason) => PartialCopyFailureReason = reason;
 
     // ------------------------------------------------------------------
     // Helpers privados

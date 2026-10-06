@@ -14,7 +14,7 @@ public sealed record CreateTemplateBody(
     // P7: documento base opcional del que se crea la plantilla; "from template" lo pre-selecciona.
     Guid? BaseDocumentFileId = null,
     // Defaults de entrega/recordatorio que "from template" copia a la solicitud.
-    bool SendSignedDocumentToSigners = true,
+    bool SendSealedDocumentToSigners = true,
     bool SendCertificateToSigners = false,
     bool AutoRemindersEnabled = true,
     int ReminderIntervalHours = 48
@@ -33,7 +33,7 @@ public sealed record UpdateTemplateDefaultsBody(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    bool SendSignedDocumentToSigners,
+    bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
     int ReminderIntervalHours

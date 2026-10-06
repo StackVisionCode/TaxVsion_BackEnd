@@ -22,6 +22,7 @@ using TaxVision.Postmaster.Infrastructure.Providers;
 using TaxVision.Postmaster.Infrastructure.Providers.Assets;
 using TaxVision.Postmaster.Infrastructure.Providers.Connectors;
 using TaxVision.Postmaster.Infrastructure.Providers.Smtp;
+using TaxVision.Postmaster.Infrastructure.Providers.TenantDirectory;
 using TaxVision.Postmaster.Infrastructure.RateLimit;
 using TaxVision.Postmaster.Infrastructure.RateLimiting;
 using TaxVision.Postmaster.Infrastructure.Seed;
@@ -44,19 +45,20 @@ public static class DependencyInjection
         services.AddSecretProtection();
 
         services.AddScoped<ISystemEmailProviderRepository, SystemEmailProviderRepository>();
-        services.AddScoped<ITenantEmailProviderRepository, TenantEmailProviderRepository>();
         services.AddScoped<IProviderHealthStatusRepository, ProviderHealthStatusRepository>();
         services.AddScoped<ISentMessageRepository, SentMessageRepository>();
         services.AddScoped<ISuppressionListRepository, SuppressionListRepository>();
-        services.AddScoped<ITenantOAuthAccountRepository, TenantOAuthAccountRepository>();
+        services.AddScoped<IConnectedMailboxRepository, ConnectedMailboxRepository>();
+        services.AddScoped<ITenantDirectoryRepository, TenantDirectoryRepository>();
         services.AddScoped<IProviderResolver, ProviderResolver>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
-        services.AddScoped<IOAuthProviderResolver, OAuthProviderResolver>();
+        services.AddScoped<IConnectedMailboxResolver, ConnectedMailboxResolver>();
         services.AddScoped<IIdempotencyGuard, SqlIdempotencyGuard>();
         services.Configure<SystemEmailProviderOptions>(
             configuration.GetSection(SystemEmailProviderOptions.SectionName)
         );
         services.AddHostedService<SystemEmailProviderSeeder>();
+        services.AddHostedService<TenantDirectoryBackfillService>();
 
         services.AddSingleton(_ => new HttpResiliencePipelineRegistry(
             minimumThroughput: 5,
@@ -151,6 +153,7 @@ public static class DependencyInjection
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddOptions<TenantClientOptions>().Bind(configuration.GetSection(TenantClientOptions.SectionName));
 
         // Fase 13 (hardening) — timeout 30s fijo en los 3 clientes M2M salientes de Postmaster, mismo
         // valor que Correspondence/Connectors ya usan en este mismo esfuerzo (ver ConnectorsClient/
@@ -182,6 +185,16 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+
+        // Solo lo usa el backfill de arranque; el camino de envío nunca llama a Tenant por red.
+        services.AddHttpClient<ITenantDirectoryClient, TenantDirectoryClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<TenantClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     private static void AddConnectorsSendClient(IServiceCollection services, IConfiguration configuration)
@@ -191,7 +204,7 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(ConnectorsClientOptions.SectionName));
 
         // Fase 13 (hardening) — mismo timeout 30s fijo que los clientes de CloudStorage/Auth arriba.
-        services.AddHttpClient<IOAuthEmailSender, ConnectorsSendClient>(
+        services.AddHttpClient<IConnectedMailboxSender, ConnectorsSendClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<ConnectorsClientOptions>>().Value;

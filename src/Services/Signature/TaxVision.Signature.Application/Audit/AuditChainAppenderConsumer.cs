@@ -120,6 +120,38 @@ public static class AuditChainAppenderConsumer
         }
     }
 
+    // F5 — El firmante vio el DOCUMENTO (no solo el enlace). Es una línea distinta en el acta.
+    public static async Task Handle(
+        SignerDocumentViewedIntegrationEvent evt,
+        IAuditChainAppender appender,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<SignatureAuditEvent> logger,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(evt.CorrelationId))
+        {
+            var payload = new
+            {
+                evt.SignerId,
+                evt.ViewedAtUtc,
+                evt.ClientIp,
+            };
+            await AppendAsync(
+                evt.TenantId,
+                evt.SignatureRequestId,
+                SignatureAuditEventKind.DocumentViewed,
+                evt.ViewedAtUtc,
+                payload,
+                appender,
+                unitOfWork,
+                logger,
+                ct
+            );
+        }
+    }
+
     public static async Task Handle(
         SignerPinVerifiedIntegrationEvent evt,
         IAuditChainAppender appender,

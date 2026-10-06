@@ -9,6 +9,8 @@ public sealed record CreateSignatureProfileCommand(
     Guid TenantId,
     Guid ActorUserId,
     bool ActorIsAdmin,
+    // F4 — el controller resuelve el permiso vía IUserPermissionsSource y lo pasa aquí.
+    bool ActorHasSignOwn,
     Guid? OwnerUserId,
     string Label,
     byte[] Content

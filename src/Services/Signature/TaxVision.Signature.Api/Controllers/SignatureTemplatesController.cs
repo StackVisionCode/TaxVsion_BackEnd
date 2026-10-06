@@ -43,7 +43,8 @@ namespace TaxVision.Signature.Api.Controllers;
 [Route("signature/templates")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBase
+public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissionsSource permissionsSource)
+    : ControllerBase
 {
     // ---------- POST /signature/templates ----------
     [HttpPost]
@@ -67,7 +68,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
             body.RequiresConsent,
             body.GenerateCertificate,
             body.BaseDocumentFileId,
-            body.SendSignedDocumentToSigners,
+            body.SendSealedDocumentToSigners,
             body.SendCertificateToSigners,
             body.AutoRemindersEnabled,
             body.ReminderIntervalHours
@@ -163,7 +164,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
                 body.RequiresSequentialSigning,
                 body.RequiresConsent,
                 body.GenerateCertificate,
-                body.SendSignedDocumentToSigners,
+                body.SendSealedDocumentToSigners,
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
                 body.ReminderIntervalHours
@@ -459,13 +460,17 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
+        // F4: el claim habilita la firma propia al instanciar; sin él, cae a la de oficina.
+        var canSignOwn = isAdmin || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.SignOwn, ct);
         var cmd = new CreateSignatureRequestFromTemplateCommand(
             tenantId,
             userId,
             id,
             body.OriginalFileId,
             body.SlotBindings,
-            body.DescriptionOverride
+            body.DescriptionOverride,
+            canSignOwn
         );
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);
         return result.IsSuccess

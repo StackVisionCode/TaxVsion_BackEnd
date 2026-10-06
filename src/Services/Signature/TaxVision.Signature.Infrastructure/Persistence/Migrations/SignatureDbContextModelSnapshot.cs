@@ -509,6 +509,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("SubDomain")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -644,10 +649,13 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<bool>("ExpirationEnabled")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("ExpiredAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("ExpiresAtUtc")
+                    b.Property<DateTime?>("ExpiresAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("GenerateCertificate")
@@ -718,13 +726,19 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevocationEpoch")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("ScheduledSendAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("SealedFileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("SendCertificateToSigners")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("SendSignedDocumentToSigners")
+                    b.Property<bool>("SendPartialCopyOnEachSignature")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SendSealedDocumentToSigners")
                         .HasColumnType("bit");
 
                     b.Property<DateTime?>("SentAtUtc")
@@ -743,7 +757,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
-                    b.Property<int>("TokenExpirationHours")
+                    b.Property<int?>("TokenExpirationHours")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -812,6 +826,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<DateTime?>("DocumentFirstViewedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("FirstViewedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -831,6 +848,19 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Order")
                         .HasColumnType("int");
+
+                    b.Property<string>("PartialCopyFailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("PartialCopyFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PartialCopyRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PartialCopySentAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("PinFailedAttempts")
                         .HasColumnType("int");
@@ -950,11 +980,33 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<int>("DefaultVerificationChannel")
                         .HasColumnType("int");
 
+                    b.Property<bool>("ExpirationEnabledByDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("GenerateCertificateByDefault")
                         .HasColumnType("bit");
 
+                    b.Property<string>("PartialCopyDefaultAudienceKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("All");
+
                     b.Property<bool>("RemindersEnabledByDefault")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("SendPartialCopyDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("SendSealedDocumentDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -1025,7 +1077,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SendCertificateToSigners")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("SendSignedDocumentToSigners")
+                    b.Property<bool>("SendSealedDocumentToSigners")
                         .HasColumnType("bit");
 
                     b.Property<string>("Status")
@@ -1326,6 +1378,31 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("SignatureRequestId");
                         });
 
+                    b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.PartialCopyAudience", "PartialCopyAudience", b1 =>
+                        {
+                            b1.Property<Guid>("SignatureRequestId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)")
+                                .HasColumnName("PartialCopyAudience_Kind");
+
+                            b1.Property<string>("SpecificSignerIdsCsv")
+                                .IsRequired()
+                                .HasMaxLength(4000)
+                                .HasColumnType("nvarchar(4000)")
+                                .HasColumnName("PartialCopyAudience_SpecificSignerIdsCsv");
+
+                            b1.HasKey("SignatureRequestId");
+
+                            b1.ToTable("SignatureRequests");
+
+                            b1.WithOwner()
+                                .HasForeignKey("SignatureRequestId");
+                        });
+
                     b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.PreparerInfo", "Preparer", b1 =>
                         {
                             b1.Property<Guid>("SignatureRequestId")
@@ -1363,6 +1440,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Navigation("DocumentHashPost");
 
                     b.Navigation("DocumentHashPre");
+
+                    b.Navigation("PartialCopyAudience")
+                        .IsRequired();
 
                     b.Navigation("Preparer");
                 });

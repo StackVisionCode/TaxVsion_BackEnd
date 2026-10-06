@@ -497,7 +497,14 @@ public sealed class Invoice : AggregateRoot
         Status = InvoiceStatus.Issued;
         UpdatedAtUtc = nowUtc;
         LastModifiedBy = actorUserId;
-        RecordStatusChange(InvoiceStatus.Draft, InvoiceStatus.Issued, StatusChangeTrigger.Issue, null, actorUserId, nowUtc);
+        RecordStatusChange(
+            InvoiceStatus.Draft,
+            InvoiceStatus.Issued,
+            StatusChangeTrigger.Issue,
+            null,
+            actorUserId,
+            nowUtc
+        );
         return Result.Success();
     }
 
@@ -524,7 +531,10 @@ public sealed class Invoice : AggregateRoot
     {
         var existing = _paymentLinks.FirstOrDefault(l => l.ExternalPayableId == externalPayableId);
         if (existing is not null)
+        {
+            existing.RefreshCheckoutUrl(checkoutUrl);
             return existing;
+        }
 
         // NO se muta la factura (UpdatedAtUtc/RowVersion): adjuntar un enlace hijo solo inserta esa fila.
         // Tocar el padre dispararía un UPDATE con chequeo de RowVersion que compite con el resto del

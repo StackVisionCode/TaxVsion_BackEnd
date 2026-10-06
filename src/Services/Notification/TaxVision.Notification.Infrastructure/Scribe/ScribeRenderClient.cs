@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -6,6 +6,7 @@ using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 
 namespace TaxVision.Notification.Infrastructure.Scribe;
 
@@ -63,9 +64,22 @@ public sealed class ScribeRenderClient(
             return Result.Failure<ScribeRenderedEmail>(new Error("Email.ScribeRender", "Empty Scribe response."));
 
         return Result.Success(
-            new ScribeRenderedEmail(payload.Subject, payload.Html, payload.Text, payload.InlineAssets ?? [])
+            new ScribeRenderedEmail(
+                payload.Subject,
+                payload.Html,
+                payload.Text,
+                payload.InlineAssets ?? [],
+                ParseDispatchScope(payload.DispatchScope)
+            )
         );
     }
+
+    /// <summary>
+    /// Scope desconocido o ausente = System. Un valor que no se entiende no puede terminar mandando el
+    /// correo por el buzon de una oficina.
+    /// </summary>
+    private static EmailDispatchScope ParseDispatchScope(string? value) =>
+        Enum.TryParse<EmailDispatchScope>(value, ignoreCase: true, out var parsed) ? parsed : EmailDispatchScope.System;
 
     private sealed record RenderRequestDto(
         string EventKey,
@@ -88,6 +102,7 @@ public sealed class ScribeRenderClient(
         string Subject,
         string Html,
         string? Text,
-        IReadOnlyList<EmailInlineAssetReference>? InlineAssets
+        IReadOnlyList<EmailInlineAssetReference>? InlineAssets,
+        string? DispatchScope
     );
 }

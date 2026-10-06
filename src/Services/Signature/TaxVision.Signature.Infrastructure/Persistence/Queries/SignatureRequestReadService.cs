@@ -36,18 +36,28 @@ internal sealed class SignatureRequestReadService(
             baseQuery = baseQuery.Where(r => r.Status == query.Status.Value);
         if (query.Category is not null)
             baseQuery = baseQuery.Where(r => r.Category == query.Category);
+        // Desde F2, Ready es obsoleto: solo Draft es editorialmente editable. Las filas Ready
+        // históricas que no quedaron migradas se incluyen de forma defensiva (misma semántica).
         if (query.EditableOnly)
             baseQuery = baseQuery.Where(r =>
-                r.Status == SignatureRequestStatus.Draft || r.Status == SignatureRequestStatus.Ready
+                r.Status == SignatureRequestStatus.Draft
+#pragma warning disable CS0618
+                || r.Status == SignatureRequestStatus.Ready
+#pragma warning restore CS0618
             );
 
         // Visibilidad por asignación (P2): solo solicitudes cuyo cliente está asignado al actor. La request
         // no tiene CustomerId → se atraviesa Signers.MappedCustomerId. IgnoreQueryFilters + tenant explícito
         // en el subquery (scope de Wolverine sin tenant ambiental). null = sin restricción (view_all/flag off).
+        //
+        // F2.5: el autor SIEMPRE ve sus propios Draft (OR), aunque todavía no tengan firmantes mapeados a
+        // ninguno de sus clientes. Sin esta rama, un borrador autoguardado sin signers desaparecería de la
+        // lista de su propio creador. CanViewAll sigue siendo la única puerta global (guardrail #12).
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
         if (assignedTo is { } assignee)
             baseQuery = baseQuery.Where(r =>
-                db.Set<CustomerAssignmentProjection>()
+                (r.Status == SignatureRequestStatus.Draft && r.CreatedByUserId == assignee)
+                || db.Set<CustomerAssignmentProjection>()
                     .IgnoreQueryFilters()
                     .Any(a =>
                         a.TenantId == query.TenantId
@@ -72,7 +82,9 @@ internal sealed class SignatureRequestReadService(
                 r.ExpiresAtUtc,
                 r.CreatedAtUtc,
                 r.SentAtUtc,
-                r.CompletedAtUtc
+                r.CompletedAtUtc,
+                r.Status == SignatureRequestStatus.Draft && r.CreatedByUserId == query.ActorUserId,
+                r.ScheduledSendAtUtc
             ))
             .ToListAsync(ct);
 

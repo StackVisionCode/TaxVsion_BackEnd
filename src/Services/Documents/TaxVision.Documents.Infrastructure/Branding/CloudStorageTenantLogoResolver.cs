@@ -14,7 +14,7 @@ public sealed class CloudStorageClientOptions
     public const string SectionName = "CloudStorageClient";
 
     /// <summary>Base URL del servicio CloudStorage. En Docker: http://cloudstorage-api:8080.</summary>
-    public string BaseUrl { get; set; } = "http://localhost:5170";
+    public string BaseUrl { get; set; } = "http://localhost:5330";
 }
 
 /// <summary>

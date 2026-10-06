@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -52,13 +52,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -94,13 +96,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
                 evt,
                 idempotencyGuard,
                 new FakeProviderResolver(),
-                new FakeOAuthProviderResolver(),
+                new FakeConnectedMailboxResolver(),
                 new FakeSuppressionListRepository(),
                 new FakeEmailProviderRateLimiter(),
                 new FakeEmailSender(),
-                new FakeOAuthEmailSender(),
+                new FakeConnectedMailboxSender(),
                 new FakeInlineAssetFetcher(),
+                new FakeOutboundAttachmentFetcher(),
                 sentMessages,
+                new FakeTenantDirectoryRepository(),
                 new FakeUnitOfWork(),
                 new FakeCorrelationContext(),
                 bus,
@@ -138,13 +142,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
                 evt,
                 idempotencyGuard,
                 providerResolver,
-                new FakeOAuthProviderResolver(),
+                new FakeConnectedMailboxResolver(),
                 new FakeSuppressionListRepository(),
                 new FakeEmailProviderRateLimiter(),
                 new FakeEmailSender(),
-                new FakeOAuthEmailSender(),
+                new FakeConnectedMailboxSender(),
                 new FakeInlineAssetFetcher(),
+                new FakeOutboundAttachmentFetcher(),
                 sentMessages,
+                new FakeTenantDirectoryRepository(),
                 unitOfWork,
                 new FakeCorrelationContext(),
                 bus,
@@ -176,13 +182,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             new FakeEmailSender(),
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -216,13 +224,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             new FakeEmailSender(),
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             new FakeSentMessageRepository(),
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -252,13 +262,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -306,13 +318,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             inlineAssetFetcher,
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -364,13 +378,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             inlineAssetFetcher,
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -405,13 +421,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -446,13 +464,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             suppressionList,
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -488,13 +508,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             suppressionList,
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -578,19 +600,19 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
     }
 
     [Fact]
-    public async Task Handle_defers_a_TenantOAuth_email_when_Connectors_answers_429()
+    public async Task Handle_defers_a_TenantMailbox_email_when_Connectors_answers_429()
     {
-        var evt = CreateEvent() with { RequiredProviderScope = "TenantOAuth" };
+        var evt = CreateEvent() with { RequiredProviderScope = "TenantMailbox" };
         var idempotencyGuard = new FakeIdempotencyGuard();
-        var oauthProviderResolver = new FakeOAuthProviderResolver
+        var mailboxResolver = new FakeConnectedMailboxResolver
         {
-            ResolveReturnValue = new OAuthResolveResult(
-                OAuthResolutionStatus.Resolved,
-                new ResolvedOAuthProvider(Guid.NewGuid(), "gmail", "sales@tenant.example", "Tenant Sales"),
+            ResolveReturnValue = new MailboxResolveResult(
+                MailboxResolutionStatus.Resolved,
+                new ResolvedMailbox(Guid.NewGuid(), "gmail", "sales@tenant.example", "Tenant Sales"),
                 null
             ),
         };
-        var oauthEmailSender = new FakeOAuthEmailSender
+        var mailboxSender = new FakeConnectedMailboxSender
         {
             SendReturnValue = new SendResult(false, null, "RateLimit.Exceeded: too fast", [], TimeSpan.FromSeconds(20)),
         };
@@ -602,13 +624,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
                 evt,
                 idempotencyGuard,
                 new FakeProviderResolver(),
-                oauthProviderResolver,
+                mailboxResolver,
                 new FakeSuppressionListRepository(),
                 new FakeEmailProviderRateLimiter(),
                 new FakeEmailSender(),
-                oauthEmailSender,
+                mailboxSender,
                 new FakeInlineAssetFetcher(),
+                new FakeOutboundAttachmentFetcher(),
                 sentMessages,
+                new FakeTenantDirectoryRepository(),
                 new FakeUnitOfWork(),
                 new FakeCorrelationContext(),
                 bus,
@@ -653,13 +677,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
                     null
                 ),
             },
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             rateLimiter,
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -692,13 +718,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             rateLimiter,
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -737,13 +765,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             rateLimiter,
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -785,13 +815,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             providerResolver,
-            new FakeOAuthProviderResolver(),
+            new FakeConnectedMailboxResolver(),
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             emailSender,
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -808,19 +840,19 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
     }
 
     [Fact]
-    public async Task Handle_routes_to_ConnectorsSendClient_and_publishes_Succeeded_when_scope_is_TenantOAuth()
+    public async Task Handle_routes_to_ConnectorsSendClient_and_publishes_Succeeded_when_scope_is_TenantMailbox()
     {
-        var evt = CreateEvent() with { RequiredProviderScope = "TenantOAuth" };
+        var evt = CreateEvent() with { RequiredProviderScope = "TenantMailbox" };
         var idempotencyGuard = new FakeIdempotencyGuard();
-        var oauthProviderResolver = new FakeOAuthProviderResolver
+        var mailboxResolver = new FakeConnectedMailboxResolver
         {
-            ResolveReturnValue = new OAuthResolveResult(
-                OAuthResolutionStatus.Resolved,
-                new ResolvedOAuthProvider(Guid.NewGuid(), "gmail", "sales@tenant.example", "Tenant Sales"),
+            ResolveReturnValue = new MailboxResolveResult(
+                MailboxResolutionStatus.Resolved,
+                new ResolvedMailbox(Guid.NewGuid(), "gmail", "sales@tenant.example", "Tenant Sales"),
                 null
             ),
         };
-        var oauthEmailSender = new FakeOAuthEmailSender
+        var mailboxSender = new FakeConnectedMailboxSender
         {
             SendReturnValue = new SendResult(true, "connectors-msg-99", null, []),
         };
@@ -831,13 +863,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             new FakeProviderResolver(),
-            oauthProviderResolver,
+            mailboxResolver,
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             new FakeEmailSender(),
-            oauthEmailSender,
+            mailboxSender,
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,
@@ -848,7 +882,7 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         var message = Assert.Single(sentMessages.Added);
         Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Sent, message.Status);
         Assert.Equal("sales@tenant.example", message.FromAddress);
-        Assert.NotNull(oauthEmailSender.LastMessage);
+        Assert.NotNull(mailboxSender.LastMessage);
         Assert.Single(idempotencyGuard.Completed);
 
         var published = Assert.Single(bus.Published);
@@ -857,16 +891,16 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
     }
 
     [Fact]
-    public async Task Handle_publishes_ProviderNotConfigured_when_scope_is_TenantOAuth_and_no_account_connected()
+    public async Task Handle_publishes_ProviderNotConfigured_when_scope_is_TenantMailbox_and_no_account_connected()
     {
-        var evt = CreateEvent() with { RequiredProviderScope = "TenantOAuth" };
+        var evt = CreateEvent() with { RequiredProviderScope = "TenantMailbox" };
         var idempotencyGuard = new FakeIdempotencyGuard();
-        var oauthProviderResolver = new FakeOAuthProviderResolver
+        var mailboxResolver = new FakeConnectedMailboxResolver
         {
-            ResolveReturnValue = new OAuthResolveResult(
-                OAuthResolutionStatus.ProviderNotConfigured,
+            ResolveReturnValue = new MailboxResolveResult(
+                MailboxResolutionStatus.ProviderNotConfigured,
                 null,
-                "No active OAuth account connected for this tenant."
+                "No active mailbox connected for this tenant."
             ),
         };
         var sentMessages = new FakeSentMessageRepository();
@@ -876,13 +910,15 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
             evt,
             idempotencyGuard,
             new FakeProviderResolver(),
-            oauthProviderResolver,
+            mailboxResolver,
             new FakeSuppressionListRepository(),
             new FakeEmailProviderRateLimiter(),
             new FakeEmailSender(),
-            new FakeOAuthEmailSender(),
+            new FakeConnectedMailboxSender(),
             new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
             sentMessages,
+            new FakeTenantDirectoryRepository(),
             new FakeUnitOfWork(),
             new FakeCorrelationContext(),
             bus,

@@ -28,11 +28,33 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.RequiresSequentialSigning).IsRequired();
         builder.Property(request => request.RequiresConsent).IsRequired();
         builder.Property(request => request.GenerateCertificate).IsRequired();
-        builder.Property(request => request.SendSignedDocumentToSigners).IsRequired();
+        builder.Property(request => request.SendSealedDocumentToSigners).IsRequired();
         builder.Property(request => request.SendCertificateToSigners).IsRequired();
 
-        builder.Property(request => request.TokenExpirationHours).IsRequired();
-        builder.Property(request => request.ExpiresAtUtc).IsRequired();
+        // F7 — copia inmediata al firmar (flag + audiencia owned).
+        builder.Property(request => request.SendPartialCopyOnEachSignature).IsRequired();
+        builder.OwnsOne(
+            request => request.PartialCopyAudience,
+            audience =>
+            {
+                audience
+                    .Property(a => a.Kind)
+                    .HasConversion<string>()
+                    .HasColumnName("PartialCopyAudience_Kind")
+                    .HasMaxLength(16)
+                    .IsRequired();
+                audience
+                    .Property(a => a.SpecificSignerIdsCsv)
+                    .HasColumnName("PartialCopyAudience_SpecificSignerIdsCsv")
+                    .HasMaxLength(4000)
+                    .IsRequired();
+            }
+        );
+
+        // F7 — expiración opcional. Nullable salvo el flag maestro.
+        builder.Property(request => request.ExpirationEnabled).IsRequired();
+        builder.Property(request => request.TokenExpirationHours);
+        builder.Property(request => request.ExpiresAtUtc);
         builder.Property(request => request.RevocationEpoch).IsRequired();
 
         builder.Property(request => request.CreatedAtUtc).IsRequired();

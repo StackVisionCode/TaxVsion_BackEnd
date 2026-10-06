@@ -111,7 +111,7 @@ public static class EditInvoiceHandler
             var totalCents = invoice.Total.AmountCents;
             if (invoice.Status != InvoiceStatus.Paid && invoice.Status != InvoiceStatus.Voided && totalCents > 0)
             {
-                await paymentLinks.EnsurePayableAsync(
+                var ensured = await paymentLinks.EnsurePayableAsync(
                     totalCents,
                     invoice.Currency,
                     invoice.Id,
@@ -119,6 +119,17 @@ public static class EditInvoiceHandler
                     invoice.InvoiceNumber,
                     ct
                 );
+                if (ensured.IsFailure)
+                    throw new InvalidOperationException(
+                        $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
+                    );
+
+                invoice.AttachPaymentLink(
+                    ensured.Value.PayableId,
+                    ensured.Value.CheckoutUrl,
+                    clock.GetUtcNow().UtcDateTime
+                );
+                await unitOfWork.SaveChangesAsync(ct);
             }
             await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
         }

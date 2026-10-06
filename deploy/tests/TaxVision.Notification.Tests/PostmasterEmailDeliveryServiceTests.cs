@@ -82,13 +82,42 @@ public sealed class PostmasterEmailDeliveryServiceTests
         Assert.Equal(tenantId, evt.TenantId);
         Assert.Equal("corr-1", evt.CorrelationId);
         Assert.Equal("to@test.com", evt.To);
-        Assert.Equal("Tenant", evt.RequiredProviderScope);
+        // TenantPreferred, no Tenant: este servicio sabe DE QUIÉN es el correo, no qué transportes
+        // tiene esa oficina. Pedir Tenant fijo exigía una fila TenantEmailProvider que ninguna
+        // pantalla crea, así que todo envío por este camino moría en ProviderNotConfigured.
+        Assert.Equal("TenantPreferred", evt.RequiredProviderScope);
+        // El logo SÍ sigue siendo del tenant: de quién es la marca del correo y por qué transporte
+        // sale son preguntas distintas, y mezclarlas pondría el logo de TaxVision en la factura de
+        // una oficina solo porque no tiene SMTP propio.
         Assert.Equal("Tenant", evt.LogoScope);
         Assert.Equal("Transactional", evt.Stream);
         Assert.Null(evt.Cc);
         Assert.Null(evt.Bcc);
         Assert.Null(evt.CampaignId);
         Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task DeliverAsync_carries_the_senders_ReplyTo_into_the_event()
+    {
+        // Es el dato que autoriza a Postmaster a enviar por el proveedor del sistema en nombre de la
+        // oficina. Si se quedara acá, ese escalón se denegaría siempre y la cadena acabaría donde
+        // empezó: ProviderNotConfigured.
+        var message = CreateMessage(replyTo: "maria@oficina.example");
+        var repo = new RecordingOutboundEmailRepository();
+        repo.Seed(message);
+        var publisher = new RecordingIntegrationEventPublisher();
+        var service = new PostmasterEmailDeliveryService(
+            repo,
+            publisher,
+            new NoOpCorrelationContext("corr-1"),
+            new NoOpUnitOfWork()
+        );
+
+        await service.DeliverAsync(message.Id, CancellationToken.None);
+
+        var evt = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+        Assert.Equal("maria@oficina.example", evt.ReplyTo);
     }
 
     [Fact]
@@ -163,7 +192,8 @@ public sealed class PostmasterEmailDeliveryServiceTests
         Guid? tenantId = null,
         IReadOnlyList<(string Address, EmailRecipientKind Kind, string? Name)>? recipients = null,
         Guid? campaignId = null,
-        string? correlationId = null
+        string? correlationId = null,
+        string? replyTo = null
     ) =>
         OutboundEmailMessage
             .Create(
@@ -177,7 +207,8 @@ public sealed class PostmasterEmailDeliveryServiceTests
                 templateId: null,
                 templateVersionId: null,
                 campaignId: campaignId,
-                correlationId: correlationId
+                correlationId: correlationId,
+                replyTo: replyTo
             )
             .Value;
 

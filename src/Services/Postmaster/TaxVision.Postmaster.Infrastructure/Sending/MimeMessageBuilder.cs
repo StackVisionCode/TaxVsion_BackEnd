@@ -1,4 +1,4 @@
-using MimeKit;
+﻿using MimeKit;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
@@ -17,7 +17,8 @@ public static class MimeMessageBuilder
         SentMessage message,
         RenderedContent content,
         ResolvedEmailProvider provider,
-        IReadOnlyList<InlineAssetBytes> inlineAssets
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments
     )
     {
         var mimeMessage = new MimeMessage();
@@ -29,15 +30,25 @@ public static class MimeMessageBuilder
 
         AddRecipients(mimeMessage, message);
         mimeMessage.Subject = content.Subject;
-        mimeMessage.Body = BuildBody(content, inlineAssets);
+        mimeMessage.Body = BuildBody(content, inlineAssets, attachments);
         return mimeMessage;
     }
 
-    private static MimeEntity BuildBody(RenderedContent content, IReadOnlyList<InlineAssetBytes> inlineAssets)
+    private static MimeEntity BuildBody(
+        RenderedContent content,
+        IReadOnlyList<InlineAssetBytes> inlineAssets,
+        IReadOnlyList<OutboundAttachmentBytes> attachments
+    )
     {
         var bodyBuilder = new BodyBuilder { HtmlBody = content.Html, TextBody = content.Text };
         foreach (var asset in inlineAssets)
             AddLinkedResource(bodyBuilder, asset);
+        foreach (var attachment in attachments)
+            bodyBuilder.Attachments.Add(
+                attachment.Filename,
+                attachment.Content,
+                ContentType.Parse(attachment.ContentType)
+            );
 
         return bodyBuilder.ToMessageBody();
     }

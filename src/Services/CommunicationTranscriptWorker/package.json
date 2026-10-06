@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@types/amqplib": "0.10.6",
-    "@types/node": "20.17.9",
+    "@types/node": "22.12.0",
     "@typescript-eslint/eslint-plugin": "8.17.0",
     "@typescript-eslint/parser": "8.17.0",
     "eslint": "9.39.5",
@@ -36,6 +36,6 @@
     "rimraf": "6.0.1",
     "tsx": "4.23.0",
     "typescript": "5.6.3",
-    "vitest": "4.1.10"
+    "vitest": "5.0.3"
   }
 }

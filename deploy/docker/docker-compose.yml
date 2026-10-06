@@ -289,6 +289,12 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -780,14 +786,6 @@ services:
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
       Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
-      # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
-      # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
-      # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP
-      # directo de EmailDeliveryService/InProcessEmailDispatchGateway ganó su equivalente
-      # event-based). Rollback: setear NOTIFICATION_USE_POSTMASTER_DISPATCH=false en el .env de
-      # despliegue — el path in-process/SMTP-directo sigue vivo, sin eliminar (retiro real es
-      # trabajo futuro fuera de este plan, condicionado a confianza operacional en producción).
-      Notification__UsePostmasterDispatch: ${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}
       # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
       # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
@@ -867,6 +865,8 @@ services:
       Postmaster__ServiceAuth__ClientSecret: ${POSTMASTER_SERVICE_CLIENT_SECRET:?Set POSTMASTER_SERVICE_CLIENT_SECRET in .env}
       # Descarga de adjuntos/documentos desde CloudStorage (solo lectura, nunca sube).
       Postmaster__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Solo para el backfill de arranque del directorio de oficinas; el envío nunca llama a Tenant.
+      Postmaster__Tenant__BaseUrl: http://tenant-api:8080
       # Canal de envío #3 (TenantOAuth, D3) — M2M a Connectors para enviar vía Gmail/Graph conectado.
       Postmaster__Connectors__BaseUrl: http://connectors-api:8080
       # Proveedor SMTP real de plataforma (SystemEmailProviderSeeder.cs) — reconcilia la fila
@@ -901,6 +901,21 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      # El backfill del directorio de oficinas pide un token M2M nada mas arrancar. Sin esta
+      # espera, en un despliegue en frio pregunta antes de que Auth escuche y se queda sin
+      # correr hasta el siguiente reinicio (medido en prod 2026-10-03).
+      auth-api:
+        condition: service_healthy
+      # El carril del buzon conectado manda el correo POR connectors-api, y desde 2026-10-03 le pasa
+      # ademas los inline assets. Sin esta espera, un correo encolado durante el arranque se va contra
+      # un Connectors que todavia no escucha: Wolverine reintenta, pero son reintentos evitables.
+      connectors-api:
+        condition: service_healthy
+      # Los logos inline y los adjuntos se bajan de CloudStorage al momento de enviar. Los adjuntos
+      # fallan CERRADO (el correo no sale), asi que arrancar antes que el convierte un arranque en
+      # frio en una tanda de envios fallidos.
+      cloudstorage-api:
+        condition: service_healthy
     networks:
       - taxvision-network
 
@@ -928,6 +943,8 @@ services:
       Scribe__ServiceAuth__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
       Scribe__ServiceAuth__ClientSecret: ${SCRIBE_SERVICE_CLIENT_SECRET:?Set SCRIBE_SERVICE_CLIENT_SECRET in .env}
       Scribe__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Solo para el backfill de nombres de oficina al arrancar; el render lee la proyeccion local.
+      Scribe__Tenant__BaseUrl: http://tenant-api:8080
       # Credenciales MinIO propias (IAM scoped a taxvision-temp/scribe/*, ver
       # deploy/docker/minio/policies/scribe-source.json + provision-service-accounts.sh).
       # NUNCA MINIO_ROOT_USER/PASSWORD. AddSingleton<IMinioClient> es incondicional —
@@ -967,6 +984,10 @@ services:
       auth-api:
         condition: service_healthy
       cloudstorage-api:
+        condition: service_healthy
+      # TenantProfileBackfillService lee el directorio de oficinas al arrancar. Reintenta solo, pero
+      # sin esto un despliegue en frio se queda sin nombres hasta el siguiente reinicio.
+      tenant-api:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -1043,6 +1064,12 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -2042,7 +2069,7 @@ services:
       # www.taxproffice.com incluido por el mismo motivo que en Cors__Origins del
       # gateway (linea ~1945) — es un origin CORS distinto de taxproffice.com, sin
       # redirect de canonicalizacion entre ambos.
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,https://www.taxproffice.com,http://localhost:5173,http://localhost:4200}
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,https://www.taxproffice.com,http://localhost:5173,http://localhost:4200,http://localhost,https://localhost,capacitor://localhost,ionic://localhost}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
       # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
       # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
@@ -2292,6 +2319,13 @@ services:
       Cors__Origins__3: https://client.taxproffice.com
       Cors__Origins__4: http://localhost:5173
       Cors__Origins__5: http://localhost:4200
+      Cors__Origins__6: http://localhost:4201
+      Cors__Origins__7: http://localhost:4300
+      Cors__Origins__8: http://localhost:8101
+      Cors__Origins__9: http://localhost
+      Cors__Origins__10: capacitor://localhost
+      Cors__Origins__11: ionic://localhost
+      Cors__Origins__12: https://localhost
       # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son

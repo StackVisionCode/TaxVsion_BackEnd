@@ -59,6 +59,12 @@ public sealed class SignatureRequestsControllerOwnershipTests
 
         public void Remove(SignatureRequest request) => throw new NotImplementedException();
 
+        public Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(
+            DateTime nowUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public Task<IReadOnlyList<SignatureRequest>> ListDraftsWaitingForFileAsync(
             Guid tenantId,
             Guid fileId,

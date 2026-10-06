@@ -51,6 +51,24 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
     };
   }
 
+  async findByUserIds(userIds: readonly string[]): Promise<UserDirectoryEntrySnapshot[]> {
+    const uniqueUserIds = [...new Set(userIds.filter((userId) => userId.trim().length > 0))];
+    if (uniqueUserIds.length === 0) return [];
+
+    const rows = await this.prisma.userDirectoryEntry.findMany({
+      where: { UserId: { in: uniqueUserIds } },
+    });
+    return rows.map((row) => ({
+      userId: row.UserId,
+      tenantId: row.TenantId,
+      displayName: row.DisplayName,
+      email: row.Email,
+      isActive: row.IsActive,
+      actorType: row.ActorType,
+      updatedAtUtc: row.UpdatedAtUtc,
+    }));
+  }
+
   async markInactive(userId: string): Promise<void> {
     await this.prisma.userDirectoryEntry
       .update({ where: { UserId: userId }, data: { IsActive: false } })

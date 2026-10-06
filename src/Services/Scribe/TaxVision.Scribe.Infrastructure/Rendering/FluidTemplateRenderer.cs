@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -38,6 +38,7 @@ public sealed partial class FluidTemplateRenderer(
     IEmailLayoutRepository layoutRepository,
     ICloudStorageClient cloudStorageClient,
     ILogoResolver logoResolver,
+    ITenantProfileRefRepository tenantProfiles,
     IMemoryCache l1Cache,
     ITemplateSourceCache l2Cache,
     ILogger<FluidTemplateRenderer> logger
@@ -46,6 +47,24 @@ public sealed partial class FluidTemplateRenderer(
     private static readonly FluidParser Parser = new();
     private static readonly TimeSpan RenderTimeout = TimeSpan.FromSeconds(5);
     private static readonly TemplateOptions Options = new() { MaxRecursion = 100, MaxSteps = 10000 };
+
+    // El layout de la oficina. Quien renderiza sobre él lleva el logo del tenant, no el del sistema.
+    private const string TenantLayoutKey = "tenant-base";
+
+    /// <summary>
+    /// De quién es el logo. Lo decide el LAYOUT, no el scope de la plantilla: <c>tenant-base</c> es la
+    /// cáscara de la oficina, así que su header lleva el logo de la oficina aunque la plantilla sea
+    /// System (una sola plantilla sembrada sirve a todas). Fuera de ahí se respeta lo que pidió el caller.
+    /// </summary>
+    private static (LogoScope Scope, Guid? TenantId) ResolveLogoOwner(
+        string layoutKey,
+        LogoScope requested,
+        Guid? requestTenantId,
+        Guid? templateTenantId
+    ) =>
+        layoutKey == TenantLayoutKey
+            ? (LogoScope.Tenant, requestTenantId ?? templateTenantId)
+            : (requested, templateTenantId);
 
     public async Task<Result<RenderedContent>> RenderAsync(RenderRequest request, CancellationToken ct = default)
     {
@@ -95,6 +114,13 @@ public sealed partial class FluidTemplateRenderer(
             version.VersionNumber
         );
 
+        var logoOwner = ResolveLogoOwner(
+            layoutResult.Value.LayoutKey.Value,
+            request.LogoScope,
+            request.TenantId,
+            templateResult.Value.TenantId
+        );
+
         return await RenderVersionAsync(
             templateKey.Value,
             templateResult.Value.Scope.ToString(),
@@ -103,7 +129,9 @@ public sealed partial class FluidTemplateRenderer(
             layoutVersion,
             templateResult.Value.TenantId,
             request.Locale?.Value,
-            request.LogoScope,
+            logoOwner.Scope,
+            logoOwner.TenantId,
+            ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, templateResult.Value.DispatchScopeOverride),
             NormalizeVariables(request.Variables),
             ct
         );
@@ -135,7 +163,12 @@ public sealed partial class FluidTemplateRenderer(
                 )
             );
 
-        var logoScope = template.TenantId is null ? LogoScope.System : LogoScope.Tenant;
+        var logoOwner = ResolveLogoOwner(
+            layoutResult.Value.LayoutKey.Value,
+            template.TenantId is null ? LogoScope.System : LogoScope.Tenant,
+            template.TenantId,
+            template.TenantId
+        );
 
         return await RenderVersionAsync(
             template.TemplateKey.Value,
@@ -145,7 +178,9 @@ public sealed partial class FluidTemplateRenderer(
             layoutVersion,
             template.TenantId,
             locale: null,
-            logoScope,
+            logoOwner.Scope,
+            logoOwner.TenantId,
+            ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, template.DispatchScopeOverride),
             NormalizeVariables(sampleVariables),
             ct
         );
@@ -206,6 +241,8 @@ public sealed partial class FluidTemplateRenderer(
         Guid? tenantId,
         string? locale,
         LogoScope logoScope,
+        Guid? logoTenantId,
+        string dispatchScope,
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct
     )
@@ -227,6 +264,8 @@ public sealed partial class FluidTemplateRenderer(
                 tenantId,
                 locale,
                 logoScope,
+                logoTenantId,
+                dispatchScope,
                 variables,
                 layer => worstCacheLayer = WorstOf(worstCacheLayer, layer),
                 ct
@@ -257,12 +296,15 @@ public sealed partial class FluidTemplateRenderer(
         Guid? tenantId,
         string? locale,
         LogoScope logoScope,
+        Guid? logoTenantId,
+        string dispatchScope,
         IReadOnlyDictionary<string, object?> variables,
         Action<CacheLayer> reportCacheLayer,
         CancellationToken ct
     )
     {
         var tenantIdForToken = tenantId ?? PlatformTenant.Id;
+        variables = await WithOfficeNameAsync(variables, logoScope, logoTenantId, ct);
 
         if (!Parser.TryParse(version.Subject, out var subjectTemplate, out var subjectParseError))
             return Result.Failure<RenderedContent>(new Error("EmailRenderer.Parse", subjectParseError));
@@ -289,7 +331,7 @@ public sealed partial class FluidTemplateRenderer(
         if (bodyHtmlResult.IsFailure)
             return Result.Failure<RenderedContent>(bodyHtmlResult.Error);
 
-        var logoAsset = await logoResolver.ResolveAsync(logoScope, tenantId, ct);
+        var logoAsset = await logoResolver.ResolveAsync(logoScope, logoTenantId, ct);
 
         var layoutTemplateResult = await GetOrParseLayoutTemplateAsync(
             BuildCacheKey(tenantId, layoutKeyValue, layoutVersion.VersionNumber, "layout"),
@@ -332,28 +374,67 @@ public sealed partial class FluidTemplateRenderer(
         if (textResult.IsFailure)
             return Result.Failure<RenderedContent>(textResult.Error);
 
-        // Guid.Empty = LogoResolver no encontró un SystemAssetRef sembrado todavía (arranque en
-        // frío antes de que ScribeSystemAssetSeeder termine, o seed nunca corrido). No referenciar
-        // un FileId inexistente — el envío tiene que seguir funcionando sin logo, no romperse.
-        // El layout (system-base y tenant-base) referencia el logo con cid:logo-header en su header,
-        // así que se adjunta siempre que el asset exista — renderiza inline, no queda huérfano.
+        // Solo se adjunta si el layout de verdad lo referencia. Dos condiciones:
+        // - Guid.Empty = el SystemAssetRef no esta sembrado todavia; no referenciar un FileId que no existe.
+        // - tenant-base con IsFallback (sin logo, o SVG) toma la rama del wordmark y nunca usa el cid:
+        //   adjuntarlo igual deja una parte huerfana que algunos clientes listan como adjunto.
+        var layoutUsesCid = layoutKeyValue != TenantLayoutKey || !logoAsset.IsFallback;
         var inlineAssets = new List<InlineAsset>();
-        if (logoAsset.CloudStorageFileId != Guid.Empty)
+        if (logoAsset.CloudStorageFileId != Guid.Empty && layoutUsesCid)
             inlineAssets.Add(
                 new("logo-header", logoAsset.CloudStorageFileId, logoAsset.ContentType, logoAsset.SizeBytes)
             );
 
         return Result.Success(
-            new RenderedContent(subjectResult.Value, finalHtmlResult.Value, textResult.Value, inlineAssets)
+            new RenderedContent(
+                subjectResult.Value,
+                finalHtmlResult.Value,
+                textResult.Value,
+                inlineAssets,
+                dispatchScope
+            )
         );
+    }
+
+    /// <summary>
+    /// De quien sale el correo. Lo decide el LAYOUT, igual que el logo; el override de PlatformAdmin
+    /// solo existe para lo que el layout no puede saber, y gana cuando esta puesto.
+    /// </summary>
+    private static string ResolveDispatchScope(string layoutKey, string? templateOverride) =>
+        templateOverride ?? (layoutKey == TenantLayoutKey ? DispatchScopes.TenantPreferred : DispatchScopes.System);
+
+    /// <summary>
+    /// <c>tenant_name</c> lo pone el renderer, no el caller. Lo usan el asunto, el cuerpo y el layout de
+    /// oficina (cabecera sin logo y pie), asi que un caller que se olvide deja el correo sin firma —
+    /// paso en produccion: "here is your invoice from ." Si la proyeccion todavia no tiene la oficina,
+    /// vale lo que haya mandado el caller.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>> WithOfficeNameAsync(
+        IReadOnlyDictionary<string, object?> variables,
+        LogoScope logoScope,
+        Guid? logoTenantId,
+        CancellationToken ct
+    )
+    {
+        if (logoScope != LogoScope.Tenant || logoTenantId is not { } officeId)
+            return variables;
+
+        var profile = await tenantProfiles.GetByTenantIdAsync(officeId, ct);
+        if (profile is null)
+            return variables;
+
+        return new Dictionary<string, object?>(variables, StringComparer.OrdinalIgnoreCase)
+        {
+            ["tenant_name"] = profile.Name,
+        };
     }
 
     /// <summary>
     /// El layout recibe las variables del caller más las reservadas que documenta
     /// Scribe_Email_Style_Guide.md §9 — el renderer las calcula, el invocador no las declara: body (el
     /// HTML ya renderizado del template, debe imprimirse con {{ body | raw }}), subject, locale,
-    /// tenant_logo_missing (bool, gobierna el banner de aviso vía {% if %}), current_year y preheader (la
-    /// línea de vista previa del div oculto). Si el caller manda alguna de esas claves igual se pisa.
+    /// tenant_logo_missing (bool), current_year, preheader (la línea de vista previa del div oculto) y
+    /// tenant_name cuando el layout es de oficina. Si el caller manda alguna de esas claves igual se pisa.
     /// </summary>
     private static Dictionary<string, object?> BuildLayoutVariables(
         IReadOnlyDictionary<string, object?> requestVariables,

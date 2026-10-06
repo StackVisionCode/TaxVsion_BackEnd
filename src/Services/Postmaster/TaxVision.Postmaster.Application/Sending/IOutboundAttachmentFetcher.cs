@@ -1,4 +1,4 @@
-using BuildingBlocks.Results;
+﻿using BuildingBlocks.Results;
 using TaxVision.Postmaster.Domain.Sending;
 
 namespace TaxVision.Postmaster.Application.Sending;
@@ -17,6 +17,18 @@ public interface IOutboundAttachmentFetcher
     Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchAllAsync(
         Guid tenantId,
         IReadOnlyList<OutboundAttachmentRef> attachments,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// Igual que <see cref="FetchAllAsync"/> pero partiendo de ids pelados: resuelve nombre y
+    /// content-type contra CloudStorage antes de bajar. Lo usan los correos de notificación, cuyo
+    /// evento solo trae <c>AttachmentFileIds</c> — el preparador de Correspondence sí arma el ref
+    /// completo porque acaba de subir el archivo.
+    /// </summary>
+    Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchByFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyList<Guid> fileIds,
         CancellationToken ct
     );
 }

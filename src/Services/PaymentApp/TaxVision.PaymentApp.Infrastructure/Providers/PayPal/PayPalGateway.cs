@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -38,7 +39,11 @@ public sealed class PayPalGateway(
         message.Headers.TryAddWithoutValidation("Prefer", "return=representation");
         message.Content = JsonContent.Create(BuildCreateOrderPayload(request), options: JsonOptions);
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(message, "PayPal.CheckoutSession.Unavailable", "create order", ct);
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalCreateOrderResult>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
@@ -106,7 +111,16 @@ public sealed class PayPalGateway(
             options: JsonOptions
         );
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(
+            message,
+            "PayPal.WebhookSignature.Unavailable",
+            "verify webhook signature",
+            ct
+        );
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalVerifyWebhookSignatureResult>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("PayPal webhook verification returned HTTP {StatusCode}", (int)response.StatusCode);
@@ -149,12 +163,20 @@ public sealed class PayPalGateway(
         );
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Value.AccessToken);
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(message, "PayPal.ChargeStatus.Unavailable", "get order", ct);
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalOrderStatusResult>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("PayPal get order returned HTTP {StatusCode}", (int)response.StatusCode);
+            var errorCode =
+                response.StatusCode == HttpStatusCode.NotFound
+                    ? "PayPal.ChargeStatus.NotFound"
+                    : "PayPal.ChargeStatus.Failed";
             return Result.Failure<PayPalOrderStatusResult>(
-                new Error("PayPal.ChargeStatus.Failed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                new Error(errorCode, $"PayPal returned HTTP {(int)response.StatusCode}.")
             );
         }
 
@@ -180,7 +202,11 @@ public sealed class PayPalGateway(
         message.Headers.TryAddWithoutValidation("Prefer", "return=representation");
         message.Content = JsonContent.Create(new { }, options: JsonOptions);
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(message, "PayPal.Capture.Unavailable", "capture order", ct);
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalOrderStatusResult>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("PayPal capture order returned HTTP {StatusCode}", (int)response.StatusCode);
@@ -210,7 +236,11 @@ public sealed class PayPalGateway(
         message.Headers.TryAddWithoutValidation("Prefer", "return=representation");
         message.Content = JsonContent.Create(BuildRefundCapturePayload(request), options: JsonOptions);
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(message, "PayPal.Refund.Unavailable", "refund capture", ct);
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalRefundCaptureResult>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
@@ -253,7 +283,11 @@ public sealed class PayPalGateway(
             new Dictionary<string, string> { ["grant_type"] = "client_credentials" }
         );
 
-        using var response = await http.SendAsync(message, ct);
+        var responseResult = await SendAsync(message, "PayPal.AuthenticationUnavailable", "oauth token", ct);
+        if (responseResult.IsFailure)
+            return Result.Failure<PayPalAccessToken>(responseResult.Error);
+
+        using var response = responseResult.Value;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("PayPal OAuth returned HTTP {StatusCode}", (int)response.StatusCode);
@@ -297,6 +331,27 @@ public sealed class PayPalGateway(
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
         return $"paypal:oauth:access-token:{hash}";
     }
+
+    private async Task<Result<HttpResponseMessage>> SendAsync(
+        HttpRequestMessage message,
+        string errorCode,
+        string operation,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return Result.Success(await http.SendAsync(message, ct));
+        }
+        catch (Exception ex) when (IsTransportFailure(ex, ct))
+        {
+            logger.LogWarning(ex, "PayPal {Operation} request failed.", operation);
+            return Result.Failure<HttpResponseMessage>(new Error(errorCode, $"PayPal {operation} request failed."));
+        }
+    }
+
+    private static bool IsTransportFailure(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested && ex is OperationCanceledException or HttpRequestException or TimeoutException;
 
     private static object BuildCreateOrderPayload(PayPalCreateOrderRequest request)
     {

@@ -1,4 +1,4 @@
-using TaxVision.Postmaster.Application.Abstractions;
+﻿using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Infrastructure.Sending;
@@ -38,7 +38,7 @@ public sealed class MimeMessageBuilderTests
         var message = CreateMessageWithRecipient();
         var content = new RenderedContent("Welcome", "<p>Hi</p>", "Hi");
 
-        var mimeMessage = MimeMessageBuilder.Build(message, content, CreateProvider(), []);
+        var mimeMessage = MimeMessageBuilder.Build(message, content, CreateProvider(), [], []);
 
         Assert.Equal("Welcome", mimeMessage.Subject);
         Assert.Single(mimeMessage.To);
@@ -59,7 +59,7 @@ public sealed class MimeMessageBuilderTests
         var content = new RenderedContent("Welcome", "<p><img src=\"cid:logo\"/></p>", null);
         var inlineAssets = new List<InlineAssetBytes> { new("logo", [1, 2, 3, 4], "image/png", "logo.png") };
 
-        var mimeMessage = MimeMessageBuilder.Build(message, content, CreateProvider(), inlineAssets);
+        var mimeMessage = MimeMessageBuilder.Build(message, content, CreateProvider(), inlineAssets, []);
 
         Assert.NotNull(mimeMessage.Body);
         Assert.Equal("multipart", mimeMessage.Body!.ContentType.MediaType);

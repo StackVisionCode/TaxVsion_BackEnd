@@ -24,7 +24,7 @@ public static class UpdateTemplateDefaultsHandler
             cmd.RequiresSequentialSigning,
             cmd.RequiresConsent,
             cmd.GenerateCertificate,
-            cmd.SendSignedDocumentToSigners,
+            cmd.SendSealedDocumentToSigners,
             cmd.SendCertificateToSigners,
             cmd.AutoRemindersEnabled,
             cmd.ReminderIntervalHours

@@ -582,7 +582,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SendCertificateToSigners")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("SendSignedDocumentToSigners")
+                    b.Property<bool>("SendSealedDocumentToSigners")
                         .HasColumnType("bit");
 
                     b.Property<DateTime?>("SentAtUtc")
@@ -874,7 +874,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SendCertificateToSigners")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("SendSignedDocumentToSigners")
+                    b.Property<bool>("SendSealedDocumentToSigners")
                         .HasColumnType("bit");
 
                     b.Property<string>("Status")

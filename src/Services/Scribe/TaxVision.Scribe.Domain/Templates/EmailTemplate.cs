@@ -1,4 +1,4 @@
-using BuildingBlocks.Domain;
+﻿using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Scribe.Domain.ValueObjects;
 
@@ -24,6 +24,15 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Carril de envio fijado a mano por un PlatformAdmin. null = lo decide el layout, que es lo normal.
+    /// Existe para los casos que el layout no puede saber, no para cambiarlo por gusto.
+    /// </summary>
+    public string? DispatchScopeOverride { get; private set; }
+
+    public Guid? DispatchScopeOverrideByUserId { get; private set; }
+    public DateTime? DispatchScopeOverrideAtUtc { get; private set; }
 
     public IReadOnlyList<EmailTemplateVersion> Versions => _versions.AsReadOnly();
 
@@ -169,6 +178,30 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             }
         }
         return purgedIds;
+    }
+
+    /// <summary>
+    /// Fija el carril a mano, o lo suelta con <paramref name="scope"/> null para volver al layout.
+    ///
+    /// <para>La validacion contra el layout NO vive aca: el agregado no conoce el EmailLayout de su
+    /// version publicada. La hace el handler, que si puede leerlo — ver
+    /// <c>SetTemplateDispatchScopeHandler</c>.</para>
+    /// </summary>
+    public Result OverrideDispatchScope(string? scope, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status == EmailContentStatus.Deleted)
+            return Result.Failure(new Error("EmailTemplate.Deleted", "A deleted template cannot change its lane."));
+
+        if (scope is not null && scope is not ("System" or "TenantPreferred"))
+            return Result.Failure(
+                new Error("EmailTemplate.UnknownDispatchScope", "The lane must be System or TenantPreferred.")
+            );
+
+        DispatchScopeOverride = scope;
+        DispatchScopeOverrideByUserId = scope is null ? null : actorUserId;
+        DispatchScopeOverrideAtUtc = scope is null ? null : nowUtc;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     public Result DeprecateTemplate(DateTime updatedAtUtc)

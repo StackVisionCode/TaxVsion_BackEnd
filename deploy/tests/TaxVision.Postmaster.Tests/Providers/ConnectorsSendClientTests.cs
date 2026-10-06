@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -51,14 +51,14 @@ public sealed class ConnectorsSendClientTests
                 replyTo: null,
                 "auth.welcome",
                 DateTime.UtcNow,
-                ProviderScope.TenantOAuth
+                ProviderScope.TenantMailbox
             )
             .Value;
         message.AddRecipient("customer@example.com", RecipientType.To, null);
         return message;
     }
 
-    private static ResolvedOAuthProvider CreateProvider(Guid accountId) =>
+    private static ResolvedMailbox CreateProvider(Guid accountId) =>
         new(accountId, "gmail", "sales@tenant.example", "Tenant Sales");
 
     [Fact]
@@ -91,6 +91,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -128,6 +129,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -161,6 +163,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -189,6 +192,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [],
+            inlineAssets: [],
             CancellationToken.None
         );
 
@@ -226,6 +230,7 @@ public sealed class ConnectorsSendClientTests
             null,
             null,
             attachments: [new OutboundAttachmentBytes("invoice.pdf", "application/pdf", attachmentBytes)],
+            inlineAssets: [],
             CancellationToken.None
         );
 

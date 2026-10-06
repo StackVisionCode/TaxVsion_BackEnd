@@ -1,4 +1,4 @@
-using BuildingBlocks.ActorTypeAuthorization;
+﻿using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -17,6 +17,7 @@ using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
 using TaxVision.Billing.Application.Invoices.ReissueInvoice;
+using TaxVision.Billing.Application.Invoices.SendInvoiceToCustomer;
 using TaxVision.Billing.Application.Invoices.VoidInvoice;
 using Wolverine;
 
@@ -83,6 +84,29 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Manda la factura emitida al cliente por correo. El cuerpo lo arma Notification con la plantilla
+    /// <c>billing.invoice_sent</c> de Scribe (cáscara y logo de la oficina); acá solo se publica el evento.
+    /// </summary>
+    [HttpPost("{invoiceId:guid}/send")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(InvoicingPermissions.Manage)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> Send(Guid invoiceId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result>(
+            new SendInvoiceToCustomerCommand(tenantId, invoiceId, actorId, canViewAll),
+            ct
+        );
+
+        return result.IsSuccess ? Accepted() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet]

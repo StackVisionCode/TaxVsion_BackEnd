@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
@@ -21,7 +21,7 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence;
 /// <c>JwtTenantContextMiddleware</c> desde el JWT. Alimenta el <c>HasQueryFilter</c> global
 /// fail-closed (safety net EF Core). <see cref="SystemEmailProvider"/>/<see cref="ProviderHealthStatus"/>
 /// (cross-tenant por diseño, ver su propio doc-comment) y <see cref="EmailIdempotency"/>/
-/// <see cref="SuppressionListEntry"/>/<see cref="TenantOAuthAccount"/> (llevan TenantId propio pero
+/// <see cref="SuppressionListEntry"/>/<see cref="ConnectedMailbox"/> (llevan TenantId propio pero
 /// no implementan <see cref="ITenantOwned"/> — sus repos siempre filtran explícito por tenant en
 /// cada método, verificado antes de esta fase) deliberadamente NO son alcanzados por el filtro.
 /// </param>
@@ -33,11 +33,11 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     public DbSet<SentMessageRecipient> SentMessageRecipients => Set<SentMessageRecipient>();
     public DbSet<SentMessageEvent> SentMessageEvents => Set<SentMessageEvent>();
     public DbSet<SystemEmailProvider> SystemEmailProviders => Set<SystemEmailProvider>();
-    public DbSet<TenantEmailProvider> TenantEmailProviders => Set<TenantEmailProvider>();
     public DbSet<ProviderHealthStatus> ProviderHealthStatuses => Set<ProviderHealthStatus>();
     public DbSet<EmailIdempotency> EmailIdempotencies => Set<EmailIdempotency>();
     public DbSet<SuppressionListEntry> SuppressionListEntries => Set<SuppressionListEntry>();
-    public DbSet<TenantOAuthAccount> TenantOAuthAccounts => Set<TenantOAuthAccount>();
+    public DbSet<ConnectedMailbox> ConnectedMailboxes => Set<ConnectedMailbox>();
+    public DbSet<TenantDirectoryEntry> TenantDirectory => Set<TenantDirectoryEntry>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
@@ -62,7 +62,6 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     /// Safety net EF Core (defense-in-depth): filtra toda entidad <see cref="ITenantOwned"/> por
     /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
     /// <see cref="Guid.Empty"/> (0 filas). Alcanza <c>SentMessage</c>/<c>SentMessageRecipient</c>/
-    /// <c>SentMessageEvent</c>/<c>TenantEmailProvider</c> y, vía <c>TenantEntity</c>, también
     /// <c>UserPermissionsProjection</c>/<c>RolePermissionsProjection</c>/<c>TenantPlanCodeProjection</c>
     /// (RateLimit Fase 2) — los 7 <see cref="ITenantOwned"/> reales de este contexto. Todos sus repos filtran por tenant
     /// explícito; los métodos invocados desde handlers Wolverine (sin <c>TenantContext</c>

@@ -41,6 +41,20 @@ public static class ResolvePayableHandler
                 new Error("Payable.Revoked", "This invoice was voided and can no longer be paid.")
             );
 
+        // Factura ya cobrada (InvoicePaidConsumer).
+        if (payable.IsSettled)
+            return Result.Failure<ResolvePayableResponse>(
+                new Error("Payable.AlreadyPaid", "This invoice has already been paid.")
+            );
+
+        // Segunda guarda, y la que cubre lo que la primera no puede: las facturas cobradas ANTES de
+        // que existiera el consumer no tienen evento que reemitir, así que su payable sigue sin
+        // liquidar. Un link en Used es prueba de cobro consumado — MarkAsUsed exige un pago asociado.
+        if (await links.AnyUsedForExternalReferenceAsync(payable.TenantId, payable.ExternalReferenceId, ct))
+            return Result.Failure<ResolvePayableResponse>(
+                new Error("Payable.AlreadyPaid", "This invoice has already been paid.")
+            );
+
         // Subdominio del tenant (proyección local) para redirigir el checkout al host de la firma.
         var tenant = await tenants.GetByIdAsync(payable.TenantId, ct);
         var subDomain = tenant?.SubDomain;

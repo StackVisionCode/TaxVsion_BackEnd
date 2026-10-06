@@ -21,6 +21,7 @@ export interface SupportOpenedEvent extends IntegrationEvent {
   readonly eventType: 'communication.support.opened.v1';
   readonly ticketId: string;
   readonly agentTenantId: string;
+  readonly supportRecipientUserIds: readonly string[];
   readonly openedByUserId: string;
   readonly conversationId: string;
   readonly subject: string;

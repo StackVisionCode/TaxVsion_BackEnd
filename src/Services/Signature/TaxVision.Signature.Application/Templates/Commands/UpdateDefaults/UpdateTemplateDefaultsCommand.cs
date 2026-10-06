@@ -7,7 +7,7 @@ public sealed record UpdateTemplateDefaultsCommand(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    bool SendSignedDocumentToSigners,
+    bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
     int ReminderIntervalHours

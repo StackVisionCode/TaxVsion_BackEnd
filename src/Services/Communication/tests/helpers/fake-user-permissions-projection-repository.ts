@@ -43,6 +43,19 @@ export function createFakeProjectionRepository(
     async findByUserId(userId) {
       return byUserId.get(userId) ?? null;
     },
+    async findActiveByTenantAndPermission(tenantId, permissionCode) {
+      return [...byUserId.values()].filter(
+        (s) => s.tenantId === tenantId && s.isActive && s.permissions.includes(permissionCode),
+      );
+    },
+    async findActiveSupportRecipients(tenantId, supportPermissionCode) {
+      return [...byUserId.values()].filter(
+        (s) =>
+          s.tenantId === tenantId &&
+          s.isActive &&
+          (s.actorType === 'PlatformAdmin' || s.permissions.includes(supportPermissionCode)),
+      );
+    },
     async markInactive(userId, now) {
       const existing = byUserId.get(userId);
       if (existing) byUserId.set(userId, { ...existing, isActive: false, updatedAtUtc: now });

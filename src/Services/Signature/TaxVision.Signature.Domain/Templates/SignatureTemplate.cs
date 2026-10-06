@@ -53,7 +53,7 @@ public sealed class SignatureTemplate : TenantEntity
     /// <summary>Defaults de entrega/recordatorio que "from template" copia a la solicitud (mismos que la
     /// solicitud directa). Entregar el documento firmado a los firmantes; el certificado exige
     /// <see cref="GenerateCertificate"/>; recordatorios automáticos con su intervalo en horas.</summary>
-    public bool SendSignedDocumentToSigners { get; private set; }
+    public bool SendSealedDocumentToSigners { get; private set; }
     public bool SendCertificateToSigners { get; private set; }
     public bool AutoRemindersEnabled { get; private set; }
     public int ReminderIntervalHours { get; private set; }
@@ -98,7 +98,7 @@ public sealed class SignatureTemplate : TenantEntity
         bool requiresConsent,
         bool generateCertificate,
         Guid? baseDocumentFileId = null,
-        bool sendSignedDocumentToSigners = true,
+        bool sendSealedDocumentToSigners = true,
         bool sendCertificateToSigners = false,
         bool autoRemindersEnabled = true,
         int reminderIntervalHours = DefaultReminderIntervalHours
@@ -136,7 +136,7 @@ public sealed class SignatureTemplate : TenantEntity
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
-            SendSignedDocumentToSigners = sendSignedDocumentToSigners,
+            SendSealedDocumentToSigners = sendSealedDocumentToSigners,
             SendCertificateToSigners = sendCertificateToSigners,
             AutoRemindersEnabled = autoRemindersEnabled,
             ReminderIntervalHours = reminderIntervalHours,
@@ -186,7 +186,7 @@ public sealed class SignatureTemplate : TenantEntity
         bool requiresSequentialSigning,
         bool requiresConsent,
         bool generateCertificate,
-        bool sendSignedDocumentToSigners,
+        bool sendSealedDocumentToSigners,
         bool sendCertificateToSigners,
         bool autoRemindersEnabled,
         int reminderIntervalHours
@@ -215,7 +215,7 @@ public sealed class SignatureTemplate : TenantEntity
         RequiresSequentialSigning = requiresSequentialSigning;
         RequiresConsent = requiresConsent;
         GenerateCertificate = generateCertificate;
-        SendSignedDocumentToSigners = sendSignedDocumentToSigners;
+        SendSealedDocumentToSigners = sendSealedDocumentToSigners;
         SendCertificateToSigners = sendCertificateToSigners;
         AutoRemindersEnabled = autoRemindersEnabled;
         ReminderIntervalHours = reminderIntervalHours;

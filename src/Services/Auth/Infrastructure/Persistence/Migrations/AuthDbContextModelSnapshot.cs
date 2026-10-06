@@ -2276,6 +2276,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000000a4"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "signature.sign_own",
+                            Description = "Apply the employee's own signature to a document",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "signature",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000044"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.certificate.verify",
@@ -2664,20 +2678,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsReserved = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
-                            PlatformOnly = false
-                        },
-                        new
-                        {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000094"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
-                            Code = "notification.settings.manage",
-                            Description = "Manage the office's SMTP/API notification settings",
-                            IsAssignableByTenant = true,
-                            IsCustomerPortal = false,
-                            IsDangerous = false,
-                            IsReserved = false,
-                            MinPlanTier = 0,
-                            Module = "notification",
                             PlatformOnly = false
                         },
                         new

@@ -144,38 +144,71 @@ public sealed class SignatureRequestTests
         Assert.Equal("Signature.Request.SignerMissing", placement.Error.Code);
     }
 
-    // -------------------- MarkReadyForSending --------------------
+    // -------------------- AttachOriginalHash --------------------
 
     [Fact]
-    public void MarkReadyForSending_transitions_draft_to_ready()
+    public void AttachOriginalHash_keeps_status_in_draft()
     {
+        // F2: la disponibilidad del documento es un flag derivado, no un estado.
         var request = NewDraft().Value;
         var hash = DocumentHash.Create(new string('a', 64)).Value;
 
-        var result = request.MarkReadyForSending(hash);
+        var result = request.AttachOriginalHash(hash);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(SignatureRequestStatus.Ready, request.Status);
+        Assert.Equal(SignatureRequestStatus.Draft, request.Status);
         Assert.Equal(hash.Value, request.DocumentHashPre!.Value);
     }
 
     [Fact]
-    public void MarkReadyForSending_is_idempotent_only_from_draft()
+    public void AttachOriginalHash_is_idempotent_on_draft()
     {
         var request = NewDraft().Value;
         var hash = DocumentHash.Create(new string('a', 64)).Value;
-        request.MarkReadyForSending(hash);
+        request.AttachOriginalHash(hash);
 
-        var second = request.MarkReadyForSending(hash);
+        var second = request.AttachOriginalHash(hash);
 
-        Assert.True(second.IsFailure);
-        Assert.Equal("Signature.Request.NotDraft", second.Error.Code);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(SignatureRequestStatus.Draft, request.Status);
+    }
+
+    [Fact]
+    public void AttachOriginalHash_rejects_on_terminal_status()
+    {
+        var request = NewReadyDraftWithSignatureField("s@example.com");
+        request.Send(DateTime.UtcNow);
+        var hash = DocumentHash.Create(new string('b', 64)).Value;
+
+        var result = request.AttachOriginalHash(hash);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Request.NotDraft", result.Error.Code);
+    }
+
+    // -------------------- IsReadyToSend --------------------
+
+    [Fact]
+    public void IsReadyToSend_is_false_without_hash()
+    {
+        var request = NewDraft().Value;
+        AddSignerWithSignatureField(request, "s@example.com");
+
+        Assert.False(request.IsReadyToSend);
+    }
+
+    [Fact]
+    public void IsReadyToSend_is_true_when_draft_has_hash_signer_and_field()
+    {
+        var request = NewReadyDraftWithSignatureField("s@example.com");
+
+        Assert.True(request.IsReadyToSend);
     }
 
     // -------------------- Send --------------------
 
     [Fact]
-    public void Send_requires_ready_status()
+    public void Send_rejects_draft_without_hash()
     {
         var request = NewDraft().Value;
         AddSignerWithSignatureField(request, "s@example.com");
@@ -183,7 +216,7 @@ public sealed class SignatureRequestTests
         var result = request.Send(DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("Signature.Request.NotReady", result.Error.Code);
+        Assert.Equal("Signature.Request.NoDocumentHash", result.Error.Code);
     }
 
     [Fact]
@@ -199,9 +232,10 @@ public sealed class SignatureRequestTests
     }
 
     [Fact]
-    public void Send_transitions_ready_to_in_progress_when_ready_with_field()
+    public void Send_transitions_draft_to_in_progress_when_ready()
     {
         var request = NewReadyDraftWithSignatureField("s@example.com");
+        Assert.Equal(SignatureRequestStatus.Draft, request.Status);
 
         var sentAt = DateTime.UtcNow;
         var result = request.Send(sentAt);
@@ -219,7 +253,7 @@ public sealed class SignatureRequestTests
         var sentAt = DateTime.UtcNow.AddDays(3);
         request.Send(sentAt);
 
-        Assert.Equal(sentAt.AddHours(request.TokenExpirationHours), request.ExpiresAtUtc);
+        Assert.Equal(sentAt.AddHours(request.TokenExpirationHours!.Value), request.ExpiresAtUtc);
     }
 
     [Fact]
@@ -326,7 +360,7 @@ public sealed class SignatureRequestTests
     public void ExtendExpiration_bumps_revocation_epoch_and_extends_expiry()
     {
         var request = NewDraft().Value;
-        var initial = request.ExpiresAtUtc;
+        var initial = request.ExpiresAtUtc!.Value;
 
         var result = request.ExtendExpiration(24);
 
@@ -383,7 +417,7 @@ public sealed class SignatureRequestTests
     {
         var request = NewDraft().Value;
         var hash = DocumentHash.Create(new string('a', 64)).Value;
-        request.MarkReadyForSending(hash);
+        request.AttachOriginalHash(hash);
         return request;
     }
 

@@ -31,8 +31,11 @@ namespace TaxVision.Signature.Api.Controllers;
 [Route("signature/profiles")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSignatureResolver effectiveResolver)
-    : ControllerBase
+public sealed class SignatureProfilesController(
+    IMessageBus bus,
+    IEffectiveSignatureResolver effectiveResolver,
+    IUserPermissionsSource permissionsSource
+) : ControllerBase
 {
     // ---------- GET /signature/profiles/effective ----------
     // La firma que se estamparía por el usuario actual (su default si el tenant lo permite, o la de oficina).
@@ -46,7 +49,8 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await effectiveResolver.ResolveAsync(tenantId, userId, ct);
+        var canSignOwn = await HasSignOwnAsync(ct);
+        var result = await effectiveResolver.ResolveAsync(tenantId, userId, canSignOwn, ct);
         return result.IsSuccess
             ? Ok(SignatureProfileResponse.From(result.Value))
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -65,8 +69,9 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canSignOwn = await HasSignOwnAsync(ct);
         var result = await bus.InvokeAsync<ListSignatureProfilesResult>(
-            new ListSignatureProfilesQuery(tenantId, userId, IsAdmin(), includeArchived),
+            new ListSignatureProfilesQuery(tenantId, userId, IsAdmin(), canSignOwn, includeArchived),
             ct
         );
         return Ok(result);
@@ -89,11 +94,13 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
             return BadRequest(new Error("Signature.Profile.BadImage", "The signature image is not valid base64."));
 
         var isOffice = string.Equals(body.Scope, "office", StringComparison.OrdinalIgnoreCase);
+        var canSignOwn = await HasSignOwnAsync(ct);
         var result = await bus.InvokeAsync<Result<SignatureProfileResponse>>(
             new CreateSignatureProfileCommand(
                 tenantId,
                 userId,
                 IsAdmin(),
+                canSignOwn,
                 OwnerUserId: isOffice ? null : userId,
                 body.Label,
                 content
@@ -191,6 +198,12 @@ public sealed class SignatureProfilesController(IMessageBus bus, IEffectiveSigna
         var actorType = User.GetActorType();
         return actorType is ActorType.TenantAdmin or ActorType.PlatformAdmin;
     }
+
+    // F4 — ¿el actor tiene signature.sign_own? El admin se bypassa aguas arriba (CanUsePersonal lo
+    // acepta por "actorIsAdmin"), pero devolvemos true también desde aquí para que un empleado
+    // promovido a admin no requiera reseed del claim para que caiga la lógica.
+    private async Task<bool> HasSignOwnAsync(CancellationToken ct) =>
+        IsAdmin() || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.SignOwn, ct);
 
     private static bool TryDecodeBase64(string? value, out byte[] content)
     {

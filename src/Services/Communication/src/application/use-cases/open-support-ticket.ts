@@ -8,7 +8,9 @@ import type { SupportTicketRepository } from '../ports/support-ticket-repository
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { PlatformTenantProvider } from '../ports/platform-tenant-provider.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import { SupportEventTypes, type SupportOpenedEvent } from '../../contracts/events/support-events.js';
+import { CommunicationPermissions } from '../../domain/shared/permissions.js';
 
 /**
  * Abre un ticket de soporte desde el tenant customer hacia el PlatformTenant.
@@ -36,6 +38,7 @@ export interface OpenSupportTicketDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly platform: PlatformTenantProvider;
   readonly settings: TenantSettingsProvider;
+  readonly userPermissions: UserPermissionsProjectionRepository;
 }
 
 export async function openSupportTicket(
@@ -87,6 +90,10 @@ export async function openSupportTicket(
   await deps.supportTickets.save(ticket);
 
   const snapshot = ticket.toSnapshot();
+  const supportRecipients = await deps.userPermissions.findActiveSupportRecipients(
+    agentTenantId,
+    CommunicationPermissions.SupportAgent,
+  );
   const event: SupportOpenedEvent = {
     eventId: randomUUID(),
     eventType: SupportEventTypes.Opened,
@@ -95,6 +102,7 @@ export async function openSupportTicket(
     occurredOnUtc: snapshot.openedAtUtc.toISOString(),
     ticketId: snapshot.id,
     agentTenantId: snapshot.agentTenantId,
+    supportRecipientUserIds: supportRecipients.map((recipient) => recipient.userId),
     openedByUserId: snapshot.openedByUserId,
     conversationId: snapshot.conversationId,
     subject: snapshot.subject,

@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -8,7 +8,7 @@ using TaxVision.Postmaster.Domain.Projections;
 namespace TaxVision.Postmaster.Application.Projections.ConnectorsEvents;
 
 /// <summary>
-/// Desconexión de cuenta OAuth ⇒ da de baja la proyección local para que un envío TenantOAuth
+/// Desconexión de un buzón ⇒ da de baja la proyección local para que un envío TenantMailbox
 /// posterior falle limpio (<c>ProviderNotConfigured</c>) en vez de intentar contra un token ya
 /// revocado (D3 §4.3).
 /// </summary>
@@ -16,10 +16,10 @@ public static class TenantEmailAccountDisconnectedConsumer
 {
     public static async Task Handle(
         ConnectorsTenantEmailAccountDisconnectedIntegrationEvent evt,
-        ITenantOAuthAccountRepository repository,
+        IConnectedMailboxRepository repository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        ILogger<TenantOAuthAccount> logger,
+        ILogger<ConnectedMailbox> logger,
         CancellationToken ct
     )
     {
@@ -29,7 +29,7 @@ public static class TenantEmailAccountDisconnectedConsumer
             if (existing is null)
             {
                 logger.LogInformation(
-                    "TenantOAuthAccount {AccountId} not found for tenant {TenantId}; nothing to disconnect.",
+                    "ConnectedMailbox {AccountId} not found for tenant {TenantId}; nothing to disconnect.",
                     evt.AccountId,
                     evt.TenantId
                 );

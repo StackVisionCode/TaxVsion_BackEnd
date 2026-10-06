@@ -20,7 +20,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignaturePlanConstraintsUpdatedIntegrationEvent : IntegrationEvent
 {
     /// <summary>Tenant al que se aplicaron las nuevas restricciones.</summary>
-    public required Guid TenantId { get; init; }
+    public new required Guid TenantId { get; init; }
 
     /// <summary>UserId del platform admin que realizó el ajuste (del JWT).</summary>
     public required Guid ChangedByUserId { get; init; }

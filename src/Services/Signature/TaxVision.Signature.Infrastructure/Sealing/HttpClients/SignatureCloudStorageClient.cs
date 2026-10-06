@@ -159,6 +159,63 @@ internal sealed class SignatureCloudStorageClient(
             : Result.Success(payload.PlainToken);
     }
 
+    public async Task<Result<SignatureFileMetadata>> GetFileAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default
+    )
+    {
+        // Resiliencia: la proyección local se alimenta por bus best-effort. Cuando falta o está
+        // stale (Deleted mientras el file sigue vivo en CloudStorage, FileAvailable perdido por un
+        // restart), este GET consulta la fuente autoritaria para desbloquear al preparador.
+        var tokenResult = await AcquireTokenAsync(tenantId, ct);
+        if (tokenResult.IsFailure)
+            return Result.Failure<SignatureFileMetadata>(tokenResult.Error);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"storage/files/{fileId}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Value);
+
+        try
+        {
+            using var response = await httpClient.SendAsync(request, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return Result.Failure<SignatureFileMetadata>(
+                    new Error("Signature.Storage.FileLookup", "File not found in CloudStorage.")
+                );
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("CloudStorage file lookup failed ({Status}).", (int)response.StatusCode);
+                return Result.Failure<SignatureFileMetadata>(
+                    new Error("Signature.Storage.FileLookup", $"CloudStorage returned HTTP {(int)response.StatusCode}.")
+                );
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<FileLookupResponseDto>(Json, ct);
+            return payload is null
+                ? Result.Failure<SignatureFileMetadata>(
+                    new Error("Signature.Storage.FileLookup", "Empty response from CloudStorage.")
+                )
+                : Result.Success(
+                    new SignatureFileMetadata(
+                        payload.Id,
+                        payload.Status,
+                        payload.ChecksumSha256,
+                        payload.DetectedContentType ?? payload.DeclaredContentType,
+                        payload.SizeBytes,
+                        null
+                    )
+                );
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // El caller tolera el fallo: nunca bloqueamos la creación por un lookup caído.
+            logger.LogWarning(ex, "CloudStorage file lookup threw.");
+            return Result.Failure<SignatureFileMetadata>(
+                new Error("Signature.Storage.FileLookup", "CloudStorage lookup unavailable.")
+            );
+        }
+    }
+
     // ------------------------------------------------------------------
     // Métodos privados: cada uno con una única responsabilidad
     // ------------------------------------------------------------------
@@ -218,4 +275,14 @@ internal sealed class SignatureCloudStorageClient(
 
     // Solo se lee el token plano (el resto de CreatedShareLinkResponse se ignora).
     private sealed record CreatedShareLinkResponseDto(string PlainToken);
+
+    // Subset de FileResponse (CloudStorage FileContracts): solo lo que GetFileAsync necesita.
+    private sealed record FileLookupResponseDto(
+        Guid Id,
+        string Status,
+        string? ChecksumSha256,
+        string? DeclaredContentType,
+        string? DetectedContentType,
+        long SizeBytes
+    );
 }

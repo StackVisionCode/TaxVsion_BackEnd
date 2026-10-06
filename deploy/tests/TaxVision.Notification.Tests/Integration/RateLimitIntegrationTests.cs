@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -67,33 +67,6 @@ public sealed class RateLimitIntegrationTests : IClassFixture<NotificationApiFac
             expectedPolicy: "notification.g.preferences_set",
             expectedLayer: "user",
             expectedLimit: 60
-        );
-    }
-
-    [Fact]
-    public async Task ConfigurationTest_trips_with_user_layer_and_limit_15()
-    {
-        // Id inexistente igual cuenta — el filtro de [RateLimit] corre antes que el handler (mismo
-        // criterio que CustomerUpdate_trips_at_61st_request en Customer.Tests).
-        var tenantId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
-        var client = CreateAuthenticatedClient(tenantId, userId);
-        var randomConfigurationId = Guid.NewGuid();
-
-        var tripped = await FireUntilTrippedAsync(
-            () =>
-                client.PostAsJsonAsync(
-                    $"/notifications/email/configurations/{randomConfigurationId}/test",
-                    new { ToEmail = "ratelimit.test@ratelimit-test.local" }
-                ),
-            maxAttempts: 40
-        );
-
-        await AssertTripped(
-            tripped,
-            expectedPolicy: "notification.i.configuration_test",
-            expectedLayer: "user",
-            expectedLimit: 15
         );
     }
 

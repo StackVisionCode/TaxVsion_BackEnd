@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Scribe.Domain.Templates;
 using TaxVision.Scribe.Domain.ValueObjects;
@@ -25,6 +25,7 @@ public sealed class EmailTemplateConfiguration : IEntityTypeConfiguration<EmailT
         builder.Property(t => t.Description).HasMaxLength(2000);
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(t => t.CreatedAtUtc).IsRequired();
+        builder.Property(t => t.DispatchScopeOverride).HasMaxLength(16);
 
         // Filtro null explícito: sin esto, EF podría heredar un filtro de índice que dejaría
         // las plantillas System (TenantId NULL) sin garantía de unicidad.

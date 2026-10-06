@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +16,7 @@ using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Infrastructure.Persistence;
 using TaxVision.Scribe.Infrastructure.Persistence.Repositories;
+using TaxVision.Scribe.Infrastructure.Providers.TenantDirectory;
 using TaxVision.Scribe.Infrastructure.RateLimiting;
 using TaxVision.Scribe.Infrastructure.Rendering;
 using TaxVision.Scribe.Infrastructure.Storage;
@@ -44,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailRenderer, FluidTemplateRenderer>();
 
         services.AddScoped<ITenantLogoRefRepository, TenantLogoRefRepository>();
+        services.AddScoped<ITenantProfileRefRepository, TenantProfileRefRepository>();
         services.AddScoped<ITenantLogoMissingNotificationRepository, TenantLogoMissingNotificationRepository>();
         services.AddScoped<ISystemAssetRefRepository, SystemAssetRefRepository>();
         services.AddScoped<ILogoResolver, LogoResolver>();
@@ -165,6 +167,12 @@ public static class DependencyInjection
         );
 
         services.AddScoped<ITemplateStorageService, TemplateStorageService>();
+
+        // Solo lo usa el backfill de arranque; el render lee la proyeccion local.
+        services.Configure<TenantClientOptions>(configuration.GetSection(TenantClientOptions.SectionName));
+        services.AddHttpClient<ITenantDirectoryClient, TenantDirectoryClient>(http =>
+            http.Timeout = TimeSpan.FromSeconds(30)
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

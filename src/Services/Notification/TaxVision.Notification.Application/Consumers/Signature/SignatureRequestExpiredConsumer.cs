@@ -1,4 +1,4 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 
@@ -43,16 +43,12 @@ public static class SignatureRequestExpiredConsumer
                 ).EnsureRendered("sig.request_expired.v1");
 
                 await gateway.QueueEmailAsync(
-                    new EmailDispatchRequest(
-                        TenantId: evt.TenantId,
-                        To: signer.Email,
-                        Subject: render.Subject,
-                        HtmlBody: render.Html,
-                        TextBody: render.Text ?? string.Empty,
-                        TemplateKey: TemplateKey,
-                        RelatedEventId: evt.EventId,
-                        CorrelationId: correlationId,
-                        InlineAssets: render.InlineAssets
+                    render.ToDispatchRequest(
+                        tenantId: evt.TenantId,
+                        to: signer.Email,
+                        templateKey: TemplateKey,
+                        relatedEventId: evt.EventId,
+                        correlationId: correlationId
                     ),
                     ct
                 );

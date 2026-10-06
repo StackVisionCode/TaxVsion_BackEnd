@@ -1,4 +1,4 @@
-namespace TaxVision.Scribe.Application.Templates.BaseLayouts;
+﻿namespace TaxVision.Scribe.Application.Templates.BaseLayouts;
 
 /// <summary>
 /// HTML de los 2 layouts base que todo EmailTemplate DEBE extender: system-base-v1 y tenant-base-v1.
@@ -12,7 +12,10 @@ public static class BaseLayoutHtml
 {
     // Subir esto cuando cambie el HTML del layout: el seeder republica si supera al guardado.
     public const int SystemBaseVersion = 10;
-    public const int TenantBaseVersion = 6;
+
+    // v7: fuera el aviso "Set your logo in Settings -> Branding". tenant-base lo lee el CLIENTE de la
+    // oficina, no su personal; con logo o sin logo el correo no habla de la configuracion interna.
+    public const int TenantBaseVersion = 7;
 
     public const string SystemBaseV1 = """
         <!DOCTYPE html>
@@ -143,19 +146,6 @@ public static class BaseLayoutHtml
                     {% endif %}
                   </td>
                 </tr>
-                {% if tenant_logo_missing %}
-                <tr>
-                  <td class="mobile-padding" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:8px 40px 0 40px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;">
-                      <tr>
-                        <td style="padding:10px 16px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#496174;mso-line-height-rule:exactly;">
-                          Set your logo in <strong style="color:#1E466B;">Settings &rarr; Branding</strong> to personalize this email.
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                {% endif %}
                 <tr>
                   <td class="mobile-padding" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:14px 40px 30px 40px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">
                     {{ body | raw }}

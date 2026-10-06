@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -206,7 +206,10 @@ public sealed class GraphApiClient(
         CancellationToken ct = default
     )
     {
-        var totalAttachmentBytes = message.Attachments.Sum(a => (long)a.Content.Length);
+        // Los inline cuentan para el limite: viajan en el mismo array.
+        var totalAttachmentBytes =
+            message.Attachments.Sum(a => (long)a.Content.Length)
+            + message.InlineAssets.Sum(a => (long)a.Content.Length);
         if (totalAttachmentBytes > GraphAttachmentSizeLimitBytes)
         {
             ConnectorsMetrics.SendFailures.Add(
@@ -254,7 +257,7 @@ public sealed class GraphApiClient(
                 string.IsNullOrWhiteSpace(message.ReplyToDisplayAddress)
                     ? null
                     : ToRecipients([message.ReplyToDisplayAddress]),
-                ToAttachments(message.Attachments)
+                ToAttachments(message)
             ),
             SaveToSentItems: true
         );
@@ -271,7 +274,7 @@ public sealed class GraphApiClient(
                 ToRecipients(message.To),
                 ToRecipients(message.Cc),
                 ToRecipients(message.Bcc),
-                ToAttachments(message.Attachments)
+                ToAttachments(message)
             )
         );
         // Sin este header, Graph trata "comment" como texto plano (default documentado) — message.Html
@@ -284,16 +287,33 @@ public sealed class GraphApiClient(
         );
     }
 
-    private static List<GraphFileAttachmentRequest>? ToAttachments(IReadOnlyList<OutboundAttachment> attachments) =>
-        attachments.Count == 0
-            ? null
-            : attachments
-                .Select(a => new GraphFileAttachmentRequest(
-                    a.Filename,
-                    a.ContentType,
-                    Convert.ToBase64String(a.Content)
-                ))
-                .ToList();
+    /// <summary>Graph no arma MIME: adjuntos e inline van en el mismo array y los separa
+    /// <c>isInline</c> + <c>contentId</c>.</summary>
+    private static List<GraphFileAttachmentRequest>? ToAttachments(OutboundMessage message)
+    {
+        if (message.Attachments.Count == 0 && message.InlineAssets.Count == 0)
+            return null;
+
+        var all = message
+            .Attachments.Select(a => new GraphFileAttachmentRequest(
+                a.Filename,
+                a.ContentType,
+                Convert.ToBase64String(a.Content)
+            ))
+            .ToList();
+
+        all.AddRange(
+            message.InlineAssets.Select(a => new GraphFileAttachmentRequest(
+                a.ContentId,
+                a.ContentType,
+                Convert.ToBase64String(a.Content),
+                IsInline: true,
+                ContentId: a.ContentId
+            ))
+        );
+
+        return all;
+    }
 
     private static List<GraphRecipientRequest>? ToRecipients(IReadOnlyList<string> addresses) =>
         addresses.Count == 0
@@ -610,7 +630,9 @@ public sealed class GraphApiClient(
     private sealed record GraphFileAttachmentRequest(
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("contentType")] string ContentType,
-        [property: JsonPropertyName("contentBytes")] string ContentBytes
+        [property: JsonPropertyName("contentBytes")] string ContentBytes,
+        [property: JsonPropertyName("isInline")] bool? IsInline = null,
+        [property: JsonPropertyName("contentId")] string? ContentId = null
     )
     {
         [JsonPropertyName("@odata.type")]

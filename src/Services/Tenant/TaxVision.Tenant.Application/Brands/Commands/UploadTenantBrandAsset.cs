@@ -1,4 +1,4 @@
-using BuildingBlocks.Caching;
+﻿using BuildingBlocks.Caching;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tenant.Application.Brands.Abstractions;
@@ -18,7 +18,28 @@ public sealed record UploadTenantBrandAssetCommand(
     string FileName
 );
 
-public sealed record UploadTenantBrandAssetResponse(Guid FileId, string Status);
+/// <param name="EmailWarning">
+/// Aviso para mostrarle al usuario, o null si no hay nada que advertir. No es un error: el asset se
+/// sube igual. Hoy solo cubre el SVG, que el navegador renderiza y el correo no.
+/// </param>
+public sealed record UploadTenantBrandAssetResponse(Guid FileId, string Status, string? EmailWarning = null);
+
+/// <summary>
+/// El logo del CRM es el que viaja a los correos (Scribe). Los clientes de correo no renderizan SVG,
+/// asi que uno subido ahi se acepta pero no se usa: el correo cae al nombre de la oficina en texto y
+/// hasta ahora nadie se lo decia al dueno, que lo veia perfecto en el CRM.
+/// </summary>
+public static class BrandAssetEmailWarnings
+{
+    private const string Svg = "image/svg+xml";
+
+    public static string? For(BrandSurface surface, BrandAssetKey key, string contentType) =>
+        surface == BrandSurface.Crm
+        && key == BrandAssetKey.Logo
+        && string.Equals(contentType, Svg, StringComparison.OrdinalIgnoreCase)
+            ? "Email clients cannot display SVG, so your emails will show your office name as text instead of this logo. Upload a PNG or JPEG to use it in email too."
+            : null;
+}
 
 /// <summary>
 /// Sube logo o favicon (mismo pipeline asíncrono que el logo viejo: MinIO + SaveFileRequested para el
@@ -62,6 +83,12 @@ public static class UploadTenantBrandAssetHandler
         await client.RequestCatalogAsync(cmd.TenantId, upload, stored.Value, ct);
 
         await BrandCommandSupport.InvalidateAsync(cache, cmd.TenantId, cmd.Surface, ct);
-        return Result.Success(new UploadTenantBrandAssetResponse(fileId, "processing"));
+        return Result.Success(
+            new UploadTenantBrandAssetResponse(
+                fileId,
+                "processing",
+                BrandAssetEmailWarnings.For(cmd.Surface, cmd.Key, cmd.ContentType)
+            )
+        );
     }
 }

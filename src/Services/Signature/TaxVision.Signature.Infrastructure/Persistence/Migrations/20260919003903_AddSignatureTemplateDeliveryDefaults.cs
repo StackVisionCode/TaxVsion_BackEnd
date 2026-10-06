@@ -38,7 +38,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             );
 
             migrationBuilder.AddColumn<bool>(
-                name: "SendSignedDocumentToSigners",
+                name: "SendSealedDocumentToSigners",
                 table: "SignatureTemplates",
                 type: "bit",
                 nullable: false,
@@ -56,7 +56,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropColumn(name: "SendCertificateToSigners", table: "SignatureTemplates");
 
-            migrationBuilder.DropColumn(name: "SendSignedDocumentToSigners", table: "SignatureTemplates");
+            migrationBuilder.DropColumn(name: "SendSealedDocumentToSigners", table: "SignatureTemplates");
         }
     }
 }

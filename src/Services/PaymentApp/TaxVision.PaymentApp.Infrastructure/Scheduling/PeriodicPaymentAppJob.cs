@@ -55,7 +55,11 @@ public abstract class PeriodicPaymentAppJob(
             using var scope = scopeFactory.CreateScope();
             await RunOnceAsync(scope.ServiceProvider, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogError(ex, "{JobName} iteration was cancelled by a dependency.", JobName);
+        }
+        catch (Exception ex)
         {
             logger.LogError(ex, "{JobName} iteration failed.", JobName);
         }
