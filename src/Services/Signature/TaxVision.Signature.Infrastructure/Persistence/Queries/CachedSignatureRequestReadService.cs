@@ -68,7 +68,7 @@ public sealed class CachedSignatureRequestReadService(ISignatureRequestReadServi
     // `e` (editableOnly) es parte de la clave: Draft y All comparten Status=null y colisionarían sin él.
     // `va`/`u`: la visibilidad por asignación (P2) hace que el resultado dependa del actor → la clave DEBE
     // variar por usuario, o dos usuarios compartirían páginas cacheadas (fuga de visibilidad). Los que ven
-    // todo (view_all/admin) comparten una sola entrada (u=Empty).
+    // todo (view_all/admin) comparten una sola entrada (u=Empty). `cu` (customerId) separa los listados por cliente.
     private static string BuildCacheKey(ListSignatureRequestsQuery q, long version) =>
-        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:va={q.CanViewAll}:u={(q.CanViewAll ? Guid.Empty : q.ActorUserId):N}:s={q.Status}:c={q.Category}:e={q.EditableOnly}:p={q.Page}:z={q.PageSize}";
+        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:va={q.CanViewAll}:u={(q.CanViewAll ? Guid.Empty : q.ActorUserId):N}:s={q.Status}:c={q.Category}:e={q.EditableOnly}:cu={q.CustomerId}:p={q.Page}:z={q.PageSize}";
 }

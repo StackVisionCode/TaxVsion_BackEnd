@@ -12,5 +12,7 @@ public sealed record ListSignatureRequestsQuery(
     Guid ActorUserId,
     bool CanViewAll,
     // Solo borradores editables (Draft/Ready), para la pestaña "Drafts".
-    bool EditableOnly = false
+    bool EditableOnly = false,
+    // Solo solicitudes con un firmante mapeado a este cliente (pestaña Signatures del perfil).
+    Guid? CustomerId = null
 );
