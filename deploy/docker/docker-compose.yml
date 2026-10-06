@@ -340,6 +340,10 @@ services:
       # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
       # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
       TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      # NOTA: el flag de host-resolution de Auth NO va en este compose compartido — está
+      # prohibido por fitness (ver AccountSurfaceDeployWiringTests en TaxVision.Auth.Tests/Deploy).
+      # El default es true en appsettings.json; si en DEV quieres apagarlo, usa
+      # docker-compose.override.yml local o appsettings.Development.json del servicio Auth.
       # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.

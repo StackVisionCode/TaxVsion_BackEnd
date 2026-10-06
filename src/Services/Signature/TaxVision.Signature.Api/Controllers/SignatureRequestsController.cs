@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
@@ -38,6 +39,7 @@ using TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Signature.Api.Controllers;
@@ -109,8 +111,13 @@ public sealed class SignatureRequestsController(
         var isAdmin = User.GetActorType() is ActorType.TenantAdmin or ActorType.PlatformAdmin;
         var canDeliver =
             isAdmin || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.DocumentSend, ct);
-        var sendSignedDocument = canDeliver && body.SendSignedDocumentToSigners;
+        // Sin permiso de delivery: fuerza false (no ignores el default del tenant que podría permitirlo).
+        bool? sendSealed = canDeliver ? body.SendSealedDocumentToSigners : false;
         var sendCertificate = canDeliver && body.SendCertificateToSigners;
+
+        var audienceResult = MapAudience(body.PartialCopyAudience);
+        if (audienceResult.IsFailure)
+            return BadRequest(new { error = audienceResult.Error.Code, message = audienceResult.Error.Message });
 
         var cmd = new CreateSignatureRequestCommand(
             tenantId,
@@ -123,10 +130,13 @@ public sealed class SignatureRequestsController(
             body.RequiresSequentialSigning,
             body.RequiresConsent,
             body.GenerateCertificate,
-            sendSignedDocument,
+            sendSealed,
             sendCertificate,
             body.AutoRemindersEnabled,
-            body.ReminderIntervalHours
+            body.ReminderIntervalHours,
+            body.SendPartialCopyOnEachSignature,
+            audienceResult.Value,
+            body.ExpirationEnabled
         );
 
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);
@@ -178,6 +188,21 @@ public sealed class SignatureRequestsController(
             ct
         );
         return result is null ? NotFound() : Ok(result);
+    }
+
+    // ---------- GET /signature/requests/{id}/audit ----------
+    // F7 — timeline del audit chain. Lectura rica (payload desencapsulado) para el preparador.
+    [HttpGet("{id:guid}/audit")]
+    [HasPermission(SignaturePermissions.DocumentAuditRead)]
+    [RateLimit("signature.f.request_read")]
+    [ProducesResponseType<AuditTrailResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAuditTrail([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<AuditTrailResponse>>(new GetAuditTrailQuery(tenantId, id), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- POST /signature/requests/{id}/signers ----------
@@ -516,6 +541,10 @@ public sealed class SignatureRequestsController(
         if (forbidden is not null)
             return forbidden;
 
+        var audienceResult = MapAudience(body.PartialCopyAudience);
+        if (audienceResult.IsFailure)
+            return BadRequest(new { error = audienceResult.Error.Code, message = audienceResult.Error.Message });
+
         var result = await bus.InvokeAsync<Result>(
             new UpdateSignatureRequestCommand(
                 tenantId,
@@ -524,10 +553,13 @@ public sealed class SignatureRequestsController(
                 body.Description,
                 body.Category,
                 body.TokenExpirationHours,
-                body.SendSignedDocumentToSigners,
+                body.SendSealedDocumentToSigners,
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
-                body.ReminderIntervalHours
+                body.ReminderIntervalHours,
+                body.SendPartialCopyOnEachSignature,
+                audienceResult.Value,
+                body.ExpirationEnabled
             ),
             ct
         );
@@ -581,6 +613,10 @@ public sealed class SignatureRequestsController(
             ))
             .ToList();
 
+        var audienceResult = MapAudience(body.PartialCopyAudience);
+        if (audienceResult.IsFailure)
+            return BadRequest(new { error = audienceResult.Error.Code, message = audienceResult.Error.Message });
+
         var result = await bus.InvokeAsync<Result<UpsertSignatureDraftResponse>>(
             new UpsertSignatureDraftCommand(
                 tenantId,
@@ -590,16 +626,39 @@ public sealed class SignatureRequestsController(
                 body.Description,
                 body.Category,
                 body.TokenExpirationHours,
-                body.SendSignedDocumentToSigners,
+                body.SendSealedDocumentToSigners,
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
                 body.ReminderIntervalHours,
                 signers,
-                fields
+                fields,
+                body.SendPartialCopyOnEachSignature,
+                audienceResult.Value,
+                body.ExpirationEnabled
             ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>F7 — mapea el DTO público de audiencia al VO del dominio con validación.</summary>
+    private static Result<PartialCopyAudience?> MapAudience(PartialCopyAudienceBody? body)
+    {
+        if (body is null)
+            return Result.Success<PartialCopyAudience?>(null);
+
+        if (string.Equals(body.Kind, "All", StringComparison.OrdinalIgnoreCase))
+            return Result.Success<PartialCopyAudience?>(PartialCopyAudience.All());
+
+        if (!string.Equals(body.Kind, "Specific", StringComparison.OrdinalIgnoreCase))
+            return Result.Failure<PartialCopyAudience?>(
+                new Error("Signature.PartialCopyAudience.KindInvalid", "Kind must be 'All' or 'Specific'.")
+            );
+
+        var specific = PartialCopyAudience.Specific(body.SignerIds ?? []);
+        return specific.IsSuccess
+            ? Result.Success<PartialCopyAudience?>(specific.Value)
+            : Result.Failure<PartialCopyAudience?>(specific.Error);
     }
 
     // ---------- DELETE /signature/requests/{id} ----------

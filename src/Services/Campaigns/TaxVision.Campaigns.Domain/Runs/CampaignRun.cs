@@ -5,7 +5,13 @@ using TaxVision.Campaigns.Domain.Campaigns;
 namespace TaxVision.Campaigns.Domain.Runs;
 
 /// <summary>Datos de una unidad a materializar (una por destinatario/canal).</summary>
-public sealed record RunRecipientDraft(string ContactRef, CampaignChannel Channel, string? Email, string? PhoneE164);
+public sealed record RunRecipientDraft(
+    string ContactRef,
+    CampaignChannel Channel,
+    string? Email,
+    string? PhoneE164,
+    string? Name = null
+);
 
 /// <summary>
 /// Aggregate root de UNA ejecución inmutable de una campaña (<c>Domain_Design.md §4</c>,
@@ -81,7 +87,8 @@ public sealed class CampaignRun : TenantEntity
                     unit.ContactRef,
                     unit.Channel,
                     unit.Email,
-                    unit.PhoneE164
+                    unit.PhoneE164,
+                    unit.Name
                 )
             );
         }

@@ -14,7 +14,8 @@ public sealed record UpdateCampaignCommand(
     string Name,
     CampaignChannel Channels,
     string Message,
-    string? Subject
+    string? Subject,
+    IReadOnlyList<ChannelContentInput>? Contents = null
 );
 
 public static class UpdateCampaignHandler
@@ -39,6 +40,9 @@ public static class UpdateCampaignHandler
         var content = campaign.SetContent(command.Message, command.Subject);
         if (content.IsFailure)
             return Result.Failure<CampaignResponse>(content.Error);
+        var perChannel = CampaignContentApplier.Apply(campaign, command.Contents);
+        if (perChannel.IsFailure)
+            return Result.Failure<CampaignResponse>(perChannel.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignResponse.From(campaign));

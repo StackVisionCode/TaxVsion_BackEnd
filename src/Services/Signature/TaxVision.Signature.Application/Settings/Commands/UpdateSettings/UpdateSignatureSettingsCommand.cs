@@ -1,3 +1,4 @@
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
 
 namespace TaxVision.Signature.Application.Settings.Commands.UpdateSettings;
@@ -16,5 +17,10 @@ public sealed record UpdateSignatureSettingsCommand(
     long MaxImageBytes,
     int MaxPagesPerDocument,
     int RetentionYears,
-    bool AllowPurge
+    bool AllowPurge,
+    // F7 — null = no tocar.
+    bool? SendPartialCopyDefault = null,
+    PartialCopyAudienceKind? PartialCopyDefaultAudienceKind = null,
+    bool? SendSealedDocumentDefault = null,
+    bool? ExpirationEnabledByDefault = null
 );

@@ -105,6 +105,9 @@ public static class StartCampaignRunHandler
 
         foreach (var recipient in run.Recipients.Where(r => r.State == DispatchState.Pending).ToList())
         {
+            // Contenido POR CANAL: usa el override del canal si existe; si no, cae al Message/Subject base
+            // (compatibilidad). Para Push el título viaja en Subject (el evento solo tiene Subject+Body).
+            var (subject, body) = ResolveChannelContent(campaign, recipient.Channel);
             await bus.PublishAsync(
                 new CampaignDispatchRequestedIntegrationEvent
                 {
@@ -119,10 +122,11 @@ public static class StartCampaignRunHandler
                     ContactRef = recipient.ContactRef,
                     Email = recipient.Email,
                     PhoneE164 = recipient.PhoneE164,
+                    RecipientName = recipient.Name,
                     SenderRef = senderRefByChannel.GetValueOrDefault(recipient.Channel),
-                    // Slice 3: contenido inline desde la definición (snapshot inmutable + Scribe = fase posterior).
-                    Subject = campaign.Subject,
-                    Body = campaign.Message,
+                    // Snapshot inmutable del contenido resuelto por canal (Scribe = fase posterior).
+                    Subject = subject,
+                    Body = body,
                 }
             );
             run.MarkDispatched(recipient.Id);
@@ -134,6 +138,19 @@ public static class StartCampaignRunHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignRunResponse.From(run));
+    }
+
+    /// <summary>
+    /// Resuelve (Subject, Body) para un canal: usa el <see cref="CampaignContent"/> propio del canal si existe
+    /// (para Push el título se mapea a Subject, ya que el evento solo lleva Subject+Body), o cae al
+    /// <c>Subject</c>/<c>Message</c> base de la campaña (compatibilidad con campañas sin contenido por canal).
+    /// </summary>
+    private static (string? Subject, string Body) ResolveChannelContent(Campaign campaign, CampaignChannel channel)
+    {
+        var content = campaign.GetContentFor(channel);
+        if (content is null)
+            return (campaign.Subject, campaign.Message);
+        return (content.Subject ?? content.Title, content.Body);
     }
 
     /// <summary>Mapa canal → <c>SenderRef</c> a partir de la selección de la campaña (solo perfiles Active).</summary>

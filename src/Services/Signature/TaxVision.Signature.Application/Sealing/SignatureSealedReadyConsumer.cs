@@ -45,7 +45,7 @@ public static class SignatureSealedReadyConsumer
 
             // P2: solo se emite el share-link si la request pide entregar el documento firmado; si no,
             // el evento igual sale (con flag false) para no romper otros consumidores, pero sin link.
-            var shareToken = request.SendSignedDocumentToSigners
+            var shareToken = request.SendSealedDocumentToSigners
                 ? await MintShareTokenAsync(request, evt.FileId, emails, storage, logger, ct)
                 : null;
 
@@ -58,7 +58,7 @@ public static class SignatureSealedReadyConsumer
                     SealedFileId = evt.FileId,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
                     ShareToken = shareToken,
-                    SendSignedDocumentToSigners = request.SendSignedDocumentToSigners,
+                    SendSealedDocumentToSigners = request.SendSealedDocumentToSigners,
                     Signers = request
                         .Signers.Select(s => new SignerContactSnapshot(
                             s.Id,

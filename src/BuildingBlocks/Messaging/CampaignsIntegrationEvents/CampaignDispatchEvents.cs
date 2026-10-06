@@ -19,6 +19,8 @@ public sealed record CampaignDispatchRequestedIntegrationEvent : IntegrationEven
     public required string ContactRef { get; init; }
     public string? Email { get; init; }
     public string? PhoneE164 { get; init; }
+    /// <summary>Nombre del destinatario (de Customer/Contact) para sustituir {{first_name}}/{{full_name}}/… en los ejecutores.</summary>
+    public string? RecipientName { get; init; }
     public string? SenderRef { get; init; }
     public string? ContentRef { get; init; }
     // Contenido resuelto/congelado del run (slice 3: inline; el ContentRef inmutable + render Scribe es fase posterior).

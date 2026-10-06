@@ -40,10 +40,14 @@ public static class CreateSignatureTemplateHandler
             requiresConsent: cmd.RequiresConsent,
             generateCertificate: cmd.GenerateCertificate,
             baseDocumentFileId: cmd.BaseDocumentFileId,
-            sendSignedDocumentToSigners: cmd.SendSignedDocumentToSigners,
+            sendSealedDocumentToSigners: cmd.SendSealedDocumentToSigners,
             sendCertificateToSigners: cmd.SendCertificateToSigners,
             autoRemindersEnabled: cmd.AutoRemindersEnabled,
-            reminderIntervalHours: cmd.ReminderIntervalHours
+            reminderIntervalHours: cmd.ReminderIntervalHours,
+            sendPartialCopyOnEachSignature: cmd.SendPartialCopyOnEachSignature,
+            partialCopyAudienceKind: cmd.PartialCopyAudienceKind,
+            partialCopyAudienceSlotOrders: cmd.PartialCopyAudienceSlotOrders,
+            expirationEnabled: cmd.ExpirationEnabled
         );
 
     private static async Task PersistAsync(

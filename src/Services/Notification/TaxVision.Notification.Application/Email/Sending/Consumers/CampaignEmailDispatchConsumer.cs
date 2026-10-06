@@ -30,11 +30,13 @@ public static class CampaignEmailDispatchConsumer
         if (string.IsNullOrWhiteSpace(evt.Email))
             return ToResult(evt, "Skipped", providerRef: null, reason: "no_destination");
 
-        var body = evt.Body ?? string.Empty;
+        // Personalización por destinatario: {{first_name}}/{{full_name}}/{{email}}/… → datos del cliente.
+        var subject = CampaignPersonalization.Render(evt.Subject, evt.RecipientName, evt.Email, evt.PhoneE164);
+        var body = CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
         var send = await bus.InvokeAsync<Result<OutboundEmailResponse>>(
             new SendEmailCommand(
                 evt.TenantId,
-                string.IsNullOrWhiteSpace(evt.Subject) ? "(no subject)" : evt.Subject!,
+                string.IsNullOrWhiteSpace(subject) ? "(no subject)" : subject!,
                 body,
                 body,
                 EmailPriority.Normal,

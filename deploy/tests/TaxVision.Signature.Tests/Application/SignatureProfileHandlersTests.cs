@@ -507,6 +507,15 @@ public sealed class SignatureProfileHandlersTests
             DateTime expiresAtUtc,
             CancellationToken ct = default
         ) => Task.FromResult(Result.Success(string.Empty));
+
+        public Task<Result<SignatureFileMetadata>> GetFileAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                Result.Failure<SignatureFileMetadata>(new Error("Test.NotImplemented", "Not used by these tests."))
+            );
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

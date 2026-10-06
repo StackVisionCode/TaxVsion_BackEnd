@@ -54,7 +54,8 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
     // Métodos privados: una responsabilidad por método
     // ------------------------------------------------------------------
 
-    private static void StampAllFields(PdfDocument pdf, IReadOnlyList<SealedFieldRender> fields)
+    // internal: reusado por el renderer de copias parciales (F7).
+    internal static void StampAllFields(PdfDocument pdf, IReadOnlyList<SealedFieldRender> fields)
     {
         foreach (var field in fields)
         {
@@ -500,5 +501,6 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         return string.Join(" ", chunks);
     }
 
-    private static string ComputeSha256(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+    internal static string ComputeSha256(byte[] bytes) =>
+        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }

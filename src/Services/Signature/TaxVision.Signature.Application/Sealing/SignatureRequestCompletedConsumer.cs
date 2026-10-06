@@ -225,12 +225,7 @@ public static class SignatureRequestCompletedConsumer
             if (signer.SignatureImageFileId is not { } imageFileId)
                 continue;
 
-            var projection = await WaitForScanOutcomeAsync(
-                request.TenantId,
-                imageFileId,
-                fileRefRepository,
-                ct
-            );
+            var projection = await WaitForScanOutcomeAsync(request.TenantId, imageFileId, fileRefRepository, ct);
             switch (projection?.Status)
             {
                 case FileScanStatus.Available:

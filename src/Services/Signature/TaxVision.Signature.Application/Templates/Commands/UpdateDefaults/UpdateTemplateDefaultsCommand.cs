@@ -1,3 +1,5 @@
+using TaxVision.Signature.Domain.Requests.ValueObjects;
+
 namespace TaxVision.Signature.Application.Templates.Commands.UpdateDefaults;
 
 public sealed record UpdateTemplateDefaultsCommand(
@@ -7,8 +9,13 @@ public sealed record UpdateTemplateDefaultsCommand(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    bool SendSignedDocumentToSigners,
+    bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
-    int ReminderIntervalHours
+    int ReminderIntervalHours,
+    // F7 — defaults heredables al instanciar. Audiencia Specific usa slotOrders (ints), no GUIDs.
+    bool SendPartialCopyOnEachSignature,
+    PartialCopyAudienceKind PartialCopyAudienceKind,
+    IReadOnlyList<int>? PartialCopyAudienceSlotOrders,
+    bool ExpirationEnabled
 );

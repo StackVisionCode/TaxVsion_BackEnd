@@ -53,10 +53,36 @@ public sealed class SignatureTemplate : TenantEntity
     /// <summary>Defaults de entrega/recordatorio que "from template" copia a la solicitud (mismos que la
     /// solicitud directa). Entregar el documento firmado a los firmantes; el certificado exige
     /// <see cref="GenerateCertificate"/>; recordatorios automáticos con su intervalo en horas.</summary>
-    public bool SendSignedDocumentToSigners { get; private set; }
+    public bool SendSealedDocumentToSigners { get; private set; }
     public bool SendCertificateToSigners { get; private set; }
     public bool AutoRemindersEnabled { get; private set; }
     public int ReminderIntervalHours { get; private set; }
+
+    /// <summary>F7 — enviar al firmante una copia inmediata de lo que firmó.</summary>
+    public bool SendPartialCopyOnEachSignature { get; private set; }
+
+    /// <summary>F7 — audiencia por defecto (All = todos los slots; Specific = los indicados en
+    /// <see cref="PartialCopyAudienceSlotOrdersCsv"/>). Al instanciar se mapea slotOrder → signerId real.</summary>
+    public PartialCopyAudienceKind PartialCopyAudienceKind { get; private set; }
+
+    /// <summary>CSV de ints — orden de los slots que reciben copia parcial cuando el kind es Specific.
+    /// Vacío cuando es All. Se persiste como string por simplicidad (misma técnica que
+    /// <see cref="PartialCopyAudience.SpecificSignerIdsCsv"/> en la Request).</summary>
+    public string PartialCopyAudienceSlotOrdersCsv { get; private set; } = string.Empty;
+
+    /// <summary>F7 — expiración opcional del link del firmante. Cuando false, el link no caduca
+    /// y no se mandan recordatorios por vencimiento (el flag de recordatorios es independiente).</summary>
+    public bool ExpirationEnabled { get; private set; } = true;
+
+    /// <summary>Lecura ergonómica de los slot orders de la audiencia Specific.</summary>
+    public IReadOnlySet<int> PartialCopyAudienceSlotOrders =>
+        PartialCopyAudienceSlotOrdersCsv.Length == 0
+            ? EmptySlotOrders
+            : new HashSet<int>(
+                PartialCopyAudienceSlotOrdersCsv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)
+            );
+
+    private static readonly IReadOnlySet<int> EmptySlotOrders = new HashSet<int>();
 
     /// <summary>
     /// Hash (PBKDF2) del Practitioner PIN por defecto de la plantilla (Form 8879). Opcional: si está,
@@ -98,10 +124,14 @@ public sealed class SignatureTemplate : TenantEntity
         bool requiresConsent,
         bool generateCertificate,
         Guid? baseDocumentFileId = null,
-        bool sendSignedDocumentToSigners = true,
+        bool sendSealedDocumentToSigners = true,
         bool sendCertificateToSigners = false,
         bool autoRemindersEnabled = true,
-        int reminderIntervalHours = DefaultReminderIntervalHours
+        int reminderIntervalHours = DefaultReminderIntervalHours,
+        bool sendPartialCopyOnEachSignature = false,
+        PartialCopyAudienceKind partialCopyAudienceKind = PartialCopyAudienceKind.All,
+        IReadOnlyList<int>? partialCopyAudienceSlotOrders = null,
+        bool expirationEnabled = true
     )
     {
         var validation = ValidateFactoryInputs(
@@ -123,6 +153,7 @@ public sealed class SignatureTemplate : TenantEntity
         if (deliveryValidation.IsFailure)
             return Result.Failure<SignatureTemplate>(deliveryValidation.Error);
 
+        var audienceCsv = NormalizeAudienceSlotOrders(partialCopyAudienceKind, partialCopyAudienceSlotOrders);
         var now = DateTime.UtcNow;
         var template = new SignatureTemplate
         {
@@ -136,16 +167,29 @@ public sealed class SignatureTemplate : TenantEntity
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
-            SendSignedDocumentToSigners = sendSignedDocumentToSigners,
+            SendSealedDocumentToSigners = sendSealedDocumentToSigners,
             SendCertificateToSigners = sendCertificateToSigners,
             AutoRemindersEnabled = autoRemindersEnabled,
             ReminderIntervalHours = reminderIntervalHours,
+            SendPartialCopyOnEachSignature = sendPartialCopyOnEachSignature,
+            PartialCopyAudienceKind = partialCopyAudienceKind,
+            PartialCopyAudienceSlotOrdersCsv = audienceCsv,
+            ExpirationEnabled = expirationEnabled,
             BaseDocumentFileId = baseDocumentFileId == Guid.Empty ? null : baseDocumentFileId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
         template.SetTenant(tenantId);
         return Result.Success(template);
+    }
+
+    /// <summary>Normaliza el CSV de slotOrders — vacío cuando el kind es All, deduplicado+ordenado si es Specific.</summary>
+    private static string NormalizeAudienceSlotOrders(PartialCopyAudienceKind kind, IReadOnlyList<int>? slotOrders)
+    {
+        if (kind != PartialCopyAudienceKind.Specific || slotOrders is null)
+            return string.Empty;
+        var distinct = slotOrders.Where(o => o > 0).Distinct().OrderBy(o => o).ToList();
+        return distinct.Count == 0 ? string.Empty : string.Join(',', distinct);
     }
 
     // ------------------------------------------------------------------
@@ -186,10 +230,14 @@ public sealed class SignatureTemplate : TenantEntity
         bool requiresSequentialSigning,
         bool requiresConsent,
         bool generateCertificate,
-        bool sendSignedDocumentToSigners,
+        bool sendSealedDocumentToSigners,
         bool sendCertificateToSigners,
         bool autoRemindersEnabled,
-        int reminderIntervalHours
+        int reminderIntervalHours,
+        bool sendPartialCopyOnEachSignature,
+        PartialCopyAudienceKind partialCopyAudienceKind,
+        IReadOnlyList<int>? partialCopyAudienceSlotOrders,
+        bool expirationEnabled
     )
     {
         EnsureDraft();
@@ -215,10 +263,17 @@ public sealed class SignatureTemplate : TenantEntity
         RequiresSequentialSigning = requiresSequentialSigning;
         RequiresConsent = requiresConsent;
         GenerateCertificate = generateCertificate;
-        SendSignedDocumentToSigners = sendSignedDocumentToSigners;
+        SendSealedDocumentToSigners = sendSealedDocumentToSigners;
         SendCertificateToSigners = sendCertificateToSigners;
         AutoRemindersEnabled = autoRemindersEnabled;
         ReminderIntervalHours = reminderIntervalHours;
+        SendPartialCopyOnEachSignature = sendPartialCopyOnEachSignature;
+        PartialCopyAudienceKind = partialCopyAudienceKind;
+        PartialCopyAudienceSlotOrdersCsv = NormalizeAudienceSlotOrders(
+            partialCopyAudienceKind,
+            partialCopyAudienceSlotOrders
+        );
+        ExpirationEnabled = expirationEnabled;
         Touch();
         return Result.Success();
     }

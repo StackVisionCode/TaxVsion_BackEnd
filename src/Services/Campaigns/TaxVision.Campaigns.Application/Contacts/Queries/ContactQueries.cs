@@ -49,6 +49,31 @@ public static class ListContactListsHandler
     }
 }
 
+/// <summary>Miembros (contactos) de una lista — para la edición de audiencia en el front.</summary>
+public sealed record ListContactListMembersQuery(Guid TenantId, Guid ListId);
+
+public static class ListContactListMembersHandler
+{
+    public static async Task<Result<IReadOnlyList<ContactResponse>>> Handle(
+        ListContactListMembersQuery query,
+        IContactListRepository lists,
+        IContactRepository contacts,
+        CancellationToken ct
+    )
+    {
+        var list = await lists.GetByIdAsync(query.TenantId, query.ListId, ct);
+        if (list is null)
+            return Result.Failure<IReadOnlyList<ContactResponse>>(ContactListErrors.NotFound);
+
+        var ids = list.Members.Select(m => m.ContactId).ToList();
+        if (ids.Count == 0)
+            return Result.Success<IReadOnlyList<ContactResponse>>([]);
+
+        var members = await contacts.GetManyByIdsAsync(query.TenantId, ids, ct);
+        return Result.Success<IReadOnlyList<ContactResponse>>(members.Select(ContactResponse.From).ToList());
+    }
+}
+
 public sealed record GetContactListQuery(Guid TenantId, Guid Id);
 
 public static class GetContactListHandler

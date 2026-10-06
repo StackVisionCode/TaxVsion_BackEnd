@@ -1,4 +1,5 @@
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 namespace TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 
@@ -14,12 +15,16 @@ public sealed record UpsertSignatureDraftCommand(
     string? Description,
     string Category,
     int TokenExpirationHours,
-    bool? SendSignedDocumentToSigners,
+    bool? SendSealedDocumentToSigners,
     bool? SendCertificateToSigners,
     bool? AutoRemindersEnabled,
     int? ReminderIntervalHours,
     IReadOnlyList<DraftSignerSpec> Signers,
-    IReadOnlyList<DraftFieldSpec> Fields
+    IReadOnlyList<DraftFieldSpec> Fields,
+    // F7 — null = no tocar. Si SendPartialCopy pasa a true, PartialCopyAudience es requerida.
+    bool? SendPartialCopyOnEachSignature = null,
+    PartialCopyAudience? PartialCopyAudience = null,
+    bool? ExpirationEnabled = null
 );
 
 // Guardrail #2: identidad explícita. Id null = crear; Id presente = reconciliar; ausente del payload = borrar.

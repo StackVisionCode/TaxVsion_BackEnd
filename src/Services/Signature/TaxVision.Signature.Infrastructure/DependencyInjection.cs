@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Abstractions.Delivery;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Categories;
 using TaxVision.Signature.Application.Profiles.EffectiveSignature;
@@ -194,6 +195,7 @@ public static class DependencyInjection
             PdfSharp.Fonts.GlobalFontSettings.FontResolver = new SealingFontResolver();
         services.AddSingleton<IDocumentSealingEngine, PdfSharpSealingEngine>();
         services.AddSingleton<ICertificateOfCompletionRenderer, PdfSharpCertificateRenderer>();
+        services.AddSingleton<IPartialCopyRenderer, PdfSharpPartialCopyRenderer>();
 
         services
             .AddOptions<ServiceAuthClientOptions>()

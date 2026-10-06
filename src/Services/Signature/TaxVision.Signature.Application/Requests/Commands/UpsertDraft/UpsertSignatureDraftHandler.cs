@@ -80,9 +80,9 @@ public static class UpsertSignatureDraftHandler
         if (metadata.IsFailure)
             return metadata;
 
-        if (cmd.SendSignedDocumentToSigners is { } signedDelivery)
+        if (cmd.SendSealedDocumentToSigners is { } signedDelivery)
         {
-            var applied = request.SetSignedDocumentDelivery(signedDelivery);
+            var applied = request.SetSealedDocumentDelivery(signedDelivery);
             if (applied.IsFailure)
                 return applied;
         }
@@ -100,6 +100,22 @@ public static class UpsertSignatureDraftHandler
                 reminders,
                 cmd.ReminderIntervalHours ?? request.ReminderIntervalHours
             );
+            if (applied.IsFailure)
+                return applied;
+        }
+
+        // F7 — copia parcial (requiere audiencia si ON).
+        if (cmd.SendPartialCopyOnEachSignature is { } partialOn)
+        {
+            var applied = request.SetSendPartialCopy(partialOn, cmd.PartialCopyAudience);
+            if (applied.IsFailure)
+                return applied;
+        }
+
+        // F7 — expiración opcional: ON exige horas, OFF borra el reloj.
+        if (cmd.ExpirationEnabled is { } expOn)
+        {
+            var applied = expOn ? request.EnableExpiration(cmd.TokenExpirationHours) : request.DisableExpiration();
             if (applied.IsFailure)
                 return applied;
         }

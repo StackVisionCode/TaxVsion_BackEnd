@@ -71,17 +71,29 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public bool GenerateCertificate { get; private set; }
 
     /// <summary>
-    /// Si al completarse la firma se entrega el documento sellado a los firmantes por su canal
-    /// (email/SMS). Default <c>true</c> (comportamiento histórico). Solo editable en Draft/Ready.
+    /// F7 — entrega del PDF final SELLADO (todas las firmas + PAdES) a los firmantes al completar.
+    /// Default <c>false</c>: el preparador decide explícitamente si lo manda. Editable hasta `InProgress`.
     /// </summary>
-    public bool SendSignedDocumentToSigners { get; private set; } = true;
+    public bool SendSealedDocumentToSigners { get; private set; }
 
     /// <summary>
-    /// Si al completarse la firma se entrega el Certificate of Completion a los firmantes por su canal.
-    /// Default <c>false</c>. Requiere <see cref="GenerateCertificate"/> para tener algo que entregar.
-    /// Solo editable en Draft/Ready.
+    /// Certificate of Completion a los firmantes al completar. Default <c>false</c>.
+    /// Requiere <see cref="GenerateCertificate"/>. Editable hasta `InProgress`.
     /// </summary>
     public bool SendCertificateToSigners { get; private set; }
+
+    /// <summary>
+    /// F7 — copia inmediata al firmar: cada firmante incluido en <see cref="PartialCopyAudience"/>
+    /// recibe un PDF con sus firmas estampadas (sin PAdES, con watermark de "en progreso"). Default
+    /// <c>false</c>. Independiente del documento sellado final.
+    /// </summary>
+    public bool SendPartialCopyOnEachSignature { get; private set; }
+
+    /// <summary>
+    /// A quién le llega la copia parcial. Siempre no-nulo; cuando el flag está OFF se mantiene
+    /// como <c>All</c> para que el aggregate nunca tenga null-check.
+    /// </summary>
+    public PartialCopyAudience PartialCopyAudience { get; private set; } = PartialCopyAudience.All();
 
     /// <summary>
     /// Hash del Practitioner PIN. Cuando != <c>null</c> el firmante debe superar el
@@ -116,8 +128,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// <summary>Campos del preparador colocados sobre el documento (su firma se estampa al sellar).</summary>
     public IReadOnlyList<PreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
-    public int TokenExpirationHours { get; private set; }
-    public DateTime ExpiresAtUtc { get; private set; }
+    /// <summary>F7 — si <c>false</c> el enlace nunca expira: ExpiresAtUtc=null y los recordatorios no corren.</summary>
+    public bool ExpirationEnabled { get; private set; } = true;
+
+    /// <summary>Horas desde el envío. Null ⟺ ExpirationEnabled=false.</summary>
+    public int? TokenExpirationHours { get; private set; }
+
+    /// <summary>Null cuando ExpirationEnabled=false o antes de enviar.</summary>
+    public DateTime? ExpiresAtUtc { get; private set; }
 
     /// <summary>Contador monotónico incremental. Invalidar todos los tokens vigentes = incrementar.</summary>
     public int RevocationEpoch { get; private set; }
@@ -177,10 +195,13 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         bool requiresSequentialSigning,
         bool requiresConsent,
         bool generateCertificate,
-        bool sendSignedDocumentToSigners = true,
+        bool sendSealedDocumentToSigners = false,
         bool sendCertificateToSigners = false,
         bool autoRemindersEnabled = true,
-        int reminderIntervalHours = 48
+        int reminderIntervalHours = 48,
+        bool expirationEnabled = true,
+        bool sendPartialCopyOnEachSignature = false,
+        PartialCopyAudience? partialCopyAudience = null
     )
     {
         var baseValidation = ValidateFactoryInputs(
@@ -198,6 +219,15 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (categoryCheck.IsFailure)
             return Result.Failure<SignatureRequest>(categoryCheck.Error);
 
+        // F7 — audiencia obligatoria si el flag está ON; con el flag OFF ignoramos lo que venga.
+        if (sendPartialCopyOnEachSignature && partialCopyAudience is null)
+            return Result.Failure<SignatureRequest>(
+                new Error(
+                    "Signature.Request.PartialCopyRequiresAudience",
+                    "Partial copy delivery requires an audience."
+                )
+            );
+
         var now = DateTime.UtcNow;
         var request = new SignatureRequest
         {
@@ -208,14 +238,17 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             Category = category.Trim(),
             Status = SignatureRequestStatus.Draft,
             OriginalFileId = originalFileId,
-            TokenExpirationHours = tokenExpirationHours,
-            // Provisional: el borrador no expira; Send lo recalcula desde la fecha de envío.
-            ExpiresAtUtc = now.AddHours(tokenExpirationHours),
+            ExpirationEnabled = expirationEnabled,
+            TokenExpirationHours = expirationEnabled ? tokenExpirationHours : null,
+            // Provisional: el borrador no expira; Send lo recalcula desde la fecha de envío (si aplica).
+            ExpiresAtUtc = expirationEnabled ? now.AddHours(tokenExpirationHours) : null,
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
-            SendSignedDocumentToSigners = sendSignedDocumentToSigners,
+            SendSealedDocumentToSigners = sendSealedDocumentToSigners,
             SendCertificateToSigners = sendCertificateToSigners && generateCertificate,
+            SendPartialCopyOnEachSignature = sendPartialCopyOnEachSignature,
+            PartialCopyAudience = sendPartialCopyOnEachSignature ? partialCopyAudience! : PartialCopyAudience.All(),
             AutoRemindersEnabled = autoRemindersEnabled,
             ReminderIntervalHours = Math.Clamp(
                 reminderIntervalHours,
@@ -276,8 +309,12 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Title = trimmedTitle;
         Description = NormalizeDescription(description);
         Category = category.Trim();
-        TokenExpirationHours = tokenExpirationHours;
-        ExpiresAtUtc = DateTime.UtcNow.AddHours(tokenExpirationHours);
+        // F7 — solo tiene sentido reajustar las horas si la expiración está activa.
+        if (ExpirationEnabled)
+        {
+            TokenExpirationHours = tokenExpirationHours;
+            ExpiresAtUtc = DateTime.UtcNow.AddHours(tokenExpirationHours);
+        }
         Touch();
         return Result.Success();
     }
@@ -286,15 +323,126 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     // Entrega (P2) — qué se envía a los firmantes al completar
     // ------------------------------------------------------------------
 
-    /// <summary>Activa/desactiva la entrega del documento sellado a los firmantes. Solo en Draft/Ready.</summary>
-    public Result SetSignedDocumentDelivery(bool enabled)
+    /// <summary>Activa/desactiva la entrega del PDF sellado final a los firmantes. Solo en Draft/Ready.</summary>
+    public Result SetSealedDocumentDelivery(bool enabled)
     {
         if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
             return Result.Failure(
                 new Error("Signature.Request.NotEditable", "Delivery settings can only change while Draft or Ready.")
             );
 
-        SendSignedDocumentToSigners = enabled;
+        SendSealedDocumentToSigners = enabled;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// F7 — activa/desactiva la copia inmediata al firmar y fija su audiencia. OFF deja la
+    /// audiencia como All (sin null-check aguas abajo). Editable mientras no esté Completed/Canceled.
+    /// </summary>
+    public Result SetSendPartialCopy(bool enabled, PartialCopyAudience? audience)
+    {
+        if (
+            Status
+            is SignatureRequestStatus.Completed
+                or SignatureRequestStatus.Canceled
+                or SignatureRequestStatus.Rejected
+                or SignatureRequestStatus.Expired
+        )
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.NotEditable",
+                    "Partial copy settings can only change while the request is not finalized."
+                )
+            );
+
+        if (enabled)
+        {
+            if (audience is null)
+                return Result.Failure(
+                    new Error(
+                        "Signature.Request.PartialCopyRequiresAudience",
+                        "Partial copy delivery requires an audience."
+                    )
+                );
+
+            if (audience.Kind == PartialCopyAudienceKind.Specific)
+            {
+                var known = _signers.Select(s => s.Id).ToHashSet();
+                var unknown = audience.SpecificSignerIds.Where(id => !known.Contains(id)).ToList();
+                if (unknown.Count > 0)
+                    return Result.Failure(
+                        new Error(
+                            "Signature.Request.PartialCopyAudienceInvalid",
+                            $"Audience contains {unknown.Count} signer id(s) that don't belong to this request."
+                        )
+                    );
+            }
+
+            SendPartialCopyOnEachSignature = true;
+            PartialCopyAudience = audience;
+        }
+        else
+        {
+            SendPartialCopyOnEachSignature = false;
+            PartialCopyAudience = PartialCopyAudience.All();
+        }
+
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// F7 — activa la expiración del enlace con las horas dadas. Si la request ya está InProgress,
+    /// recalcula ExpiresAtUtc desde SentAtUtc. Rechaza horas fuera de rango.
+    /// </summary>
+    public Result EnableExpiration(int tokenExpirationHours)
+    {
+        if (
+            Status
+            is SignatureRequestStatus.Completed
+                or SignatureRequestStatus.Canceled
+                or SignatureRequestStatus.Rejected
+                or SignatureRequestStatus.Expired
+        )
+            return Result.Failure(
+                new Error("Signature.Request.NotEditable", "Expiration cannot change on a finalized request.")
+            );
+
+        if (tokenExpirationHours is < 1 or > 720)
+            return Result.Failure(
+                new Error("Signature.Request.TokenExpiration", "Token expiration must be between 1 and 720 hours.")
+            );
+
+        ExpirationEnabled = true;
+        TokenExpirationHours = tokenExpirationHours;
+        // Si ya se envió, cuenta desde SentAtUtc; si sigue en borrador, desde ahora (provisional).
+        var anchor = SentAtUtc ?? DateTime.UtcNow;
+        ExpiresAtUtc = anchor.AddHours(tokenExpirationHours);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// F7 — desactiva la expiración: el enlace nunca vence. ExpiresAtUtc=null, horas=null,
+    /// y los recordatorios automáticos quedan sin reloj (ReminderPolicy los saltará).
+    /// </summary>
+    public Result DisableExpiration()
+    {
+        if (
+            Status
+            is SignatureRequestStatus.Completed
+                or SignatureRequestStatus.Canceled
+                or SignatureRequestStatus.Rejected
+                or SignatureRequestStatus.Expired
+        )
+            return Result.Failure(
+                new Error("Signature.Request.NotEditable", "Expiration cannot change on a finalized request.")
+            );
+
+        ExpirationEnabled = false;
+        TokenExpirationHours = null;
+        ExpiresAtUtc = null;
         Touch();
         return Result.Success();
     }
@@ -358,7 +506,10 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     {
         if (Status != SignatureRequestStatus.InProgress || !AutoRemindersEnabled)
             return false;
-        if (now >= ExpiresAtUtc || RemindersSent >= MaxRemindersPerRequest)
+        // F7 — sin expiración no hay deadline que recordar.
+        if (!ExpirationEnabled || ExpiresAtUtc is not DateTime expiresAt)
+            return false;
+        if (now >= expiresAt || RemindersSent >= MaxRemindersPerRequest)
             return false;
 
         var baseline = LastReminderSentAtUtc ?? SentAtUtc;
@@ -666,8 +817,8 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         SentAtUtc = sentAtUtc;
         // Al enviar efectivamente la solicitud ya no "espera" por un reloj futuro: se limpia la fecha.
         ScheduledSendAtUtc = null;
-        // El reloj de expiración corre desde el envío, no desde la creación: los borradores no expiran.
-        ExpiresAtUtc = sentAtUtc.AddHours(TokenExpirationHours);
+        // F7 — solo computamos vencimiento si la expiración está activa.
+        ExpiresAtUtc = ExpirationEnabled && TokenExpirationHours is int hours ? sentAtUtc.AddHours(hours) : null;
         Touch();
         return Result.Success();
     }
@@ -1254,6 +1405,10 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (recordResult.IsFailure)
             return recordResult;
 
+        // F7 — engancha la copia parcial una vez. El consumer la lee después via query y la emite.
+        if (SendPartialCopyOnEachSignature && PartialCopyAudience.Includes(signer.Id))
+            signer.MarkPartialCopyRequested(signedAtUtc);
+
         if (AllSignersHaveSigned())
             TransitionToCompleted(signedAtUtc);
         else
@@ -1385,10 +1540,40 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>F7 — el consumer registra que la copia parcial de un signer fue subida a CloudStorage.</summary>
+    public Result RecordPartialCopySent(Guid signerId, Guid fileId, DateTime sentAtUtc)
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        signer.MarkPartialCopySent(fileId, sentAtUtc);
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>F7 — el consumer registra el motivo de fallo al entregar la copia parcial.</summary>
+    public Result RecordPartialCopyFailed(Guid signerId, string reason)
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        signer.MarkPartialCopyFailed(reason);
+        Touch();
+        return Result.Success();
+    }
+
     public Result MarkExpired(DateTime expiredAtUtc)
     {
         if (IsTerminal())
             return Result.Failure(new Error("Signature.Request.Terminal", "Cannot expire a terminal request."));
+
+        // F7 — una request sin expiración no debería expirar nunca. Si llega aquí, es un bug del caller.
+        if (!ExpirationEnabled)
+            return Result.Failure(
+                new Error("Signature.Request.ExpirationDisabled", "This request has no expiration; cannot expire.")
+            );
 
         Status = SignatureRequestStatus.Expired;
         ExpiredAtUtc = expiredAtUtc;
@@ -1405,12 +1590,18 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (IsTerminal())
             return Result.Failure(new Error("Signature.Request.Terminal", "Cannot extend a terminal request."));
 
+        // F7 — sin expiración no hay reloj que mover.
+        if (!ExpirationEnabled || ExpiresAtUtc is not DateTime currentExpiresAt)
+            return Result.Failure(
+                new Error("Signature.Request.ExpirationDisabled", "This request has no expiration; nothing to extend.")
+            );
+
         if (additionalHours is < 1 or > 720)
             return Result.Failure(
                 new Error("Signature.Request.ExtendRange", "Additional hours must be between 1 and 720.")
             );
 
-        ExpiresAtUtc = ExpiresAtUtc.AddHours(additionalHours);
+        ExpiresAtUtc = currentExpiresAt.AddHours(additionalHours);
         BumpRevocationEpoch();
         Touch();
         return Result.Success();

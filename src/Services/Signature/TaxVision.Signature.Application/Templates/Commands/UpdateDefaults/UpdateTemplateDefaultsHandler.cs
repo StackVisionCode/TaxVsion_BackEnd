@@ -24,10 +24,14 @@ public static class UpdateTemplateDefaultsHandler
             cmd.RequiresSequentialSigning,
             cmd.RequiresConsent,
             cmd.GenerateCertificate,
-            cmd.SendSignedDocumentToSigners,
+            cmd.SendSealedDocumentToSigners,
             cmd.SendCertificateToSigners,
             cmd.AutoRemindersEnabled,
-            cmd.ReminderIntervalHours
+            cmd.ReminderIntervalHours,
+            cmd.SendPartialCopyOnEachSignature,
+            cmd.PartialCopyAudienceKind,
+            cmd.PartialCopyAudienceSlotOrders,
+            cmd.ExpirationEnabled
         );
         if (result.IsFailure)
             return result;

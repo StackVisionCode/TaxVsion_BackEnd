@@ -28,7 +28,7 @@ public sealed record PublicSignerView(
     bool RequiresSequentialSigning,
     bool IsSignerNextInSequence,
     int Order,
-    DateTime ExpiresAtUtc,
+    DateTime? ExpiresAtUtc,
     string SignerFullName,
     string SignerEmail,
     bool RequiresPractitionerPin,
@@ -39,5 +39,7 @@ public sealed record PublicSignerView(
     IReadOnlyList<PublicSignerFieldView> Fields,
     // Subdominio resuelto en el backend desde TenantBrandingRef. Vacío si no está proyectado:
     // la UI cae a su propia URL base y evita redirigir a un host inválido.
-    string TenantSubDomain
+    string TenantSubDomain,
+    // F7 — true si al firmar este signer recibirá una copia inmediata del documento.
+    bool PartialCopyWillBeSent
 );

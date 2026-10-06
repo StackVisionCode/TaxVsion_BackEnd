@@ -13,7 +13,12 @@ namespace TaxVision.Campaigns.Application.Contacts.Commands;
 /// con source <see cref="ContactSource.Import"/>. Cada contacto se agrega como miembro de la lista.
 /// Parser CSV mínimo (sin comas embebidas ni comillas complejas) — suficiente para el slice.
 /// </summary>
-public sealed record ImportContactsCommand(Guid TenantId, Guid ContactListId, string CsvContent);
+public sealed record ImportContactsCommand(
+    Guid TenantId,
+    Guid ContactListId,
+    string CsvContent,
+    string? CallerBearerToken = null
+);
 
 public static class ImportContactsHandler
 {
@@ -21,6 +26,7 @@ public static class ImportContactsHandler
         ImportContactsCommand command,
         IContactListRepository lists,
         IContactRepository contacts,
+        ICustomerDirectoryClient customerDirectory,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -32,11 +38,16 @@ public static class ImportContactsHandler
         int created = 0,
             reused = 0,
             invalid = 0,
-            membersAdded = 0;
+            membersAdded = 0,
+            noEmailRows = 0;
 
         // Dedupe dentro del lote: destino normalizado → Contact ya materializado en esta importación
         // (FindByDestination no ve las inserciones aún no guardadas).
         var batch = new Dictionary<string, Contact>(StringComparer.Ordinal);
+
+        // Etapa C — filas distintas por email a provisionar como clientes DESPUÉS de guardar (así un fallo
+        // del servicio Customer no revierte el import local). Clave = email normalizado; valor = nombre+teléfono.
+        var toProvision = new Dictionary<string, (string? Name, string? Phone)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (name, email, phone) in ParseRows(command.CsvContent))
         {
@@ -49,6 +60,17 @@ public static class ImportContactsHandler
                 continue;
             }
             var normalized = draft.Value; // usa el email/teléfono ya normalizados por el dominio
+
+            if (normalized.Email is not null)
+            {
+                if (!toProvision.ContainsKey(normalized.Email))
+                    toProvision[normalized.Email] = (name, normalized.PhoneE164);
+            }
+            else
+            {
+                // Contacto solo-teléfono: Customer exige PrimaryEmail, así que no puede volverse cliente.
+                noEmailRows++;
+            }
 
             var contact = FindInBatch(batch, normalized);
             if (contact is null)
@@ -83,7 +105,58 @@ public static class ImportContactsHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new ImportContactsResponse(created, reused, invalid, membersAdded));
+
+        // Etapa C — provisionar como clientes (on-behalf-of). Fuera de la transacción local: si Customer
+        // falla, el import ya quedó guardado y solo se refleja en el resumen.
+        int custCreated = 0,
+            custExisting = 0,
+            custFailed = 0;
+        bool permissionDenied = false;
+
+        foreach (var (email, info) in toProvision)
+        {
+            var provision = await customerDirectory.CreateIndividualAsync(
+                command.TenantId,
+                command.CallerBearerToken,
+                info.Name,
+                email,
+                info.Phone,
+                ct
+            );
+            switch (provision.Outcome)
+            {
+                case CustomerProvisionOutcome.Created:
+                    custCreated++;
+                    break;
+                case CustomerProvisionOutcome.AlreadyExisted:
+                    custExisting++;
+                    break;
+                case CustomerProvisionOutcome.Forbidden:
+                    // El usuario no puede crear clientes: cortamos — todas las filas fallarían igual.
+                    permissionDenied = true;
+                    break;
+                default:
+                    custFailed++;
+                    break;
+            }
+
+            if (permissionDenied)
+                break;
+        }
+
+        return Result.Success(
+            new ImportContactsResponse(
+                created,
+                reused,
+                invalid,
+                membersAdded,
+                CustomersCreated: custCreated,
+                CustomersExisting: custExisting,
+                CustomersSkippedNoEmail: noEmailRows,
+                CustomersFailed: custFailed,
+                CustomerPermissionDenied: permissionDenied
+            )
+        );
     }
 
     private static Contact? FindInBatch(Dictionary<string, Contact> batch, Contact c)

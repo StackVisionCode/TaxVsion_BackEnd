@@ -71,6 +71,11 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (populated.IsFailure)
             return Result.Failure<SignatureRequestResponse>(populated.Error);
 
+        // F7 — resolver audiencia Specific con los signerIds ya existentes.
+        var audienceResult = ApplySpecificAudienceIfNeeded(request, template, populated.Value);
+        if (audienceResult.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(audienceResult.Error);
+
         var preparer = await InheritPreparerFieldsAsync(request, template, cmd, effectiveResolver, ct);
         if (preparer.IsFailure)
             return Result.Failure<SignatureRequestResponse>(preparer.Error);
@@ -222,8 +227,14 @@ public static class CreateSignatureRequestFromTemplateHandler
         CreateSignatureRequestFromTemplateCommand cmd,
         SignatureTemplate template,
         Guid originalFileId
-    ) =>
-        SignatureRequest.CreateDraft(
+    )
+    {
+        // F7 — audiencia Specific se fija DESPUÉS (ApplySpecificAudienceIfNeeded) cuando los signerIds
+        // ya existen. Para Create: si la plantilla es All usamos All; si es Specific aún no podemos,
+        // así que creamos con sendPartial=false y lo activamos luego.
+        var createWithPartialCopy =
+            template.SendPartialCopyOnEachSignature && template.PartialCopyAudienceKind == PartialCopyAudienceKind.All;
+        return SignatureRequest.CreateDraft(
             tenantId: cmd.TenantId,
             createdByUserId: cmd.CreatedByUserId,
             title: template.Title,
@@ -234,15 +245,19 @@ public static class CreateSignatureRequestFromTemplateHandler
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
             generateCertificate: template.GenerateCertificate,
-            sendSignedDocumentToSigners: template.SendSignedDocumentToSigners,
+            sendSealedDocumentToSigners: template.SendSealedDocumentToSigners,
             sendCertificateToSigners: template.SendCertificateToSigners,
             autoRemindersEnabled: template.AutoRemindersEnabled,
-            reminderIntervalHours: template.ReminderIntervalHours
+            reminderIntervalHours: template.ReminderIntervalHours,
+            expirationEnabled: template.ExpirationEnabled,
+            sendPartialCopyOnEachSignature: createWithPartialCopy,
+            partialCopyAudience: createWithPartialCopy ? PartialCopyAudience.All() : null
         );
+    }
 
     // ============== Fase 5: agregar signers y campos ==============
 
-    private static Result PopulateSignersAndFields(
+    private static Result<IReadOnlyDictionary<int, Guid>> PopulateSignersAndFields(
         SignatureRequest request,
         SignatureTemplate template,
         IReadOnlyList<SignerValueObjects> signers
@@ -259,7 +274,7 @@ public static class CreateSignatureRequestFromTemplateHandler
                 requiredVerificationMethod: signer.RequiredVerificationMethod
             );
             if (addResult.IsFailure)
-                return Result.Failure(addResult.Error);
+                return Result.Failure<IReadOnlyDictionary<int, Guid>>(addResult.Error);
             signerIdBySlotOrder[signer.SlotOrder] = addResult.Value.Id;
         }
 
@@ -268,9 +283,44 @@ public static class CreateSignatureRequestFromTemplateHandler
             var signerId = signerIdBySlotOrder[field.SlotOrder];
             var placeResult = request.PlaceField(signerId, field.Kind, field.Position, field.Label, field.IsRequired);
             if (placeResult.IsFailure)
-                return Result.Failure(placeResult.Error);
+                return Result.Failure<IReadOnlyDictionary<int, Guid>>(placeResult.Error);
         }
-        return Result.Success();
+        return Result.Success<IReadOnlyDictionary<int, Guid>>(signerIdBySlotOrder);
+    }
+
+    /// <summary>
+    /// F7 — si la plantilla pide audiencia Specific, mapea sus slotOrders a los signerIds reales recién
+    /// creados y activa <c>SendSendPartialCopy(true, Specific(ids))</c>. Para All ya se activó en Create.
+    /// Si la plantilla no pide copia parcial, no hace nada.
+    /// </summary>
+    private static Result ApplySpecificAudienceIfNeeded(
+        SignatureRequest request,
+        SignatureTemplate template,
+        IReadOnlyDictionary<int, Guid> signerIdBySlotOrder
+    )
+    {
+        if (!template.SendPartialCopyOnEachSignature)
+            return Result.Success();
+        if (template.PartialCopyAudienceKind != PartialCopyAudienceKind.Specific)
+            return Result.Success();
+
+        var signerIds = template
+            .PartialCopyAudienceSlotOrders.Where(signerIdBySlotOrder.ContainsKey)
+            .Select(order => signerIdBySlotOrder[order])
+            .ToList();
+        if (signerIds.Count == 0)
+            return Result.Failure(
+                new Error(
+                    "Signature.Template.AudienceSlotsMissing",
+                    "Template audience slot orders do not match any created signer."
+                )
+            );
+
+        var audienceResult = PartialCopyAudience.Specific(signerIds);
+        if (audienceResult.IsFailure)
+            return Result.Failure(audienceResult.Error);
+
+        return request.SetSendPartialCopy(true, audienceResult.Value);
     }
 
     /// <summary>

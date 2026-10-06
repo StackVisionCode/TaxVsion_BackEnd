@@ -1,4 +1,5 @@
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Templates;
 
 namespace TaxVision.Signature.Application.Templates;
@@ -48,10 +49,15 @@ public sealed record SignatureTemplateResponse(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
-    bool SendSignedDocumentToSigners,
+    bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
     int ReminderIntervalHours,
+    // F7 — defaults heredables al instanciar la Request.
+    bool SendPartialCopyOnEachSignature,
+    PartialCopyAudienceKind PartialCopyAudienceKind,
+    IReadOnlyList<int> PartialCopyAudienceSlotOrders,
+    bool ExpirationEnabled,
     bool RequiresPractitionerPin,
     Guid? BaseDocumentFileId,
     DateTime CreatedAtUtc,
@@ -76,10 +82,14 @@ public sealed record SignatureTemplateResponse(
             template.RequiresSequentialSigning,
             template.RequiresConsent,
             template.GenerateCertificate,
-            template.SendSignedDocumentToSigners,
+            template.SendSealedDocumentToSigners,
             template.SendCertificateToSigners,
             template.AutoRemindersEnabled,
             template.ReminderIntervalHours,
+            template.SendPartialCopyOnEachSignature,
+            template.PartialCopyAudienceKind,
+            template.PartialCopyAudienceSlotOrders.OrderBy(x => x).ToList(),
+            template.ExpirationEnabled,
             template.RequiresPractitionerPin,
             template.BaseDocumentFileId,
             template.CreatedAtUtc,

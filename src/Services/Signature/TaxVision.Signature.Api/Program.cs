@@ -251,6 +251,9 @@ builder.Host.UseWolverine(options =>
     // F5 — document viewed por el firmante (semántica distinta a FirstViewed del enlace).
     options.PublishMessage<SignerDocumentViewedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // F7 — copia inmediata al firmar.
+    options.PublishMessage<SignerPartialCopyRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignerPartialCopyReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");

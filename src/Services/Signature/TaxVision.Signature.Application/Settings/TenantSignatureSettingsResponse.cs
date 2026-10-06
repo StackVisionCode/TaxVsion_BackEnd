@@ -27,7 +27,12 @@ public sealed record TenantSignatureSettingsResponse(
     int AuditKeyVersion,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    SignaturePlanConstraintsResponse PlanConstraints
+    SignaturePlanConstraintsResponse PlanConstraints,
+    // F7 — defaults de entrega + expiración opcional.
+    bool SendPartialCopyDefault,
+    string PartialCopyDefaultAudienceKind,
+    bool SendSealedDocumentDefault,
+    bool ExpirationEnabledByDefault
 )
 {
     public static TenantSignatureSettingsResponse From(TenantSignatureSettings settings) =>
@@ -48,7 +53,11 @@ public sealed record TenantSignatureSettingsResponse(
             settings.AuditKeyVersion,
             settings.CreatedAtUtc,
             settings.UpdatedAtUtc,
-            SignaturePlanConstraintsResponse.From(settings.PlanConstraints)
+            SignaturePlanConstraintsResponse.From(settings.PlanConstraints),
+            settings.SendPartialCopyDefault,
+            settings.PartialCopyDefaultAudienceKind.ToString(),
+            settings.SendSealedDocumentDefault,
+            settings.ExpirationEnabledByDefault
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

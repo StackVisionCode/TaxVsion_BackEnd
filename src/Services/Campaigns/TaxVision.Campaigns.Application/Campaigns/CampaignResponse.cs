@@ -5,6 +5,9 @@ namespace TaxVision.Campaigns.Application.Campaigns;
 /// <summary>DTO de salida de una campaña — nunca se devuelve el aggregate al Api.</summary>
 public sealed record CampaignSenderSelectionResponse(string Channel, Guid SenderProfileId);
 
+/// <summary>Contenido por canal expuesto al Api (Email: Subject+Body · Push: Title+Body · SMS: Body).</summary>
+public sealed record CampaignContentResponse(string Channel, string? Subject, string? Title, string Body);
+
 public sealed record CampaignResponse(
     Guid Id,
     Guid TenantId,
@@ -15,6 +18,7 @@ public sealed record CampaignResponse(
     string Message,
     string Status,
     IReadOnlyList<CampaignSenderSelectionResponse> Senders,
+    IReadOnlyList<CampaignContentResponse> Contents,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc
 )
@@ -31,6 +35,9 @@ public sealed record CampaignResponse(
             campaign.Status.ToString(),
             campaign
                 .Senders.Select(s => new CampaignSenderSelectionResponse(s.Channel.ToString(), s.SenderProfileId))
+                .ToList(),
+            campaign
+                .Contents.Select(c => new CampaignContentResponse(c.Channel.ToString(), c.Subject, c.Title, c.Body))
                 .ToList(),
             campaign.CreatedAtUtc,
             campaign.UpdatedAtUtc
