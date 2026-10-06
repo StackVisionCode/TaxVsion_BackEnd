@@ -1,5 +1,6 @@
 using TaxVision.Signature.Application.Templates.Commands.Instantiate;
 using TaxVision.Signature.Domain.Requests;
+using TaxVision.Signature.Domain.Requests.ValueObjects;
 
 namespace TaxVision.Signature.Api.Requests;
 
@@ -17,7 +18,12 @@ public sealed record CreateTemplateBody(
     bool SendSealedDocumentToSigners = true,
     bool SendCertificateToSigners = false,
     bool AutoRemindersEnabled = true,
-    int ReminderIntervalHours = 48
+    int ReminderIntervalHours = 48,
+    // F7 — defaults heredables. Audiencia Specific usa slotOrders (ints por posición), no GUIDs.
+    bool SendPartialCopyOnEachSignature = false,
+    PartialCopyAudienceKind PartialCopyAudienceKind = PartialCopyAudienceKind.All,
+    IReadOnlyList<int>? PartialCopyAudienceSlotOrders = null,
+    bool ExpirationEnabled = true
 );
 
 public sealed record UpdateTemplateMetadataBody(string Title, string? Description, string Category);
@@ -36,7 +42,12 @@ public sealed record UpdateTemplateDefaultsBody(
     bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
-    int ReminderIntervalHours
+    int ReminderIntervalHours,
+    // F7 — defaults heredables. Audiencia Specific usa slotOrders (ints por posición), no GUIDs.
+    bool SendPartialCopyOnEachSignature = false,
+    PartialCopyAudienceKind PartialCopyAudienceKind = PartialCopyAudienceKind.All,
+    IReadOnlyList<int>? PartialCopyAudienceSlotOrders = null,
+    bool ExpirationEnabled = true
 );
 
 public sealed record AddTemplateSlotBody(

@@ -25,6 +25,17 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder.Property(t => t.SendCertificateToSigners).IsRequired();
         builder.Property(t => t.AutoRemindersEnabled).IsRequired();
         builder.Property(t => t.ReminderIntervalHours).IsRequired();
+
+        // F7 — defaults heredables a la Request al instanciar.
+        builder.Property(t => t.SendPartialCopyOnEachSignature).IsRequired().HasDefaultValue(false);
+        builder.Property(t => t.PartialCopyAudienceKind).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder
+            .Property(t => t.PartialCopyAudienceSlotOrdersCsv)
+            .HasMaxLength(256)
+            .IsRequired()
+            .HasDefaultValue(string.Empty);
+        builder.Property(t => t.ExpirationEnabled).IsRequired().HasDefaultValue(true);
+        builder.Ignore(t => t.PartialCopyAudienceSlotOrders);
         builder.Property(t => t.PractitionerPinHash).HasMaxLength(512);
         builder.Ignore(t => t.RequiresPractitionerPin);
         builder.Property(t => t.BaseDocumentFileId);

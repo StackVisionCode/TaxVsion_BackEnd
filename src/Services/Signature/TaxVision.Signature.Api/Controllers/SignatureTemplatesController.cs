@@ -71,7 +71,11 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
             body.SendSealedDocumentToSigners,
             body.SendCertificateToSigners,
             body.AutoRemindersEnabled,
-            body.ReminderIntervalHours
+            body.ReminderIntervalHours,
+            body.SendPartialCopyOnEachSignature,
+            body.PartialCopyAudienceKind,
+            body.PartialCopyAudienceSlotOrders,
+            body.ExpirationEnabled
         );
         var result = await bus.InvokeAsync<Result<SignatureTemplateResponse>>(cmd, ct);
         return result.IsSuccess
@@ -167,7 +171,11 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
                 body.SendSealedDocumentToSigners,
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
-                body.ReminderIntervalHours
+                body.ReminderIntervalHours,
+                body.SendPartialCopyOnEachSignature,
+                body.PartialCopyAudienceKind,
+                body.PartialCopyAudienceSlotOrders,
+                body.ExpirationEnabled
             ),
             ct
         );
