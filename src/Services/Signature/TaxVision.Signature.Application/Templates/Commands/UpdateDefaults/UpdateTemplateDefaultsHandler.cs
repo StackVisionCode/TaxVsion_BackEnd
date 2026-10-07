@@ -27,7 +27,11 @@ public static class UpdateTemplateDefaultsHandler
             cmd.SendSealedDocumentToSigners,
             cmd.SendCertificateToSigners,
             cmd.AutoRemindersEnabled,
-            cmd.ReminderIntervalHours
+            cmd.ReminderIntervalHours,
+            cmd.SendPartialCopyOnEachSignature,
+            cmd.PartialCopyAudienceKind,
+            cmd.PartialCopyAudienceSlotOrders,
+            cmd.ExpirationEnabled
         );
         if (result.IsFailure)
             return result;

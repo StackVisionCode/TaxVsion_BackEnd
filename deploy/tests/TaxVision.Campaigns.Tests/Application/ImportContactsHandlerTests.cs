@@ -1,3 +1,4 @@
+using TaxVision.Campaigns.Application.Contacts.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Commands;
 using TaxVision.Campaigns.Domain.Contacts;
 using TaxVision.Campaigns.Tests.Fakes;
@@ -8,10 +9,30 @@ public sealed class ImportContactsHandlerTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
 
+    // Fake neutro: devuelve AlreadyExisted — no afecta los contadores que estos tests chequean
+    // (Created/Reused/Invalid/MembersAdded). Solo evita el null-ref en el handler.
+    private sealed class FakeCustomerDirectoryClient : ICustomerDirectoryClient
+    {
+        public Task<CustomerProvisionResult> CreateIndividualAsync(
+            Guid tenantId,
+            string? callerBearerToken,
+            string? name,
+            string? email,
+            string? phoneE164,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                string.IsNullOrWhiteSpace(email)
+                    ? new CustomerProvisionResult(CustomerProvisionOutcome.SkippedNoEmail)
+                    : new CustomerProvisionResult(CustomerProvisionOutcome.AlreadyExisted)
+            );
+    }
+
     private sealed class Harness
     {
         public FakeContactRepository Contacts { get; } = new();
         public FakeContactListRepository Lists { get; } = new();
+        public FakeCustomerDirectoryClient Customers { get; } = new();
         public FakeUnitOfWork Uow { get; } = new();
         public ContactList List { get; }
 
@@ -32,6 +53,7 @@ public sealed class ImportContactsHandlerTests
             new ImportContactsCommand(Tenant, h.List.Id, csv),
             h.Lists,
             h.Contacts,
+            h.Customers,
             h.Uow,
             CancellationToken.None
         );
@@ -55,6 +77,7 @@ public sealed class ImportContactsHandlerTests
             new ImportContactsCommand(Tenant, h.List.Id, ",ana@example.com,\n"),
             h.Lists,
             h.Contacts,
+            h.Customers,
             h.Uow,
             CancellationToken.None
         );
@@ -72,6 +95,7 @@ public sealed class ImportContactsHandlerTests
             new ImportContactsCommand(Tenant, Guid.NewGuid(), "a@x.com\n"),
             h.Lists,
             h.Contacts,
+            h.Customers,
             h.Uow,
             CancellationToken.None
         );
