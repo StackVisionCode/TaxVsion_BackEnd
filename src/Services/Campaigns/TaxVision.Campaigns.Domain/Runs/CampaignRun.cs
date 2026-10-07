@@ -99,6 +99,25 @@ public sealed class CampaignRun : TenantEntity
         return Result.Success(run);
     }
 
+    /// <summary>
+    /// Rechaza el run ANTES de despachar nada (PEP money-OUT, F4): el gate del Wallet no autorizó el cobro
+    /// (saldo insuficiente o Wallet no disponible). Solo válido mientras está <see cref="CampaignRunStatus.Dispatching"/>
+    /// y no se emitió ningún dispatch — así no se cobra ni se envía nada. Terminal: no publica run.completed
+    /// (no hubo envío que liquidar).
+    /// </summary>
+    public Result Reject(string reason)
+    {
+        if (Status != CampaignRunStatus.Dispatching)
+            return Result.Failure(CampaignRunErrors.NotDispatching);
+        if (CounterDispatched > 0)
+            return Result.Failure(CampaignRunErrors.AlreadyDispatched);
+
+        Status = CampaignRunStatus.Rejected;
+        RejectionReason = reason;
+        FinishedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
     /// <summary>Marca una unidad como despachada (tras emitir su evento de dispatch).</summary>
     public Result MarkDispatched(Guid recipientId)
     {

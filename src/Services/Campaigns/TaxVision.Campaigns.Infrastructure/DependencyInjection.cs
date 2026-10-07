@@ -70,6 +70,24 @@ public static class DependencyInjection
             }
         );
 
+        // F4 — PEP money-OUT: autoriza el cobro de cada run contra el Wallet antes del fan-out
+        // (on-behalf-of el bearer del usuario; o M2M del tenant en el scheduler). Endpoint interno
+        // POST /internal/wallet/authorizations (contenedor-a-contenedor, no por el Gateway).
+        services
+            .AddOptions<Wallet.WalletServiceOptions>()
+            .Bind(configuration.GetSection(Wallet.WalletServiceOptions.SectionName));
+        services.AddHttpClient<
+            Application.Runs.Abstractions.IWalletSpendClient,
+            Wallet.WalletSpendClient
+        >(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<Wallet.WalletServiceOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
         // P2 — visibilidad por-cliente (kit compartido BuildingBlocks.CustomerVisibility): store de la
         // proyección sobre CampaignsDbContext + reconciliación (siembra desde Customer con el token M2M de la
         // PlatformTenant) + flag (default OFF) + lector de asignaciones para acotar la audiencia "Clients".

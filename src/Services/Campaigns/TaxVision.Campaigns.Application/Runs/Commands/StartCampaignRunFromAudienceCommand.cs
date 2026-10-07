@@ -28,7 +28,10 @@ public sealed record StartCampaignRunFromAudienceCommand(
     bool IncludeCustomers = false,
     // Visibilidad por asignación (P2): default true = sin restricción. La ruta interactiva del controller
     // pasa el valor real (customers.view_all); los runs agendados (actor de sistema) quedan en true.
-    bool CanViewAllCustomers = true
+    bool CanViewAllCustomers = true,
+    // Bearer de la sesión para autorizar el cobro en el Wallet on-behalf-of (F4). Null en el scheduler
+    // (sin sesión humana): el cliente del Wallet usa un token M2M del tenant.
+    string? CallerBearerToken = null
 );
 
 public static class StartCampaignRunFromAudienceHandler
@@ -43,6 +46,7 @@ public static class StartCampaignRunFromAudienceHandler
         ICampaignCustomerAssignmentReader assignmentReader,
         IOptions<CampaignsVisibilityOptions> visibility,
         ISenderProfileRepository senderProfiles,
+        IWalletSpendClient wallet,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -88,6 +92,8 @@ public static class StartCampaignRunFromAudienceHandler
             units,
             runs,
             senderProfiles,
+            wallet,
+            command.CallerBearerToken,
             unitOfWork,
             bus,
             correlation,

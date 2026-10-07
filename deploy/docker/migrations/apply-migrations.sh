@@ -160,4 +160,10 @@ apply_migration \
   "src/Services/Campaigns/TaxVision.Campaigns.Api/TaxVision.Campaigns.Api.csproj" \
   "$CAMPAIGNS_DB_CONNECTION"
 
+apply_migration \
+  "Wallet" \
+  "src/Services/Wallet/TaxVision.Wallet.Infrastructure/TaxVision.Wallet.Infrastructure.csproj" \
+  "src/Services/Wallet/TaxVision.Wallet.Api/TaxVision.Wallet.Api.csproj" \
+  "$WALLET_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

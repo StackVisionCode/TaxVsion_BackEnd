@@ -402,6 +402,11 @@ public static class ErrorHttpMapping
             or "PaymentMethod.UnsupportedByProvider"
             or "PayPal.CheckoutSession.MethodUnsupported" => StatusCodes.Status422UnprocessableEntity,
             "PaymentProvider.NotConfigured" => StatusCodes.Status502BadGateway,
+            // PEP del Wallet (Campaigns F4): saldo insuficiente para enviar la campaña → 402 Payment
+            // Required (el front lo detecta por el code y muestra "faltan $X" + recarga). Si el Wallet no
+            // responde, el envío se bloquea (fail-closed) con 503 transitorio.
+            "CampaignRun.InsufficientFunds" => StatusCodes.Status402PaymentRequired,
+            "CampaignRun.WalletUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "PayPal.ConfigurationMissing" or "PayPal.WebhookId.Missing" => StatusCodes.Status503ServiceUnavailable,
             "Growth.Idempotency.ConcurrentClaimUnavailable" or "Growth.Idempotency.SavepointsRequired" =>
                 StatusCodes.Status503ServiceUnavailable,

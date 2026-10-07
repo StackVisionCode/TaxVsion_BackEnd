@@ -46,4 +46,9 @@ public enum SaaSPaymentType
     /// Mismo resultado que <see cref="PlanChangeCharge"/> (el off-session): los dos cierran el mismo
     /// <c>PlanChangeRequest</c> de Subscription, solo cambia cómo se cobra.</summary>
     PlanChangeCheckout = 11,
+
+    /// <summary>Recarga del monedero prepago (TaxVision.Wallet). Cobro off-session contra la tarjeta
+    /// guardada del tenant; al confirmarse, Wallet acredita el saldo (micros). Originado por
+    /// <c>WalletTopUpDueIntegrationEvent</c>, responde con WalletTopUpPaymentSucceeded/FailedIntegrationEvent.</summary>
+    WalletTopUp = 12,
 }

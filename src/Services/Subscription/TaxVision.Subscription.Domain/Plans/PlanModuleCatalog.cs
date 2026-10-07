@@ -35,6 +35,7 @@ public static class PlanModuleCatalog
         "comms",
         "meetings",
         "campaigns",
+        "wallet",
     ];
 
     /// <summary>
@@ -55,6 +56,7 @@ public static class PlanModuleCatalog
         "comms",
         "meetings",
         "campaigns",
+        "wallet",
     ];
 
     /// <summary>Los módulos del plan, por su código. Vacío si el código no es del catálogo.</summary>

@@ -213,8 +213,9 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
             .Select(r => new StartRunRecipient(r.ContactRef, r.Email, r.PhoneE164))
             .ToList();
 
+        // F4 — reenviamos el bearer de la sesión para autorizar el cobro en el Wallet (on-behalf-of).
         var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(
-            new StartCampaignRunCommand(tenantId, id, userId, recipients),
+            new StartCampaignRunCommand(tenantId, id, userId, recipients, ExtractBearerToken()),
             ct
         );
         return result.IsSuccess
@@ -243,13 +244,46 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 request.ContactListIds ?? [],
                 manual,
                 IncludeCustomers: request.IncludeCustomers,
-                CanViewAllCustomers: canViewAllCustomers
+                CanViewAllCustomers: canViewAllCustomers,
+                CallerBearerToken: ExtractBearerToken()
             ),
             ct
         );
         return result.IsSuccess
             ? AcceptedAtAction(nameof(GetRun), new { runId = result.Value.Id }, result.Value)
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Preview de audiencia para el <b>estimado de costo</b> antes de enviar (00_Plan §10.2): resuelve la
+    /// audiencia (opt-out/dedupe) SIN iniciar un run y devuelve el conteo de unidades por canal. El front
+    /// cotiza ese conteo en el Wallet. Solo lectura.
+    /// </summary>
+    [HttpPost("{id:guid}/preview-audience")]
+    [HasPermission(CampaignsPermissions.View)]
+    [RateLimit("campaigns.f.get")]
+    [ProducesResponseType<AudiencePreviewResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> PreviewAudience(Guid id, SendToAudienceRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var manual = (request.Manual ?? []).Select(m => new ManualAudienceEntry(m.Email, m.PhoneE164)).ToList();
+        var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result<AudiencePreviewResponse>>(
+            new PreviewAudienceQuery(
+                tenantId,
+                id,
+                request.ContactListIds ?? [],
+                manual,
+                request.IncludeCustomers,
+                canViewAllCustomers,
+                userId
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Agenda la campaña (una vez o recurrente). La audiencia se resuelve en cada disparo desde las listas.</summary>
@@ -355,6 +389,18 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
 
         var result = await bus.InvokeAsync<Result<CampaignRunResponse>>(new GetCampaignRunQuery(tenantId, runId), ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>El bearer crudo de la petición actual, sin el prefijo "Bearer ". Null si no viene.</summary>
+    private string? ExtractBearerToken()
+    {
+        var header = Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(header))
+            return null;
+        const string prefix = "Bearer ";
+        return header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? header[prefix.Length..].Trim()
+            : header.Trim();
     }
 
     private static int NormalizePage(int page) => page < 1 ? 1 : page;

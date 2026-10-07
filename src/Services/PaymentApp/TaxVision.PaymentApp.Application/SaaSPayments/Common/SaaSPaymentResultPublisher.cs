@@ -115,6 +115,7 @@ public static class SaaSPaymentResultPublisher
                 bus,
                 correlationId
             ),
+            SaaSPaymentType.WalletTopUp => PublishWalletTopUpResultAsync(payment, bus, correlationId),
             _ => ValueTask.CompletedTask,
         };
 
@@ -295,6 +296,43 @@ public static class SaaSPaymentResultPublisher
                 SaaSPaymentId = payment.Id,
                 IdempotencyKey = payment.IdempotencyKey.Value,
                 ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
+                PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                RequestedByUserId = payment.CreatedBy,
+                CorrelationId = correlationId,
+            }
+        );
+    }
+
+    // Recarga de monedero (TaxVision.Wallet). TargetAggregateId = TopUpId; CreatedBy = quien recargó.
+    private static ValueTask PublishWalletTopUpResultAsync(SaaSPayment payment, IMessageBus bus, string correlationId)
+    {
+        if (IsFailure(payment))
+            return bus.PublishAsync(
+                new WalletTopUpPaymentFailedIntegrationEvent
+                {
+                    TenantId = payment.TenantId,
+                    TopUpId = payment.TargetAggregateId,
+                    SaaSPaymentId = payment.Id,
+                    IdempotencyKey = payment.IdempotencyKey.Value,
+                    Reason = FailureReason(payment),
+                    RequestedByUserId = payment.CreatedBy,
+                    CorrelationId = correlationId,
+                }
+            );
+
+        if (payment.Status != PaymentStatus.Succeeded)
+            return ValueTask.CompletedTask;
+
+        return bus.PublishAsync(
+            new WalletTopUpPaymentSucceededIntegrationEvent
+            {
+                TenantId = payment.TenantId,
+                TopUpId = payment.TargetAggregateId,
+                SaaSPaymentId = payment.Id,
+                IdempotencyKey = payment.IdempotencyKey.Value,
+                ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
+                AmountCents = payment.Amount.AmountCents,
+                Currency = payment.Amount.Currency,
                 PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
                 RequestedByUserId = payment.CreatedBy,
                 CorrelationId = correlationId,

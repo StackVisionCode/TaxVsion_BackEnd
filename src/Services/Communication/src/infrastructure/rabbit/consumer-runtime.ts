@@ -70,6 +70,16 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // agendada lleva los destinatarios y republicarlo reenviaria la invitacion.
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent':
     'calendar.appointment_meeting_room_requested.v1',
+  // Campaigns — avance de un envío (relay realtime a la sala staff; ver campaign-consumers.ts).
+  'BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignRunStartedIntegrationEvent':
+    'campaign.run.started.v1',
+  'BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent':
+    'campaign.dispatch.result.v1',
+  'BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignRunCompletedIntegrationEvent':
+    'campaign.run.completed.v1',
+  // Wallet — cambió el saldo (recarga/reserva/consumo); relay realtime del pill + apartado (wallet-consumers.ts).
+  'BuildingBlocks.Messaging.WalletIntegrationEvents.WalletBalanceChangedIntegrationEvent':
+    'wallet.balance.changed.v1',
   // Customer
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent':
     'customer.bulk_imported.v1',

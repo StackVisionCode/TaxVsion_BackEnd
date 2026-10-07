@@ -1,77 +1,102 @@
 # Wallet/Ledger — Commands & Events
 
 - **Servicio:** `TaxVision.Wallet`
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-10-06
 - **Estado:** DISEÑO — no implementado
-- Mensajería = **Wolverine outbox/inbox durable** (at-least-once, nunca exactly-once). Dedupe de efecto de negocio = `ProcessedBusinessMessage`.
+- **Coherente con:** `00_Plan_And_Architecture.md §5/§6`, `Domain_Design.md`, `State_Machines.md`, `Idempotency_Spec.md`.
+- Mensajería = **Wolverine outbox/inbox durable** (at-least-once, nunca exactly-once). Dedupe de efecto de negocio = índice `UNIQUE(TenantId, OperationKey)` en el ledger (ADR-WAL-008).
+
+> **Modelo prepago (ADR-WAL-005).** Desaparecen `Reserve/Consume/Refund` y sus eventos (`FundsReserved/Consumed/Refunded`). El cobro de campaña es un **único débito** disparado por el evento del PEP; la recarga es el flujo `WalletTopUp`.
 
 ---
 
 ## 1. Commands (aplicación)
 
-Cada command → handler que carga `TenantBalance`, invoca método del aggregate (→ `Result`), persiste entry + saldo en UNA transacción, publica evento de dominio vía outbox. Todos envueltos por el ejecutor idempotente (`Idempotency_Spec.md`).
+Cada command → handler que carga `Wallet`, invoca `Credit`/`Debit` (→ `Result`), persiste asiento + saldo en UNA transacción, publica evento de integración vía outbox. Idempotentes por `OperationKey`.
 
-| Command | Origen | Scope M2M | Efecto | Evento emitido |
-|---|---|---|---|---|
-| `ReserveFundsCommand` | Campaigns / SMS (API) | `wallet:reserve` | `Reserve` | `FundsReservedIntegrationEvent` |
-| `ConsumeReservationCommand` | Campaigns / SMS (API) | `wallet:consume` | `ConsumeReservation` | `FundsConsumedIntegrationEvent` |
-| `RefundReservationCommand` | Campaigns / SMS (API) | `wallet:refund` | `Release/RefundRemainder` | `FundsRefundedIntegrationEvent` |
-| `AdjustBalanceCommand` | Admin/Platform (API) | `wallet:adjust` | `Adjust` | `BalanceAdjustedIntegrationEvent` |
-| `RechargeBalanceCommand` | **consumer interno** (no API) | n/a | `Recharge` | `BalanceRechargedIntegrationEvent` |
-| `FreezeBalanceCommand`/`UnfreezeBalanceCommand` | Admin | `wallet:admin` | Freeze/Unfreeze | `BalanceFrozenIntegrationEvent` / `...Unfrozen...` |
+| Command | Origen | Efecto | Evento emitido |
+|---|---|---|---|
+| `AuthorizeCampaignRunCommand` | **consumer del PEP** (no API) | `Debit(costo, opKey="run:"+RunId, CampaignCharge)` | `CampaignRunAuthorized` / `...Denied` |
+| `CreditWalletTopUpCommand` | **consumer interno** (no API) | `Credit(amount, opKey="topup:"+Id, TopUp)` | `WalletCreditedIntegrationEvent` (opcional, BI) |
+| `AdjustBalanceCommand` | Admin/Platform (API) | `Credit`/`Debit`(`opKey="adjust:"+ticket, Adjustment`) | `BalanceAdjustedIntegrationEvent` |
+| `StartWalletTopUpCommand` | tenant (`POST /wallet/top-up`) | crea `WalletTopUp(Pending)` | `WalletTopUpDueIntegrationEvent` |
+| `FreezeWalletCommand`/`UnfreezeWalletCommand` | Admin (opcional) | Freeze/Unfreeze | `WalletFrozenIntegrationEvent` / `...Unfrozen...` |
 
-Cada command lleva: `TenantId`, `Currency`, `AmountCents`(o signed), `ScopeId`, `IdempotencyKey`, y el `operation` (para `ProcessedBusinessMessage.Operation`).
+Cada movimiento lleva: `TenantId`, `AmountCents`, `OperationKey`, `Reason`, `ReferenceId`.
 
 ## 2. Eventos que Wallet CONSUME (inbound)
 
-### 2.1 Top-up — `WalletTopUpPaymentSucceededIntegrationEvent` (NUEVO, de PaymentApp)
+### 2.1 Autorización de cobro — `CampaignRunPendingAuthorizationIntegrationEvent` (NUEVO, de Campaigns)
 
-Único camino a `Recharge`. Sigue el patrón exacto de los "PaymentSucceeded" existentes (`SubscriptionRenewalPaymentSucceededIntegrationEvent`: `SaaSPaymentId`, `IdempotencyKey`, `ExternalPaymentReference`, `PaidAtUtc` — ver `src/BuildingBlocks/Messaging/PaymentAppIntegrationEvents/SubscriptionRenewalPaymentSucceededIntegrationEvent.cs:9-15`).
+Dispara el débito del run. Campaigns **cuenta** unidades por canal (no sabe de precios) — sigue money-agnostic (ADR-WAL-007).
+
+```csharp
+public sealed record CampaignRunPendingAuthorizationIntegrationEvent : IntegrationEvent
+{
+    public required Guid TenantId { get; init; }
+    public required Guid CampaignId { get; init; }
+    public required Guid RunId { get; init; }
+    public required IReadOnlyDictionary<string, int> PerChannelUnits { get; init; } // { "Email":n,"Sms":m,"Push":p,"WhatsApp":w }
+    public required string TriggeredBy { get; init; }  // user/scheduler
+}
+```
+
+**Consumer:** `CampaignRunPendingAuthorizationConsumer` → calcula `costo = Σ canal (PerChannelUnits[canal] × ChannelPrice[canal])` → `AuthorizeCampaignRunCommand` → `Debit`. `opKey="run:"+RunId`, `referenceId=RunId`, `reason=CampaignCharge`. Suficiente → publica `Authorized`; insuficiente → `Denied(InsufficientFunds)` (no debita).
+
+### 2.2 Top-up succeeded/failed — de PaymentApp (NUEVOS)
+
+`WalletTopUpPaymentSucceededIntegrationEvent` / `WalletTopUpPaymentFailedIntegrationEvent`, espejo de los de plan-change.
 
 ```csharp
 public sealed record WalletTopUpPaymentSucceededIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantId { get; init; }
-    public required Guid SaaSPaymentId { get; init; }
-    public required long AmountCents { get; init; }   // USD minor units
+    public required Guid WalletTopUpId { get; init; }   // ReferenceId del Credit
+    public required long AmountCents { get; init; }      // USD minor units
     public required string Currency { get; init; }
-    public required string IdempotencyKey { get; init; }
     public required string ExternalPaymentReference { get; init; }
     public required DateTime PaidAtUtc { get; init; }
 }
 ```
 
-**Consumer:** `WalletTopUpPaymentSucceededConsumer` → `RechargeBalanceCommand`. Idempotencia: `operation="recharge"`, `scopeId=SaaSPaymentId`, `key=IdempotencyKey` en `ProcessedBusinessMessage` → un pago = una recarga aunque el evento se reentregue (at-least-once). `SourceReference = SaaSPaymentId`.
+**Consumer:** `WalletTopUpPaymentSucceededConsumer` → `CreditWalletTopUpCommand` → `Credit(amount, opKey="topup:"+WalletTopUpId, reason=TopUp)`. Idempotente (candado `UNIQUE(TenantId, OperationKey)`): un pago = una recarga aunque el evento se reentregue (at-least-once). `WalletTopUpPaymentFailed` → marca el `WalletTopUp` `Failed` (no acredita).
 
-**Requisito upstream (BLOCKER-WAL-2):** PaymentApp debe añadir `SaaSPaymentType.WalletTopUp = 9` a `src/Services/PaymentApp/TaxVision.PaymentApp.Domain/SaaSPayments/SaaSPaymentType.cs` (hoy va 1..8 hasta `OnboardingInitial`, línea 32) y emitir el evento tras el charge exitoso del top-up. El monto del top-up lo cobra PaymentApp (platform→tenant `SaaSPayment`); Wallet **solo** acredita al recibir el "succeeded".
+**Requisito upstream (BLOCKER-WAL-2):** PaymentApp debe añadir `SaaSPaymentType.WalletTopUp` (`SaaSPaymentType.cs:7-49`, siguiente valor), un `WalletTopUpDueConsumer` (espejo de `SubscriptionPlanChangeDueConsumer.cs:21-61`) que cobre Stripe off-session, y un brazo `WalletTopUp` en `SaaSPaymentResultPublisher.PublishByTypeAsync` (`SaaSPaymentResultPublisher.cs:76-119`) que emita succeeded/failed.
 
 ## 3. Eventos que Wallet PUBLICA (outbound, integración)
 
-Todos `IntegrationEvent` con `TenantId`, `Currency`, importes en cents, `ScopeId`, `IdempotencyKey`, `OccurredAtUtc`. Consumidores típicos: Campaigns (avanza su saga), Observabilidad/BI.
-
-| Evento | Cuándo | Campos clave extra |
+| Evento | Cuándo | Campos clave |
 |---|---|---|
-| `FundsReservedIntegrationEvent` | tras Reserve | `ReservationId`, `AmountCents`, `AvailableCentsAfter` |
-| `FundsConsumedIntegrationEvent` | tras Consume | `ReservationId`, `ConsumedCents`, `RemainingCents`, `PostedCentsAfter` |
-| `FundsRefundedIntegrationEvent` | tras Release/Refund/Expire | `ReservationId`, `ReleasedCents`, `Reason` (`completed`/`cancelled`/`expired`) |
-| `BalanceRechargedIntegrationEvent` | tras Recharge (top-up) | `SaaSPaymentId`, `AmountCents`, `PostedCentsAfter` |
-| `BalanceAdjustedIntegrationEvent` | tras Adjust | `SignedAmountCents`, `Reason`, `ActorId` |
-| `BalanceLowWarningIntegrationEvent` | Available cruza umbral hacia abajo | `AvailableCents`, `ThresholdCents` (para avisar al tenant de recargar) |
-| `ReservationExpiredIntegrationEvent` | sweep de holds vencidos | `ReservationId`, `ReleasedCents` |
+| `CampaignRunAuthorizedIntegrationEvent` | tras `Debit` del run con éxito | `RunId` |
+| `CampaignRunAuthorizationDeniedIntegrationEvent` | saldo insuficiente (no debita) | `RunId`, `Reason="InsufficientFunds"` |
+| `WalletTopUpDueIntegrationEvent` | tras `POST /wallet/top-up` | `TenantId`, `WalletTopUpId`, `AmountCents`, `Currency` |
+| `WalletCreditedIntegrationEvent` *(opcional, BI)* | tras `Credit` (top-up) | `TenantId`, `AmountCents`, `PostedCentsAfter` |
+| `BalanceAdjustedIntegrationEvent` | tras `Adjustment` | `SignedAmountCents`, `Reason`, `ActorId` |
+| `BalanceLowWarningIntegrationEvent` | `PostedCents` cruza umbral hacia abajo | `PostedCents`, `ThresholdCents` (avisar al tenant de recargar) |
 
-**Nota de correlación:** `ScopeId` viaja opaco en todos los eventos, igual que `CampaignId` en `PostmasterEmailEvents.cs:37,104`; Wallet no lo interpreta, Campaigns lo usa para casar el resultado con su run.
+**Nota de correlación:** `RunId`/`WalletTopUpId` viajan como `ReferenceId` opaco; Campaigns casa `Authorized`/`Denied` con su run por `RunId`. El `CorrelationId` de Wolverine se propaga.
 
-## 4. Timers internos
+## 4. Lo que ya NO existe (modelo anterior)
 
-- `ReservationExpirySweep` (job periódico): busca reservas `Held/Held(parcial)` con `ExpiresAtUtc < now`, ejecuta `Release` (motivo=expiry) idempotente. Evita holds colgados por consumidores que murieron sin cerrar (resiliencia que el legado no tenía — su `Task.Run`/poll loop se perdía al reiniciar, `05_Master_ADR.md:45`).
+| Elemento anterior | Reemplazo |
+|---|---|
+| `ReserveFundsCommand` / `FundsReservedIntegrationEvent` | — (sin holds) |
+| `ConsumeReservationCommand` / `FundsConsumedIntegrationEvent` | el único `Debit` del run al autorizar |
+| `RefundReservationCommand` / `FundsRefundedIntegrationEvent` | — (sin reembolso) |
+| `ReservationExpirySweep` (timer) | — (sin holds que expirar) |
 
-## 5. Tabla de evidencia
+## 5. Timers internos
+
+- `IdempotencyRetentionPurge` (opcional): si se adopta una tabla de claims de transporte, purga vencidos. En el modelo base, el ledger es permanente y no se purga.
+- No hay sweep de expiración de reservas (ya no existen reservas).
+
+## 6. Tabla de evidencia
 
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| Patrón "PaymentSucceeded" de PaymentApp a copiar para top-up | `PaymentAppIntegrationEvents/SubscriptionRenewalPaymentSucceededIntegrationEvent.cs:9-15` | VERIFIED | 96% |
-| `SaaSPaymentType` enum 1..8, falta `WalletTopUp` | `PaymentApp.Domain/SaaSPayments/SaaSPaymentType.cs:8-32` | VERIFIED | 96% |
+| Patrón money-IN de PaymentApp a clonar (Due→charge→result) | `SubscriptionPlanChangeDueConsumer.cs:21-61`; `SaaSPaymentResultPublisher.cs:76-119` | VERIFIED | 90% |
+| `SaaSPaymentType` (agregar `WalletTopUp`) | `SaaSPaymentType.cs:7-49` | VERIFIED | 99% |
+| Shape del dispatch por unidad (para contar PerChannelUnits) | `CampaignDispatchEvents.cs:11-29`; `StartCampaignRunCommand.cs:177-192` | VERIFIED | 92% |
 | Wolverine outbox/inbox durable at-least-once (regla de suite) | `00_Overview:45` | DOCUMENTED_ONLY | 88% |
-| `ProcessedBusinessMessage` para dedupe de negocio | `Growth/.../Idempotency/ProcessedBusinessMessage.cs:9-124` | VERIFIED | 97% |
-| Eventos Reserved/Consumed/Refunded/Recharged | diseño | NEW | n/a |
-| `SaaSPaymentType.WalletTopUp=9` a crear upstream | diseño (BLOCKER-WAL-2) | NEW | n/a |
+| Dedupe de negocio por `UNIQUE(TenantId, OperationKey)` | `00_Plan §3` (diseño) | NEW | n/a |
+| Eventos PEP + WalletTopUp | `00_Plan §5/§6` (diseño) | NEW | n/a |
