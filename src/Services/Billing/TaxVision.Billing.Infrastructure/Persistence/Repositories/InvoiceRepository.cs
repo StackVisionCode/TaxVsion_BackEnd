@@ -42,7 +42,8 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         Guid tenantId,
         int take,
         CancellationToken ct = default,
-        Guid? assignedToUserId = null
+        Guid? assignedToUserId = null,
+        Guid? customerId = null
     )
     {
         var query = _dbContext
@@ -58,6 +59,11 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
                     .CustomerAssignmentProjections.IgnoreQueryFilters()
                     .Any(a => a.TenantId == tenantId && a.CustomerId == i.CustomerId && a.UserId == assignee)
             );
+
+        // Filtro opcional por cliente (perfil del cliente). Se compone con el de asignación;
+        // usa el índice (TenantId, CustomerId).
+        if (customerId is { } cid)
+            query = query.Where(i => i.CustomerId == cid);
 
         return await query.OrderByDescending(i => i.CreatedAtUtc).Take(take <= 0 ? 50 : take).ToListAsync(ct);
     }

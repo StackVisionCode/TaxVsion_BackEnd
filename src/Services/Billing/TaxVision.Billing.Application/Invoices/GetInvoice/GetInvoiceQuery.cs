@@ -27,7 +27,10 @@ public sealed record InvoiceSummaryResponse(
     string? ReceiptHash,
     // URL estable de cobro (para "enviar a pagar" / botón del PDF). Null hasta que se emite y se asegura
     // el link. La compone PaymentClient; Billing solo la guarda y la expone.
-    string? CheckoutUrl
+    string? CheckoutUrl,
+    // Cliente facturado (Guid.Empty si la factura aún no tiene snapshot de cliente). Campo aditivo
+    // para el perfil del cliente en el frontend.
+    Guid CustomerId
 );
 
 public static class GetInvoiceHandler
@@ -63,7 +66,8 @@ public static class GetInvoiceHandler
                 invoice.PaymentMethod?.ToString(),
                 invoice.ReceiptNumber,
                 invoice.ReceiptHash,
-                invoice.ActivePaymentLink?.CheckoutUrl
+                invoice.ActivePaymentLink?.CheckoutUrl,
+                invoice.CustomerId
             )
         );
     }
