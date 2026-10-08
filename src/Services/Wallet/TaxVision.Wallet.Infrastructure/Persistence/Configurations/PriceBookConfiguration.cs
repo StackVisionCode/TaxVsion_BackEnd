@@ -21,7 +21,11 @@ public sealed class PriceBookVersionConfiguration : IEntityTypeConfiguration<Pri
         builder.Property(v => v.CreatedAtUtc).IsRequired();
         builder.HasIndex(v => v.Version).IsUnique();
 
-        builder.HasMany(v => v.Rules).WithOne().HasForeignKey(r => r.PriceBookVersionId).OnDelete(DeleteBehavior.Cascade);
+        builder
+            .HasMany(v => v.Rules)
+            .WithOne()
+            .HasForeignKey(r => r.PriceBookVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(v => v.Rules).HasField("_rules").UsePropertyAccessMode(PropertyAccessMode.Field);
 
         // Seed: versión 1 vigente (default). Email/Push 1¢ (10 000 micros), SMS/WhatsApp 5¢ (50 000 micros).
@@ -52,10 +56,34 @@ public sealed class PriceRuleConfiguration : IEntityTypeConfiguration<PriceRule>
 
         var v = PriceBookVersionConfiguration.SeedVersionId;
         builder.HasData(
-            new { Id = new Guid("b2000000-0000-0000-0001-000000000001"), PriceBookVersionId = v, Channel = PriceChannel.Email, UnitPriceMicros = 10_000L },
-            new { Id = new Guid("b2000000-0000-0000-0001-000000000002"), PriceBookVersionId = v, Channel = PriceChannel.Sms, UnitPriceMicros = 50_000L },
-            new { Id = new Guid("b2000000-0000-0000-0001-000000000003"), PriceBookVersionId = v, Channel = PriceChannel.Push, UnitPriceMicros = 10_000L },
-            new { Id = new Guid("b2000000-0000-0000-0001-000000000004"), PriceBookVersionId = v, Channel = PriceChannel.WhatsApp, UnitPriceMicros = 50_000L }
+            new
+            {
+                Id = new Guid("b2000000-0000-0000-0001-000000000001"),
+                PriceBookVersionId = v,
+                Channel = PriceChannel.Email,
+                UnitPriceMicros = 10_000L,
+            },
+            new
+            {
+                Id = new Guid("b2000000-0000-0000-0001-000000000002"),
+                PriceBookVersionId = v,
+                Channel = PriceChannel.Sms,
+                UnitPriceMicros = 50_000L,
+            },
+            new
+            {
+                Id = new Guid("b2000000-0000-0000-0001-000000000003"),
+                PriceBookVersionId = v,
+                Channel = PriceChannel.Push,
+                UnitPriceMicros = 10_000L,
+            },
+            new
+            {
+                Id = new Guid("b2000000-0000-0000-0001-000000000004"),
+                PriceBookVersionId = v,
+                Channel = PriceChannel.WhatsApp,
+                UnitPriceMicros = 50_000L,
+            }
         );
     }
 }

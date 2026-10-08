@@ -36,7 +36,10 @@ internal sealed class WalletTopUpCheckoutClient(
         var token = await tokenAcquirer.GetTokenAsync(request.TenantId, ct);
         if (string.IsNullOrEmpty(token))
             return Result.Failure<WalletTopUpCheckoutClientResult>(
-                new Error("WalletTopUp.Checkout.Unauthorized", "Could not acquire a service token for the payment service.")
+                new Error(
+                    "WalletTopUp.Checkout.Unauthorized",
+                    "Could not acquire a service token for the payment service."
+                )
             );
 
         try
@@ -65,7 +68,10 @@ internal sealed class WalletTopUpCheckoutClient(
             using var response = await httpClient.SendAsync(httpRequest, ct);
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("PaymentApp wallet top-up checkout call failed ({Status}).", (int)response.StatusCode);
+                logger.LogWarning(
+                    "PaymentApp wallet top-up checkout call failed ({Status}).",
+                    (int)response.StatusCode
+                );
                 return Result.Failure<WalletTopUpCheckoutClientResult>(
                     new Error(
                         "WalletTopUp.Checkout.ProviderError",
@@ -94,7 +100,11 @@ internal sealed class WalletTopUpCheckoutClient(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(ex, "PaymentApp wallet top-up checkout call threw for tenant {TenantId}.", request.TenantId);
+            logger.LogWarning(
+                ex,
+                "PaymentApp wallet top-up checkout call threw for tenant {TenantId}.",
+                request.TenantId
+            );
             return Result.Failure<WalletTopUpCheckoutClientResult>(
                 new Error("WalletTopUp.Checkout.Unavailable", "The payment service is unavailable.")
             );

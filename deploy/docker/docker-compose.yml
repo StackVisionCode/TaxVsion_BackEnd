@@ -2451,6 +2451,7 @@ services:
       - calendar-api
       - catalog-api
       - campaigns-api
+      - wallet-api
       - inventory-api
       - otel-collector
     networks:

@@ -33,9 +33,13 @@ public sealed class PriceBookVersion : BaseEntity
         if (version <= 0)
             return Result.Failure<PriceBookVersion>(new Error("Pricing.VersionInvalid", "Version must be positive."));
         if (unitPriceMicrosByChannel.Count == 0)
-            return Result.Failure<PriceBookVersion>(new Error("Pricing.NoRules", "At least one channel price is required."));
+            return Result.Failure<PriceBookVersion>(
+                new Error("Pricing.NoRules", "At least one channel price is required.")
+            );
         if (unitPriceMicrosByChannel.Values.Any(p => p < 0))
-            return Result.Failure<PriceBookVersion>(new Error("Pricing.PriceNegative", "Unit price cannot be negative."));
+            return Result.Failure<PriceBookVersion>(
+                new Error("Pricing.PriceNegative", "Unit price cannot be negative.")
+            );
 
         var pbv = new PriceBookVersion
         {

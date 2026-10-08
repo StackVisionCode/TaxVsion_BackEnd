@@ -27,12 +27,20 @@ public static class SettleWalletOnRunCompletedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId!))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId!
+            )
+        )
         {
             var run = await runs.GetByIdAsync(evt.TenantId, evt.RunId, ct);
             if (run is null)
             {
-                logger.LogWarning("Run {RunId} not found settling wallet (tenant {TenantId}).", evt.RunId, evt.TenantId);
+                logger.LogWarning(
+                    "Run {RunId} not found settling wallet (tenant {TenantId}).",
+                    evt.RunId,
+                    evt.TenantId
+                );
                 return;
             }
 

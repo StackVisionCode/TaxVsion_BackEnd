@@ -78,7 +78,14 @@ public sealed class Wallet : TenantEntity
     {
         if (HeldMicros < amountMicros)
             return Result.Failure<LedgerEntry>(WalletErrors.InsufficientHold);
-        return Apply(MovementType.Consume, deltaPosted: -amountMicros, deltaHeld: -amountMicros, amountMicros, opKey, referenceId);
+        return Apply(
+            MovementType.Consume,
+            deltaPosted: -amountMicros,
+            deltaHeld: -amountMicros,
+            amountMicros,
+            opKey,
+            referenceId
+        );
     }
 
     /// <summary>Release (0, −a): libera reserva no usada (NO es un refund). Requiere Held ≥ a.</summary>
@@ -106,7 +113,16 @@ public sealed class Wallet : TenantEntity
         PostedMicros += deltaMicros;
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success(
-            LedgerEntry.Create(TenantId, MovementType.Adjustment, deltaMicros, 0, PostedMicros, HeldMicros, opKey, referenceId)
+            LedgerEntry.Create(
+                TenantId,
+                MovementType.Adjustment,
+                deltaMicros,
+                0,
+                PostedMicros,
+                HeldMicros,
+                opKey,
+                referenceId
+            )
         );
     }
 

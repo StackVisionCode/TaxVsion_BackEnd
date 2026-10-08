@@ -19,12 +19,7 @@ public interface IWalletRepository
     Task AddLedgerEntryAsync(LedgerEntry entry, CancellationToken ct = default);
 
     /// <summary>Asientos del ledger del tenant, más recientes primero (paginado).</summary>
-    Task<PagedResult<LedgerEntry>> ListLedgerAsync(
-        Guid tenantId,
-        int page,
-        int size,
-        CancellationToken ct = default
-    );
+    Task<PagedResult<LedgerEntry>> ListLedgerAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 
     // ---------- F2: recargas (top-up) ----------
 

@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -17,12 +18,7 @@ namespace TaxVision.Wallet.Application.Reservations.Commands;
 /// por referencia</b>: un reintento no vuelve a apartar. El consumo/liberación definitivos ocurren cuando el
 /// consumidor liquida (<see cref="SettleReservationCommand"/>).
 /// </summary>
-public sealed record ReserveFundsCommand(
-    Guid TenantId,
-    string ReferenceType,
-    Guid ReferenceId,
-    PerChannelUnits Units
-);
+public sealed record ReserveFundsCommand(Guid TenantId, string ReferenceType, Guid ReferenceId, PerChannelUnits Units);
 
 public static class ReserveFundsHandler
 {
@@ -33,11 +29,17 @@ public static class ReserveFundsHandler
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         // Idempotencia: una referencia ya reservada devuelve su reserva sin apartar fondos de nuevo.
-        var existing = await reservations.GetByReferenceAsync(command.TenantId, command.ReferenceType, command.ReferenceId, ct);
+        var existing = await reservations.GetByReferenceAsync(
+            command.TenantId,
+            command.ReferenceType,
+            command.ReferenceId,
+            ct
+        );
         if (existing is not null)
         {
             var wallet0 = await wallets.GetByTenantAsync(command.TenantId, ct);
@@ -120,7 +122,14 @@ public static class ReserveFundsHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         // Tiempo real: el saldo bajó (reserva) → avisa para que el front refresque el pill/apartado.
-        await bus.PublishAsync(new WalletBalanceChangedIntegrationEvent { TenantId = command.TenantId, Reason = "reserve" });
+        await bus.PublishAsync(
+            new WalletBalanceChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                Reason = "reserve",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(
             new ReservationView(

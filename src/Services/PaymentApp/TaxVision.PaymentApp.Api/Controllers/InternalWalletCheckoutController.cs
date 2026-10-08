@@ -34,9 +34,7 @@ public sealed class InternalWalletCheckoutController(IMessageBus bus) : Controll
     );
 
     [HttpPost("top-ups/checkout")]
-    [RateLimitExempt(
-        "M2M ServiceOnly — invocado por el servicio Wallet (recarga); nunca expuesto al Gateway público."
-    )]
+    [RateLimitExempt("M2M ServiceOnly — invocado por el servicio Wallet (recarga); nunca expuesto al Gateway público.")]
     [ProducesResponseType<WalletTopUpCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateCheckout(CreateWalletTopUpCheckoutRequest request, CancellationToken ct)
     {

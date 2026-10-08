@@ -9,6 +9,5 @@ namespace TaxVision.Campaigns.Application.Runs;
 /// </summary>
 public static class BillableChannels
 {
-    public static bool IsBillable(CampaignChannel channel) =>
-        channel is CampaignChannel.Email or CampaignChannel.Sms;
+    public static bool IsBillable(CampaignChannel channel) => channel is CampaignChannel.Email or CampaignChannel.Sms;
 }

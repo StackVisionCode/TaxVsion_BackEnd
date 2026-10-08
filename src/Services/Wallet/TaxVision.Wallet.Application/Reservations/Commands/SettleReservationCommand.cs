@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -18,12 +19,7 @@ namespace TaxVision.Wallet.Application.Reservations.Commands;
 /// <para>Idempotente: una reserva ya liquidada (o inexistente) devuelve el estado sin re-cobrar; los asientos
 /// Consume/Release usan <c>OperationKey</c> únicos por referencia.</para>
 /// </summary>
-public sealed record SettleReservationCommand(
-    Guid TenantId,
-    string ReferenceType,
-    Guid ReferenceId,
-    int ConsumedUnits
-);
+public sealed record SettleReservationCommand(Guid TenantId, string ReferenceType, Guid ReferenceId, int ConsumedUnits);
 
 public static class SettleReservationHandler
 {
@@ -33,6 +29,7 @@ public static class SettleReservationHandler
         IWalletRepository wallets,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<WalletReservation> logger,
         CancellationToken ct
     )
@@ -102,7 +99,14 @@ public static class SettleReservationHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         // Tiempo real: el saldo cambió (consumo + liberación) → avisa para refrescar el front.
-        await bus.PublishAsync(new WalletBalanceChangedIntegrationEvent { TenantId = command.TenantId, Reason = "settle" });
+        await bus.PublishAsync(
+            new WalletBalanceChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                Reason = "settle",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(new SettlementView(consumed, released, reservation.Currency));
     }

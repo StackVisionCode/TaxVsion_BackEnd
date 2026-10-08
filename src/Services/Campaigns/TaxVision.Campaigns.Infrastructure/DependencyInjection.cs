@@ -76,10 +76,7 @@ public static class DependencyInjection
         services
             .AddOptions<Wallet.WalletServiceOptions>()
             .Bind(configuration.GetSection(Wallet.WalletServiceOptions.SectionName));
-        services.AddHttpClient<
-            Application.Runs.Abstractions.IWalletSpendClient,
-            Wallet.WalletSpendClient
-        >(
+        services.AddHttpClient<Application.Runs.Abstractions.IWalletSpendClient, Wallet.WalletSpendClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<Wallet.WalletServiceOptions>>().Value;

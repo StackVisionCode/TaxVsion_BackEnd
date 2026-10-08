@@ -39,12 +39,7 @@ public sealed class WalletTopUp : TenantEntity
 
     public long AmountMicros => AmountCents * 10_000;
 
-    public static Result<WalletTopUp> Create(
-        Guid tenantId,
-        long amountCents,
-        string currency,
-        Guid requestedByUserId
-    )
+    public static Result<WalletTopUp> Create(Guid tenantId, long amountCents, string currency, Guid requestedByUserId)
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<WalletTopUp>(WalletErrors.TenantRequired);
@@ -56,7 +51,9 @@ public sealed class WalletTopUp : TenantEntity
         {
             Id = id,
             AmountCents = amountCents,
-            Currency = string.IsNullOrWhiteSpace(currency) ? Wallet.DefaultCurrency : currency.Trim().ToUpperInvariant(),
+            Currency = string.IsNullOrWhiteSpace(currency)
+                ? Wallet.DefaultCurrency
+                : currency.Trim().ToUpperInvariant(),
             Status = WalletTopUpStatus.Pending,
             // Clave idempotente estable por orden: un reintento continúa la misma operación, no re-cobra.
             IdempotencyKey = $"wallet-topup:{id:N}",

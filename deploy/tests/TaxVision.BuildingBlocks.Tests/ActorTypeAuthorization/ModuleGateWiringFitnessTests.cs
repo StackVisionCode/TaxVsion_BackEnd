@@ -106,7 +106,7 @@ public sealed class ModuleGateWiringFitnessTests
     }
 
     [Fact]
-    public void The_thirteen_gated_services_are_still_wired()
+    public void The_fourteen_gated_services_are_still_wired()
     {
         // Contrapeso de los dos tests de arriba: ambos pasan trivialmente si el cableado DESAPARECE.
         // Este fija el número medido hoy, así que quitar el gate de un servicio obliga a decirlo acá.
@@ -116,7 +116,7 @@ public sealed class ModuleGateWiringFitnessTests
             )
             .ToList();
 
-        Assert.Equal(13, wired.Count);
+        Assert.Equal(14, wired.Count);
     }
 
     [Fact]

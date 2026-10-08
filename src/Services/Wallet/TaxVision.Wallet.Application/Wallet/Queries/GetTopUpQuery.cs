@@ -16,8 +16,6 @@ public static class GetTopUpHandler
     )
     {
         var topUp = await wallets.GetTopUpAsync(query.TenantId, query.TopUpId, ct);
-        return topUp is null
-            ? Result.Failure<TopUpView>(WalletErrors.NotFound)
-            : Result.Success(TopUpView.From(topUp));
+        return topUp is null ? Result.Failure<TopUpView>(WalletErrors.NotFound) : Result.Success(TopUpView.From(topUp));
     }
 }

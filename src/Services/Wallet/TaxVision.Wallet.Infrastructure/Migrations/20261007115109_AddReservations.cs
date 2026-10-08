@@ -27,25 +27,26 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     ReleasedMicros = table.Column<long>(type: "bigint", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SettledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_WalletReservations", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_WalletReservations_TenantId_ReferenceType_ReferenceId",
                 table: "WalletReservations",
                 columns: new[] { "TenantId", "ReferenceType", "ReferenceId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "WalletReservations");
+            migrationBuilder.DropTable(name: "WalletReservations");
         }
     }
 }

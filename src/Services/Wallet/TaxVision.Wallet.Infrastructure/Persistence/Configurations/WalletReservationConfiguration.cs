@@ -24,6 +24,13 @@ public sealed class WalletReservationConfiguration : IEntityTypeConfiguration<Wa
         builder.Property(r => r.CreatedAtUtc).IsRequired();
 
         // Idempotencia de la reserva: una sola por referencia (cualquier consumidor).
-        builder.HasIndex(r => new { r.TenantId, r.ReferenceType, r.ReferenceId }).IsUnique();
+        builder
+            .HasIndex(r => new
+            {
+                r.TenantId,
+                r.ReferenceType,
+                r.ReferenceId,
+            })
+            .IsUnique();
     }
 }

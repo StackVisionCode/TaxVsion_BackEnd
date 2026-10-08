@@ -45,11 +45,23 @@ public sealed class WalletSpendClient(
             token = await tokenAcquirer.GetTokenAsync(tenantId, ct); // ruta scheduler (sin sesión humana)
         if (string.IsNullOrWhiteSpace(token))
         {
-            logger.LogWarning("No credential to reserve funds for {RefType}:{RefId} (tenant {TenantId}).", referenceType, referenceId, tenantId);
+            logger.LogWarning(
+                "No credential to reserve funds for {RefType}:{RefId} (tenant {TenantId}).",
+                referenceType,
+                referenceId,
+                tenantId
+            );
             return WalletReserveResult.Unreachable();
         }
 
-        var payload = new ReservePayload(referenceType, referenceId, units.Email, units.Sms, units.Push, units.WhatsApp);
+        var payload = new ReservePayload(
+            referenceType,
+            referenceId,
+            units.Email,
+            units.Sms,
+            units.Push,
+            units.WhatsApp
+        );
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "internal/wallet/reservations")
@@ -75,11 +87,24 @@ public sealed class WalletSpendClient(
             if (dto is null)
                 return WalletReserveResult.Unreachable();
 
-            return new WalletReserveResult(true, dto.Authorized, dto.CostMicros, dto.AvailableMicros, dto.DeficitMicros, dto.Currency ?? "USD");
+            return new WalletReserveResult(
+                true,
+                dto.Authorized,
+                dto.CostMicros,
+                dto.AvailableMicros,
+                dto.DeficitMicros,
+                dto.Currency ?? "USD"
+            );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(ex, "Could not reach Wallet to reserve for {RefType}:{RefId} (tenant {TenantId}).", referenceType, referenceId, tenantId);
+            logger.LogWarning(
+                ex,
+                "Could not reach Wallet to reserve for {RefType}:{RefId} (tenant {TenantId}).",
+                referenceType,
+                referenceId,
+                tenantId
+            );
             return WalletReserveResult.Unreachable();
         }
     }
@@ -94,7 +119,9 @@ public sealed class WalletSpendClient(
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException($"No M2M token to settle {referenceType}:{referenceId} (tenant {tenantId}).");
+            throw new InvalidOperationException(
+                $"No M2M token to settle {referenceType}:{referenceId} (tenant {tenantId})."
+            );
 
         var payload = new SettlePayload(referenceType, referenceId, consumedUnits);
         using var request = new HttpRequestMessage(HttpMethod.Post, "internal/wallet/reservations/settle")
@@ -126,7 +153,14 @@ public sealed class WalletSpendClient(
         );
     }
 
-    private sealed record ReservePayload(string ReferenceType, Guid ReferenceId, long Email, long Sms, long Push, long WhatsApp);
+    private sealed record ReservePayload(
+        string ReferenceType,
+        Guid ReferenceId,
+        long Email,
+        long Sms,
+        long Push,
+        long WhatsApp
+    );
 
     private sealed record SettlePayload(string ReferenceType, Guid ReferenceId, int ConsumedUnits);
 

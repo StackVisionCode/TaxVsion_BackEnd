@@ -41,7 +41,11 @@ public static class WalletTopUpResultConsumer
             var topUp = await wallets.GetTopUpAsync(evt.TenantId, evt.TopUpId, ct);
             if (topUp is null)
             {
-                logger.LogWarning("WalletTopUp {TopUpId} not found for succeeded payment {SaaSPaymentId}.", evt.TopUpId, evt.SaaSPaymentId);
+                logger.LogWarning(
+                    "WalletTopUp {TopUpId} not found for succeeded payment {SaaSPaymentId}.",
+                    evt.TopUpId,
+                    evt.SaaSPaymentId
+                );
                 return;
             }
 
@@ -53,7 +57,11 @@ public static class WalletTopUpResultConsumer
                 var createdWallet = Domain.Wallet.Wallet.Create(evt.TenantId, evt.Currency);
                 if (createdWallet.IsFailure)
                 {
-                    logger.LogError("Could not create wallet for tenant {TenantId}: {Error}", evt.TenantId, createdWallet.Error.Code);
+                    logger.LogError(
+                        "Could not create wallet for tenant {TenantId}: {Error}",
+                        evt.TenantId,
+                        createdWallet.Error.Code
+                    );
                     return;
                 }
                 wallet = createdWallet.Value;
@@ -77,7 +85,14 @@ public static class WalletTopUpResultConsumer
             await unitOfWork.SaveChangesAsync(ct);
 
             // Tiempo real: la recarga acreditó → avisa para que el front refresque saldo/historial.
-            await bus.PublishAsync(new WalletBalanceChangedIntegrationEvent { TenantId = evt.TenantId, Reason = "topup" });
+            await bus.PublishAsync(
+                new WalletBalanceChangedIntegrationEvent
+                {
+                    TenantId = evt.TenantId,
+                    Reason = "topup",
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
     }
 

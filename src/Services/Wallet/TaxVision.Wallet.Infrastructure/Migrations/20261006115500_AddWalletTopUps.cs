@@ -20,12 +20,13 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     SaaSPaymentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     AmountMicros = table.Column<long>(type: "bigint", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FundingCredits", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "WalletTopUps",
@@ -41,34 +42,35 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     FailureReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_WalletTopUps", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FundingCredits_SourceService_SaaSPaymentId",
                 table: "FundingCredits",
                 columns: new[] { "SourceService", "SaaSPaymentId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_WalletTopUps_TenantId_IdempotencyKey",
                 table: "WalletTopUps",
                 columns: new[] { "TenantId", "IdempotencyKey" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FundingCredits");
+            migrationBuilder.DropTable(name: "FundingCredits");
 
-            migrationBuilder.DropTable(
-                name: "WalletTopUps");
+            migrationBuilder.DropTable(name: "WalletTopUps");
         }
     }
 }

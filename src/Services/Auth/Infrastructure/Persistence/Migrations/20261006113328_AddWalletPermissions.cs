@@ -15,12 +15,50 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "MinPlanTier", "Module", "PlatformOnly" },
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "IsReserved",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-000000000187"), "TenantEmployee,TenantAdmin,PlatformAdmin", "wallet.view", "View wallet balance, ledger and rates", true, false, false, false, 1, "wallet", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000188"), "TenantEmployee,TenantAdmin,PlatformAdmin", "wallet.manage", "Top up the wallet balance", true, false, false, false, 1, "wallet", false }
-                });
+                    {
+                        new Guid("a1000000-0000-0000-0000-000000000187"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "wallet.view",
+                        "View wallet balance, ledger and rates",
+                        true,
+                        false,
+                        false,
+                        false,
+                        1,
+                        "wallet",
+                        false,
+                    },
+                    {
+                        new Guid("a1000000-0000-0000-0000-000000000188"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "wallet.manage",
+                        "Top up the wallet balance",
+                        true,
+                        false,
+                        false,
+                        false,
+                        1,
+                        "wallet",
+                        false,
+                    },
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -29,12 +67,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000187"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000187")
+            );
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000188"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000188")
+            );
         }
     }
 }

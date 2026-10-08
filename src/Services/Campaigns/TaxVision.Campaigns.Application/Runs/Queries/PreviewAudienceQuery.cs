@@ -27,13 +27,7 @@ public sealed record PreviewAudienceQuery(
 /// por canal son unidades (destinatario×canal). Solo Email/SMS se cobran (<see cref="BillableChannels"/>);
 /// Push es del sistema (gratis) y WhatsApp está oculto.
 /// </summary>
-public sealed record AudiencePreviewResponse(
-    int RecipientCount,
-    long Email,
-    long Sms,
-    long Push,
-    long WhatsApp
-);
+public sealed record AudiencePreviewResponse(int RecipientCount, long Email, long Sms, long Push, long WhatsApp);
 
 public static class PreviewAudienceHandler
 {

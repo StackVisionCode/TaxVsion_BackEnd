@@ -17,7 +17,8 @@ public sealed class ReservationRepository(WalletDbContext db) : IReservationRepo
         Guid referenceId,
         CancellationToken ct = default
     ) =>
-        db.Reservations.IgnoreQueryFilters()
+        db
+            .Reservations.IgnoreQueryFilters()
             .FirstOrDefaultAsync(
                 r => r.TenantId == tenantId && r.ReferenceType == referenceType && r.ReferenceId == referenceId,
                 ct

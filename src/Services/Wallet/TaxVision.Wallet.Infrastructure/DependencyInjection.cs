@@ -39,9 +39,15 @@ public static class DependencyInjection
         // F1 — repos de dominio del monedero.
         services.AddScoped<IWalletRepository, WalletRepository>();
         // F3 — catálogo de precios versionado.
-        services.AddScoped<TaxVision.Wallet.Application.Pricing.IPriceBookRepository, Persistence.Repositories.PriceBookRepository>();
+        services.AddScoped<
+            TaxVision.Wallet.Application.Pricing.IPriceBookRepository,
+            Persistence.Repositories.PriceBookRepository
+        >();
         // F4 — reservas del PEP (money-OUT): hold por run + liquidación al cierre.
-        services.AddScoped<TaxVision.Wallet.Application.Reservations.Abstractions.IReservationRepository, Persistence.Repositories.ReservationRepository>();
+        services.AddScoped<
+            TaxVision.Wallet.Application.Reservations.Abstractions.IReservationRepository,
+            Persistence.Repositories.ReservationRepository
+        >();
 
         // Recarga (money-IN) por checkout HOSTEADO: cliente M2M hacia PaymentApp (crea la sesión de pago en
         // Stripe/PayPal; nunca se guarda tarjeta). Reusa el IServiceTokenAcquirer de abajo (actor_type=Service).

@@ -24,12 +24,13 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     OperationKey = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     ReferenceId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_LedgerEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "RolePermissionsProjections",
@@ -40,12 +41,13 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     PermissionCodesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     PermissionsVersion = table.Column<int>(type: "int", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_RolePermissionsProjections", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantPlanCodeProjections",
@@ -55,13 +57,18 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     PlanCode = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     RevisionNumber = table.Column<long>(type: "bigint", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EnabledModulesJson = table.Column<string>(type: "nvarchar(max)", nullable: false, defaultValue: "[]"),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    EnabledModulesJson = table.Column<string>(
+                        type: "nvarchar(max)",
+                        nullable: false,
+                        defaultValue: "[]"
+                    ),
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantPlanCodeProjections", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "UserPermissionsProjections",
@@ -75,12 +82,13 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UserPermissionsProjections", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Wallets",
@@ -93,71 +101,77 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Wallets", x => x.Id);
-                    table.CheckConstraint("CK_Wallets_Balances", "[PostedMicros] >= [HeldMicros] AND [HeldMicros] >= 0");
-                });
+                    table.CheckConstraint(
+                        "CK_Wallets_Balances",
+                        "[PostedMicros] >= [HeldMicros] AND [HeldMicros] >= 0"
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_LedgerEntries_TenantId_CreatedAtUtc",
                 table: "LedgerEntries",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_LedgerEntries_TenantId_OperationKey",
                 table: "LedgerEntries",
                 columns: new[] { "TenantId", "OperationKey" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RolePermissionsProjections_TenantId",
                 table: "RolePermissionsProjections",
-                column: "TenantId");
+                column: "TenantId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantPlanCodeProjections_TenantId",
                 table: "TenantPlanCodeProjections",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserPermissionsProjections_TenantId_IsActive",
                 table: "UserPermissionsProjections",
-                columns: new[] { "TenantId", "IsActive" });
+                columns: new[] { "TenantId", "IsActive" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserPermissionsProjections_TenantId_UserId",
                 table: "UserPermissionsProjections",
                 columns: new[] { "TenantId", "UserId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Wallets_TenantId_Currency",
                 table: "Wallets",
                 columns: new[] { "TenantId", "Currency" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "LedgerEntries");
+            migrationBuilder.DropTable(name: "LedgerEntries");
 
-            migrationBuilder.DropTable(
-                name: "RolePermissionsProjections");
+            migrationBuilder.DropTable(name: "RolePermissionsProjections");
 
-            migrationBuilder.DropTable(
-                name: "TenantPlanCodeProjections");
+            migrationBuilder.DropTable(name: "TenantPlanCodeProjections");
 
-            migrationBuilder.DropTable(
-                name: "UserPermissionsProjections");
+            migrationBuilder.DropTable(name: "UserPermissionsProjections");
 
-            migrationBuilder.DropTable(
-                name: "Wallets");
+            migrationBuilder.DropTable(name: "Wallets");
         }
     }
 }

@@ -116,9 +116,7 @@ public sealed class SignatureTemplateTests
         var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         template.PlaceField(1, SignatureFieldKind.Signature, position, null, false);
         var document = Assert.Single(template.Documents);
-        typeof(TemplateDocument)
-            .GetProperty(nameof(TemplateDocument.FileId))!
-            .SetValue(document, Guid.Empty);
+        typeof(TemplateDocument).GetProperty(nameof(TemplateDocument.FileId))!.SetValue(document, Guid.Empty);
 
         var result = template.Publish();
 

@@ -136,12 +136,13 @@ public sealed class SubscriptionCatalogReconcilerTests
     }
 
     [Fact]
-    public void The_only_add_on_retired_for_being_included_everywhere_is_comms()
+    public void Add_ons_retired_for_being_included_everywhere_match_the_foundational_modules()
     {
-        // Razón distinta de las otras cinco y conviene no mezclarlas: `comms` existe y funciona, pero
-        // su módulo pasó a TODOS los planes, así que ya no hay a quién vendérselo.
+        // Razón distinta de las otras cinco y conviene no mezclarlas: ambos módulos existen y
+        // funcionan, pero están en TODOS los planes, así que ya no hay a quién vendérselos. Wallet
+        // es además la infraestructura de saldo que usan los productos de consumo medido.
         Assert.Equal(
-            ["addon-comms"],
+            ["addon-comms", "addon-wallet"],
             ModuleAddOnCatalog
                 .All.Where(addOn => addOn.Availability == AddOnAvailability.IncludedInEveryPlan)
                 .Select(addOn => addOn.Code)
@@ -157,6 +158,17 @@ public sealed class SubscriptionCatalogReconcilerTests
             Assert.Contains(module, PlanModuleCatalog.Pro, StringComparer.OrdinalIgnoreCase);
             Assert.Contains(module, PlanModuleCatalog.Enterprise, StringComparer.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public void Wallet_is_in_every_plan_but_is_never_sold_as_an_add_on()
+    {
+        foreach (var (_, _, modules) in PlanModuleCatalog.All)
+            Assert.Contains("wallet", modules, StringComparer.OrdinalIgnoreCase);
+
+        var walletAddOn = Assert.Single(ModuleAddOnCatalog.All, addOn => addOn.Module == "wallet");
+        Assert.Equal(AddOnAvailability.IncludedInEveryPlan, walletAddOn.Availability);
+        Assert.False(walletAddOn.Offered);
     }
 
     [Fact]
