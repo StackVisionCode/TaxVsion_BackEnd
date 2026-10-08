@@ -503,3 +503,4 @@ jwt-private.pem
 src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin
 .claude/
 .codex-logs/
+.codex-test-results/
