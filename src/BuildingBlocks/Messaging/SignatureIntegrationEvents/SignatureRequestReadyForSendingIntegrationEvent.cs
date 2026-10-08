@@ -9,6 +9,5 @@ public sealed record SignatureRequestReadyForSendingIntegrationEvent : Integrati
 {
     public required Guid SignatureRequestId { get; init; }
     public required Guid CreatedByUserId { get; init; }
-    public required Guid OriginalFileId { get; init; }
-    public required string DocumentHashPre { get; init; }
+    public required IReadOnlyList<DocumentHashDescriptor> Documents { get; init; }
 }

@@ -46,7 +46,19 @@ public sealed class UpsertSignatureDraftHandlerTests
                 Signers = new[] { new DraftSignerSpec(null, "a@example.com", "Alice A", null, "En", null) },
                 Fields = new[]
                 {
-                    new DraftFieldSpec(null, 0, SignatureFieldKind.Signature, 1, 0.1, 0.1, 0.2, 0.05, null, true),
+                    new DraftFieldSpec(
+                        null,
+                        0,
+                        "doc-1",
+                        SignatureFieldKind.Signature,
+                        1,
+                        0.1,
+                        0.1,
+                        0.2,
+                        0.05,
+                        null,
+                        true
+                    ),
                 },
             },
             repo,
@@ -132,7 +144,18 @@ public sealed class UpsertSignatureDraftHandlerTests
     }
 
     private static UpsertSignatureDraftCommand NewCommand(SignatureRequest draft) =>
-        NewCommand(draft.TenantId, draft.Id, draft.UpdatedAtUtc);
+        NewCommand(draft.TenantId, draft.Id, draft.UpdatedAtUtc) with
+        {
+            Documents = draft
+                .Documents.Select(document => new DraftDocumentSpec(
+                    "doc-1",
+                    document.Id,
+                    document.OriginalFileId,
+                    document.Title,
+                    document.Note
+                ))
+                .ToList(),
+        };
 
     private static UpsertSignatureDraftCommand NewCommand(
         Guid TenantId,
@@ -151,6 +174,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             SendCertificateToSigners: null,
             AutoRemindersEnabled: null,
             ReminderIntervalHours: null,
+            Documents: new[] { new DraftDocumentSpec("doc-1", null, Guid.NewGuid(), "Autosave test", null) },
             Signers: Array.Empty<DraftSignerSpec>(),
             Fields: Array.Empty<DraftFieldSpec>()
         );

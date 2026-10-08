@@ -18,6 +18,8 @@ public sealed class Signer : BaseEntity
     private readonly List<SignatureField> _fields = [];
     private readonly List<SignerVerificationChallenge> _challenges = [];
     private readonly List<SignedFieldValue> _fieldValues = [];
+    private readonly List<SignerDocumentView> _documentViews = [];
+    private readonly List<SignerDocumentCompletion> _documentCompletions = [];
 
     private Signer() { }
 
@@ -81,13 +83,6 @@ public sealed class Signer : BaseEntity
     /// <summary>Timestamp de la primera apertura del enlace público por el firmante (audit trail).</summary>
     public DateTime? FirstViewedAtUtc { get; private set; }
 
-    /// <summary>
-    /// F5 — Timestamp de la primera vez que el firmante vio el DOCUMENTO (no solo el enlace).
-    /// Semántica distinta a <see cref="FirstViewedAtUtc"/>: éste se emite al servir los bytes del
-    /// PDF al firmante, no al abrir el link. Las actas lo pintan como línea aparte.
-    /// </summary>
-    public DateTime? DocumentFirstViewedAtUtc { get; private set; }
-
     /// <summary>Método de captura de la firma (Typed/Drawn/Uploaded). <c>null</c> hasta que el firmante firme.</summary>
     public SignatureCaptureMethod? CaptureMethod { get; private set; }
 
@@ -115,6 +110,12 @@ public sealed class Signer : BaseEntity
 
     /// <summary>Vista de sólo lectura de los valores que el firmante escribió en sus campos de texto.</summary>
     public IReadOnlyList<SignedFieldValue> FieldValues => _fieldValues.AsReadOnly();
+
+    /// <summary>First-view evidence keyed by document.</summary>
+    public IReadOnlyList<SignerDocumentView> DocumentViews => _documentViews.AsReadOnly();
+
+    /// <summary>Durable completion and partial-copy state keyed by document.</summary>
+    public IReadOnlyList<SignerDocumentCompletion> DocumentCompletions => _documentCompletions.AsReadOnly();
 
     /// <summary><c>true</c> si el firmante ya completó exitosamente el método indicado.</summary>
     public bool HasCompletedVerification(SignerVerificationMethod method) =>
@@ -278,6 +279,12 @@ public sealed class Signer : BaseEntity
         return Result.Success();
     }
 
+    internal void RemoveFieldsForDocument(Guid documentId)
+    {
+        EnsurePending();
+        _fields.RemoveAll(field => field.DocumentId == documentId);
+    }
+
     /// <summary>
     /// Ancla los valores que el firmante escribió en sus campos <c>Text</c> (P4). Valida, campo
     /// por campo, que cada <c>FieldId</c> pertenezca a este firmante y sea de tipo <c>Text</c>
@@ -286,21 +293,41 @@ public sealed class Signer : BaseEntity
     /// valor. Reemplaza cualquier captura previa (idempotente antes de firmar). Los opcionales
     /// vacíos simplemente no se guardan.
     /// </summary>
-    internal Result CaptureFieldValues(IReadOnlyList<SignerFieldValueInput> inputs, DateTime capturedAtUtc)
+    internal Result CaptureFieldValues(
+        IReadOnlyList<Guid> documentIds,
+        IReadOnlyList<SignerFieldValueInput> inputs,
+        DateTime capturedAtUtc
+    )
     {
+        ArgumentNullException.ThrowIfNull(documentIds);
         ArgumentNullException.ThrowIfNull(inputs);
-        EnsurePending();
+        EnsureActive();
 
-        var textFields = _fields.Where(f => f.Kind == SignatureFieldKind.Text).ToList();
+        var selectedDocumentIds = documentIds.ToHashSet();
+        if (selectedDocumentIds.Count == 0 || selectedDocumentIds.Contains(Guid.Empty))
+            return Result.Failure(
+                new Error("Signature.FieldValue.DocumentsRequired", "At least one valid DocumentId is required.")
+            );
+
+        var textFields = _fields
+            .Where(field => selectedDocumentIds.Contains(field.DocumentId) && field.Kind == SignatureFieldKind.Text)
+            .ToList();
         var captured = new List<SignedFieldValue>();
         var seenFieldIds = new HashSet<Guid>();
 
         foreach (var input in inputs)
         {
-            var field = _fields.Find(f => f.Id == input.FieldId);
+            var field = _fields.Find(candidate => candidate.Id == input.FieldId);
             if (field is null)
                 return Result.Failure(
                     new Error("Signature.FieldValue.FieldMissing", "A submitted field does not belong to this signer.")
+                );
+            if (!selectedDocumentIds.Contains(field.DocumentId))
+                return Result.Failure(
+                    new Error(
+                        "Signature.FieldValue.DocumentMismatch",
+                        "A submitted field does not belong to the selected documents."
+                    )
                 );
             if (field.Kind != SignatureFieldKind.Text)
                 return Result.Failure(
@@ -311,7 +338,6 @@ public sealed class Signer : BaseEntity
                     new Error("Signature.FieldValue.Duplicate", "A field received more than one value.")
                 );
 
-            // Opcional en blanco: se omite (no es error). Requerido en blanco: lo detecta el chequeo de abajo.
             if (string.IsNullOrWhiteSpace(input.Value))
                 continue;
 
@@ -322,15 +348,101 @@ public sealed class Signer : BaseEntity
             captured.Add(SignedFieldValue.Create(Id, field.Id, valueResult.Value, capturedAtUtc));
         }
 
-        var missingRequired = textFields.Any(f => f.IsRequired && !captured.Any(v => v.FieldId == f.Id));
+        var missingRequired = textFields.Any(field =>
+            field.IsRequired && !captured.Any(value => value.FieldId == field.Id)
+        );
         if (missingRequired)
             return Result.Failure(
                 new Error("Signature.FieldValue.RequiredMissing", "A required text field was left blank.")
             );
 
-        _fieldValues.Clear();
+        var selectedFieldIds = _fields
+            .Where(field => selectedDocumentIds.Contains(field.DocumentId))
+            .Select(field => field.Id)
+            .ToHashSet();
+        _fieldValues.RemoveAll(value => selectedFieldIds.Contains(value.FieldId));
         _fieldValues.AddRange(captured);
         return Result.Success();
+    }
+
+    [Obsolete("Pass the selected DocumentIds explicitly for multi-document requests.")]
+    internal Result CaptureFieldValues(IReadOnlyList<SignerFieldValueInput> inputs, DateTime capturedAtUtc) =>
+        CaptureFieldValues(_fields.Select(field => field.DocumentId).Distinct().ToList(), inputs, capturedAtUtc);
+
+    internal Result<IReadOnlyList<Guid>> CompleteDocuments(
+        IReadOnlyList<Guid> documentIds,
+        IReadOnlyCollection<Guid> participatingDocumentIds,
+        DateTime completedAtUtc,
+        SignatureCaptureMethod method,
+        string? typedName,
+        Guid? signatureImageFileId,
+        string? clientIp,
+        string? userAgent
+    )
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(participatingDocumentIds);
+
+        var selected = documentIds.Distinct().ToList();
+        if (selected.Count == 0 || selected.Contains(Guid.Empty))
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error("Signature.Signer.DocumentsRequired", "At least one valid DocumentId is required.")
+            );
+
+        if (
+            Status == SignerStatus.Signed
+            && selected.All(documentId => _documentCompletions.Any(item => item.DocumentId == documentId))
+        )
+            return Result.Success<IReadOnlyList<Guid>>([]);
+
+        EnsureActive();
+
+        var participating = participatingDocumentIds.ToHashSet();
+        if (selected.Any(documentId => !participating.Contains(documentId)))
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error(
+                    "Signature.Signer.DocumentNotAssigned",
+                    "The signer cannot complete a document where no fields are assigned."
+                )
+            );
+
+        var effectiveTypedName =
+            method == SignatureCaptureMethod.Typed && string.IsNullOrWhiteSpace(typedName) ? FullName.Value : typedName;
+        var evidenceValidation = ValidateCaptureEvidence(method, effectiveTypedName, signatureImageFileId);
+        if (evidenceValidation.IsFailure)
+            return Result.Failure<IReadOnlyList<Guid>>(evidenceValidation.Error);
+
+        var newlyCompleted = new List<Guid>();
+        foreach (var documentId in selected)
+        {
+            if (_documentCompletions.Any(completion => completion.DocumentId == documentId))
+                continue;
+
+            var created = SignerDocumentCompletion.Create(Id, documentId, completedAtUtc);
+            if (created.IsFailure)
+                return Result.Failure<IReadOnlyList<Guid>>(created.Error);
+
+            _documentCompletions.Add(created.Value);
+            newlyCompleted.Add(documentId);
+        }
+
+        CaptureMethod = method;
+        TypedName = method == SignatureCaptureMethod.Typed ? effectiveTypedName?.Trim() : null;
+        SignatureImageFileId = signatureImageFileId ?? SignatureImageFileId;
+        ClientIp = TruncateIp(clientIp) ?? ClientIp;
+        UserAgent = TruncateUserAgent(userAgent) ?? UserAgent;
+
+        if (participating.All(documentId => _documentCompletions.Any(item => item.DocumentId == documentId)))
+        {
+            Status = SignerStatus.Signed;
+            SignedAtUtc = completedAtUtc;
+        }
+        else
+        {
+            Status = SignerStatus.InProgress;
+        }
+
+        return Result.Success<IReadOnlyList<Guid>>(newlyCompleted);
     }
 
     /// <summary>Marca al firmante como Signed. Idempotente.</summary>
@@ -411,7 +523,7 @@ public sealed class Signer : BaseEntity
     /// <summary>Marca al firmante como Rejected con motivo opcional.</summary>
     internal Result RecordRejected(DateTime rejectedAtUtc, string? reason, string? clientIp, string? userAgent)
     {
-        EnsurePending();
+        EnsureActive();
         Status = SignerStatus.Rejected;
         RejectedAtUtc = rejectedAtUtc;
         RejectReason = TruncateReason(reason);
@@ -452,18 +564,50 @@ public sealed class Signer : BaseEntity
             UserAgent = TruncateUserAgent(userAgent);
     }
 
-    /// <summary>F5 — Marca la primera vez que vio el PDF (no el enlace). Idempotente.</summary>
-    internal void RecordDocumentFirstView(DateTime viewedAtUtc, string? clientIp, string? userAgent)
+    /// <summary>Records the first PDF view for one document. Idempotent per document.</summary>
+    internal Result RecordDocumentFirstView(Guid documentId, DateTime viewedAtUtc, string? clientIp, string? userAgent)
     {
-        if (DocumentFirstViewedAtUtc is not null)
-            return;
+        if (_documentViews.Any(view => view.DocumentId == documentId))
+            return Result.Success();
 
-        DocumentFirstViewedAtUtc = viewedAtUtc;
+        var created = SignerDocumentView.Create(Id, documentId, viewedAtUtc);
+        if (created.IsFailure)
+            return Result.Failure(created.Error);
+
+        _documentViews.Add(created.Value);
         if (ClientIp is null)
             ClientIp = TruncateIp(clientIp);
         if (UserAgent is null)
             UserAgent = TruncateUserAgent(userAgent);
+        return Result.Success();
     }
+
+    internal void RemoveDocumentView(Guid documentId) =>
+        _documentViews.RemoveAll(view => view.DocumentId == documentId);
+
+    internal void RemoveDocumentCompletion(Guid documentId) =>
+        _documentCompletions.RemoveAll(completion => completion.DocumentId == documentId);
+
+    internal IReadOnlyList<Guid> MarkDocumentPartialCopiesRequested(
+        IReadOnlyCollection<Guid> documentIds,
+        DateTime requestedAtUtc
+    )
+    {
+        var marked = new List<Guid>();
+        foreach (var completion in _documentCompletions.Where(item => documentIds.Contains(item.DocumentId)))
+        {
+            if (completion.MarkPartialCopyRequested(requestedAtUtc))
+                marked.Add(completion.DocumentId);
+        }
+
+        return marked;
+    }
+
+    internal void MarkDocumentPartialCopySent(Guid documentId, Guid fileId, DateTime sentAtUtc) =>
+        FindDocumentCompletion(documentId).MarkPartialCopySent(fileId, sentAtUtc);
+
+    internal void MarkDocumentPartialCopyFailed(Guid documentId, string reason) =>
+        FindDocumentCompletion(documentId).MarkPartialCopyFailed(reason);
 
     // ------------------------------------------------------------------
     // Practitioner PIN — cada regla en su método
@@ -603,6 +747,16 @@ public sealed class Signer : BaseEntity
         if (Status != SignerStatus.Pending)
             throw new InvalidOperationException($"Signer {Id} is in terminal status {Status} and cannot be modified.");
     }
+
+    private void EnsureActive()
+    {
+        if (Status is not (SignerStatus.Pending or SignerStatus.InProgress))
+            throw new InvalidOperationException($"Signer {Id} is in terminal status {Status} and cannot be modified.");
+    }
+
+    private SignerDocumentCompletion FindDocumentCompletion(Guid documentId) =>
+        _documentCompletions.FirstOrDefault(completion => completion.DocumentId == documentId)
+        ?? throw new InvalidOperationException($"Document {documentId} is not completed by signer {Id}.");
 
     private static string? TruncateIp(string? ip) =>
         string.IsNullOrWhiteSpace(ip) ? null

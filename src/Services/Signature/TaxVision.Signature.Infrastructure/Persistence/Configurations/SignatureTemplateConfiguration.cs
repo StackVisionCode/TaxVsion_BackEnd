@@ -48,6 +48,15 @@ public sealed class SignatureTemplateConfiguration : IEntityTypeConfiguration<Si
         builder.HasIndex(t => new { t.TenantId, t.Category });
 
         builder
+            .HasMany(t => t.Documents)
+            .WithOne()
+            .HasForeignKey(document => document.SignatureTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(SignatureTemplate.Documents))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
             .HasMany(t => t.Slots)
             .WithOne()
             .HasForeignKey(s => s.SignatureTemplateId)

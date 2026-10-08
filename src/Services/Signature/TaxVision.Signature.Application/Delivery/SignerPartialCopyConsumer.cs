@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Delivery;
@@ -15,18 +16,14 @@ using Wolverine;
 namespace TaxVision.Signature.Application.Delivery;
 
 /// <summary>
-/// F7 — rendea la copia parcial para un firmante y la sube a CloudStorage. El envío real por
-/// email/SMS lo hace Notification al consumir <see cref="SignerPartialCopyReadyIntegrationEvent"/>.
-/// Idempotente por `IdempotencyKey` (dedupe del inbox de Wolverine).
+/// Renders one partial PDF per document signed by the recipient and publishes one delivery event.
 /// </summary>
 public static class SignerPartialCopyConsumer
 {
-    // El poll bloquea el handler, así que el budget debe caber dentro del MessageTimeout de Wolverine.
     private static readonly TimeSpan InProcessScanPollBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan InProcessScanPollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaxScanWait = TimeSpan.FromMinutes(2);
 
-    // MessageTimeout holgado: cubre el poll + render + upload + share link sin matar el handler.
     [Wolverine.Attributes.MessageTimeout(90)]
     public static async Task Handle(
         SignerPartialCopyRequestedIntegrationEvent evt,
@@ -51,27 +48,29 @@ public static class SignerPartialCopyConsumer
                 return;
             }
 
-            var signer = request.Signers.FirstOrDefault(s => s.Id == evt.SignerId);
+            var signer = request.Signers.FirstOrDefault(candidate => candidate.Id == evt.SignerId);
             if (signer is null)
             {
                 logger.LogWarning("Partial copy skipped: signer {SignerId} not in request.", evt.SignerId);
                 return;
             }
 
-            // Idempotencia aguas abajo del inbox: si el aggregate ya tiene marca de entrega, no re-emito.
-            if (signer.PartialCopySentAtUtc is not null)
+            if (
+                evt.DocumentIds.All(documentId =>
+                    signer.DocumentCompletions.Any(completion =>
+                        completion.DocumentId == documentId && completion.PartialCopySentAtUtc is not null
+                    )
+                )
+            )
             {
                 logger.LogInformation(
                     "Partial copy for signer {SignerId} already delivered at {SentAt}; skipping.",
                     signer.Id,
-                    signer.PartialCopySentAtUtc
+                    signer.DocumentCompletions.Max(completion => completion.PartialCopySentAtUtc)
                 );
                 return;
             }
 
-            // ClamAV: la proyección FileScanStatus se alimenta por FileAvailable/FileInfected del
-            // CloudStorage. Si el PNG sigue en Pending, hacemos poll corto; si tras el techo no llega,
-            // seguimos con fallback tipográfico (nunca bloquear la entrega del firmante).
             if (signer.SignatureImageFileId is { } imageFileId)
             {
                 var projection = await WaitForScanOutcomeAsync(request.TenantId, imageFileId, fileRefRepository, ct);
@@ -82,126 +81,45 @@ public static class SignerPartialCopyConsumer
                         signer.Id,
                         projection?.Status
                     );
-                    var elapsed = DateTime.UtcNow - evt.SignedAtUtc;
-                    if (elapsed <= MaxScanWait)
+                    if (DateTime.UtcNow - evt.SignedAtUtc <= MaxScanWait)
                         throw new InvalidOperationException("Signature image not scanned yet; redeliver scheduled.");
                 }
             }
 
-            var originalResult = await storage.DownloadAsync(request.TenantId, request.OriginalFileId, ct);
-            if (originalResult.IsFailure)
-            {
-                await RecordFailureAsync(
-                    request,
-                    signer.Id,
-                    audit,
-                    evt,
-                    originalResult.Error.Message,
-                    unitOfWork,
-                    logger,
-                    ct
-                );
-                return;
-            }
-
-            var signedPngs = await DownloadSignedPngsAsync(request, storage, fileRefRepository, ct);
-            // "Email each signer a copy of what they signed" — la copia del destinatario incluye
-            // SOLO sus propios campos, no las firmas de otros firmantes previos.
-            var fields = BuildSignedFields(request, signedPngs, signer.Id);
-            var progress = BuildProgress(request);
-
-            var pdf = renderer.Render(
-                new PartialCopyRequest(
-                    originalResult.Value,
-                    fields,
-                    progress,
-                    signer.FullName.Value,
-                    request.Title,
-                    request.SendSealedDocumentToSigners
-                )
-            );
-
-            var fileNameBase = $"{SanitizeTitle(request.Title)}_{SanitizeTitle(signer.FullName.Value)}_InProgress.pdf";
-            // Dueño en CloudStorage: misma política que el sellado — si el signer está mapeado a un
-            // cliente la copia va bajo "Customer", si no "Signature". "SignatureRequest" NO existe en
-            // el enum OwnerType de CloudStorage y hacía que el SaveFileRequested se descartara.
-            var (ownerType, ownerId) = SealedDocumentOwner.Resolve(new[] { signer.MappedCustomerId }, request.Id);
-            var upload = new SignatureFileUpload(
-                Content: pdf.PdfBytes,
-                FileName: fileNameBase,
-                ContentType: "application/pdf",
-                OwnerType: ownerType,
-                OwnerId: ownerId,
-                FolderType: "Signatures",
-                TaxYear: DateTime.UtcNow.Year,
-                ActorId: request.CreatedByUserId
-            );
-            var uploadResult = await storage.UploadAsync(request.TenantId, upload, ct);
-            if (uploadResult.IsFailure)
-            {
-                await RecordFailureAsync(
-                    request,
-                    signer.Id,
-                    audit,
-                    evt,
-                    uploadResult.Error.Message,
-                    unitOfWork,
-                    logger,
-                    ct
-                );
-                return;
-            }
-
-            // F7 — share link solo para el firmante destinatario. UploadAsync publica el save por bus,
-            // esperamos a que CloudStorage marque el archivo Available antes de pedir el link (si no,
-            // "create-share-link request failed" porque el fileId aún no existe en MinIO). Hacemos el
-            // wait ANTES del Save: si por timeout no llega Available, lanzamos y Wolverine reintenta
-            // el mensaje completo (idempotencia por `PartialCopySentAtUtc` todavía null).
-            var uploadedProjection = await WaitForScanOutcomeAsync(
-                request.TenantId,
-                uploadResult.Value,
+            var copiesResult = await CreatePartialCopiesAsync(
+                request,
+                signer,
+                evt,
+                storage,
                 fileRefRepository,
+                renderer,
+                logger,
                 ct
             );
-            string? shareToken = null;
-            if (uploadedProjection?.Status == FileScanStatus.Available)
+            if (copiesResult.IsFailure)
             {
-                var shareResult = await storage.CreateDownloadShareLinkAsync(
-                    request.TenantId,
-                    uploadResult.Value,
-                    new[] { signer.Email.Value },
-                    DateTime.UtcNow.AddDays(14),
+                await RecordFailureAsync(
+                    request,
+                    signer.Id,
+                    audit,
+                    evt,
+                    copiesResult.Error.Message,
+                    unitOfWork,
+                    logger,
                     ct
                 );
-                if (shareResult.IsSuccess)
-                    shareToken = shareResult.Value;
-                else
-                    logger.LogWarning(
-                        "Partial copy share link failed for {SignerId}: {Reason}",
-                        signer.Id,
-                        shareResult.Error.Message
-                    );
-            }
-            else
-            {
-                var elapsed = DateTime.UtcNow - evt.SignedAtUtc;
-                if (elapsed <= MaxScanWait)
-                    throw new InvalidOperationException(
-                        $"Partial copy file {uploadResult.Value} not Available yet ({uploadedProjection?.Status.ToString() ?? "null"}); redeliver scheduled."
-                    );
-                logger.LogWarning(
-                    "Partial copy file {FileId} for {SignerId} still {Status} after {Elapsed}; sending email without link.",
-                    uploadResult.Value,
-                    signer.Id,
-                    uploadedProjection?.Status,
-                    elapsed
-                );
+                return;
             }
 
-            // Persiste el estado del aggregate SOLO después de un wait exitoso: así una excepción
-            // antes de este punto deja al signer en "requested, not sent" y Wolverine reintenta.
+            var copies = copiesResult.Value;
             var now = DateTime.UtcNow;
-            request.RecordPartialCopySent(signer.Id, uploadResult.Value, now);
+            foreach (var copy in copies)
+                request.RecordDocumentPartialCopySent(
+                    signer.Id,
+                    copy.File.DocumentId,
+                    copy.File.PartialCopyFileId,
+                    now
+                );
 
             await audit.AppendAsync(
                 request.TenantId,
@@ -211,16 +129,19 @@ public static class SignerPartialCopyConsumer
                 new
                 {
                     signerId = signer.Id,
-                    fileId = uploadResult.Value,
+                    files = copies.Select(copy => new
+                    {
+                        copy.File.DocumentId,
+                        fileId = copy.File.PartialCopyFileId,
+                        checksum = copy.ChecksumSha256,
+                        copy.IdempotencyKey,
+                    }),
                     channel = signer.PreferredChannelLabel(),
-                    checksum = pdf.ChecksumSha256,
-                    idempotencyKey = evt.IdempotencyKey,
                 },
                 ct
             );
 
             await unitOfWork.SaveChangesAsync(ct);
-
             await bus.PublishAsync(
                 new SignerPartialCopyReadyIntegrationEvent
                 {
@@ -228,13 +149,11 @@ public static class SignerPartialCopyConsumer
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
                     SignerId = signer.Id,
-                    PartialCopyFileId = uploadResult.Value,
-                    DocumentTitle = request.Title,
+                    Files = copies.Select(copy => copy.File).ToList(),
                     SignerEmail = signer.Email.Value,
                     SignerFullName = signer.FullName.Value,
                     PhoneE164 = signer.PhoneNumber?.Value,
                     Language = signer.Language,
-                    ShareToken = shareToken,
                     TotalSignersCount = request.Signers.Count,
                     SendSealedToSigners = request.SendSealedDocumentToSigners,
                 }
@@ -242,9 +161,133 @@ public static class SignerPartialCopyConsumer
         }
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
+    private sealed record PartialCopyOutcome(
+        PartialCopyFileDescriptor File,
+        string ChecksumSha256,
+        string IdempotencyKey
+    );
+
+    private static async Task<Result<IReadOnlyList<PartialCopyOutcome>>> CreatePartialCopiesAsync(
+        SignatureRequest request,
+        Signer signer,
+        SignerPartialCopyRequestedIntegrationEvent evt,
+        ISignatureCloudStorageClient storage,
+        IFileMetadataRefRepository fileRefRepository,
+        IPartialCopyRenderer renderer,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var requestedDocumentIds = evt.DocumentIds.ToHashSet();
+        var documents = request
+            .Documents.Where(document =>
+                requestedDocumentIds.Contains(document.Id)
+                && signer.DocumentCompletions.Any(completion =>
+                    completion.DocumentId == document.Id && completion.PartialCopySentAtUtc is null
+                )
+            )
+            .OrderBy(document => document.Order)
+            .ToList();
+        if (documents.Count == 0)
+            return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(
+                new Error("Signature.PartialCopy.NoDocuments", "The signer has no documents to copy.")
+            );
+
+        var signedPngs = await DownloadSignedPngsAsync(request, storage, fileRefRepository, ct);
+        var progress = BuildProgress(request);
+        var outcomes = new List<PartialCopyOutcome>(documents.Count);
+        foreach (var document in documents)
+        {
+            var original = await storage.DownloadAsync(request.TenantId, document.OriginalFileId, ct);
+            if (original.IsFailure)
+                return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(original.Error);
+
+            var fields = BuildSignedFields(request, signedPngs, signer.Id, document.Id);
+            var rendered = renderer.Render(
+                new PartialCopyRequest(
+                    original.Value,
+                    fields,
+                    progress,
+                    signer.FullName.Value,
+                    document.Title,
+                    request.SendSealedDocumentToSigners
+                )
+            );
+
+            var fileName = $"{SanitizeTitle(document.Title)}_{SanitizeTitle(signer.FullName.Value)}_InProgress.pdf";
+            var (ownerType, ownerId) = SealedDocumentOwner.Resolve(new[] { signer.MappedCustomerId }, request.Id);
+            var upload = await storage.UploadAsync(
+                request.TenantId,
+                new SignatureFileUpload(
+                    rendered.PdfBytes,
+                    fileName,
+                    "application/pdf",
+                    ownerType,
+                    ownerId,
+                    "Signatures",
+                    DateTime.UtcNow.Year,
+                    request.CreatedByUserId
+                ),
+                ct
+            );
+            if (upload.IsFailure)
+                return Result.Failure<IReadOnlyList<PartialCopyOutcome>>(upload.Error);
+
+            var uploadedProjection = await WaitForScanOutcomeAsync(
+                request.TenantId,
+                upload.Value,
+                fileRefRepository,
+                ct
+            );
+            string? shareToken = null;
+            if (uploadedProjection?.Status == FileScanStatus.Available)
+            {
+                var share = await storage.CreateDownloadShareLinkAsync(
+                    request.TenantId,
+                    upload.Value,
+                    new[] { signer.Email.Value },
+                    DateTime.UtcNow.AddDays(14),
+                    ct
+                );
+                if (share.IsSuccess)
+                    shareToken = share.Value;
+                else
+                    logger.LogWarning(
+                        "Partial copy share link failed for signer {SignerId}, document {DocumentId}: {Reason}",
+                        signer.Id,
+                        document.Id,
+                        share.Error.Message
+                    );
+            }
+            else if (DateTime.UtcNow - evt.SignedAtUtc <= MaxScanWait)
+            {
+                throw new InvalidOperationException(
+                    $"Partial copy file {upload.Value} not Available yet ({uploadedProjection?.Status.ToString() ?? "null"}); redeliver scheduled."
+                );
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Partial copy file {FileId} for signer {SignerId}, document {DocumentId} is still {Status}; the email will not include its link.",
+                    upload.Value,
+                    signer.Id,
+                    document.Id,
+                    uploadedProjection?.Status
+                );
+            }
+
+            var idempotencyKey = $"signature.partial_copy:{request.Id:N}:{signer.Id:N}:{document.Id:N}:v1";
+            outcomes.Add(
+                new PartialCopyOutcome(
+                    new PartialCopyFileDescriptor(document.Id, upload.Value, document.Title, shareToken),
+                    rendered.ChecksumSha256,
+                    idempotencyKey
+                )
+            );
+        }
+
+        return Result.Success<IReadOnlyList<PartialCopyOutcome>>(outcomes);
+    }
 
     private static string ResolveCorrelationId(SignerPartialCopyRequestedIntegrationEvent evt) =>
         string.IsNullOrWhiteSpace(evt.CorrelationId) ? Guid.NewGuid().ToString("N") : evt.CorrelationId;
@@ -268,6 +311,7 @@ public static class SignerPartialCopyConsumer
             if (projection is { Status: FileScanStatus.Available or FileScanStatus.Infected or FileScanStatus.Deleted })
                 return projection;
         }
+
         return projection;
     }
 
@@ -279,68 +323,74 @@ public static class SignerPartialCopyConsumer
     )
     {
         var map = new Dictionary<Guid, byte[]>();
-        foreach (var s in request.Signers)
+        foreach (var signer in request.Signers)
         {
-            if (s.Status != Domain.Requests.SignerStatus.Signed || s.SignatureImageFileId is not { } fileId)
+            if (signer.DocumentCompletions.Count == 0 || signer.SignatureImageFileId is not { } fileId)
                 continue;
+
             var scan = await fileRefRepository.GetByFileIdAsync(request.TenantId, fileId, ct);
             if (scan?.Status != FileScanStatus.Available)
                 continue;
-            var dl = await storage.DownloadAsync(request.TenantId, fileId, ct);
-            if (dl.IsSuccess)
-                map[s.Id] = dl.Value;
+
+            var download = await storage.DownloadAsync(request.TenantId, fileId, ct);
+            if (download.IsSuccess)
+                map[signer.Id] = download.Value;
         }
+
         return map;
     }
 
     private static IReadOnlyList<SealedFieldRender> BuildSignedFields(
         SignatureRequest request,
         IReadOnlyDictionary<Guid, byte[]> signedPngs,
-        Guid recipientSignerId
+        Guid recipientSignerId,
+        Guid documentId
     )
     {
         var result = new List<SealedFieldRender>();
         foreach (
-            var s in request.Signers.Where(s =>
-                s.Id == recipientSignerId && s.Status == Domain.Requests.SignerStatus.Signed
+            var signer in request.Signers.Where(candidate =>
+                candidate.Id == recipientSignerId
+                && candidate.DocumentCompletions.Any(completion => completion.DocumentId == documentId)
             )
         )
         {
-            var pngBytes = signedPngs.TryGetValue(s.Id, out var png) ? png : null;
-            foreach (var f in s.Fields)
+            var pngBytes = signedPngs.TryGetValue(signer.Id, out var png) ? png : null;
+            foreach (var field in signer.Fields.Where(field => field.DocumentId == documentId))
             {
-                var value = s.FieldValues.FirstOrDefault(v => v.FieldId == f.Id)?.Value;
+                var value = signer.FieldValues.FirstOrDefault(candidate => candidate.FieldId == field.Id)?.Value;
                 result.Add(
                     new SealedFieldRender(
-                        Page: f.Position.Page,
-                        X: f.Position.X,
-                        Y: f.Position.Y,
-                        Width: f.Position.Width,
-                        Height: f.Position.Height,
-                        Kind: f.Kind,
-                        Label: f.Label,
-                        SignerDisplayName: s.FullName.Value,
-                        SignedAtUtc: s.SignedAtUtc ?? DateTime.UtcNow,
-                        SignatureImageBytes: f.Kind == SignatureFieldKind.Signature ? pngBytes : null,
+                        Page: field.Position.Page,
+                        X: field.Position.X,
+                        Y: field.Position.Y,
+                        Width: field.Position.Width,
+                        Height: field.Position.Height,
+                        Kind: field.Kind,
+                        Label: field.Label,
+                        SignerDisplayName: signer.FullName.Value,
+                        SignedAtUtc: signer.SignedAtUtc ?? DateTime.UtcNow,
+                        SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? pngBytes : null,
                         Value: value
                     )
                 );
             }
         }
+
         return result;
     }
 
     private static IReadOnlyList<PartialCopySignerStatus> BuildProgress(SignatureRequest request) =>
         request
-            .Signers.Select(s => new PartialCopySignerStatus(
-                s.FullName.Value,
-                s.Status switch
+            .Signers.Select(signer => new PartialCopySignerStatus(
+                signer.FullName.Value,
+                signer.Status switch
                 {
-                    Domain.Requests.SignerStatus.Signed => PartialCopySignerState.Signed,
-                    Domain.Requests.SignerStatus.Rejected => PartialCopySignerState.Rejected,
+                    SignerStatus.Signed => PartialCopySignerState.Signed,
+                    SignerStatus.Rejected => PartialCopySignerState.Rejected,
                     _ => PartialCopySignerState.Pending,
                 },
-                s.SignedAtUtc
+                signer.SignedAtUtc
             ))
             .ToList();
 
@@ -356,7 +406,8 @@ public static class SignerPartialCopyConsumer
     )
     {
         logger.LogError("Partial copy for {SignerId} failed: {Reason}", signerId, reason);
-        request.RecordPartialCopyFailed(signerId, reason);
+        foreach (var documentId in evt.DocumentIds)
+            request.RecordDocumentPartialCopyFailed(signerId, documentId, reason);
         await audit.AppendAsync(
             evt.TenantId,
             evt.SignatureRequestId,
@@ -376,14 +427,13 @@ public static class SignerPartialCopyConsumer
     private static string SanitizeTitle(string input)
     {
         var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = string.Concat(input.Where(c => !invalid.Contains(c))).Trim();
+        var cleaned = string.Concat(input.Where(character => !invalid.Contains(character))).Trim();
         return cleaned.Length > 48 ? cleaned[..48]
             : cleaned.Length == 0 ? "document"
             : cleaned;
     }
 }
 
-/// <summary>Helper local: canal preferido como etiqueta plana para el audit (no para enrutar).</summary>
 internal static class SignerChannelExtensions
 {
     public static string PreferredChannelLabel(this Signer signer) =>

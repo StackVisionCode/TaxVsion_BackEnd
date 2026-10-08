@@ -30,7 +30,13 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureRequest> SignatureRequests => Set<SignatureRequest>();
 
+    public DbSet<RequestDocument> RequestDocuments => Set<RequestDocument>();
+
     public DbSet<Signer> Signers => Set<Signer>();
+
+    public DbSet<SignerDocumentView> SignerDocumentViews => Set<SignerDocumentView>();
+
+    public DbSet<SignerDocumentCompletion> SignerDocumentCompletions => Set<SignerDocumentCompletion>();
 
     public DbSet<SignatureField> SignatureFields => Set<SignatureField>();
 
@@ -43,6 +49,8 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     public DbSet<FileMetadataRef> FileMetadataRefs => Set<FileMetadataRef>();
 
     public DbSet<SignatureTemplate> SignatureTemplates => Set<SignatureTemplate>();
+
+    public DbSet<TemplateDocument> TemplateDocuments => Set<TemplateDocument>();
 
     public DbSet<TenantSignatureCategory> SignatureCategories => Set<TenantSignatureCategory>();
 

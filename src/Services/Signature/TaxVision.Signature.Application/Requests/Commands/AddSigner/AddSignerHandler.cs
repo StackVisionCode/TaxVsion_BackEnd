@@ -108,6 +108,7 @@ public static class AddSignerHandler
                 .Fields.Select(f => new SignatureFieldResponse(
                     f.Id,
                     signer.Id,
+                    f.DocumentId,
                     f.Kind,
                     f.Position.Page,
                     f.Position.X,

@@ -19,6 +19,7 @@ public sealed class PreparerField : BaseEntity
     private PreparerField() { }
 
     public Guid SignatureRequestId { get; private set; }
+    public Guid DocumentId { get; private set; }
     public SignatureFieldKind Kind { get; private set; }
     public FieldPosition Position { get; private set; } = default!;
     public string? Label { get; private set; }
@@ -26,6 +27,7 @@ public sealed class PreparerField : BaseEntity
 
     internal static Result<PreparerField> Create(
         Guid requestId,
+        Guid documentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label
@@ -34,6 +36,11 @@ public sealed class PreparerField : BaseEntity
         if (requestId == Guid.Empty)
             return Result.Failure<PreparerField>(
                 new Error("Signature.PreparerField.Request", "SignatureRequestId is required.")
+            );
+
+        if (documentId == Guid.Empty)
+            return Result.Failure<PreparerField>(
+                new Error("Signature.PreparerField.Document", "DocumentId is required.")
             );
 
         ArgumentNullException.ThrowIfNull(position);
@@ -49,6 +56,7 @@ public sealed class PreparerField : BaseEntity
             {
                 Id = Guid.NewGuid(),
                 SignatureRequestId = requestId,
+                DocumentId = documentId,
                 Kind = kind,
                 Position = position,
                 Label = normalizedLabel,

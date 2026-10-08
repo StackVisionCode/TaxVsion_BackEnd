@@ -14,7 +14,7 @@ public sealed record CreateSignatureRequestCommand(
     string Title,
     string? Description,
     string Category,
-    Guid OriginalFileId,
+    IReadOnlyList<CreateSignatureRequestDocumentDto> Documents,
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,

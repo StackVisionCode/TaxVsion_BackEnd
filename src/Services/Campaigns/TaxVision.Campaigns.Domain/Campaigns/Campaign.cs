@@ -22,6 +22,7 @@ public sealed class Campaign : TenantEntity
 
     public const int MaxSubjectLength = 300;
     public const int MaxTitleLength = 200;
+
     // Generoso para permitir HTML de email con imágenes embebidas (dataURL). La columna ya es nvarchar(max).
     public const int MaxMessageLength = 500_000;
 

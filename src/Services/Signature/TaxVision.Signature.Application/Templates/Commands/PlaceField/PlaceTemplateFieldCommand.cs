@@ -5,6 +5,7 @@ namespace TaxVision.Signature.Application.Templates.Commands.PlaceField;
 public sealed record PlaceTemplateFieldCommand(
     Guid TenantId,
     Guid TemplateId,
+    Guid? TemplateDocumentId,
     int SlotOrder,
     SignatureFieldKind Kind,
     int Page,
@@ -16,4 +17,4 @@ public sealed record PlaceTemplateFieldCommand(
     bool IsRequired
 );
 
-public sealed record TemplateFieldCreatedResponse(Guid Id, int SlotOrder);
+public sealed record TemplateFieldCreatedResponse(Guid Id, Guid TemplateDocumentId, int SlotOrder);

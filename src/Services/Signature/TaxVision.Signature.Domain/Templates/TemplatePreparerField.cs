@@ -17,12 +17,14 @@ public sealed class TemplatePreparerField : BaseEntity
     private TemplatePreparerField() { }
 
     public Guid SignatureTemplateId { get; private set; }
+    public Guid TemplateDocumentId { get; private set; }
     public SignatureFieldKind Kind { get; private set; }
     public FieldPosition Position { get; private set; } = default!;
     public string? Label { get; private set; }
 
     internal static Result<TemplatePreparerField> Create(
         Guid templateId,
+        Guid templateDocumentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label
@@ -31,6 +33,10 @@ public sealed class TemplatePreparerField : BaseEntity
         if (templateId == Guid.Empty)
             return Result.Failure<TemplatePreparerField>(
                 new Error("Signature.TemplatePreparerField.Template", "TemplateId is required.")
+            );
+        if (templateDocumentId == Guid.Empty)
+            return Result.Failure<TemplatePreparerField>(
+                new Error("Signature.TemplatePreparerField.Document", "TemplateDocumentId is required.")
             );
         ArgumentNullException.ThrowIfNull(position);
 
@@ -45,6 +51,7 @@ public sealed class TemplatePreparerField : BaseEntity
             {
                 Id = Guid.NewGuid(),
                 SignatureTemplateId = templateId,
+                TemplateDocumentId = templateDocumentId,
                 Kind = kind,
                 Position = position,
                 Label = normalizedLabel,

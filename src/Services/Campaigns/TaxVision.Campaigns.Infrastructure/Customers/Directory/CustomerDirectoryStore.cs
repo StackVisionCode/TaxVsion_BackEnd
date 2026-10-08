@@ -14,8 +14,7 @@ public sealed class CustomerDirectoryStore(CampaignsDbContext db) : ICustomerDir
 {
     public async Task<DateTime?> GetVersionAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
-        var row = await db
-            .Set<CustomerDirectoryEntry>()
+        var row = await db.Set<CustomerDirectoryEntry>()
             .Where(e => e.TenantId == tenantId && e.CustomerId == customerId)
             .Select(e => (DateTime?)e.Version)
             .FirstOrDefaultAsync(ct);
@@ -100,8 +99,7 @@ public sealed class CustomerDirectoryStore(CampaignsDbContext db) : ICustomerDir
     )
     {
         var normalized = CustomerDirectoryEntry.Normalize(email);
-        return await db
-            .Set<CustomerDirectoryEntry>()
+        return await db.Set<CustomerDirectoryEntry>()
             .Where(e => e.TenantId == tenantId && e.Email == normalized)
             .Select(e => new CustomerDirectoryRecord(e.CustomerId, e.DisplayName, e.Email, e.PhoneE164, e.Status))
             .FirstOrDefaultAsync(ct);
@@ -112,8 +110,7 @@ public sealed class CustomerDirectoryStore(CampaignsDbContext db) : ICustomerDir
         CancellationToken ct = default
     )
     {
-        return await db
-            .Set<CustomerDirectoryEntry>()
+        return await db.Set<CustomerDirectoryEntry>()
             .Where(e => e.TenantId == tenantId && e.Status == CustomerDirectoryStatus.Active)
             .Select(e => new CustomerDirectoryRecord(e.CustomerId, e.DisplayName, e.Email, e.PhoneE164, e.Status))
             .ToListAsync(ct);

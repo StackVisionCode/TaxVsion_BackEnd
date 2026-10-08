@@ -6,6 +6,7 @@ namespace TaxVision.Signature.Application.Templates.Commands.PreparerFields;
 public sealed record PlaceTemplatePreparerFieldCommand(
     Guid TenantId,
     Guid TemplateId,
+    Guid? TemplateDocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -15,4 +16,4 @@ public sealed record PlaceTemplatePreparerFieldCommand(
     string? Label
 );
 
-public sealed record TemplatePreparerFieldCreatedResponse(Guid Id);
+public sealed record TemplatePreparerFieldCreatedResponse(Guid Id, Guid TemplateDocumentId);

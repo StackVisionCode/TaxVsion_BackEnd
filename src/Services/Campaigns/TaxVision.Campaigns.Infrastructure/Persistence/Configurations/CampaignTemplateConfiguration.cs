@@ -19,10 +19,14 @@ public sealed class CampaignTemplateConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(t => new { t.TenantId, t.CreatedAtUtc }).HasDatabaseName("IX_CampaignTemplates_TenantId_CreatedAtUtc");
+        builder
+            .HasIndex(t => new { t.TenantId, t.CreatedAtUtc })
+            .HasDatabaseName("IX_CampaignTemplates_TenantId_CreatedAtUtc");
 
         builder.HasMany(t => t.Contents).WithOne().HasForeignKey(c => c.TemplateId).OnDelete(DeleteBehavior.Cascade);
-        builder.Metadata.FindNavigation(nameof(CampaignTemplate.Contents))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+        builder
+            .Metadata.FindNavigation(nameof(CampaignTemplate.Contents))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }
 

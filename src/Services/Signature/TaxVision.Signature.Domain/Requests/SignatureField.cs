@@ -20,6 +20,7 @@ public sealed class SignatureField : BaseEntity
 
     public Guid SignatureRequestId { get; private set; }
     public Guid SignerId { get; private set; }
+    public Guid DocumentId { get; private set; }
     public SignatureFieldKind Kind { get; private set; }
     public FieldPosition Position { get; private set; } = default!;
 
@@ -34,6 +35,7 @@ public sealed class SignatureField : BaseEntity
     internal static Result<SignatureField> Create(
         Guid requestId,
         Guid signerId,
+        Guid documentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
@@ -47,6 +49,9 @@ public sealed class SignatureField : BaseEntity
 
         if (signerId == Guid.Empty)
             return Result.Failure<SignatureField>(new Error("Signature.Field.Signer", "SignerId is required."));
+
+        if (documentId == Guid.Empty)
+            return Result.Failure<SignatureField>(new Error("Signature.Field.Document", "DocumentId is required."));
 
         ArgumentNullException.ThrowIfNull(position);
 
@@ -62,6 +67,7 @@ public sealed class SignatureField : BaseEntity
                 Id = Guid.NewGuid(),
                 SignatureRequestId = requestId,
                 SignerId = signerId,
+                DocumentId = documentId,
                 Kind = kind,
                 Position = position,
                 Label = normalizedLabel,

@@ -24,11 +24,22 @@ public static class PlaceTemplatePreparerFieldHandler
                 new Error("Signature.Template.NotFound", "The signature template does not exist for this tenant.")
             );
 
-        var placement = template.PlacePreparerField(cmd.Kind, positionResult.Value, cmd.Label);
+        var documentId = cmd.TemplateDocumentId ?? template.Documents.SingleOrDefault()?.Id;
+        if (documentId is null)
+            return Result.Failure<TemplatePreparerFieldCreatedResponse>(
+                new Error(
+                    "Signature.Template.DocumentRequired",
+                    "TemplateDocumentId is required for a multi-document template."
+                )
+            );
+
+        var placement = template.PlacePreparerField(documentId.Value, cmd.Kind, positionResult.Value, cmd.Label);
         if (placement.IsFailure)
             return Result.Failure<TemplatePreparerFieldCreatedResponse>(placement.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new TemplatePreparerFieldCreatedResponse(placement.Value.Id));
+        return Result.Success(
+            new TemplatePreparerFieldCreatedResponse(placement.Value.Id, placement.Value.TemplateDocumentId)
+        );
     }
 }

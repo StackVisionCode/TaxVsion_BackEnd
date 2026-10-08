@@ -21,8 +21,6 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.Category).HasMaxLength(64).IsRequired();
         builder.Property(request => request.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
 
-        builder.Property(request => request.OriginalFileId).IsRequired();
-        builder.Property(request => request.SealedFileId);
         builder.Property(request => request.CertificateFileId);
 
         builder.Property(request => request.RequiresSequentialSigning).IsRequired();
@@ -115,22 +113,6 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.LegalHoldLiftedAtUtc);
         builder.HasIndex(request => new { request.TenantId, request.LegalHold });
 
-        // Value objects opcionales embebidos como columnas propias.
-        builder.OwnsOne(
-            request => request.DocumentHashPre,
-            hash =>
-            {
-                hash.Property(h => h.Value).HasColumnName("DocumentHashPre").HasMaxLength(DocumentHash.ExpectedLength);
-            }
-        );
-        builder.OwnsOne(
-            request => request.DocumentHashPost,
-            hash =>
-            {
-                hash.Property(h => h.Value).HasColumnName("DocumentHashPost").HasMaxLength(DocumentHash.ExpectedLength);
-            }
-        );
-
         // Índices críticos para las queries del historial (Fase 5) y schedulers.
         builder.HasIndex(request => new { request.TenantId, request.Status });
         builder.HasIndex(request => new { request.TenantId, request.CreatedAtUtc });
@@ -153,6 +135,16 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
 
         builder
             .Metadata.FindNavigation(nameof(SignatureRequest.Signers))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(request => request.Documents)
+            .WithOne()
+            .HasForeignKey(document => document.SignatureRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder
+            .Metadata.FindNavigation(nameof(SignatureRequest.Documents))!
             .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

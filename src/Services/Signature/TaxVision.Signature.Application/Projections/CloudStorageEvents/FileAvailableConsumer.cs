@@ -94,13 +94,19 @@ public static class FileAvailableConsumer
         var attached = new List<SignatureRequest>(drafts.Count);
         foreach (var draft in drafts)
         {
-            var result = draft.AttachOriginalHash(hashResult.Value);
+            var document = draft.Documents.SingleOrDefault(candidate => candidate.OriginalFileId == evt.FileId);
+            if (document is null)
+                continue;
+
+            var result = draft.AttachDocumentHash(document.Id, hashResult.Value);
             if (result.IsSuccess)
             {
-                attached.Add(draft);
+                if (draft.Documents.Count > 0 && draft.Documents.All(item => item.DocumentHashPre is not null))
+                    attached.Add(draft);
                 logger.LogInformation(
-                    "SignatureRequest {RequestId} hash attached by FileAvailable {FileId} (still Draft until send).",
+                    "SignatureRequest {RequestId} document {DocumentId} hash attached by FileAvailable {FileId}.",
                     draft.Id,
+                    document.Id,
                     evt.FileId
                 );
             }
@@ -135,8 +141,14 @@ public static class FileAvailableConsumer
                 CorrelationId = correlationId,
                 SignatureRequestId = request.Id,
                 CreatedByUserId = request.CreatedByUserId,
-                OriginalFileId = request.OriginalFileId,
-                DocumentHashPre = request.DocumentHashPre!.Value,
+                Documents = request
+                    .Documents.Where(document => document.DocumentHashPre is not null)
+                    .Select(document => new DocumentHashDescriptor(
+                        document.Id,
+                        document.OriginalFileId,
+                        document.DocumentHashPre!.Value
+                    ))
+                    .ToList(),
             };
             tasks.Add(messageBus.PublishAsync(evt).AsTask());
         }

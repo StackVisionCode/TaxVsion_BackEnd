@@ -18,7 +18,12 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.Challenges)
             .Include(request => request.Signers)
                 .ThenInclude(signer => signer.FieldValues)
+            .Include(request => request.Signers)
+                .ThenInclude(signer => signer.DocumentViews)
+            .Include(request => request.Signers)
+                .ThenInclude(signer => signer.DocumentCompletions)
             .Include(request => request.PreparerFields)
+            .Include(request => request.Documents)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
     public Task<SignatureRequest?> GetBySealedFileIdAsync(
@@ -29,7 +34,13 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Signers)
-            .FirstOrDefaultAsync(request => request.TenantId == tenantId && request.SealedFileId == sealedFileId, ct);
+            .Include(request => request.Documents)
+            .FirstOrDefaultAsync(
+                request =>
+                    request.TenantId == tenantId
+                    && request.Documents.Any(document => document.SealedFileId == sealedFileId),
+                ct
+            );
 
     public Task<SignatureRequest?> GetByCertificateFileIdAsync(
         Guid tenantId,
@@ -39,6 +50,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Signers)
+            .Include(request => request.Documents)
             .FirstOrDefaultAsync(
                 request => request.TenantId == tenantId && request.CertificateFileId == certificateFileId,
                 ct
@@ -51,8 +63,11 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
     ) =>
         await db
             .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Documents)
             .Where(r =>
-                r.TenantId == tenantId && r.OriginalFileId == fileId && r.Status == SignatureRequestStatus.Draft
+                r.TenantId == tenantId
+                && r.Documents.Any(document => document.OriginalFileId == fileId)
+                && r.Status == SignatureRequestStatus.Draft
             )
             .ToListAsync(ct);
 
@@ -62,6 +77,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
     ) =>
         await db
             .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Documents)
             .Where(r => r.Status == SignatureRequestStatus.Draft && r.CreatedAtUtc < createdBeforeUtc)
             .ToListAsync(ct);
 
@@ -151,10 +167,11 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .SignatureRequests.IgnoreQueryFilters()
             .AsNoTracking()
             .Include(request => request.Signers)
+            .Include(request => request.Documents)
             .Where(request =>
                 request.TenantId == tenantId
                 && request.Status == SignatureRequestStatus.Completed
-                && request.SealedFileId != null
+                && request.Documents.Any(document => document.SealedFileId != null)
             )
             .ToListAsync(ct);
 
@@ -172,6 +189,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         await db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(r => r.Signers)
+            .Include(r => r.Documents)
             .Where(r =>
                 r.Status == SignatureRequestStatus.Scheduled
                 && r.ScheduledSendAtUtc != null

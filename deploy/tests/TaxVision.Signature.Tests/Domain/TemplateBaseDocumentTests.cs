@@ -79,6 +79,7 @@ public sealed class TemplateBaseDocumentTests
     private static SignatureTemplate NewPublished()
     {
         var template = NewDraft();
+        template.SetBaseDocument(Guid.NewGuid());
         var slot = template
             .AddSlot(TaxVision.Signature.Domain.Templates.ValueObjects.TemplateSlotRole.Create("Signer").Value, "En")
             .Value;

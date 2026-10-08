@@ -10,14 +10,13 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureReadyForDownloadIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
-    public required Guid SealedFileId { get; init; }
+    public required IReadOnlyList<SealedFileDescriptor> SealedFiles { get; init; }
     public required DateTime CompletedAtUtc { get; init; }
 
     /// <summary>
     /// Token del share-link público de CloudStorage. Null si no se pudo emitir: el correo igual sale,
     /// pero sin botón de descarga.
     /// </summary>
-    public string? ShareToken { get; init; }
 
     /// <summary>Snapshot de contacto de cada firmante — destinatarios del correo, sin lookup síncrono.</summary>
     public required IReadOnlyList<SignerContactSnapshot> Signers { get; init; }

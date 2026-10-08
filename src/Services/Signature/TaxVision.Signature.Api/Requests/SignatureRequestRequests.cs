@@ -6,7 +6,7 @@ public sealed record CreateSignatureRequestBody(
     string Title,
     string? Description,
     string Category,
-    Guid OriginalFileId,
+    IReadOnlyList<CreateSignatureRequestDocumentBody> Documents,
     int TokenExpirationHours,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
@@ -54,8 +54,13 @@ public sealed record AddSignerBody(
 
 public sealed record ReorderSignersBody(IReadOnlyList<Guid> OrderedSignerIds);
 
+public sealed record AddRequestDocumentBody(Guid OriginalFileId, string Title, string? Note = null);
+
+public sealed record ReorderDocumentsBody(IReadOnlyList<Guid> OrderedDocumentIds);
+
 public sealed record PlaceFieldBody(
     Guid SignerId,
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -78,6 +83,7 @@ public sealed record SetPractitionerPinBody(string Pin);
 public sealed record SetPreparerBody(string PtinOrEfin, string DisplayName, string? TitleLabel);
 
 public sealed record PlacePreparerFieldBody(
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -103,6 +109,7 @@ public sealed record UpsertDraftBody(
     bool? SendCertificateToSigners,
     bool? AutoRemindersEnabled,
     int? ReminderIntervalHours,
+    IReadOnlyList<UpsertDraftDocumentBody> Documents,
     IReadOnlyList<UpsertDraftSignerBody> Signers,
     IReadOnlyList<UpsertDraftFieldBody> Fields,
     // F7 — null = no tocar.
@@ -110,6 +117,8 @@ public sealed record UpsertDraftBody(
     PartialCopyAudienceBody? PartialCopyAudience = null,
     bool? ExpirationEnabled = null
 );
+
+public sealed record UpsertDraftDocumentBody(string LocalId, Guid? Id, Guid OriginalFileId, string Title, string? Note);
 
 public sealed record UpsertDraftSignerBody(
     Guid? Id,
@@ -123,6 +132,7 @@ public sealed record UpsertDraftSignerBody(
 public sealed record UpsertDraftFieldBody(
     Guid? Id,
     int SignerIndex,
+    string DocumentLocalId,
     SignatureFieldKind Kind,
     int Page,
     double X,

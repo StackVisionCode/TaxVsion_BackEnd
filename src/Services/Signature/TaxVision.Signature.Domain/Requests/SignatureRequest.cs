@@ -2,6 +2,7 @@
 // (ver anotación [Obsolete] en el enum). Silenciamos CS0618 en el archivo entero porque esa
 // tolerancia es intencional en cada mutación y en los predicados "pre-envío".
 #pragma warning disable CS0618
+using System.ComponentModel.DataAnnotations.Schema;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -29,7 +30,7 @@ namespace TaxVision.Signature.Domain.Requests;
 /// explícito con su regla concreta. Cada método privado tiene un propósito único.
 /// </para>
 /// </summary>
-public sealed class SignatureRequest : TenantEntity, IHasOwner
+public sealed class SignatureRequest : AggregateRoot, IHasOwner
 {
     public const int MinTitleLength = 3;
     public const int MaxTitleLength = 300;
@@ -39,6 +40,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public const int MaxCategoryLength = 64;
     public const int MinSigners = 1;
     public const int MaxSigners = 50;
+    public const int MaxDocuments = 20;
 
     public const int MinReminderIntervalHours = 1;
     public const int MaxReminderIntervalHours = 720; // 30 días
@@ -48,6 +50,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
     private readonly List<Signer> _signers = [];
     private readonly List<PreparerField> _preparerFields = [];
+    private readonly List<RequestDocument> _documents = [];
 
     private SignatureRequest() { }
 
@@ -59,11 +62,6 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public string Category { get; private set; } = default!;
     public SignatureRequestStatus Status { get; private set; }
 
-    public Guid OriginalFileId { get; private set; }
-    public DocumentHash? DocumentHashPre { get; private set; }
-
-    public Guid? SealedFileId { get; private set; }
-    public DocumentHash? DocumentHashPost { get; private set; }
     public Guid? CertificateFileId { get; private set; }
 
     public bool RequiresSequentialSigning { get; private set; }
@@ -179,6 +177,25 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     public DateTime? LegalHoldLiftedAtUtc { get; private set; }
 
     public IReadOnlyList<Signer> Signers => _signers.AsReadOnly();
+    public IReadOnlyList<RequestDocument> Documents => _documents.AsReadOnly();
+
+    // Puente de compilación durante la migración F8. No forma parte del modelo EF y se elimina
+    // cuando todos los callers de T3-T6 consuman Documents de manera explícita.
+    [NotMapped]
+    [Obsolete("Use Documents and select an explicit document.")]
+    public Guid OriginalFileId => _documents.Count == 1 ? _documents[0].OriginalFileId : Guid.Empty;
+
+    [NotMapped]
+    [Obsolete("Use Documents and select an explicit document.")]
+    public DocumentHash? DocumentHashPre => _documents.Count == 1 ? _documents[0].DocumentHashPre : null;
+
+    [NotMapped]
+    [Obsolete("Use Documents and select an explicit document.")]
+    public Guid? SealedFileId => _documents.Count == 1 ? _documents[0].SealedFileId : null;
+
+    [NotMapped]
+    [Obsolete("Use Documents and select an explicit document.")]
+    public DocumentHash? DocumentHashPost => _documents.Count == 1 ? _documents[0].DocumentHashPost : null;
 
     // ------------------------------------------------------------------
     // Factory
@@ -190,7 +207,6 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         string title,
         string? description,
         string category,
-        Guid originalFileId,
         int tokenExpirationHours,
         bool requiresSequentialSigning,
         bool requiresConsent,
@@ -204,14 +220,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         PartialCopyAudience? partialCopyAudience = null
     )
     {
-        var baseValidation = ValidateFactoryInputs(
-            tenantId,
-            createdByUserId,
-            title,
-            description,
-            originalFileId,
-            tokenExpirationHours
-        );
+        var baseValidation = ValidateFactoryInputs(tenantId, createdByUserId, title, description, tokenExpirationHours);
         if (baseValidation.IsFailure)
             return Result.Failure<SignatureRequest>(baseValidation.Error);
 
@@ -237,7 +246,6 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             Description = NormalizeDescription(description),
             Category = category.Trim(),
             Status = SignatureRequestStatus.Draft,
-            OriginalFileId = originalFileId,
             ExpirationEnabled = expirationEnabled,
             TokenExpirationHours = expirationEnabled ? tokenExpirationHours : null,
             // Provisional: el borrador no expira; Send lo recalcula desde la fecha de envío (si aplica).
@@ -262,6 +270,234 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         request.SetTenant(tenantId);
         return Result.Success(request);
     }
+
+    [Obsolete("Create the request first and add documents explicitly.")]
+    public static Result<SignatureRequest> CreateDraft(
+        Guid tenantId,
+        Guid createdByUserId,
+        string title,
+        string? description,
+        string category,
+        Guid originalFileId,
+        int tokenExpirationHours,
+        bool requiresSequentialSigning,
+        bool requiresConsent,
+        bool generateCertificate,
+        bool sendSealedDocumentToSigners = false,
+        bool sendCertificateToSigners = false,
+        bool autoRemindersEnabled = true,
+        int reminderIntervalHours = 48,
+        bool expirationEnabled = true,
+        bool sendPartialCopyOnEachSignature = false,
+        PartialCopyAudience? partialCopyAudience = null
+    )
+    {
+        if (originalFileId == Guid.Empty)
+            return Result.Failure<SignatureRequest>(
+                new Error("Signature.Request.OriginalFile", "OriginalFileId is required.")
+            );
+
+        var requestResult = CreateDraft(
+            tenantId,
+            createdByUserId,
+            title,
+            description,
+            category,
+            tokenExpirationHours,
+            requiresSequentialSigning,
+            requiresConsent,
+            generateCertificate,
+            sendSealedDocumentToSigners,
+            sendCertificateToSigners,
+            autoRemindersEnabled,
+            reminderIntervalHours,
+            expirationEnabled,
+            sendPartialCopyOnEachSignature,
+            partialCopyAudience
+        );
+        if (requestResult.IsFailure)
+            return requestResult;
+
+        var documentResult = requestResult.Value.AddDocument(originalFileId, title);
+        return documentResult.IsFailure ? Result.Failure<SignatureRequest>(documentResult.Error) : requestResult;
+    }
+
+    // ------------------------------------------------------------------
+    // Documents
+    // ------------------------------------------------------------------
+
+    public Result<RequestDocument> AddDocument(Guid fileId, string title, string? note = null)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return Result.Failure<RequestDocument>(editable.Error);
+        if (_documents.Count >= MaxDocuments)
+            return Result.Failure<RequestDocument>(
+                new Error("Signature.Request.TooManyDocuments", $"Document count cannot exceed {MaxDocuments}.")
+            );
+        if (_documents.Any(document => document.OriginalFileId == fileId))
+            return Result.Failure<RequestDocument>(
+                new Error("Signature.Request.DuplicateDocument", "This file is already part of the request.")
+            );
+
+        var result = RequestDocument.Create(TenantId, Id, NextDocumentOrder(), title, fileId, note);
+        if (result.IsFailure)
+            return result;
+
+        _documents.Add(result.Value);
+        Touch();
+        return result;
+    }
+
+    public Result RemoveDocument(Guid documentId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        var document = FindDocumentOrNull(documentId);
+        if (document is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+
+        foreach (var signer in _signers)
+        {
+            signer.RemoveFieldsForDocument(documentId);
+            signer.RemoveDocumentView(documentId);
+            signer.RemoveDocumentCompletion(documentId);
+        }
+        _preparerFields.RemoveAll(field => field.DocumentId == documentId);
+        _documents.Remove(document);
+        NormalizeDocumentOrder();
+        Touch();
+        return Result.Success();
+    }
+
+    public Result ReorderDocuments(IReadOnlyList<Guid> orderedDocumentIds)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+        ArgumentNullException.ThrowIfNull(orderedDocumentIds);
+        if (orderedDocumentIds.Count != _documents.Count || orderedDocumentIds.Distinct().Count() != _documents.Count)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.DocumentReorderMismatch",
+                    "The provided order does not match the current document collection."
+                )
+            );
+
+        var lookup = _documents.ToDictionary(document => document.Id);
+        var reordered = new List<RequestDocument>(_documents.Count);
+        for (var index = 0; index < orderedDocumentIds.Count; index++)
+        {
+            if (!lookup.TryGetValue(orderedDocumentIds[index], out var document))
+                return Result.Failure(
+                    new Error("Signature.Request.DocumentReorderUnknown", "Unknown document id in the requested order.")
+                );
+
+            var result = document.Reorder(index + 1);
+            if (result.IsFailure)
+                return result;
+            reordered.Add(document);
+        }
+
+        _documents.Clear();
+        _documents.AddRange(reordered);
+        Touch();
+        return Result.Success();
+    }
+
+    public Result ReplaceDocumentFile(Guid documentId, Guid newFileId)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+        var document = FindDocumentOrNull(documentId);
+        if (document is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+        if (_documents.Any(candidate => candidate.Id != documentId && candidate.OriginalFileId == newFileId))
+            return Result.Failure(
+                new Error("Signature.Request.DuplicateDocument", "This file is already part of the request.")
+            );
+
+        var result = document.ReplaceOriginalFile(newFileId);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public Result RenameDocument(Guid documentId, string title)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        var document = FindDocumentOrNull(documentId);
+        if (document is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+
+        var result = document.Rename(title);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public Result AttachDocumentHash(Guid documentId, DocumentHash hash)
+    {
+        ArgumentNullException.ThrowIfNull(hash);
+        if (Status != SignatureRequestStatus.Draft)
+            return Result.Failure(
+                new Error("Signature.Request.NotDraft", "Only a Draft request can attach a document hash.")
+            );
+
+        var document = FindDocumentOrNull(documentId);
+        if (document is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+
+        var result = document.AttachHashPre(hash);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public Result MarkDocumentSealed(Guid documentId, Guid sealedFileId, DocumentHash hashPost, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(hashPost);
+        var document = FindDocumentOrNull(documentId);
+        if (document is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+
+        if (!IsDocumentReadyForSealing(documentId))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.DocumentNotReady",
+                    "A document can only be sealed after all of its participating signers complete it."
+                )
+            );
+
+        var result = document.MarkSealed(sealedFileId, hashPost, nowUtc);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public bool AllDocumentsSealed() =>
+        _documents.Count > 0
+        && _documents.All(document =>
+            document.SealedFileId is not null
+            && document.DocumentHashPost is not null
+            && document.SealedAtUtc is not null
+        );
 
     // ------------------------------------------------------------------
     // Edición de metadata del borrador (solo Draft/Ready)
@@ -662,6 +898,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
     public Result<SignatureField> PlaceField(
         Guid signerId,
+        Guid documentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label,
@@ -678,7 +915,12 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error("Signature.Request.SignerMissing", "Cannot place a field on an unknown signer.")
             );
 
-        var fieldResult = SignatureField.Create(Id, signerId, kind, position, label, isRequired);
+        if (FindDocumentOrNull(documentId) is null)
+            return Result.Failure<SignatureField>(
+                new Error("Signature.Request.DocumentMissing", "Cannot place a field on an unknown document.")
+            );
+
+        var fieldResult = SignatureField.Create(Id, signerId, documentId, kind, position, label, isRequired);
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -689,6 +931,20 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Touch();
         return fieldResult;
     }
+
+    [Obsolete("Pass DocumentId explicitly for multi-document requests.")]
+    public Result<SignatureField> PlaceField(
+        Guid signerId,
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label,
+        bool isRequired
+    ) =>
+        _documents.Count == 1
+            ? PlaceField(signerId, _documents[0].Id, kind, position, label, isRequired)
+            : Result.Failure<SignatureField>(
+                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
+            );
 
     public Result RemoveField(Guid signerId, Guid fieldId)
     {
@@ -713,13 +969,23 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     // ------------------------------------------------------------------
 
     /// <summary>Coloca un campo del preparador (solo Draft/Ready). Su firma se estampa al sellar.</summary>
-    public Result<PreparerField> PlacePreparerField(SignatureFieldKind kind, FieldPosition position, string? label)
+    public Result<PreparerField> PlacePreparerField(
+        Guid documentId,
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label
+    )
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
             return Result.Failure<PreparerField>(editable.Error);
 
-        var fieldResult = PreparerField.Create(Id, kind, position, label);
+        if (FindDocumentOrNull(documentId) is null)
+            return Result.Failure<PreparerField>(
+                new Error("Signature.Request.DocumentMissing", "Cannot place a preparer field on an unknown document.")
+            );
+
+        var fieldResult = PreparerField.Create(Id, documentId, kind, position, label);
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -727,6 +993,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Touch();
         return fieldResult;
     }
+
+    [Obsolete("Pass DocumentId explicitly for multi-document requests.")]
+    public Result<PreparerField> PlacePreparerField(SignatureFieldKind kind, FieldPosition position, string? label) =>
+        _documents.Count == 1
+            ? PlacePreparerField(_documents[0].Id, kind, position, label)
+            : Result.Failure<PreparerField>(
+                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
+            );
 
     public Result RemovePreparerField(Guid fieldId)
     {
@@ -764,27 +1038,17 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     // Progresión de estado
     // ------------------------------------------------------------------
 
-    /// <summary>Adjunta el hash del documento original. No cambia Status: Draft sigue siendo Draft.</summary>
-    public Result AttachOriginalHash(DocumentHash originalHash)
-    {
-        ArgumentNullException.ThrowIfNull(originalHash);
-
-        if (Status != SignatureRequestStatus.Draft)
-            return Result.Failure(
-                new Error("Signature.Request.NotDraft", "Only a Draft request can attach its original hash.")
+    [Obsolete("Use AttachDocumentHash with an explicit DocumentId.")]
+    public Result AttachOriginalHash(DocumentHash originalHash) =>
+        _documents.Count == 1
+            ? AttachDocumentHash(_documents[0].Id, originalHash)
+            : Result.Failure(
+                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
             );
-
-        DocumentHashPre = originalHash;
-        Touch();
-        return Result.Success();
-    }
 
     /// <summary>Draft con documento, firmantes y al menos un campo de firma. Vive derivado del estado.</summary>
     public bool IsReadyToSend =>
-        Status == SignatureRequestStatus.Draft
-        && DocumentHashPre is not null
-        && _signers.Count >= MinSigners
-        && HasAnyRequiredSignatureField();
+        Status == SignatureRequestStatus.Draft && ValidateDocumentsForSend().IsSuccess && _signers.Count >= MinSigners;
 
     /// <summary>Transiciona Draft/Scheduled → InProgress validando documento, firmantes y campos.</summary>
     public Result Send(DateTime sentAtUtc)
@@ -795,23 +1059,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         )
             return Result.Failure(new Error("Signature.Request.NotEditable", "Only an editable request can be sent."));
 
-        if (DocumentHashPre is null)
-            return Result.Failure(
-                new Error("Signature.Request.NoDocumentHash", "The original document must be attached before sending.")
-            );
-
         if (_signers.Count < MinSigners)
             return Result.Failure(
                 new Error("Signature.Request.NoSigners", "The request must have at least one signer.")
             );
 
-        if (!HasAnyRequiredSignatureField())
-            return Result.Failure(
-                new Error(
-                    "Signature.Request.NoSignatureField",
-                    "The request must have at least one Signature or Initials field placed."
-                )
-            );
+        var documentValidation = ValidateDocumentsForSend();
+        if (documentValidation.IsFailure)
+            return documentValidation;
 
         Status = SignatureRequestStatus.InProgress;
         SentAtUtc = sentAtUtc;
@@ -847,23 +1102,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error("Signature.Request.ScheduleInPast", "The scheduled time must be in the future.")
             );
 
-        if (DocumentHashPre is null)
-            return Result.Failure(
-                new Error("Signature.Request.NoDocumentHash", "The original document must be attached before sending.")
-            );
-
         if (_signers.Count < MinSigners)
             return Result.Failure(
                 new Error("Signature.Request.NoSigners", "The request must have at least one signer.")
             );
 
-        if (!HasAnyRequiredSignatureField())
-            return Result.Failure(
-                new Error(
-                    "Signature.Request.NoSignatureField",
-                    "The request must have at least one Signature or Initials field placed."
-                )
-            );
+        var documentValidation = ValidateDocumentsForSend();
+        if (documentValidation.IsFailure)
+            return documentValidation;
 
         Status = SignatureRequestStatus.Scheduled;
         ScheduledSendAtUtc = scheduledSendAtUtc;
@@ -1277,6 +1523,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// </summary>
     public Result RecordSignerDocumentFirstView(
         Guid signerId,
+        Guid documentId,
         DateTime viewedAtUtc,
         string? clientIp,
         string? userAgent
@@ -1291,7 +1538,15 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
-        signer.RecordDocumentFirstView(viewedAtUtc, clientIp, userAgent);
+        if (FindDocumentOrNull(documentId) is null)
+            return Result.Failure(
+                new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
+            );
+
+        var recorded = signer.RecordDocumentFirstView(documentId, viewedAtUtc, clientIp, userAgent);
+        if (recorded.IsFailure)
+            return recorded;
+
         Touch();
         return Result.Success();
     }
@@ -1303,6 +1558,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// </summary>
     public Result CaptureSignerFieldValues(
         Guid signerId,
+        IReadOnlyList<Guid> documentIds,
         IReadOnlyList<SignerFieldValueInput> values,
         DateTime capturedAtUtc
     )
@@ -1316,12 +1572,48 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
-        var result = signer.CaptureFieldValues(values, capturedAtUtc);
+        var result = signer.CaptureFieldValues(documentIds, values, capturedAtUtc);
         if (result.IsFailure)
             return result;
 
         Touch();
         return Result.Success();
+    }
+
+    [Obsolete("Pass the selected DocumentIds explicitly for multi-document requests.")]
+    public Result CaptureSignerFieldValues(
+        Guid signerId,
+        IReadOnlyList<SignerFieldValueInput> values,
+        DateTime capturedAtUtc
+    )
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        return CaptureSignerFieldValues(
+            signerId,
+            signer.Fields.Select(field => field.DocumentId).Distinct().ToList(),
+            values,
+            capturedAtUtc
+        );
+    }
+
+    public bool IsDocumentReadyForSealing(Guid documentId)
+    {
+        if (Status is not (SignatureRequestStatus.InProgress or SignatureRequestStatus.Completed))
+            return false;
+
+        if (FindDocumentOrNull(documentId) is null)
+            return false;
+
+        var participants = _signers
+            .Where(signer => signer.Fields.Any(field => field.DocumentId == documentId))
+            .ToList();
+        return participants.Count > 0
+            && participants.All(signer =>
+                signer.DocumentCompletions.Any(completion => completion.DocumentId == documentId)
+            );
     }
 
     /// <summary>
@@ -1354,22 +1646,53 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         string? userAgent
     )
     {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        var completed = MarkSignerDocumentsCompleted(
+            signerId,
+            signer.Fields.Select(field => field.DocumentId).Distinct().ToList(),
+            signedAtUtc,
+            captureMethod,
+            typedName,
+            signatureImageFileId,
+            clientIp,
+            userAgent
+        );
+        return completed.IsSuccess ? Result.Success() : Result.Failure(completed.Error);
+    }
+
+    /// <summary>Completes only selected documents and keeps the signer active until all are complete.</summary>
+    public Result<IReadOnlyList<Guid>> MarkSignerDocumentsCompleted(
+        Guid signerId,
+        IReadOnlyList<Guid> documentIds,
+        DateTime signedAtUtc,
+        SignatureCaptureMethod captureMethod,
+        string? typedName,
+        Guid? signatureImageFileId,
+        string? clientIp,
+        string? userAgent
+    )
+    {
         if (Status != SignatureRequestStatus.InProgress)
-            return Result.Failure(
+            return Result.Failure<IReadOnlyList<Guid>>(
                 new Error("Signature.Request.NotInProgress", "Only an InProgress request can accept signatures.")
             );
 
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
-            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error("Signature.Request.SignerMissing", "Signer not found in this request.")
+            );
 
         if (RequiresConsent && !signer.HasAcceptedConsent)
-            return Result.Failure(
+            return Result.Failure<IReadOnlyList<Guid>>(
                 new Error("Signature.Request.ConsentRequired", "Signer must accept the consent before signing.")
             );
 
         if (RequiresPractitionerPin && !signer.IsPinVerified)
-            return Result.Failure(
+            return Result.Failure<IReadOnlyList<Guid>>(
                 new Error(
                     "Signature.Request.PinVerificationRequired",
                     "Signer must verify the practitioner PIN before signing."
@@ -1379,7 +1702,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         // OTP por firmante: espejo del gate del PIN, pero a nivel de cada firmante. Si tiene
         // un método requerido y no completó su challenge, no puede firmar.
         if (signer.RequiredVerificationMethod is { } requiredMethod && !signer.HasCompletedVerification(requiredMethod))
-            return Result.Failure(
+            return Result.Failure<IReadOnlyList<Guid>>(
                 new Error(
                     "Signature.Request.VerificationRequired",
                     "Signer must complete identity verification before signing."
@@ -1387,14 +1710,17 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             );
 
         if (RequiresSequentialSigning && !IsSignerNextInSequence(signer))
-            return Result.Failure(
+            return Result.Failure<IReadOnlyList<Guid>>(
                 new Error(
                     "Signature.Request.NotYourTurn",
                     "This request is sequential and it is not this signer's turn yet."
                 )
             );
 
-        var recordResult = signer.RecordSigned(
+        var participatingDocumentIds = signer.Fields.Select(field => field.DocumentId).Distinct().ToList();
+        var recordResult = signer.CompleteDocuments(
+            documentIds,
+            participatingDocumentIds,
             signedAtUtc,
             captureMethod,
             typedName,
@@ -1403,18 +1729,21 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             userAgent
         );
         if (recordResult.IsFailure)
-            return recordResult;
+            return Result.Failure<IReadOnlyList<Guid>>(recordResult.Error);
+
+        foreach (var documentId in recordResult.Value)
+            AddDomainEvent(new SignerCompletedDocument(signer.Id, documentId, signedAtUtc));
 
         // F7 — engancha la copia parcial una vez. El consumer la lee después via query y la emite.
         if (SendPartialCopyOnEachSignature && PartialCopyAudience.Includes(signer.Id))
-            signer.MarkPartialCopyRequested(signedAtUtc);
+            signer.MarkDocumentPartialCopiesRequested(recordResult.Value, signedAtUtc);
 
         if (AllSignersHaveSigned())
             TransitionToCompleted(signedAtUtc);
         else
             Touch();
 
-        return Result.Success();
+        return Result.Success<IReadOnlyList<Guid>>(recordResult.Value);
     }
 
     public Result MarkSignerRejected(
@@ -1552,6 +1881,17 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         return Result.Success();
     }
 
+    public Result RecordDocumentPartialCopySent(Guid signerId, Guid documentId, Guid fileId, DateTime sentAtUtc)
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        signer.MarkDocumentPartialCopySent(documentId, fileId, sentAtUtc);
+        Touch();
+        return Result.Success();
+    }
+
     /// <summary>F7 — el consumer registra el motivo de fallo al entregar la copia parcial.</summary>
     public Result RecordPartialCopyFailed(Guid signerId, string reason)
     {
@@ -1560,6 +1900,17 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
         signer.MarkPartialCopyFailed(reason);
+        Touch();
+        return Result.Success();
+    }
+
+    public Result RecordDocumentPartialCopyFailed(Guid signerId, Guid documentId, string reason)
+    {
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        signer.MarkDocumentPartialCopyFailed(documentId, reason);
         Touch();
         return Result.Success();
     }
@@ -1617,58 +1968,28 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// mismo <paramref name="sealedFileId"/> ya está registrado, devuelve éxito sin
     /// duplicar cambios.
     /// </summary>
+    [Obsolete("Use MarkDocumentSealed with an explicit DocumentId, then RecordCertificate.")]
     public Result MarkSealed(Guid sealedFileId, DocumentHash sealedHash, Guid? certificateFileId)
     {
-        ArgumentNullException.ThrowIfNull(sealedHash);
-
-        if (Status != SignatureRequestStatus.Completed)
+        if (_documents.Count != 1)
             return Result.Failure(
-                new Error(
-                    "Signature.Request.NotCompleted",
-                    "Sealed document can only be attached to a completed request."
-                )
+                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
             );
 
-        if (sealedFileId == Guid.Empty)
-            return Result.Failure(new Error("Signature.Request.SealedFile", "SealedFileId is required."));
-
-        if (SealedFileId == sealedFileId && CertificateFileId == certificateFileId)
-            return Result.Success();
-
-        SealedFileId = sealedFileId;
-        DocumentHashPost = sealedHash;
-        if (certificateFileId is not null)
-        {
-            if (certificateFileId == Guid.Empty)
-                return Result.Failure(
-                    new Error("Signature.Request.CertificateFile", "CertificateFileId cannot be an empty Guid.")
-                );
-            CertificateFileId = certificateFileId;
-        }
-
-        Touch();
-        return Result.Success();
+        var sealResult = MarkDocumentSealed(_documents[0].Id, sealedFileId, sealedHash, DateTime.UtcNow);
+        if (sealResult.IsFailure || certificateFileId is null)
+            return sealResult;
+        return RecordCertificate(certificateFileId.Value);
     }
 
+    [Obsolete("Use MarkDocumentSealed with an explicit DocumentId.")]
     public Result RecordSealedDocument(Guid sealedFileId, DocumentHash sealedHash)
     {
-        ArgumentNullException.ThrowIfNull(sealedHash);
-
-        if (Status != SignatureRequestStatus.Completed)
-            return Result.Failure(
-                new Error(
-                    "Signature.Request.NotCompleted",
-                    "Sealed document can only be attached to a completed request."
-                )
+        return _documents.Count == 1
+            ? MarkDocumentSealed(_documents[0].Id, sealedFileId, sealedHash, DateTime.UtcNow)
+            : Result.Failure(
+                new Error("Signature.Request.DocumentRequired", "DocumentId is required for multi-document requests.")
             );
-
-        if (sealedFileId == Guid.Empty)
-            return Result.Failure(new Error("Signature.Request.SealedFile", "SealedFileId is required."));
-
-        SealedFileId = sealedFileId;
-        DocumentHashPost = sealedHash;
-        Touch();
-        return Result.Success();
     }
 
     public Result RecordCertificate(Guid certificateFileId)
@@ -1680,6 +2001,14 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
         if (certificateFileId == Guid.Empty)
             return Result.Failure(new Error("Signature.Request.CertificateFile", "CertificateFileId is required."));
+
+        if (!AllDocumentsSealed())
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.DocumentsNotSealed",
+                    "The certificate can only be attached after every document has been sealed."
+                )
+            );
 
         CertificateFileId = certificateFileId;
         Touch();
@@ -1695,7 +2024,6 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         Guid createdByUserId,
         string title,
         string? description,
-        Guid originalFileId,
         int tokenExpirationHours
     )
     {
@@ -1724,9 +2052,6 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                     $"Description cannot exceed {MaxDescriptionLength} characters."
                 )
             );
-
-        if (originalFileId == Guid.Empty)
-            return Result.Failure(new Error("Signature.Request.OriginalFile", "OriginalFileId is required."));
 
         if (tokenExpirationHours is < 1 or > 720)
             return Result.Failure(
@@ -1796,8 +2121,56 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
 
     private Signer? FindSignerOrNull(Guid signerId) => _signers.Find(s => s.Id == signerId);
 
-    private bool HasAnyRequiredSignatureField() =>
-        _signers.Any(s => s.Fields.Any(f => f.Kind is SignatureFieldKind.Signature or SignatureFieldKind.Initials));
+    private Result ValidateDocumentsForSend()
+    {
+        if (_documents.Count == 0)
+            return Result.Failure(
+                new Error("Signature.Request.NoDocuments", "The request must have at least one document.")
+            );
+        if (_documents.Any(document => document.DocumentHashPre is null))
+            return Result.Failure(
+                new Error("Signature.Request.NoDocumentHash", "Every document must be attached before sending.")
+            );
+        if (
+            _documents.Any(document =>
+                !_signers.Any(signer =>
+                    signer.Fields.Any(field =>
+                        field.DocumentId == document.Id
+                        && field.Kind is SignatureFieldKind.Signature or SignatureFieldKind.Initials
+                    )
+                )
+            )
+        )
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.NoSignatureField",
+                    "Every document must have at least one Signature or Initials field."
+                )
+            );
+        if (_signers.Any(signer => signer.Fields.Count == 0))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.SignerWithoutDocument",
+                    "Every signer must participate in at least one document."
+                )
+            );
+        return Result.Success();
+    }
+
+    private int NextDocumentOrder() => _documents.Count == 0 ? 1 : _documents.Max(document => document.Order) + 1;
+
+    private RequestDocument? FindDocumentOrNull(Guid documentId) =>
+        _documents.Find(document => document.Id == documentId);
+
+    private void NormalizeDocumentOrder()
+    {
+        var ordered = _documents.OrderBy(document => document.Order).ToList();
+        for (var index = 0; index < ordered.Count; index++)
+            ordered[index].Reorder(index + 1);
+
+        _documents.Clear();
+        _documents.AddRange(ordered);
+    }
 
     private bool AllSignersHaveSigned() => _signers.Count > 0 && _signers.All(s => s.Status == SignerStatus.Signed);
 
@@ -1808,7 +2181,10 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     /// </summary>
     private bool IsSignerNextInSequence(Signer signer)
     {
-        var next = _signers.Where(s => s.Status == SignerStatus.Pending).OrderBy(s => s.Order).FirstOrDefault();
+        var next = _signers
+            .Where(candidate => candidate.Status is SignerStatus.Pending or SignerStatus.InProgress)
+            .OrderBy(candidate => candidate.Order)
+            .FirstOrDefault();
         return next is not null && next.Id == signer.Id;
     }
 
