@@ -22,12 +22,13 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Channels = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CampaignTemplates", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "CampaignTemplateContents",
@@ -39,7 +40,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Channel = table.Column<int>(type: "int", nullable: false),
                     Subject = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
                     Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    Body = table.Column<string>(type: "nvarchar(max)", maxLength: 500000, nullable: false)
+                    Body = table.Column<string>(type: "nvarchar(max)", maxLength: 500000, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -49,29 +50,31 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         column: x => x.TemplateId,
                         principalTable: "CampaignTemplates",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CampaignTemplateContents_TemplateId_Channel",
                 table: "CampaignTemplateContents",
                 columns: new[] { "TemplateId", "Channel" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CampaignTemplates_TenantId_CreatedAtUtc",
                 table: "CampaignTemplates",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CampaignTemplateContents");
+            migrationBuilder.DropTable(name: "CampaignTemplateContents");
 
-            migrationBuilder.DropTable(
-                name: "CampaignTemplates");
+            migrationBuilder.DropTable(name: "CampaignTemplates");
         }
     }
 }

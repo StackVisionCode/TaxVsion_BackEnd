@@ -12,6 +12,7 @@ public sealed class SignatureTemplateRepository(SignatureDbContext db) : ISignat
     public Task<SignatureTemplate?> GetByIdAsync(Guid tenantId, Guid templateId, CancellationToken ct = default) =>
         db
             .SignatureTemplates.IgnoreQueryFilters()
+            .Include(t => t.Documents)
             .Include(t => t.Slots)
             .Include(t => t.Fields)
             .Include(t => t.PreparerFields)

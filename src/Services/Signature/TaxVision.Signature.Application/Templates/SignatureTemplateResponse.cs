@@ -14,6 +14,7 @@ public sealed record TemplateSlotResponse(
 
 public sealed record TemplateFieldResponse(
     Guid Id,
+    Guid TemplateDocumentId,
     int SlotOrder,
     SignatureFieldKind Kind,
     int Page,
@@ -28,6 +29,7 @@ public sealed record TemplateFieldResponse(
 /// <summary>Campo del preparador predefinido en la plantilla (sin slot). Se hereda al instanciar.</summary>
 public sealed record TemplatePreparerFieldResponse(
     Guid Id,
+    Guid TemplateDocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -36,6 +38,8 @@ public sealed record TemplatePreparerFieldResponse(
     double Height,
     string? Label
 );
+
+public sealed record TemplateDocumentResponse(Guid Id, int Order, Guid FileId, string Title);
 
 public sealed record SignatureTemplateResponse(
     Guid Id,
@@ -60,6 +64,7 @@ public sealed record SignatureTemplateResponse(
     bool ExpirationEnabled,
     bool RequiresPractitionerPin,
     Guid? BaseDocumentFileId,
+    IReadOnlyList<TemplateDocumentResponse> BaseDocuments,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     DateTime? PublishedAtUtc,
@@ -92,6 +97,15 @@ public sealed record SignatureTemplateResponse(
             template.ExpirationEnabled,
             template.RequiresPractitionerPin,
             template.BaseDocumentFileId,
+            template
+                .Documents.OrderBy(document => document.Order)
+                .Select(document => new TemplateDocumentResponse(
+                    document.Id,
+                    document.Order,
+                    document.FileId,
+                    document.Title
+                ))
+                .ToList(),
             template.CreatedAtUtc,
             template.UpdatedAtUtc,
             template.PublishedAtUtc,
@@ -108,6 +122,7 @@ public sealed record SignatureTemplateResponse(
             template
                 .Fields.Select(f => new TemplateFieldResponse(
                     f.Id,
+                    f.TemplateDocumentId,
                     f.SlotOrder,
                     f.Kind,
                     f.Position.Page,
@@ -122,6 +137,7 @@ public sealed record SignatureTemplateResponse(
             template
                 .PreparerFields.Select(f => new TemplatePreparerFieldResponse(
                     f.Id,
+                    f.TemplateDocumentId,
                     f.Kind,
                     f.Position.Page,
                     f.Position.X,

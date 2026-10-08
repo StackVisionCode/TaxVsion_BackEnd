@@ -25,7 +25,7 @@ public static class PlacePreparerFieldHandler
                 new Error("Signature.Request.NotFound", "The signature request does not exist for this tenant.")
             );
 
-        var placement = request.PlacePreparerField(cmd.Kind, positionResult.Value, cmd.Label);
+        var placement = request.PlacePreparerField(cmd.DocumentId, cmd.Kind, positionResult.Value, cmd.Label);
         if (placement.IsFailure)
             return Result.Failure<PreparerFieldResponse>(placement.Error);
 
@@ -35,6 +35,7 @@ public static class PlacePreparerFieldHandler
         return Result.Success(
             new PreparerFieldResponse(
                 field.Id,
+                field.DocumentId,
                 field.Kind,
                 field.Position.Page,
                 field.Position.X,

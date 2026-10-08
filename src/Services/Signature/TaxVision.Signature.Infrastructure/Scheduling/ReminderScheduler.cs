@@ -98,7 +98,7 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
     // ------------------------------------------------------------------
 
     private static IEnumerable<Signer> PendingSigners(SignatureRequest request) =>
-        request.Signers.Where(s => s.Status == SignerStatus.Pending);
+        request.Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress);
 
     private static SignatureRequestReminderDueIntegrationEvent BuildReminderEvent(
         SignatureRequest request,

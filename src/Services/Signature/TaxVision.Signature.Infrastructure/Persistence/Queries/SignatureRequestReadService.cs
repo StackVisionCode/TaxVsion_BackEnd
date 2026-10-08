@@ -77,7 +77,7 @@ internal sealed class SignatureRequestReadService(
                 r.Title,
                 r.Category,
                 r.Status,
-                r.OriginalFileId,
+                r.Documents.OrderBy(document => document.Order).Select(document => document.OriginalFileId).First(),
                 r.Signers.Count,
                 r.ExpiresAtUtc,
                 r.CreatedAtUtc,

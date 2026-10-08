@@ -48,7 +48,6 @@ public static class ViewPublicSignerHandler
             Category: request.Category,
             RequestStatus: request.Status,
             SignerStatus: signer.Status,
-            OriginalFileId: request.OriginalFileId,
             RequiresConsent: request.RequiresConsent,
             HasAcceptedConsent: signer.HasAcceptedConsent,
             RequiresSequentialSigning: request.RequiresSequentialSigning,
@@ -63,6 +62,10 @@ public static class ViewPublicSignerHandler
             RequiredVerificationMethod: signer.RequiredVerificationMethod,
             IsVerificationCompleted: signer.RequiredVerificationMethod is { } method
                 && signer.HasCompletedVerification(method),
+            Documents: request
+                .Documents.OrderBy(document => document.Order)
+                .Select(document => MapDocument(document, signer))
+                .ToList(),
             Fields: signer.Fields.Select(MapField).ToList(),
             TenantSubDomain: tenantSubDomain,
             // F7 — true si la configuración del request incluye a este signer en la audiencia.
@@ -75,7 +78,9 @@ public static class ViewPublicSignerHandler
         if (!request.RequiresSequentialSigning)
             return true;
         var next = request
-            .Signers.Where(s => s.Status == Domain.Requests.SignerStatus.Pending)
+            .Signers.Where(s =>
+                s.Status is Domain.Requests.SignerStatus.Pending or Domain.Requests.SignerStatus.InProgress
+            )
             .OrderBy(s => s.Order)
             .FirstOrDefault();
         return next?.Id == signer.Id;
@@ -84,6 +89,7 @@ public static class ViewPublicSignerHandler
     private static PublicSignerFieldView MapField(SignatureField field) =>
         new(
             field.Id,
+            field.DocumentId,
             field.Kind,
             field.Position.Page,
             field.Position.X,
@@ -93,4 +99,19 @@ public static class ViewPublicSignerHandler
             field.Label,
             field.IsRequired
         );
+
+    private static PublicSignerDocumentView MapDocument(RequestDocument document, Signer signer)
+    {
+        var hasFields = signer.Fields.Any(field => field.DocumentId == document.Id);
+        return new PublicSignerDocumentView(
+            document.Id,
+            document.Title,
+            document.Order,
+            hasFields,
+            signer.DocumentViews.FirstOrDefault(view => view.DocumentId == document.Id)?.FirstViewedAtUtc,
+            signer
+                .DocumentCompletions.FirstOrDefault(completion => completion.DocumentId == document.Id)
+                ?.CompletedAtUtc
+        );
+    }
 }

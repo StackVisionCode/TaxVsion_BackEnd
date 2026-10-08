@@ -24,12 +24,28 @@ public static class PlaceTemplateFieldHandler
                 new Error("Signature.Template.NotFound", "The signature template does not exist for this tenant.")
             );
 
-        var placement = template.PlaceField(cmd.SlotOrder, cmd.Kind, positionResult.Value, cmd.Label, cmd.IsRequired);
+        var documentId = cmd.TemplateDocumentId ?? template.Documents.SingleOrDefault()?.Id;
+        if (documentId is null)
+            return Result.Failure<TemplateFieldCreatedResponse>(
+                new Error(
+                    "Signature.Template.DocumentRequired",
+                    "TemplateDocumentId is required for a multi-document template."
+                )
+            );
+
+        var placement = template.PlaceField(
+            documentId.Value,
+            cmd.SlotOrder,
+            cmd.Kind,
+            positionResult.Value,
+            cmd.Label,
+            cmd.IsRequired
+        );
         if (placement.IsFailure)
             return Result.Failure<TemplateFieldCreatedResponse>(placement.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         var field = placement.Value;
-        return Result.Success(new TemplateFieldCreatedResponse(field.Id, field.SlotOrder));
+        return Result.Success(new TemplateFieldCreatedResponse(field.Id, field.TemplateDocumentId, field.SlotOrder));
     }
 }

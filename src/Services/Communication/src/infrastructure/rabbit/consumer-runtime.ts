@@ -115,8 +115,10 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'signature.request.canceled.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestReminderDueIntegrationEvent':
     'signature.request.reminder_due.v1',
-  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSealedIntegrationEvent':
-    'signature.request.sealed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureDocumentSealedIntegrationEvent':
+    'signature.document.sealed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSealingCompletedIntegrationEvent':
+    'signature.request.sealing_completed.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationChallengeIssuedIntegrationEvent':
     'signature.signer.verification.challenge_issued.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerRejectedIntegrationEvent':

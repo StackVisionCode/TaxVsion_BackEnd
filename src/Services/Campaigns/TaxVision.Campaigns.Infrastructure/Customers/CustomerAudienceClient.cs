@@ -70,7 +70,12 @@ public sealed class CustomerAudienceClient(
                     break;
 
                 members.AddRange(
-                    body.Items.Select(i => new CustomerAudienceMember(i.Id, i.PrimaryEmail, i.PrimaryPhone, i.DisplayName))
+                    body.Items.Select(i => new CustomerAudienceMember(
+                        i.Id,
+                        i.PrimaryEmail,
+                        i.PrimaryPhone,
+                        i.DisplayName
+                    ))
                 );
 
                 if (page >= body.TotalPagesSafe(PageSize))

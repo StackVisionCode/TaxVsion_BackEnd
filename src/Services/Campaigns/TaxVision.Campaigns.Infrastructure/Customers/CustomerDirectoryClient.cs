@@ -31,10 +31,7 @@ public sealed class CustomerDirectoryClient(HttpClient http, ILogger<CustomerDir
 
         if (string.IsNullOrWhiteSpace(callerBearerToken))
         {
-            logger.LogWarning(
-                "No caller bearer token; cannot provision customer for tenant {TenantId}.",
-                tenantId
-            );
+            logger.LogWarning("No caller bearer token; cannot provision customer for tenant {TenantId}.", tenantId);
             return new CustomerProvisionResult(CustomerProvisionOutcome.Unavailable);
         }
 

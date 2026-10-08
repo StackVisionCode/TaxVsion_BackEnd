@@ -27,7 +27,7 @@ public static class AttachSignatureImageHandler
             return Result.Failure<Guid>(resolution.Error);
 
         var (request, signer) = (resolution.Value.Request, resolution.Value.Signer);
-        if (signer.Status != SignerStatus.Pending)
+        if (signer.Status is not (SignerStatus.Pending or SignerStatus.InProgress))
             return Result.Failure<Guid>(
                 new Error("Signature.Image.NotPending", "This signer can no longer submit a signature.")
             );

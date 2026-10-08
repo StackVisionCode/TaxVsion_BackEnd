@@ -6,6 +6,7 @@ namespace TaxVision.Signature.Application.Requests.Commands.PreparerFields;
 public sealed record PlacePreparerFieldCommand(
     Guid TenantId,
     Guid SignatureRequestId,
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,

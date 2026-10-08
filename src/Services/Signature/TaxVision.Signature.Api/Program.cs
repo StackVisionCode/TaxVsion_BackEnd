@@ -256,7 +256,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignerPartialCopyReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureRequestSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureDocumentsReadyForSealingIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureDocumentSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureRequestSealingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureCertificateReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");

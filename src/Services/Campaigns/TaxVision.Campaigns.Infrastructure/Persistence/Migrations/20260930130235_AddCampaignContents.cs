@@ -21,7 +21,7 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     Channel = table.Column<int>(type: "int", nullable: false),
                     Subject = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
                     Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    Body = table.Column<string>(type: "nvarchar(max)", maxLength: 20000, nullable: false)
+                    Body = table.Column<string>(type: "nvarchar(max)", maxLength: 20000, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -31,21 +31,23 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         column: x => x.CampaignId,
                         principalTable: "Campaigns",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CampaignContents_CampaignId_Channel",
                 table: "CampaignContents",
                 columns: new[] { "CampaignId", "Channel" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CampaignContents");
+            migrationBuilder.DropTable(name: "CampaignContents");
         }
     }
 }

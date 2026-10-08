@@ -27,9 +27,19 @@ public static class SignerPartialCopyReadyConsumer
         using (correlation.Push(correlationId))
         {
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var downloadLink = string.IsNullOrEmpty(evt.ShareToken)
-                ? null
-                : TenantEmailLinks.PublicShareDownloadLink(tenantHost, portal.Value, evt.ShareToken, evt.SignerEmail);
+            var downloadLinks = evt
+                .Files.Where(file => !string.IsNullOrEmpty(file.ShareToken))
+                .Select(file => new Dictionary<string, object?>
+                {
+                    ["title"] = file.Title,
+                    ["url"] = TenantEmailLinks.PublicShareDownloadLink(
+                        tenantHost,
+                        portal.Value,
+                        file.ShareToken!,
+                        evt.SignerEmail
+                    ),
+                })
+                .ToList();
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -38,9 +48,9 @@ public static class SignerPartialCopyReadyConsumer
                     new Dictionary<string, object?>
                     {
                         ["full_name"] = evt.SignerFullName,
-                        ["document_title"] = evt.DocumentTitle,
                         ["signed_at"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"),
-                        ["download_link"] = downloadLink,
+                        ["download_links"] = downloadLinks,
+                        ["document_count"] = evt.Files.Count,
                         ["language"] = evt.Language,
                         // F7 — permite al template adaptar copy cuando el request tiene un único firmante.
                         ["total_signers"] = evt.TotalSignersCount,

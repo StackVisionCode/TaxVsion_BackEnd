@@ -11,7 +11,8 @@ public sealed record SignatureRequestCreatedIntegrationEvent : IntegrationEvent
     public required Guid CreatedByUserId { get; init; }
     public required string Title { get; init; }
     public required string Category { get; init; } // SignatureCategory.ToString()
-    public required Guid OriginalFileId { get; init; }
+    public required IReadOnlyList<Guid> OriginalFileIds { get; init; }
+    public required int DocumentCount { get; init; }
     public required int? TokenExpirationHours { get; init; }
     public required bool RequiresSequentialSigning { get; init; }
     public required int SignerCount { get; init; }

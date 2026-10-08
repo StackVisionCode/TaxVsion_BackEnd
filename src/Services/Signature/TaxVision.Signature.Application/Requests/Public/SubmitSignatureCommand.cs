@@ -20,7 +20,8 @@ public sealed record SubmitSignatureCommand(
     Guid? SignatureImageFileId,
     string? ClientIp,
     string? UserAgent,
-    IReadOnlyList<SubmitFieldValueDto>? FieldValues = null
+    IReadOnlyList<SubmitFieldValueDto>? FieldValues = null,
+    IReadOnlyList<Guid>? DocumentIds = null
 );
 
 /// <summary>Valor que el firmante escribió en un campo de texto del documento (P4).</summary>

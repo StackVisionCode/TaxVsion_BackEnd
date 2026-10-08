@@ -34,7 +34,8 @@ public static class CampaignPushDispatchConsumer
         // Personalización por destinatario: {{first_name}}/{{full_name}}/… → datos del cliente.
         var renderedTitle = CampaignPersonalization.Render(evt.Subject, evt.RecipientName, evt.Email, evt.PhoneE164);
         var title = string.IsNullOrWhiteSpace(renderedTitle) ? "TaxProffice" : renderedTitle!;
-        var body = CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
+        var body =
+            CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
 
         var result = await dispatcher.SendPushAsync(
             evt.TenantId,

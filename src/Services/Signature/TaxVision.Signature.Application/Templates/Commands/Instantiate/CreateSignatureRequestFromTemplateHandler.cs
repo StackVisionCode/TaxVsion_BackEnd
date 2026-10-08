@@ -46,13 +46,9 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (template.Status != SignatureTemplateStatus.Published)
             return Failure("Signature.Template.NotPublished", "Only published templates can be instantiated.");
 
-        // P7: el documento viene del caller o, si no, del documento base de la plantilla.
-        var originalFileId = ResolveOriginalFileId(cmd, template);
-        if (originalFileId is null)
-            return Failure(
-                "Signature.Template.NoDocument",
-                "No document was provided and the template has no base document to reuse."
-            );
+        var effectiveDocuments = ResolveEffectiveDocuments(cmd, template);
+        if (effectiveDocuments.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(effectiveDocuments.Error);
 
         var bindingValidation = ValidateBindings(cmd.SlotBindings, template);
         if (bindingValidation.IsFailure)
@@ -62,12 +58,16 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (signerVOs.IsFailure)
             return Result.Failure<SignatureRequestResponse>(signerVOs.Error);
 
-        var requestResult = CreateDraft(cmd, template, originalFileId.Value);
+        var requestResult = CreateDraft(cmd, template);
         if (requestResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(requestResult.Error);
 
         var request = requestResult.Value;
-        var populated = PopulateSignersAndFields(request, template, signerVOs.Value);
+        var documentIds = AddDocuments(request, effectiveDocuments.Value);
+        if (documentIds.IsFailure)
+            return Result.Failure<SignatureRequestResponse>(documentIds.Error);
+
+        var populated = PopulateSignersAndFields(request, template, signerVOs.Value, documentIds.Value);
         if (populated.IsFailure)
             return Result.Failure<SignatureRequestResponse>(populated.Error);
 
@@ -76,7 +76,14 @@ public static class CreateSignatureRequestFromTemplateHandler
         if (audienceResult.IsFailure)
             return Result.Failure<SignatureRequestResponse>(audienceResult.Error);
 
-        var preparer = await InheritPreparerFieldsAsync(request, template, cmd, effectiveResolver, ct);
+        var preparer = await InheritPreparerFieldsAsync(
+            request,
+            template,
+            cmd,
+            documentIds.Value,
+            effectiveResolver,
+            ct
+        );
         if (preparer.IsFailure)
             return Result.Failure<SignatureRequestResponse>(preparer.Error);
 
@@ -89,7 +96,7 @@ public static class CreateSignatureRequestFromTemplateHandler
                 return Result.Failure<SignatureRequestResponse>(pinResult.Error);
         }
 
-        await TryPromoteToReadyIfFileAvailable(request, cmd.TenantId, originalFileId.Value, fileRepository, ct);
+        await TryAttachHashesForAvailableFiles(request, fileRepository, ct);
         await requestRepository.AddAsync(request, ct);
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
@@ -107,6 +114,8 @@ public static class CreateSignatureRequestFromTemplateHandler
         Domain.Requests.SignerVerificationMethod? RequiredVerificationMethod,
         SignerPhoneNumber? PhoneNumber
     );
+
+    private sealed record EffectiveDocument(Guid TemplateDocumentId, Guid FileId, string Title);
 
     // ============== Fase 2: validar bindings ==============
 
@@ -206,15 +215,67 @@ public static class CreateSignatureRequestFromTemplateHandler
 
     // ============== Fase 4: factory del aggregate ==============
 
-    /// <summary>Documento efectivo: override del caller si vino, si no el base de la plantilla.</summary>
-    private static Guid? ResolveOriginalFileId(
+    private static Result<IReadOnlyList<EffectiveDocument>> ResolveEffectiveDocuments(
         CreateSignatureRequestFromTemplateCommand cmd,
         SignatureTemplate template
     )
     {
-        if (cmd.OriginalFileId is { } provided && provided != Guid.Empty)
-            return provided;
-        return template.BaseDocumentFileId is { } baseId && baseId != Guid.Empty ? baseId : null;
+        var templateDocuments = template.Documents.OrderBy(document => document.Order).ToList();
+        if (templateDocuments.Count == 0)
+            return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                new Error("Signature.Template.NoDocument", "The template has no document to instantiate.")
+            );
+
+        var overrides = cmd.Documents ?? [];
+        if (cmd.OriginalFileId is not null && overrides.Count > 0)
+            return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                new Error(
+                    "Signature.Template.DocumentOverrideConflict",
+                    "Use either OriginalFileId for a legacy single-document template or Documents, not both."
+                )
+            );
+        if (cmd.OriginalFileId is not null && templateDocuments.Count != 1)
+            return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                new Error(
+                    "Signature.Template.DocumentOverrideAmbiguous",
+                    "OriginalFileId can only override a single-document template."
+                )
+            );
+        if (overrides.GroupBy(item => item.TemplateDocumentId).Any(group => group.Count() > 1))
+            return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                new Error(
+                    "Signature.Template.DocumentOverrideDuplicate",
+                    "Each template document can be overridden once."
+                )
+            );
+
+        var templateDocumentIds = templateDocuments.Select(document => document.Id).ToHashSet();
+        if (overrides.Any(item => !templateDocumentIds.Contains(item.TemplateDocumentId)))
+            return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                new Error(
+                    "Signature.Template.DocumentOverrideUnknown",
+                    "A document override references an unknown template document."
+                )
+            );
+
+        var overridesByDocument = overrides.ToDictionary(item => item.TemplateDocumentId);
+        var result = new List<EffectiveDocument>(templateDocuments.Count);
+        foreach (var document in templateDocuments)
+        {
+            overridesByDocument.TryGetValue(document.Id, out var documentOverride);
+            var fileId = cmd.OriginalFileId ?? documentOverride?.OriginalFileId ?? document.FileId;
+            if (fileId == Guid.Empty)
+                return Result.Failure<IReadOnlyList<EffectiveDocument>>(
+                    new Error("Signature.Template.DocumentFile", "Every instantiated document requires a file.")
+                );
+
+            var title = string.IsNullOrWhiteSpace(documentOverride?.Title)
+                ? document.Title
+                : documentOverride.Title.Trim();
+            result.Add(new EffectiveDocument(document.Id, fileId, title));
+        }
+
+        return Result.Success<IReadOnlyList<EffectiveDocument>>(result);
     }
 
     /// <summary>
@@ -225,8 +286,7 @@ public static class CreateSignatureRequestFromTemplateHandler
     /// </summary>
     private static Result<SignatureRequest> CreateDraft(
         CreateSignatureRequestFromTemplateCommand cmd,
-        SignatureTemplate template,
-        Guid originalFileId
+        SignatureTemplate template
     )
     {
         // F7 — audiencia Specific se fija DESPUÉS (ApplySpecificAudienceIfNeeded) cuando los signerIds
@@ -240,7 +300,6 @@ public static class CreateSignatureRequestFromTemplateHandler
             title: template.Title,
             description: cmd.DescriptionOverride ?? template.Description,
             category: template.Category,
-            originalFileId: originalFileId,
             tokenExpirationHours: template.DefaultTokenExpirationHours,
             requiresSequentialSigning: template.RequiresSequentialSigning,
             requiresConsent: template.RequiresConsent,
@@ -255,12 +314,30 @@ public static class CreateSignatureRequestFromTemplateHandler
         );
     }
 
+    private static Result<IReadOnlyDictionary<Guid, Guid>> AddDocuments(
+        SignatureRequest request,
+        IReadOnlyList<EffectiveDocument> documents
+    )
+    {
+        var requestDocumentIdByTemplateDocumentId = new Dictionary<Guid, Guid>(documents.Count);
+        foreach (var document in documents)
+        {
+            var addResult = request.AddDocument(document.FileId, document.Title);
+            if (addResult.IsFailure)
+                return Result.Failure<IReadOnlyDictionary<Guid, Guid>>(addResult.Error);
+            requestDocumentIdByTemplateDocumentId[document.TemplateDocumentId] = addResult.Value.Id;
+        }
+
+        return Result.Success<IReadOnlyDictionary<Guid, Guid>>(requestDocumentIdByTemplateDocumentId);
+    }
+
     // ============== Fase 5: agregar signers y campos ==============
 
     private static Result<IReadOnlyDictionary<int, Guid>> PopulateSignersAndFields(
         SignatureRequest request,
         SignatureTemplate template,
-        IReadOnlyList<SignerValueObjects> signers
+        IReadOnlyList<SignerValueObjects> signers,
+        IReadOnlyDictionary<Guid, Guid> documentIds
     )
     {
         var signerIdBySlotOrder = new Dictionary<int, Guid>(signers.Count);
@@ -281,7 +358,21 @@ public static class CreateSignatureRequestFromTemplateHandler
         foreach (var field in template.Fields)
         {
             var signerId = signerIdBySlotOrder[field.SlotOrder];
-            var placeResult = request.PlaceField(signerId, field.Kind, field.Position, field.Label, field.IsRequired);
+            if (!documentIds.TryGetValue(field.TemplateDocumentId, out var documentId))
+                return Result.Failure<IReadOnlyDictionary<int, Guid>>(
+                    new Error(
+                        "Signature.Template.FieldDocumentMissing",
+                        "A template field references a missing document."
+                    )
+                );
+            var placeResult = request.PlaceField(
+                signerId,
+                documentId,
+                field.Kind,
+                field.Position,
+                field.Label,
+                field.IsRequired
+            );
             if (placeResult.IsFailure)
                 return Result.Failure<IReadOnlyDictionary<int, Guid>>(placeResult.Error);
         }
@@ -332,6 +423,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         SignatureRequest request,
         SignatureTemplate template,
         CreateSignatureRequestFromTemplateCommand cmd,
+        IReadOnlyDictionary<Guid, Guid> documentIds,
         IEffectiveSignatureResolver effectiveResolver,
         CancellationToken ct
     )
@@ -341,7 +433,14 @@ public static class CreateSignatureRequestFromTemplateHandler
 
         foreach (var field in template.PreparerFields)
         {
-            var placed = request.PlacePreparerField(field.Kind, field.Position, field.Label);
+            if (!documentIds.TryGetValue(field.TemplateDocumentId, out var documentId))
+                return Result.Failure(
+                    new Error(
+                        "Signature.Template.PreparerFieldDocumentMissing",
+                        "A template preparer field references a missing document."
+                    )
+                );
+            var placed = request.PlacePreparerField(documentId, field.Kind, field.Position, field.Label);
             if (placed.IsFailure)
                 return placed;
         }
@@ -362,25 +461,22 @@ public static class CreateSignatureRequestFromTemplateHandler
     // Reutiliza la misma lógica que la creación directa: si el archivo ya está
     // disponible se promueve a Ready; caso contrario espera el FileAvailable consumer.
 
-    private static async Task TryPromoteToReadyIfFileAvailable(
+    private static async Task TryAttachHashesForAvailableFiles(
         SignatureRequest request,
-        Guid tenantId,
-        Guid originalFileId,
         IFileMetadataRefRepository fileRepository,
         CancellationToken ct
     )
     {
-        var file = await fileRepository.GetByFileIdAsync(tenantId, originalFileId, ct);
-        if (file is null || file.Status != FileScanStatus.Available)
-            return;
-        if (string.IsNullOrEmpty(file.ChecksumSha256))
-            return;
+        foreach (var document in request.Documents)
+        {
+            var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
+            if (file is null || file.Status != FileScanStatus.Available || string.IsNullOrEmpty(file.ChecksumSha256))
+                continue;
 
-        var hashResult = DocumentHash.Create(file.ChecksumSha256);
-        if (hashResult.IsFailure)
-            return;
-
-        request.AttachOriginalHash(hashResult.Value);
+            var hashResult = DocumentHash.Create(file.ChecksumSha256);
+            if (hashResult.IsSuccess)
+                request.AttachDocumentHash(document.Id, hashResult.Value);
+        }
     }
 
     private static Task PublishCreatedEventAsync(
@@ -398,7 +494,8 @@ public static class CreateSignatureRequestFromTemplateHandler
                     CreatedByUserId = request.CreatedByUserId,
                     Title = request.Title,
                     Category = request.Category.ToString(),
-                    OriginalFileId = request.OriginalFileId,
+                    OriginalFileIds = request.Documents.Select(document => document.OriginalFileId).ToList(),
+                    DocumentCount = request.Documents.Count,
                     TokenExpirationHours = request.TokenExpirationHours,
                     RequiresSequentialSigning = request.RequiresSequentialSigning,
                     SignerCount = request.Signers.Count,

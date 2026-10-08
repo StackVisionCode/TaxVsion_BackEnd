@@ -11,6 +11,7 @@ public sealed record SignerDocumentViewedIntegrationEvent : IntegrationEvent
     public required Guid SignatureRequestId { get; init; }
     public required Guid CreatedByUserId { get; init; }
     public required Guid SignerId { get; init; }
+    public required Guid DocumentId { get; init; }
     public required DateTime ViewedAtUtc { get; init; }
     public string? ClientIp { get; init; }
 }

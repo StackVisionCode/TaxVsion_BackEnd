@@ -112,10 +112,10 @@ public static class SignerRejectedAnalyticsConsumer
     }
 }
 
-public static class SignatureRequestSealedAnalyticsConsumer
+public static class SignatureRequestSealingCompletedAnalyticsConsumer
 {
     public static async Task Handle(
-        SignatureRequestSealedIntegrationEvent evt,
+        SignatureRequestSealingCompletedIntegrationEvent evt,
         ISignatureRequestRepository requestRepository,
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,

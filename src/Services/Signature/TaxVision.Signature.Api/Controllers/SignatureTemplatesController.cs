@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Templates;
+using TaxVision.Signature.Application.Templates.Commands.AddDocument;
 using TaxVision.Signature.Application.Templates.Commands.AddSlot;
 using TaxVision.Signature.Application.Templates.Commands.Archive;
 using TaxVision.Signature.Application.Templates.Commands.Create;
@@ -18,8 +19,10 @@ using TaxVision.Signature.Application.Templates.Commands.Instantiate;
 using TaxVision.Signature.Application.Templates.Commands.PlaceField;
 using TaxVision.Signature.Application.Templates.Commands.PreparerFields;
 using TaxVision.Signature.Application.Templates.Commands.PublishTemplate;
+using TaxVision.Signature.Application.Templates.Commands.RemoveDocument;
 using TaxVision.Signature.Application.Templates.Commands.RemoveField;
 using TaxVision.Signature.Application.Templates.Commands.RemoveSlot;
+using TaxVision.Signature.Application.Templates.Commands.ReorderDocuments;
 using TaxVision.Signature.Application.Templates.Commands.RevertToDraft;
 using TaxVision.Signature.Application.Templates.Commands.SetBaseDocument;
 using TaxVision.Signature.Application.Templates.Commands.TemplatePin;
@@ -238,6 +241,74 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
         return MapResult(result);
     }
 
+    // ---------- POST /signature/templates/{id}/documents ----------
+    [HttpPost("{id:guid}/documents")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType<TemplateDocumentCreatedResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddDocument(
+        [FromRoute] Guid id,
+        [FromBody] AddTemplateDocumentBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<TemplateDocumentCreatedResponse>>(
+            new AddTemplateDocumentCommand(tenantId, id, body.FileId, body.Title),
+            ct
+        );
+        return result.IsSuccess
+            ? Created($"/signature/templates/{id}/documents/{result.Value.Id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/templates/{id}/documents/{documentId} ----------
+    [HttpDelete("{id:guid}/documents/{documentId:guid}")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveDocument(
+        [FromRoute] Guid id,
+        [FromRoute] Guid documentId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RemoveTemplateDocumentCommand(tenantId, id, documentId), ct);
+        return MapResult(result);
+    }
+
+    // ---------- PUT /signature/templates/{id}/documents/order ----------
+    [HttpPut("{id:guid}/documents/order")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReorderDocuments(
+        [FromRoute] Guid id,
+        [FromBody] ReorderTemplateDocumentsBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ReorderTemplateDocumentsCommand(tenantId, id, body.DocumentIds),
+            ct
+        );
+        return MapResult(result);
+    }
+
     // ---------- POST /signature/templates/{id}/slots ----------
     [HttpPost("{id:guid}/slots")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
@@ -325,6 +396,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
         var cmd = new PlaceTemplateFieldCommand(
             tenantId,
             id,
+            body.TemplateDocumentId,
             body.SlotOrder,
             body.Kind,
             body.Page,
@@ -375,6 +447,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
         var cmd = new PlaceTemplatePreparerFieldCommand(
             tenantId,
             id,
+            body.TemplateDocumentId,
             body.Kind,
             body.Page,
             body.X,
@@ -478,7 +551,8 @@ public sealed class SignatureTemplatesController(IMessageBus bus, IUserPermissio
             body.OriginalFileId,
             body.SlotBindings,
             body.DescriptionOverride,
-            canSignOwn
+            canSignOwn,
+            body.Documents
         );
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);
         return result.IsSuccess

@@ -76,7 +76,9 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
         var eventsToPublish = new List<SignatureRequestExpiredIntegrationEvent>(candidates.Count);
         foreach (var request in candidates)
         {
-            var pending = request.Signers.Where(s => s.Status == SignerStatus.Pending).ToList();
+            var pending = request
+                .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
+                .ToList();
 
             var result = request.MarkExpired(now);
             if (result.IsFailure)

@@ -125,7 +125,7 @@ public class SignatureRequestPartialCopyTests
 
         request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
 
-        Assert.NotNull(signer.PartialCopyRequestedAtUtc);
+        Assert.All(signer.DocumentCompletions, completion => Assert.NotNull(completion.PartialCopyRequestedAtUtc));
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class SignatureRequestPartialCopyTests
 
         request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
 
-        Assert.Null(signer.PartialCopyRequestedAtUtc);
+        Assert.All(signer.DocumentCompletions, completion => Assert.Null(completion.PartialCopyRequestedAtUtc));
     }
 
     [Fact]
@@ -144,11 +144,11 @@ public class SignatureRequestPartialCopyTests
     {
         var request = NewInProgressWithPartialCopyFor(out var signer);
         request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
-        var first = signer.PartialCopyRequestedAtUtc;
+        var first = signer.DocumentCompletions.Single().PartialCopyRequestedAtUtc;
 
         request.MarkSignerSigned(signer.Id, DateTime.UtcNow.AddMinutes(1), null, null);
 
-        Assert.Equal(first, signer.PartialCopyRequestedAtUtc);
+        Assert.Equal(first, signer.DocumentCompletions.Single().PartialCopyRequestedAtUtc);
     }
 
     // ================== Record*/Signer transitions ==================

@@ -34,6 +34,10 @@ public sealed record SetTemplatePractitionerPinBody(string Pin);
 /// <summary>P7: fija (o quita con null) el documento base de la plantilla; el archivo ya está en CloudStorage.</summary>
 public sealed record SetTemplateBaseDocumentBody(Guid? BaseDocumentFileId);
 
+public sealed record AddTemplateDocumentBody(Guid FileId, string Title);
+
+public sealed record ReorderTemplateDocumentsBody(IReadOnlyList<Guid> DocumentIds);
+
 public sealed record UpdateTemplateDefaultsBody(
     int DefaultTokenExpirationHours,
     bool RequiresSequentialSigning,
@@ -63,6 +67,7 @@ public sealed record UpdateTemplateSlotBody(
 );
 
 public sealed record PlaceTemplateFieldBody(
+    Guid? TemplateDocumentId,
     int SlotOrder,
     SignatureFieldKind Kind,
     int Page,
@@ -75,6 +80,7 @@ public sealed record PlaceTemplateFieldBody(
 );
 
 public sealed record PlaceTemplatePreparerFieldBody(
+    Guid? TemplateDocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -88,5 +94,6 @@ public sealed record InstantiateTemplateBody(
     IReadOnlyList<SlotBinding> SlotBindings,
     string? DescriptionOverride,
     // P7: opcional. Si no viene y la plantilla tiene documento base, se usa ese; si viene, override.
-    Guid? OriginalFileId = null
+    Guid? OriginalFileId = null,
+    IReadOnlyList<TemplateDocumentOverride>? Documents = null
 );
