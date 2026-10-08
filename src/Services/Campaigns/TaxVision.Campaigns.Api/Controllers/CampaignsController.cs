@@ -340,17 +340,17 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         return Ok(result);
     }
 
-    /// <summary>Pausa / reanuda / cancela un agendado. <paramref name="action"/> ∈ {pause, resume, cancel}.</summary>
-    [HttpPost("schedules/{scheduleId:guid}/{action}")]
+    /// <summary>Pausa / reanuda / cancela un agendado. <paramref name="scheduleAction"/> ∈ {pause, resume, cancel}.</summary>
+    [HttpPost("schedules/{scheduleId:guid}/{scheduleAction}")]
     [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<CampaignScheduleResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetScheduleState(Guid scheduleId, string action, CancellationToken ct)
+    public async Task<IActionResult> SetScheduleState(Guid scheduleId, [FromRoute] string scheduleAction, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        if (!Enum.TryParse<ScheduleAction>(action, ignoreCase: true, out var parsed))
+        if (!Enum.TryParse<ScheduleAction>(scheduleAction, ignoreCase: true, out var parsed))
             return BadRequest(
                 new { code = "Schedule.UnknownAction", message = "Action must be pause, resume or cancel." }
             );
