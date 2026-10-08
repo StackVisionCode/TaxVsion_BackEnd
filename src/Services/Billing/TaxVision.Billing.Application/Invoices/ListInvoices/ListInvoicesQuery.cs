@@ -5,7 +5,13 @@ using TaxVision.Billing.Application.Invoices.GetInvoice;
 
 namespace TaxVision.Billing.Application.Invoices.ListInvoices;
 
-public sealed record ListInvoicesQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, int Take = 50);
+public sealed record ListInvoicesQuery(
+    Guid TenantId,
+    Guid ActorUserId,
+    bool CanViewAll,
+    int Take = 50,
+    Guid? CustomerId = null
+);
 
 public static class ListInvoicesHandler
 {
@@ -18,7 +24,7 @@ public static class ListInvoicesHandler
     {
         // Filtro por asignación solo si el flag está ON y el actor no ve todo (view_all/admin).
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
-        var list = await invoices.ListByTenantAsync(query.TenantId, query.Take, ct, assignedTo);
+        var list = await invoices.ListByTenantAsync(query.TenantId, query.Take, ct, assignedTo, query.CustomerId);
 
         IReadOnlyList<InvoiceSummaryResponse> response = list.Select(invoice => new InvoiceSummaryResponse(
                 invoice.Id,
@@ -36,7 +42,8 @@ public static class ListInvoicesHandler
                 invoice.PaymentMethod?.ToString(),
                 invoice.ReceiptNumber,
                 invoice.ReceiptHash,
-                invoice.ActivePaymentLink?.CheckoutUrl
+                invoice.ActivePaymentLink?.CheckoutUrl,
+                invoice.CustomerId
             ))
             .ToList();
 

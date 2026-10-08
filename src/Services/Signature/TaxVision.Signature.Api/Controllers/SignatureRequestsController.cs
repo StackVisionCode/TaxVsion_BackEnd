@@ -164,6 +164,7 @@ public sealed class SignatureRequestsController(
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         [FromQuery] bool editableOnly = false,
+        [FromQuery] Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -173,7 +174,17 @@ public sealed class SignatureRequestsController(
         // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las solicitudes.
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
-            new ListSignatureRequestsQuery(tenantId, status, category, page, size, userId, canViewAll, editableOnly),
+            new ListSignatureRequestsQuery(
+                tenantId,
+                status,
+                category,
+                page,
+                size,
+                userId,
+                canViewAll,
+                editableOnly,
+                customerId
+            ),
             ct
         );
         return Ok(result);

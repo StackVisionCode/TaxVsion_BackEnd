@@ -45,6 +45,9 @@ internal sealed class SignatureRequestReadService(
                 || r.Status == SignatureRequestStatus.Ready
 #pragma warning restore CS0618
             );
+        // La request no tiene CustomerId: el cliente vive en Signers.MappedCustomerId.
+        if (query.CustomerId is { } customerId)
+            baseQuery = baseQuery.Where(r => r.Signers.Any(s => s.MappedCustomerId == customerId));
 
         // Visibilidad por asignación (P2): solo solicitudes cuyo cliente está asignado al actor. La request
         // no tiene CustomerId → se atraviesa Signers.MappedCustomerId. IgnoreQueryFilters + tenant explícito

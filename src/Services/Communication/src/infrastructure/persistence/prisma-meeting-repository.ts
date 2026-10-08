@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { Meeting, MeetingSnapshot } from '../../domain/meetings/meeting.js';
 import type { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../../application/ports/meeting-repository.js';
@@ -193,19 +193,10 @@ export class PrismaMeetingRepository implements MeetingRepository {
     userId: string;
     take: number;
     skip: number;
+    counterpartUserId?: string;
   }): Promise<MeetingSnapshot[]> {
     const rows = await this.prisma.meeting.findMany({
-      where: {
-        TenantId: input.tenantId,
-        Status: { in: ['Scheduled', 'Live'] },
-        OR: [
-          { HostUserId: input.userId },
-          { Participants: { some: { UserId: input.userId } } },
-          // Invitado (aun no unido): sin esto, un empleado/cliente invitado no veia el meeting en
-          // su lista hasta unirse (no era Participant). RevokedAtUtc:null excluye invitaciones anuladas.
-          { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
-        ],
-      },
+      where: meetingsForUserWhere(input.tenantId, ['Scheduled', 'Live'], input.userId, input.counterpartUserId),
       include: { Participants: true },
       orderBy: [{ ScheduledForUtc: 'asc' }, { CreatedAtUtc: 'desc' }],
       take: input.take,
@@ -214,17 +205,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return rows.map((row) => toDomainMeeting(row, row.Participants).toSnapshot());
   }
 
-  async countUpcomingForUser(tenantId: string, userId: string): Promise<number> {
+  async countUpcomingForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number> {
     return this.prisma.meeting.count({
-      where: {
-        TenantId: tenantId,
-        Status: { in: ['Scheduled', 'Live'] },
-        OR: [
-          { HostUserId: userId },
-          { Participants: { some: { UserId: userId } } },
-          { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
-        ],
-      },
+      where: meetingsForUserWhere(tenantId, ['Scheduled', 'Live'], userId, counterpartUserId),
     });
   }
 
@@ -233,17 +216,10 @@ export class PrismaMeetingRepository implements MeetingRepository {
     userId: string;
     take: number;
     skip: number;
+    counterpartUserId?: string;
   }): Promise<MeetingSnapshot[]> {
     const rows = await this.prisma.meeting.findMany({
-      where: {
-        TenantId: input.tenantId,
-        Status: { in: ['Ended', 'Cancelled'] },
-        OR: [
-          { HostUserId: input.userId },
-          { Participants: { some: { UserId: input.userId } } },
-          { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
-        ],
-      },
+      where: meetingsForUserWhere(input.tenantId, ['Ended', 'Cancelled'], input.userId, input.counterpartUserId),
       include: { Participants: true },
       // CreatedAtUtc siempre esta poblado (a diferencia de EndedAtUtc, que
       // un meeting Cancelled sin haber arrancado nunca tiene) — mismo
@@ -255,17 +231,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return rows.map((row) => toDomainMeeting(row, row.Participants).toSnapshot());
   }
 
-  async countPastForUser(tenantId: string, userId: string): Promise<number> {
+  async countPastForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number> {
     return this.prisma.meeting.count({
-      where: {
-        TenantId: tenantId,
-        Status: { in: ['Ended', 'Cancelled'] },
-        OR: [
-          { HostUserId: userId },
-          { Participants: { some: { UserId: userId } } },
-          { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
-        ],
-      },
+      where: meetingsForUserWhere(tenantId, ['Ended', 'Cancelled'], userId, counterpartUserId),
     });
   }
 
@@ -320,4 +288,42 @@ export class PrismaMeetingRepository implements MeetingRepository {
       transcriptsAvailable,
     };
   }
+}
+
+/**
+ * Where comun de los listados/conteos por usuario: meetings del tenant en `statuses` donde el usuario es
+ * host, participante o invitado vigente (sin esto, un invitado aun no unido no veia el meeting en su
+ * lista; RevokedAtUtc:null excluye invitaciones anuladas).
+ *
+ * `counterpartUserId` (opcional, perfil del cliente): ademas restringe a los meetings donde ESE usuario
+ * (el usuario del portal del cliente) participa o tiene invitacion vigente. Se combina con AND para no
+ * pisar el OR de visibilidad del usuario actual.
+ */
+function meetingsForUserWhere(
+  tenantId: string,
+  statuses: Array<'Scheduled' | 'Live' | 'Ended' | 'Cancelled'>,
+  userId: string,
+  counterpartUserId?: string,
+): Prisma.MeetingWhereInput {
+  const visibleToUser: Prisma.MeetingWhereInput = {
+    OR: [
+      { HostUserId: userId },
+      { Participants: { some: { UserId: userId } } },
+      { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
+    ],
+  };
+  const conditions: Prisma.MeetingWhereInput[] = [visibleToUser];
+  if (counterpartUserId) {
+    conditions.push({
+      OR: [
+        { Participants: { some: { UserId: counterpartUserId } } },
+        { Invitations: { some: { InviteeUserId: counterpartUserId, RevokedAtUtc: null } } },
+      ],
+    });
+  }
+  return {
+    TenantId: tenantId,
+    Status: { in: statuses },
+    AND: conditions,
+  };
 }

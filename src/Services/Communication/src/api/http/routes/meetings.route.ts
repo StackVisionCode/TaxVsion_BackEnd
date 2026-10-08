@@ -4,7 +4,9 @@ import {
   checkPermission,
   permissionCheckHttpStatus,
   CommunicationPermissions,
+  isStaffActor,
 } from '../../../domain/shared/permissions.js';
+import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
 import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting.js';
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
@@ -39,7 +41,15 @@ const HistoryQuery = z.object({
   // nunca aparecia en ningun listado. Default 'upcoming' preserva el
   // comportamiento previo para callers existentes.
   scope: z.enum(['upcoming', 'past']).default('upcoming'),
+  // Perfil del cliente: solo meetings donde ese cliente (su usuario del portal) participa o está
+  // invitado. Solo staff, y con la misma visibilidad por asignación que el historial de llamadas.
+  customerId: z.string().uuid().optional(),
 });
+
+const CUSTOMER_MEETINGS_STAFF_ONLY = {
+  code: 'Auth.Forbidden',
+  message: 'Client meeting history is staff-only.',
+} as const;
 const UserIdParams = z.object({ userId: z.string().uuid() });
 
 export async function registerMeetingRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
@@ -89,21 +99,52 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     async (request, reply) => {
       const principal = request.principal!;
       const query = HistoryQuery.parse(request.query);
+
+      // Filtro por cliente (perfil del cliente → meetings). Mismo criterio que
+      // GET /communication/customers/:customerId/calls: solo staff y, con visibilidad por asignación
+      // activa, solo clientes asignados (salvo quien ve a todos). La Meeting no tiene CustomerId: se
+      // resuelve el UserId del PORTAL del cliente y se filtra por participante/invitado.
+      let counterpartUserId: string | undefined;
+      if (query.customerId) {
+        if (!isStaffActor(principal.actorType)) return reply.code(403).send(CUSTOMER_MEETINGS_STAFF_ONLY);
+
+        const settings = await container.settings.get(principal.tenantId);
+        const restrictToAssigned =
+          container.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer;
+        if (restrictToAssigned && !(await seesAllCustomers(principal, container.userPermissions))) {
+          const isAssigned = await container.customerAssignments.isAssigned(
+            principal.tenantId,
+            query.customerId,
+            principal.userId,
+          );
+          if (!isAssigned) return reply.code(403).send(CUSTOMER_MEETINGS_STAFF_ONLY);
+        }
+
+        const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(query.customerId);
+        // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber
+        // meetings con él. Página vacía con la misma forma (no es un error).
+        if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
+          return reply.send({ items: [], page: query.page, size: query.size, totalCount: 0 });
+        }
+        counterpartUserId = portalAccount.userId;
+      }
+
       const listInput = {
         tenantId: principal.tenantId,
         userId: principal.userId,
         take: query.size,
         skip: (query.page - 1) * query.size,
+        ...(counterpartUserId !== undefined ? { counterpartUserId } : {}),
       };
       const [items, totalCount] =
         query.scope === 'past'
           ? await Promise.all([
               container.meetings.listPastForUser(listInput),
-              container.meetings.countPastForUser(principal.tenantId, principal.userId),
+              container.meetings.countPastForUser(principal.tenantId, principal.userId, counterpartUserId),
             ])
           : await Promise.all([
               container.meetings.listUpcomingForUser(listInput),
-              container.meetings.countUpcomingForUser(principal.tenantId, principal.userId),
+              container.meetings.countUpcomingForUser(principal.tenantId, principal.userId, counterpartUserId),
             ]);
       return reply.send({
         items: items.map((snapshot) => ({
