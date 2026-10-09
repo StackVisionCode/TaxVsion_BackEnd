@@ -47,7 +47,11 @@ public static class SignatureCertificateReadyConsumer
 
                 if (prefersSms && !string.IsNullOrEmpty(downloadLink))
                 {
-                    await smsSender.SendAsync(signer.PhoneE164!, BuildSms(signer, portal.Value, downloadLink), ct);
+                    await smsSender.SendAsync(
+                        signer.PhoneE164!,
+                        BuildSms(signer, portal.Value, downloadLink, evt.DocumentTitle),
+                        ct
+                    );
                     continue;
                 }
 
@@ -60,6 +64,7 @@ public static class SignatureCertificateReadyConsumer
                             ["full_name"] = signer.FullName,
                             ["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm"),
                             ["download_link"] = downloadLink,
+                            ["document_title"] = evt.DocumentTitle,
                             ["language"] = signer.Language,
                         },
                         ct
@@ -80,8 +85,17 @@ public static class SignatureCertificateReadyConsumer
         }
     }
 
-    private static string BuildSms(SignerContactSnapshot signer, PortalOptions portal, string downloadLink) =>
+    private static string BuildSms(
+        SignerContactSnapshot signer,
+        PortalOptions portal,
+        string downloadLink,
+        string? documentTitle
+    ) =>
         signer.Language == "Es"
-            ? $"{portal.ProductName}: {signer.FullName}, tu certificado de firma está listo. Descárgalo: {downloadLink}"
-            : $"{portal.ProductName}: {signer.FullName}, your signature certificate is ready. Download it: {downloadLink}";
+            ? string.IsNullOrWhiteSpace(documentTitle)
+                ? $"{portal.ProductName}: {signer.FullName}, tu certificado de firma está listo. Descárgalo: {downloadLink}"
+                : $"{portal.ProductName}: {signer.FullName}, el certificado de {documentTitle} está listo. Descárgalo: {downloadLink}"
+            : string.IsNullOrWhiteSpace(documentTitle)
+                ? $"{portal.ProductName}: {signer.FullName}, your signature certificate is ready. Download it: {downloadLink}"
+                : $"{portal.ProductName}: {signer.FullName}, the certificate for {documentTitle} is ready. Download it: {downloadLink}";
 }

@@ -47,6 +47,7 @@ public static class AddDocumentHandler
                 document.OriginalFileId,
                 document.DocumentHashPre?.Value,
                 document.SealedFileId,
+                document.CertificateFileId,
                 document.DocumentHashPost?.Value,
                 document.SealedAtUtc,
                 document.Note

@@ -67,6 +67,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public bool RequiresSequentialSigning { get; private set; }
     public bool RequiresConsent { get; private set; }
     public bool GenerateCertificate { get; private set; }
+    public CertificateGenerationMode CertificateGenerationMode { get; private set; } =
+        CertificateGenerationMode.SingleForRequest;
 
     /// <summary>
     /// F7 — entrega del PDF final SELLADO (todas las firmas + PAdES) a los firmantes al completar.
@@ -217,7 +219,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         int reminderIntervalHours = 48,
         bool expirationEnabled = true,
         bool sendPartialCopyOnEachSignature = false,
-        PartialCopyAudience? partialCopyAudience = null
+        PartialCopyAudience? partialCopyAudience = null,
+        CertificateGenerationMode certificateGenerationMode = CertificateGenerationMode.SingleForRequest
     )
     {
         var baseValidation = ValidateFactoryInputs(tenantId, createdByUserId, title, description, tokenExpirationHours);
@@ -253,6 +256,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
+            CertificateGenerationMode = certificateGenerationMode,
             SendSealedDocumentToSigners = sendSealedDocumentToSigners,
             SendCertificateToSigners = sendCertificateToSigners && generateCertificate,
             SendPartialCopyOnEachSignature = sendPartialCopyOnEachSignature,
@@ -289,7 +293,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         int reminderIntervalHours = 48,
         bool expirationEnabled = true,
         bool sendPartialCopyOnEachSignature = false,
-        PartialCopyAudience? partialCopyAudience = null
+        PartialCopyAudience? partialCopyAudience = null,
+        CertificateGenerationMode certificateGenerationMode = CertificateGenerationMode.SingleForRequest
     )
     {
         if (originalFileId == Guid.Empty)
@@ -313,7 +318,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             reminderIntervalHours,
             expirationEnabled,
             sendPartialCopyOnEachSignature,
-            partialCopyAudience
+            partialCopyAudience,
+            certificateGenerationMode
         );
         if (requestResult.IsFailure)
             return requestResult;
@@ -703,6 +709,22 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             );
 
         SendCertificateToSigners = enabled;
+        Touch();
+        return Result.Success();
+    }
+
+    public Result SetCertificateGenerationMode(CertificateGenerationMode mode)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (!Enum.IsDefined(mode))
+            return Result.Failure(
+                new Error("Signature.Request.CertificateGenerationMode", "Certificate generation mode is invalid.")
+            );
+
+        CertificateGenerationMode = mode;
         Touch();
         return Result.Success();
     }
@@ -2014,6 +2036,37 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         Touch();
         return Result.Success();
     }
+
+    public Result RecordDocumentCertificate(Guid documentId, Guid certificateFileId)
+    {
+        if (Status != SignatureRequestStatus.Completed)
+            return Result.Failure(
+                new Error("Signature.Request.NotCompleted", "Certificate can only be attached to a completed request.")
+            );
+
+        if (CertificateGenerationMode != CertificateGenerationMode.PerDocument)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.CertificateModeMismatch",
+                    "Document certificates require PerDocument certificate generation mode."
+                )
+            );
+
+        var document = _documents.Find(candidate => candidate.Id == documentId);
+        if (document is null)
+            return Result.Failure(new Error("Signature.Request.DocumentNotFound", "Document was not found."));
+
+        var result = document.RecordCertificate(certificateFileId);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public bool AllCertificateArtifactsGenerated() =>
+        !GenerateCertificate
+        || (CertificateGenerationMode == CertificateGenerationMode.SingleForRequest
+            ? CertificateFileId is not null
+            : _documents.Count > 0 && _documents.All(document => document.CertificateFileId is not null));
 
     // ==================================================================
     // Helpers privados — cada uno con propósito único

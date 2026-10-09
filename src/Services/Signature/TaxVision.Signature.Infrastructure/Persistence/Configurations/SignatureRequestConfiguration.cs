@@ -26,6 +26,11 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.RequiresSequentialSigning).IsRequired();
         builder.Property(request => request.RequiresConsent).IsRequired();
         builder.Property(request => request.GenerateCertificate).IsRequired();
+        builder
+            .Property(request => request.CertificateGenerationMode)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired();
         builder.Property(request => request.SendSealedDocumentToSigners).IsRequired();
         builder.Property(request => request.SendCertificateToSigners).IsRequired();
 

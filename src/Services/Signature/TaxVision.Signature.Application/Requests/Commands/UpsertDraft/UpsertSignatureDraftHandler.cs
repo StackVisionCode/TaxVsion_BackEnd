@@ -98,6 +98,13 @@ public static class UpsertSignatureDraftHandler
                 return applied;
         }
 
+        if (cmd.CertificateGenerationMode is { } certificateMode)
+        {
+            var applied = request.SetCertificateGenerationMode(certificateMode);
+            if (applied.IsFailure)
+                return applied;
+        }
+
         if (cmd.AutoRemindersEnabled is { } reminders)
         {
             var applied = request.SetReminderPolicy(

@@ -21,6 +21,7 @@ public sealed class RequestDocument : BaseEntity
     public Guid OriginalFileId { get; private set; }
     public DocumentHash? DocumentHashPre { get; private set; }
     public Guid? SealedFileId { get; private set; }
+    public Guid? CertificateFileId { get; private set; }
     public DocumentHash? DocumentHashPost { get; private set; }
     public DateTime? SealedAtUtc { get; private set; }
     public string? Note { get; private set; }
@@ -94,6 +95,20 @@ public sealed class RequestDocument : BaseEntity
         return Result.Success();
     }
 
+    internal Result RecordCertificate(Guid certificateFileId)
+    {
+        if (certificateFileId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Document.CertificateFile", "CertificateFileId is required."));
+
+        if (SealedFileId is null || DocumentHashPost is null || SealedAtUtc is null)
+            return Result.Failure(
+                new Error("Signature.Document.NotSealed", "A document certificate requires a sealed document.")
+            );
+
+        CertificateFileId = certificateFileId;
+        return Result.Success();
+    }
+
     internal Result ReplaceOriginalFile(Guid newFileId)
     {
         if (newFileId == Guid.Empty)
@@ -104,6 +119,7 @@ public sealed class RequestDocument : BaseEntity
         OriginalFileId = newFileId;
         DocumentHashPre = null;
         SealedFileId = null;
+        CertificateFileId = null;
         DocumentHashPost = null;
         SealedAtUtc = null;
         return Result.Success();

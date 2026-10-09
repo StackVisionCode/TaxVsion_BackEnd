@@ -116,7 +116,8 @@ public static class CreateSignatureRequestHandler
             reminderIntervalHours: reminderIntervalHours,
             expirationEnabled: expirationEnabled,
             sendPartialCopyOnEachSignature: sendPartial,
-            partialCopyAudience: cmd.PartialCopyAudience
+            partialCopyAudience: cmd.PartialCopyAudience,
+            certificateGenerationMode: cmd.CertificateGenerationMode
         );
 
     // ============== Fase 2: adjuntar hash si el archivo ya está disponible ==============

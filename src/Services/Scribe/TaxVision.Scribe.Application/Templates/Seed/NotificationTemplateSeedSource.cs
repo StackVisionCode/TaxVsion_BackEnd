@@ -615,7 +615,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.partial_copy_ready.v1",
             TemplateKey: "sig.partial_copy.v1",
             Name: "Signature — Copia inmediata al firmar",
-            Subject: "{% if language == 'Es' %}Tus documentos firmados (en progreso){% else %}Your signed documents (in progress){% endif %}",
+            Subject: "{% if language == 'Es' %}Tu copia firmada{% else %}Your signed copy{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
@@ -680,7 +680,7 @@ public static class NotificationTemplateSeedSource
                     "True si el preparador va a enviar el PDF sellado al final."
                 ),
             ],
-            ContentVersion: 15
+            ContentVersion: 16
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =
@@ -688,17 +688,17 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.certificate_ready.v1",
             TemplateKey: "sig.certificate.v1",
             Name: "Signature — Certificado listo",
-            Subject: "{% if language == 'Es' %}TaxProffice — Tu certificado de firma{% else %}TaxProffice — Your signature certificate{% endif %}",
+            Subject: "{% if language == 'Es' %}TaxProffice — Tu certificado de firma{% if document_title %}: {{ document_title }}{% endif %}{% else %}TaxProffice — Your signature certificate{% if document_title %}: {{ document_title }}{% endif %}{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu certificado de firma</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el certificado de finalización de tu firma del {{ completed_at }} UTC ya está disponible.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el certificado de finalización{% if document_title %} de <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} del {{ completed_at }} UTC ya está disponible.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your signature certificate</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the certificate of completion for your signature on {{ completed_at }} UTC is now available.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the certificate of completion{% if document_title %} for <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} from {{ completed_at }} UTC is now available.</td></tr>
               {% endif %}
               {% if download_link %}
               <tr>
@@ -719,8 +719,10 @@ public static class NotificationTemplateSeedSource
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
                 ("download_link", VariableType.Url, false, null, "URL pública de descarga del certificado (opcional)."),
+                ("document_title", VariableType.String, false, null, "Documento cuando se genera un certificado por documento."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: 17
         );
 
     private static NotificationTemplateSeed SignatureExpired { get; } =

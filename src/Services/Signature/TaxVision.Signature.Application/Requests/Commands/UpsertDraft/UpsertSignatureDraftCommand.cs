@@ -25,7 +25,8 @@ public sealed record UpsertSignatureDraftCommand(
     // F7 — null = no tocar. Si SendPartialCopy pasa a true, PartialCopyAudience es requerida.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudience? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode? CertificateGenerationMode = null
 );
 
 public sealed record DraftDocumentSpec(string LocalId, Guid? Id, Guid OriginalFileId, string Title, string? Note);

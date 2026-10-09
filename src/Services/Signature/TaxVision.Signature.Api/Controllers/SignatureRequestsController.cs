@@ -144,7 +144,8 @@ public sealed class SignatureRequestsController(
             body.ReminderIntervalHours,
             body.SendPartialCopyOnEachSignature,
             audienceResult.Value,
-            body.ExpirationEnabled
+            body.ExpirationEnabled,
+            body.CertificateGenerationMode
         );
 
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);
@@ -660,7 +661,8 @@ public sealed class SignatureRequestsController(
                 body.ReminderIntervalHours,
                 body.SendPartialCopyOnEachSignature,
                 audienceResult.Value,
-                body.ExpirationEnabled
+                body.ExpirationEnabled,
+                body.CertificateGenerationMode
             ),
             ct
         );
@@ -746,7 +748,8 @@ public sealed class SignatureRequestsController(
                 fields,
                 body.SendPartialCopyOnEachSignature,
                 audienceResult.Value,
-                body.ExpirationEnabled
+                body.ExpirationEnabled,
+                body.CertificateGenerationMode
             ),
             ct
         );

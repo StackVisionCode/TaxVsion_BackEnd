@@ -18,6 +18,7 @@ public sealed class RequestDocumentConfiguration : IEntityTypeConfiguration<Requ
         builder.Property(document => document.Title).HasMaxLength(RequestDocument.MaxTitleLength).IsRequired();
         builder.Property(document => document.OriginalFileId).IsRequired();
         builder.Property(document => document.SealedFileId);
+        builder.Property(document => document.CertificateFileId);
         builder.Property(document => document.SealedAtUtc);
         builder.Property(document => document.Note).HasMaxLength(RequestDocument.MaxNoteLength);
 
@@ -39,5 +40,6 @@ public sealed class RequestDocumentConfiguration : IEntityTypeConfiguration<Requ
         builder.HasIndex(document => new { document.SignatureRequestId, document.Order }).IsUnique();
         builder.HasIndex(document => document.OriginalFileId);
         builder.HasIndex(document => document.SealedFileId);
+        builder.HasIndex(document => document.CertificateFileId);
     }
 }
