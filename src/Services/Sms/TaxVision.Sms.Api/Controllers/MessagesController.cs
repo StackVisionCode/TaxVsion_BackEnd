@@ -66,11 +66,33 @@ public sealed class MessagesController(
         var canViewAll =
             actorUserId is not null && await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
 
+        // Cobro money-OUT (F6): todo envío por ESTE endpoint es individual/directo → se cobra al Wallet. El
+        // dispatch de campaña NO pasa por acá (usa CampaignSmsDispatchConsumer, que deja ChargeWallet=false).
         var result = await bus.InvokeAsync<Result<SendSmsBatchResponse>>(
-            new SendSmsBatchCommand(tenant.TenantId, correlation.CorrelationId, items, actorUserId, canViewAll),
+            new SendSmsBatchCommand(
+                tenant.TenantId,
+                correlation.CorrelationId,
+                items,
+                actorUserId,
+                canViewAll,
+                ChargeWallet: true,
+                CallerBearerToken: ExtractBearerToken()
+            ),
             ct
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>El bearer crudo de la petición actual, sin el prefijo "Bearer ". Null si no viene.</summary>
+    private string? ExtractBearerToken()
+    {
+        var header = Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(header))
+            return null;
+        const string prefix = "Bearer ";
+        return header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? header[prefix.Length..].Trim()
+            : header.Trim();
     }
 }

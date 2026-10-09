@@ -80,6 +80,15 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // Wallet — cambió el saldo (recarga/reserva/consumo); relay realtime del pill + apartado (wallet-consumers.ts).
   'BuildingBlocks.Messaging.WalletIntegrationEvents.WalletBalanceChangedIntegrationEvent':
     'wallet.balance.changed.v1',
+  // SMS — resultado por mensaje; relay realtime al listado del módulo SMS (sms-consumers.ts).
+  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageAcceptedIntegrationEvent':
+    'sms.message.accepted.v1',
+  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageDeliveredIntegrationEvent':
+    'sms.message.delivered.v1',
+  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageFailedIntegrationEvent':
+    'sms.message.failed.v1',
+  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageSuppressedIntegrationEvent':
+    'sms.message.suppressed.v1',
   // Customer
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent':
     'customer.bulk_imported.v1',

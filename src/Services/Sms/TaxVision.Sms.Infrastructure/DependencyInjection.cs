@@ -146,6 +146,23 @@ public static class DependencyInjection
             }
         );
 
+        // F6 — cobro money-OUT de SMS individuales: cliente M2M hacia el PEP del Wallet (reserve/settle).
+        // Reusa el IServiceTokenAcquirer de arriba (actor_type=Service) o el bearer del usuario (on-behalf-of).
+        services
+            .AddOptions<Wallet.WalletServiceOptions>()
+            .Bind(configuration.GetSection(Wallet.WalletServiceOptions.SectionName));
+        services.AddHttpClient<
+            TaxVision.Sms.Application.Messages.Abstractions.IWalletSpendClient,
+            Wallet.WalletSpendClient
+        >(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<Wallet.WalletServiceOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+
         services
             .AddOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>()
             .Bind(

@@ -27,6 +27,19 @@ public interface ISmsReadService
         CancellationToken ct = default
     );
 
+    // Vista de conversaciones: agrupa los SMS por cliente (una fila por cliente con el último mensaje +
+    // el total del hilo). Mismos filtros/visibilidad que SearchMessages; el hilo completo de un cliente
+    // se obtiene con SearchMessages(customerId).
+    Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
+        Guid tenantId,
+        string? term,
+        string? sourceContext,
+        int page,
+        int size,
+        Guid? assignedToUserId = null,
+        CancellationToken ct = default
+    );
+
     Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
         Guid tenantId,
         Guid messageId,
