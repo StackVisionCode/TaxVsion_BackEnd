@@ -473,8 +473,8 @@ public static class SignatureRequestCompletedConsumer
                 new PipelineOutcome(
                     sealedDocuments,
                     request.CertificateFileId,
-                    request.Documents
-                        .Where(document => document.CertificateFileId is not null)
+                    request
+                        .Documents.Where(document => document.CertificateFileId is not null)
                         .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value),
                     DateTime.UtcNow,
                     RequestSealingCompleted: false
@@ -504,8 +504,8 @@ public static class SignatureRequestCompletedConsumer
         // Certificado PRIMERO y sellado de ÚLTIMO: así el FileAvailable del sellado (el correo que fallaba)
         // llega con la ventana más chica posible respecto al commit — sube y a renglón seguido se persiste.
         var certificateFileId = request.CertificateFileId;
-        var documentCertificateFileIds = request.Documents
-            .Where(document => document.CertificateFileId is not null)
+        var documentCertificateFileIds = request
+            .Documents.Where(document => document.CertificateFileId is not null)
             .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value);
         foreach (var artifact in certificateArtifactsResult.Value)
         {
@@ -750,9 +750,9 @@ public static class SignatureRequestCompletedConsumer
 
             var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, documentId: null);
             var rendered = renderer.Render(model);
-            return Result.Success<IReadOnlyList<CertificateRenderArtifact>>(
-                [new CertificateRenderArtifact(null, request.Title, rendered.CertificatePdfBytes)]
-            );
+            return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([
+                new CertificateRenderArtifact(null, request.Title, rendered.CertificatePdfBytes),
+            ]);
         }
 
         var artifacts = request
@@ -761,7 +761,11 @@ public static class SignatureRequestCompletedConsumer
             .Select(document =>
             {
                 var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, document.Id);
-                return new CertificateRenderArtifact(document.Id, document.Title, renderer.Render(model).CertificatePdfBytes);
+                return new CertificateRenderArtifact(
+                    document.Id,
+                    document.Title,
+                    renderer.Render(model).CertificatePdfBytes
+                );
             })
             .ToList();
         return Result.Success<IReadOnlyList<CertificateRenderArtifact>>(artifacts);
@@ -862,12 +866,13 @@ public static class SignatureRequestCompletedConsumer
             .OrderBy(document => document.Order)
             .ToList();
         var participatingSignerIds = documents
-            .SelectMany(document => request.Signers.Where(signer => signer.Fields.Any(field => field.DocumentId == document.Id)))
+            .SelectMany(document =>
+                request.Signers.Where(signer => signer.Fields.Any(field => field.DocumentId == document.Id))
+            )
             .Select(signer => signer.Id)
             .ToHashSet();
 
-        return
-        new(
+        return new(
             SignatureRequestId: request.Id,
             Title: documentId is null ? request.Title : documents[0].Title,
             Category: request.Category,
@@ -973,14 +978,14 @@ public static class SignatureRequestCompletedConsumer
                     DocumentId = sealedDocument.DocumentId,
                     SealedFileId = sealedDocument.SealedFileId,
                     DocumentHashPost = sealedDocument.HashPost,
-                    CertificateFileId = outcome.DocumentCertificateFileIds.TryGetValue(
-                        sealedDocument.DocumentId,
-                        out var documentCertificateFileId
-                    )
-                        ? documentCertificateFileId
-                        : sealedDocument.DocumentId == finalSealedDocumentId
-                            ? outcome.CertificateFileId
-                            : null,
+                    CertificateFileId =
+                        outcome.DocumentCertificateFileIds.TryGetValue(
+                            sealedDocument.DocumentId,
+                            out var documentCertificateFileId
+                        )
+                            ? documentCertificateFileId
+                        : sealedDocument.DocumentId == finalSealedDocumentId ? outcome.CertificateFileId
+                        : null,
                     SealedAtUtc = sealedDocument.SealedAtUtc,
                 }
             );

@@ -50,10 +50,10 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         db
             .SignatureRequests.IgnoreQueryFilters()
             .Include(request => request.Signers)
-            // F8 — el consumer per-doc filtra signers por .Fields.DocumentId. Sin este ThenInclude la
-            // colección venía vacía y recipientSigners quedaba [], el evento se publicaba con
-            // Signers=[] y Notification no mandaba ningún email de certificado.
-            .ThenInclude(signer => signer.Fields)
+                // F8 — el consumer per-doc filtra signers por .Fields.DocumentId. Sin este ThenInclude la
+                // colección venía vacía y recipientSigners quedaba [], el evento se publicaba con
+                // Signers=[] y Notification no mandaba ningún email de certificado.
+                .ThenInclude(signer => signer.Fields)
             .Include(request => request.Documents)
             .FirstOrDefaultAsync(
                 request =>

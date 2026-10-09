@@ -719,7 +719,13 @@ public static class NotificationTemplateSeedSource
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
                 ("download_link", VariableType.Url, false, null, "URL pública de descarga del certificado (opcional)."),
-                ("document_title", VariableType.String, false, null, "Documento cuando se genera un certificado por documento."),
+                (
+                    "document_title",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Documento cuando se genera un certificado por documento."
+                ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ],
             ContentVersion: 17

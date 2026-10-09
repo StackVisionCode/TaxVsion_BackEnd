@@ -88,12 +88,26 @@ public sealed class SealingMultiDocumentTests
         var signedAt = DateTime.UtcNow;
 
         await SubmitAndSeal(
-            request, firstSigner, request.Documents[0].Id, signedAt,
-            repository, storage, unitOfWork, bus, correlation
+            request,
+            firstSigner,
+            request.Documents[0].Id,
+            signedAt,
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
         );
         await SubmitAndSeal(
-            request, secondSigner, request.Documents[1].Id, signedAt.AddMinutes(1),
-            repository, storage, unitOfWork, bus, correlation
+            request,
+            secondSigner,
+            request.Documents[1].Id,
+            signedAt.AddMinutes(1),
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
         );
 
         Assert.Null(request.CertificateFileId);
@@ -289,10 +303,10 @@ public sealed class SealingMultiDocumentTests
         ) =>
             Task.FromResult(
                 request.TenantId == tenantId
-                    && (
-                        request.CertificateFileId == certificateFileId
-                        || request.Documents.Any(document => document.CertificateFileId == certificateFileId)
-                    )
+                && (
+                    request.CertificateFileId == certificateFileId
+                    || request.Documents.Any(document => document.CertificateFileId == certificateFileId)
+                )
                     ? request
                     : null
             );

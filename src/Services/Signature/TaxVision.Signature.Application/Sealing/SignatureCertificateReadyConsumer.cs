@@ -45,7 +45,9 @@ public static class SignatureCertificateReadyConsumer
             if (!request.SendCertificateToSigners)
                 return; // la request no pidió entregar el certificado a los firmantes
 
-            var certificateDocument = request.Documents.SingleOrDefault(document => document.CertificateFileId == evt.FileId);
+            var certificateDocument = request.Documents.SingleOrDefault(document =>
+                document.CertificateFileId == evt.FileId
+            );
             var recipientSigners = certificateDocument is null
                 ? request.Signers
                 : request

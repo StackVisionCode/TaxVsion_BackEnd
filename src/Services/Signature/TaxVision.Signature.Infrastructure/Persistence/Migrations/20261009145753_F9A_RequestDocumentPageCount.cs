@@ -10,19 +10,13 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "PageCount",
-                table: "RequestDocuments",
-                type: "int",
-                nullable: true);
+            migrationBuilder.AddColumn<int>(name: "PageCount", table: "RequestDocuments", type: "int", nullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "PageCount",
-                table: "RequestDocuments");
+            migrationBuilder.DropColumn(name: "PageCount", table: "RequestDocuments");
         }
     }
 }
