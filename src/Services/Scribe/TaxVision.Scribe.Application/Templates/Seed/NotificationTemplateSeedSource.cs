@@ -585,17 +585,15 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature completed</td></tr>
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed document below.</td></tr>
               {% endif %}
-              {% if download_link %}
+              {% if download_links and download_links.size > 0 %}
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Documentos disponibles ({{ document_count }}):{% else %}Available documents ({{ document_count }}):{% endif %}</td></tr>
+              {% for document in download_links %}
               <tr>
-                <td align="left" style="padding:22px 0 4px 0;">
-                  <!--[if mso]>
-                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ download_link }}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">{% if language == 'Es' %}Descargar documento firmado{% else %}Download signed document{% endif %}</center></v:roundrect>
-                  <![endif]-->
-                  <!--[if !mso]><!-- -->
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ download_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Descargar documento firmado{% else %}Download signed document{% endif %}</a></td></tr></table>
-                  <!--<![endif]-->
+                <td align="left" style="padding-top:10px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ document.url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{{ document.title }}</a></td></tr></table>
                 </td>
               </tr>
+              {% endfor %}
               {% endif %}
             </table>
             """,
@@ -603,15 +601,11 @@ public static class NotificationTemplateSeedSource
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
-                (
-                    "download_link",
-                    VariableType.Url,
-                    false,
-                    null,
-                    "URL pública de descarga del documento firmado (opcional)."
-                ),
+                ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
+                ("document_count", VariableType.Number, true, "1", "Cantidad de documentos sellados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: 14
         );
 
     // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
@@ -621,14 +615,14 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.partial_copy_ready.v1",
             TemplateKey: "sig.partial_copy.v1",
             Name: "Signature — Copia inmediata al firmar",
-            Subject: "{% if language == 'Es' %}Tu copia firmada de \"{{ document_title }}\" (en progreso){% else %}Your signed copy of \"{{ document_title }}\" (in progress){% endif %}",
+            Subject: "{% if language == 'Es' %}Tus documentos firmados (en progreso){% else %}Your signed documents (in progress){% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu copia de lo que firmaste</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por firmar <strong>{{ document_title }}</strong> el {{ signed_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por completar {{ document_count }} documento(s) el {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Adjuntamos tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
@@ -644,7 +638,7 @@ public static class NotificationTemplateSeedSource
               {% endif %}
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your copy of what you signed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for signing <strong>{{ document_title }}</strong> on {{ signed_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for completing {{ document_count }} document(s) on {{ signed_at }} UTC.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Attached is your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
@@ -659,21 +653,23 @@ public static class NotificationTemplateSeedSource
               {% endif %}
               {% endif %}
               {% endif %}
-              {% if download_link != nil and download_link != blank %}
+              {% if download_links and download_links.size > 0 %}
+              {% for item in download_links %}
               <tr>
                 <td align="left" style="padding:22px 0 4px 0;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ download_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Descargar mi copia{% else %}Download my copy{% endif %}</a></td></tr></table>
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ item.url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{{ item.title }}</a></td></tr></table>
                 </td>
               </tr>
+              {% endfor %}
               {% endif %}
             </table>
             """,
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre del firmante destinatario."),
-                ("document_title", VariableType.String, true, null, "Título del documento firmado."),
                 ("signed_at", VariableType.String, true, null, "Fecha de firma del destinatario (UTC)."),
-                ("download_link", VariableType.Url, false, null, "URL de descarga del PDF parcial (opcional)."),
+                ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
+                ("document_count", VariableType.Number, true, "1", "Cantidad de documentos firmados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
                 ("total_signers", VariableType.Number, false, "1", "Cantidad total de firmantes del request."),
                 (
@@ -683,7 +679,8 @@ public static class NotificationTemplateSeedSource
                     "false",
                     "True si el preparador va a enviar el PDF sellado al final."
                 ),
-            ]
+            ],
+            ContentVersion: 15
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =

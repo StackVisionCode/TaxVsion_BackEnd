@@ -14,6 +14,7 @@ public sealed class SignatureFieldConfiguration : IEntityTypeConfiguration<Signa
 
         builder.Property(field => field.SignatureRequestId).IsRequired();
         builder.Property(field => field.SignerId).IsRequired();
+        builder.Property(field => field.DocumentId).IsRequired();
         builder.Property(field => field.Kind).HasConversion<string>().HasMaxLength(16).IsRequired();
 
         builder.Property(field => field.Label).HasMaxLength(SignatureField.MaxLabelLength);
@@ -33,5 +34,11 @@ public sealed class SignatureFieldConfiguration : IEntityTypeConfiguration<Signa
         );
 
         builder.HasIndex(field => field.SignerId);
+        builder.HasIndex(field => field.DocumentId);
+        builder
+            .HasOne<RequestDocument>()
+            .WithMany()
+            .HasForeignKey(field => field.DocumentId)
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

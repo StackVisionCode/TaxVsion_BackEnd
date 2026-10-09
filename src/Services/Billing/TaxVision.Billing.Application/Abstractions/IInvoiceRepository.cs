@@ -21,12 +21,14 @@ public interface IInvoiceRepository
     Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
     /// <summary>Facturas del tenant, más recientes primero (para la tabla del frontend).
-    /// <paramref name="assignedToUserId"/> no null → solo las de clientes asignados a ese usuario.</summary>
+    /// <paramref name="assignedToUserId"/> no null → solo las de clientes asignados a ese usuario.
+    /// <paramref name="customerId"/> no null → solo las de ese cliente (se compone con la asignación).</summary>
     Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
         int take,
         CancellationToken ct = default,
-        Guid? assignedToUserId = null
+        Guid? assignedToUserId = null,
+        Guid? customerId = null
     );
     Task AddAsync(Invoice invoice, CancellationToken ct = default);
 }

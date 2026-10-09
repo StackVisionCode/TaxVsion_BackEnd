@@ -14,6 +14,7 @@ using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Requests;
+using TaxVision.Signature.Application.Requests.Commands.AddDocument;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
 using TaxVision.Signature.Application.Requests.Commands.CancelSchedule;
@@ -25,8 +26,10 @@ using TaxVision.Signature.Application.Requests.Commands.ExtendExpiration;
 using TaxVision.Signature.Application.Requests.Commands.LegalHold;
 using TaxVision.Signature.Application.Requests.Commands.PlaceField;
 using TaxVision.Signature.Application.Requests.Commands.PreparerFields;
+using TaxVision.Signature.Application.Requests.Commands.RemoveDocument;
 using TaxVision.Signature.Application.Requests.Commands.RemoveField;
 using TaxVision.Signature.Application.Requests.Commands.RemoveSigner;
+using TaxVision.Signature.Application.Requests.Commands.ReorderDocuments;
 using TaxVision.Signature.Application.Requests.Commands.ReorderSigners;
 using TaxVision.Signature.Application.Requests.Commands.ResendSignerInvitation;
 using TaxVision.Signature.Application.Requests.Commands.ScheduleSend;
@@ -125,7 +128,12 @@ public sealed class SignatureRequestsController(
             body.Title,
             body.Description,
             body.Category,
-            body.OriginalFileId,
+            body.Documents.Select(document => new CreateSignatureRequestDocumentDto(
+                    document.OriginalFileId,
+                    document.Title,
+                    document.Note
+                ))
+                .ToList(),
             body.TokenExpirationHours,
             body.RequiresSequentialSigning,
             body.RequiresConsent,
@@ -156,6 +164,7 @@ public sealed class SignatureRequestsController(
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         [FromQuery] bool editableOnly = false,
+        [FromQuery] Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -165,7 +174,17 @@ public sealed class SignatureRequestsController(
         // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las solicitudes.
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
-            new ListSignatureRequestsQuery(tenantId, status, category, page, size, userId, canViewAll, editableOnly),
+            new ListSignatureRequestsQuery(
+                tenantId,
+                status,
+                category,
+                page,
+                size,
+                userId,
+                canViewAll,
+                editableOnly,
+                customerId
+            ),
             ct
         );
         return Ok(result);
@@ -279,6 +298,86 @@ public sealed class SignatureRequestsController(
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // ---------- POST /signature/requests/{id}/documents ----------
+    [HttpPost("{id:guid}/documents")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<SignatureRequestDocumentResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddDocument(
+        [FromRoute] Guid id,
+        [FromBody] AddRequestDocumentBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result<SignatureRequestDocumentResponse>>(
+            new AddDocumentCommand(tenantId, id, body.OriginalFileId, body.Title, body.Note),
+            ct
+        );
+        return result.IsSuccess
+            ? Created($"/signature/requests/{id}/documents/{result.Value.Id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- DELETE /signature/requests/{id}/documents/{documentId} ----------
+    [HttpDelete("{id:guid}/documents/{documentId:guid}")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveDocument(
+        [FromRoute] Guid id,
+        [FromRoute] Guid documentId,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(new RemoveDocumentCommand(tenantId, id, documentId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id}/documents/order ----------
+    [HttpPut("{id:guid}/documents/order")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReorderDocuments(
+        [FromRoute] Guid id,
+        [FromBody] ReorderDocumentsBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result>(
+            new ReorderDocumentsCommand(tenantId, id, body.OrderedDocumentIds),
+            ct
+        );
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     // ---------- POST /signature/requests/{id}/fields ----------
     [HttpPost("{id:guid}/fields")]
     [HasPermission(SignaturePermissions.DocumentPrepare)]
@@ -302,6 +401,7 @@ public sealed class SignatureRequestsController(
             tenantId,
             id,
             body.SignerId,
+            body.DocumentId,
             body.Kind,
             body.Page,
             body.X,
@@ -364,6 +464,7 @@ public sealed class SignatureRequestsController(
         var cmd = new PlacePreparerFieldCommand(
             tenantId,
             id,
+            body.DocumentId,
             body.Kind,
             body.Page,
             body.X,
@@ -598,10 +699,20 @@ public sealed class SignatureRequestsController(
                 s.VerificationMethod
             ))
             .ToList();
+        var documents = body
+            .Documents.Select(document => new DraftDocumentSpec(
+                document.LocalId,
+                document.Id,
+                document.OriginalFileId,
+                document.Title,
+                document.Note
+            ))
+            .ToList();
         var fields = body
             .Fields.Select(f => new DraftFieldSpec(
                 f.Id,
                 f.SignerIndex,
+                f.DocumentLocalId,
                 f.Kind,
                 f.Page,
                 f.X,
@@ -630,6 +741,7 @@ public sealed class SignatureRequestsController(
                 body.SendCertificateToSigners,
                 body.AutoRemindersEnabled,
                 body.ReminderIntervalHours,
+                documents,
                 signers,
                 fields,
                 body.SendPartialCopyOnEachSignature,

@@ -13,8 +13,15 @@ public sealed class TemplatePreparerFieldConfiguration : IEntityTypeConfiguratio
         builder.Property(f => f.Id).ValueGeneratedNever();
 
         builder.Property(f => f.SignatureTemplateId).IsRequired();
+        builder.Property(f => f.TemplateDocumentId).IsRequired();
         builder.Property(f => f.Kind).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(f => f.Label).HasMaxLength(TemplatePreparerField.MaxLabelLength);
+
+        builder
+            .HasOne<TemplateDocument>()
+            .WithMany()
+            .HasForeignKey(f => f.TemplateDocumentId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         builder.OwnsOne(
             f => f.Position,
@@ -28,6 +35,6 @@ public sealed class TemplatePreparerFieldConfiguration : IEntityTypeConfiguratio
             }
         );
 
-        builder.HasIndex(f => f.SignatureTemplateId);
+        builder.HasIndex(f => new { f.SignatureTemplateId, f.TemplateDocumentId });
     }
 }

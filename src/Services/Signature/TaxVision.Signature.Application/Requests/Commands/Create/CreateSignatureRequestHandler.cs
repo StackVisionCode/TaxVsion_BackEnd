@@ -35,6 +35,14 @@ public static class CreateSignatureRequestHandler
         CancellationToken ct
     )
     {
+        if (cmd.Documents is null || cmd.Documents.Count is < 1 or > SignatureRequest.MaxDocuments)
+            return Result.Failure<SignatureRequestResponse>(
+                new Error(
+                    "Signature.Request.DocumentCount",
+                    $"Document count must be between 1 and {SignatureRequest.MaxDocuments}."
+                )
+            );
+
         // La categoría debe ser de sistema o una custom del tenant; se guarda con su nombre canónico.
         var category = await categoryResolver.ResolveAsync(cmd.TenantId, cmd.Category, ct);
         if (category.IsFailure)
@@ -65,7 +73,15 @@ public static class CreateSignatureRequestHandler
             return Result.Failure<SignatureRequestResponse>(draftResult.Error);
 
         var request = draftResult.Value;
-        await TryAttachHashIfFileAvailable(request, cmd, fileRepository, storage, logger, ct);
+        foreach (var documentInput in cmd.Documents)
+        {
+            var addResult = request.AddDocument(documentInput.OriginalFileId, documentInput.Title, documentInput.Note);
+            if (addResult.IsFailure)
+                return Result.Failure<SignatureRequestResponse>(addResult.Error);
+
+            await TryAttachHashIfFileAvailable(request, addResult.Value, fileRepository, storage, logger, ct);
+        }
+
         await PersistRequestAsync(request, repository, unitOfWork, ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, cmd, correlation, bus);
@@ -90,7 +106,6 @@ public static class CreateSignatureRequestHandler
             title: cmd.Title,
             description: cmd.Description,
             category: category,
-            originalFileId: cmd.OriginalFileId,
             tokenExpirationHours: cmd.TokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,
             requiresConsent: cmd.RequiresConsent,
@@ -111,20 +126,27 @@ public static class CreateSignatureRequestHandler
     // quedó stale (p.ej. Deleted mientras el file sigue vivo en CloudStorage).
     private static async Task TryAttachHashIfFileAvailable(
         SignatureRequest request,
-        CreateSignatureRequestCommand cmd,
+        RequestDocument document,
         IFileMetadataRefRepository fileRepository,
         ISignatureCloudStorageClient storage,
         ILogger logger,
         CancellationToken ct
     )
     {
-        var file = await fileRepository.GetByFileIdAsync(cmd.TenantId, cmd.OriginalFileId, ct);
+        var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
         var hash = ExtractAvailableHash(file);
 
         if (hash is null)
         {
             // Proyección vacía o no-Available: pregunta a CloudStorage (fuente autoritaria).
-            hash = await ResyncFromCloudStorageAsync(cmd, fileRepository, storage, logger, ct);
+            hash = await ResyncFromCloudStorageAsync(
+                request.TenantId,
+                document.OriginalFileId,
+                fileRepository,
+                storage,
+                logger,
+                ct
+            );
             if (hash is null)
                 return;
         }
@@ -133,7 +155,7 @@ public static class CreateSignatureRequestHandler
         if (hashResult.IsFailure)
             return;
 
-        request.AttachOriginalHash(hashResult.Value);
+        request.AttachDocumentHash(document.Id, hashResult.Value);
     }
 
     private static string? ExtractAvailableHash(FileMetadataRef? file) =>
@@ -145,19 +167,20 @@ public static class CreateSignatureRequestHandler
     // el checksum. Si CloudStorage no responde o el file no está Available, devuelve null —
     // el consumer de FileAvailable lo adjuntará cuando el bus entregue.
     private static async Task<string?> ResyncFromCloudStorageAsync(
-        CreateSignatureRequestCommand cmd,
+        Guid tenantId,
+        Guid fileId,
         IFileMetadataRefRepository fileRepository,
         ISignatureCloudStorageClient storage,
         ILogger logger,
         CancellationToken ct
     )
     {
-        var lookup = await storage.GetFileAsync(cmd.TenantId, cmd.OriginalFileId, ct);
+        var lookup = await storage.GetFileAsync(tenantId, fileId, ct);
         if (lookup.IsFailure)
         {
             logger.LogInformation(
                 "Hash lookup for {FileId} fell through to bus (CloudStorage: {Error}).",
-                cmd.OriginalFileId,
+                fileId,
                 lookup.Error.Message
             );
             return null;
@@ -169,23 +192,24 @@ public static class CreateSignatureRequestHandler
         if (string.IsNullOrEmpty(metadata.ChecksumSha256))
             return null;
 
-        await UpsertProjectionAsync(cmd, fileRepository, metadata, ct);
+        await UpsertProjectionAsync(tenantId, fileId, fileRepository, metadata, ct);
         return metadata.ChecksumSha256;
     }
 
     private static async Task UpsertProjectionAsync(
-        CreateSignatureRequestCommand cmd,
+        Guid tenantId,
+        Guid fileId,
         IFileMetadataRefRepository fileRepository,
         SignatureFileMetadata metadata,
         CancellationToken ct
     )
     {
-        var existing = await fileRepository.GetByFileIdAsync(cmd.TenantId, cmd.OriginalFileId, ct);
+        var existing = await fileRepository.GetByFileIdAsync(tenantId, fileId, ct);
         if (existing is null)
         {
             var projection = FileMetadataRef.ForAvailable(
-                cmd.TenantId,
-                cmd.OriginalFileId,
+                tenantId,
+                fileId,
                 metadata.ObjectKey ?? string.Empty,
                 metadata.ContentType ?? string.Empty,
                 metadata.SizeBytes,
@@ -234,7 +258,8 @@ public static class CreateSignatureRequestHandler
                     CreatedByUserId = request.CreatedByUserId,
                     Title = request.Title,
                     Category = request.Category.ToString(),
-                    OriginalFileId = request.OriginalFileId,
+                    OriginalFileIds = request.Documents.Select(document => document.OriginalFileId).ToList(),
+                    DocumentCount = request.Documents.Count,
                     TokenExpirationHours = request.TokenExpirationHours,
                     RequiresSequentialSigning = request.RequiresSequentialSigning,
                     SignerCount = request.Signers.Count,

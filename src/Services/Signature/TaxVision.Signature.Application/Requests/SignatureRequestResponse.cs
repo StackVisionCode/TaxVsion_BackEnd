@@ -21,6 +21,7 @@ public sealed record SignerResponse(
 public sealed record SignatureFieldResponse(
     Guid Id,
     Guid SignerId,
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -34,6 +35,7 @@ public sealed record SignatureFieldResponse(
 /// <summary>Campo del preparador (canal paralelo). Sin SignerId: no pertenece a un firmante.</summary>
 public sealed record PreparerFieldResponse(
     Guid Id,
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,
@@ -41,6 +43,18 @@ public sealed record PreparerFieldResponse(
     double Width,
     double Height,
     string? Label
+);
+
+public sealed record SignatureRequestDocumentResponse(
+    Guid Id,
+    int Order,
+    string Title,
+    Guid OriginalFileId,
+    string? HashPre,
+    Guid? SealedFileId,
+    string? HashPost,
+    DateTime? SealedAtUtc,
+    string? Note
 );
 
 public sealed record SignatureRequestResponse(
@@ -51,10 +65,7 @@ public sealed record SignatureRequestResponse(
     string? Description,
     string Category,
     SignatureRequestStatus Status,
-    Guid OriginalFileId,
-    string? DocumentHashPre,
-    Guid? SealedFileId,
-    string? DocumentHashPost,
+    IReadOnlyList<SignatureRequestDocumentResponse> Documents,
     Guid? CertificateFileId,
     bool RequiresSequentialSigning,
     bool RequiresConsent,
@@ -98,10 +109,7 @@ public sealed record SignatureRequestResponse(
             request.Description,
             request.Category,
             request.Status,
-            request.OriginalFileId,
-            request.DocumentHashPre?.Value,
-            request.SealedFileId,
-            request.DocumentHashPost?.Value,
+            request.Documents.OrderBy(document => document.Order).Select(MapDocument).ToList(),
             request.CertificateFileId,
             request.RequiresSequentialSigning,
             request.RequiresConsent,
@@ -136,6 +144,7 @@ public sealed record SignatureRequestResponse(
     private static PreparerFieldResponse MapPreparerField(PreparerField field) =>
         new(
             field.Id,
+            field.DocumentId,
             field.Kind,
             field.Position.Page,
             field.Position.X,
@@ -165,6 +174,7 @@ public sealed record SignatureRequestResponse(
         new(
             field.Id,
             signerId,
+            field.DocumentId,
             field.Kind,
             field.Position.Page,
             field.Position.X,
@@ -173,5 +183,18 @@ public sealed record SignatureRequestResponse(
             field.Position.Height,
             field.Label,
             field.IsRequired
+        );
+
+    private static SignatureRequestDocumentResponse MapDocument(RequestDocument document) =>
+        new(
+            document.Id,
+            document.Order,
+            document.Title,
+            document.OriginalFileId,
+            document.DocumentHashPre?.Value,
+            document.SealedFileId,
+            document.DocumentHashPost?.Value,
+            document.SealedAtUtc,
+            document.Note
         );
 }

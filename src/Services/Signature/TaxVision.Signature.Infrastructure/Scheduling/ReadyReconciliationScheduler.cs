@@ -83,16 +83,25 @@ public sealed class ReadyReconciliationScheduler(
         var eventsToPublish = new List<SignatureRequestReadyForSendingIntegrationEvent>();
         foreach (var request in drafts)
         {
-            var file = await fileRepository.GetByFileIdAsync(request.TenantId, request.OriginalFileId, ct);
-            if (file is null || file.Status != FileScanStatus.Available || string.IsNullOrEmpty(file.ChecksumSha256))
-                continue; // aún no disponible: sigue esperando el evento, no es un huérfano
-
-            var hashResult = DocumentHash.Create(file.ChecksumSha256);
-            if (hashResult.IsFailure)
+            if (request.Documents.Count == 0)
                 continue;
 
-            var attach = request.AttachOriginalHash(hashResult.Value);
-            if (attach.IsFailure)
+            foreach (var document in request.Documents.Where(document => document.DocumentHashPre is null))
+            {
+                var file = await fileRepository.GetByFileIdAsync(request.TenantId, document.OriginalFileId, ct);
+                if (
+                    file is null
+                    || file.Status != FileScanStatus.Available
+                    || string.IsNullOrEmpty(file.ChecksumSha256)
+                )
+                    continue;
+
+                var hashResult = DocumentHash.Create(file.ChecksumSha256);
+                if (hashResult.IsSuccess)
+                    request.AttachDocumentHash(document.Id, hashResult.Value);
+            }
+
+            if (request.Documents.Any(document => document.DocumentHashPre is null))
                 continue;
 
             eventsToPublish.Add(
@@ -102,8 +111,14 @@ public sealed class ReadyReconciliationScheduler(
                     CorrelationId = Guid.NewGuid().ToString("N"),
                     SignatureRequestId = request.Id,
                     CreatedByUserId = request.CreatedByUserId,
-                    OriginalFileId = request.OriginalFileId,
-                    DocumentHashPre = request.DocumentHashPre!.Value,
+                    Documents = request
+                        .Documents.Where(document => document.DocumentHashPre is not null)
+                        .Select(document => new DocumentHashDescriptor(
+                            document.Id,
+                            document.OriginalFileId,
+                            document.DocumentHashPre!.Value
+                        ))
+                        .ToList(),
                 }
             );
         }
@@ -116,7 +131,7 @@ public sealed class ReadyReconciliationScheduler(
             await bus.PublishAsync(evt);
 
         logger.LogInformation(
-            "ReadyReconciliationScheduler attached original hash to {Count} stranded Draft requests.",
+            "ReadyReconciliationScheduler completed document hashes for {Count} stranded Draft requests.",
             eventsToPublish.Count
         );
     }

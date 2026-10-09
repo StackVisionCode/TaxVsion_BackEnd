@@ -13,6 +13,7 @@ public sealed class PreparerFieldConfiguration : IEntityTypeConfiguration<Prepar
         builder.Property(field => field.Id).ValueGeneratedNever();
 
         builder.Property(field => field.SignatureRequestId).IsRequired();
+        builder.Property(field => field.DocumentId).IsRequired();
         builder.Property(field => field.Kind).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(field => field.Label).HasMaxLength(PreparerField.MaxLabelLength);
         builder.Property(field => field.CreatedAtUtc).IsRequired();
@@ -30,5 +31,11 @@ public sealed class PreparerFieldConfiguration : IEntityTypeConfiguration<Prepar
         );
 
         builder.HasIndex(field => field.SignatureRequestId);
+        builder.HasIndex(field => field.DocumentId);
+        builder
+            .HasOne<RequestDocument>()
+            .WithMany()
+            .HasForeignKey(field => field.DocumentId)
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

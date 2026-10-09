@@ -137,6 +137,9 @@ jobs:
           # Campaigns (servicio nuevo, sep-2026). docker-compose.yml lo exige con :? en campaigns-api
           # y en migrations. No usa M2M (sin ServiceAuthClient), así que no lleva *_SERVICE_CLIENT_*.
           CAMPAIGNS_DB_CONNECTION=${{ secrets.CAMPAIGNS_DB_CONNECTION }}
+          # Wallet: requerido tanto por wallet-api como por el runner de migraciones.
+          # Sin esta entrada Compose aborta antes de construir o migrar cualquier servicio.
+          WALLET_DB_CONNECTION=${{ secrets.WALLET_DB_CONNECTION }}
           # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
           # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
           # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.
@@ -322,6 +325,12 @@ jobs:
           SMS_SERVICE_CLIENT_ID=${{ secrets.SMS_SERVICE_CLIENT_ID }}
           SMS_SERVICE_CLIENT_SECRET=${{ secrets.SMS_SERVICE_CLIENT_SECRET }}
 
+          # Wallet: recuperacion pull de permisos, catalogo de limites de Subscription y
+          # checkout de recargas en PaymentApp. Los tres caminos usan la misma identidad
+          # ServiceOnly registrada como ServiceAuth__Clients__30 en auth-api.
+          WALLET_SERVICE_CLIENT_ID=${{ secrets.WALLET_SERVICE_CLIENT_ID }}
+          WALLET_SERVICE_CLIENT_SECRET=${{ secrets.WALLET_SERVICE_CLIENT_SECRET }}
+
           EOF
 
       - name: Write production .env (3/3)
@@ -457,6 +466,7 @@ jobs:
           NOTES_MODULE_GATE_ENFORCE=${{ secrets.NOTES_MODULE_GATE_ENFORCE }}
           REMINDER_MODULE_GATE_ENFORCE=${{ secrets.REMINDER_MODULE_GATE_ENFORCE }}
           TASKS_MODULE_GATE_ENFORCE=${{ secrets.TASKS_MODULE_GATE_ENFORCE }}
+          WALLET_MODULE_GATE_ENFORCE=${{ secrets.WALLET_MODULE_GATE_ENFORCE }}
 
           # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
           TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
@@ -582,7 +592,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (19 servicios)
+      - name: Apply .NET EF Core migrations (25 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations

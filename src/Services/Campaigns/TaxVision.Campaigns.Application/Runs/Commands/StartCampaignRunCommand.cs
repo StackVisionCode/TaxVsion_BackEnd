@@ -24,7 +24,10 @@ public sealed record StartCampaignRunCommand(
     Guid TenantId,
     Guid CampaignId,
     Guid TriggeredByUserId,
-    IReadOnlyList<StartRunRecipient> Recipients
+    IReadOnlyList<StartRunRecipient> Recipients,
+    // Bearer de la sesión para autorizar el cobro en el Wallet on-behalf-of (F4). Null en rutas sin sesión
+    // humana (p.ej. tests internos); entonces el cliente usa un token M2M del tenant.
+    string? CallerBearerToken = null
 );
 
 public static class StartCampaignRunHandler
@@ -34,6 +37,7 @@ public static class StartCampaignRunHandler
         ICampaignRepository campaigns,
         ICampaignRunRepository runs,
         ISenderProfileRepository senderProfiles,
+        IWalletSpendClient wallet,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -54,6 +58,8 @@ public static class StartCampaignRunHandler
             units,
             runs,
             senderProfiles,
+            wallet,
+            command.CallerBearerToken,
             unitOfWork,
             bus,
             correlation,
@@ -74,6 +80,8 @@ public static class StartCampaignRunHandler
         IReadOnlyCollection<RunRecipientDraft> units,
         ICampaignRunRepository runs,
         ISenderProfileRepository senderProfiles,
+        IWalletSpendClient wallet,
+        string? callerBearerToken,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -86,6 +94,39 @@ public static class StartCampaignRunHandler
 
         var run = runResult.Value;
         await runs.AddAsync(run, ct);
+
+        // PEP money-OUT (F4, 00_Plan §5): reservar fondos para las unidades cobrables ANTES del fan-out. Si el
+        // Wallet no autoriza, el run se rechaza y el envío falla ya mismo (saldo insuficiente → 402; Wallet
+        // caído → 503, fail-closed). Un run que ya cerró en Start (todo Skipped) no pasa por acá: nada que cobrar.
+        if (run.Status == CampaignRunStatus.Dispatching)
+        {
+            var billable = CountBillableUnits(run);
+            if (billable.BillableTotal > 0)
+            {
+                var auth = await wallet.ReserveAsync(
+                    run.TenantId,
+                    WalletReferenceTypes.CampaignRun,
+                    run.Id,
+                    billable,
+                    callerBearerToken,
+                    ct
+                );
+                if (!auth.Reachable)
+                {
+                    run.Reject("wallet_unavailable");
+                    await unitOfWork.SaveChangesAsync(ct);
+                    return Result.Failure<CampaignRunResponse>(CampaignRunErrors.WalletUnavailable);
+                }
+                if (!auth.Authorized)
+                {
+                    run.Reject($"insufficient_funds:{auth.DeficitMicros}");
+                    await unitOfWork.SaveChangesAsync(ct);
+                    return Result.Failure<CampaignRunResponse>(
+                        CampaignRunErrors.InsufficientFunds(auth.DeficitMicros, auth.Currency)
+                    );
+                }
+            }
+        }
 
         // Resuelve el remitente (SenderRef opaco) por canal desde la selección de la campaña. Solo perfiles
         // Active cuentan; un canal sin selección va con SenderRef null (el ejecutor usa su default).
@@ -172,6 +213,28 @@ public static class StartCampaignRunHandler
             if (refById.TryGetValue(selection.SenderProfileId, out var senderRef))
                 map[selection.Channel] = senderRef;
         return map;
+    }
+
+    /// <summary>
+    /// Cuenta las unidades cobrables por canal del run (Σ destinatarios×canal, sobre TODAS las unidades
+    /// materializadas). Solo Email y SMS se cobran (<see cref="BillableChannels"/>): Push es del sistema
+    /// (gratis) y WhatsApp está oculto. La liquidación al cierre libera la fracción Skipped (00_Plan §5).
+    /// </summary>
+    private static WalletUnitCounts CountBillableUnits(CampaignRun run)
+    {
+        long email = 0,
+            sms = 0;
+        foreach (var recipient in run.Recipients)
+            switch (recipient.Channel)
+            {
+                case CampaignChannel.Email:
+                    email++;
+                    break;
+                case CampaignChannel.Sms:
+                    sms++;
+                    break;
+            }
+        return new WalletUnitCounts(email, sms, 0, 0);
     }
 
     private static IReadOnlyCollection<RunRecipientDraft> ExpandUnits(

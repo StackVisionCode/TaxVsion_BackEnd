@@ -50,6 +50,8 @@ public static class PermissionCatalog
     public const string CampaignsManage = CampaignsPermissions.Manage;
     public const string CampaignsSend = CampaignsPermissions.Send;
     public const string CampaignsSendersManage = CampaignsPermissions.SendersManage;
+    public const string WalletView = WalletPermissions.View;
+    public const string WalletManage = WalletPermissions.Manage;
     public const string ReportsView = "reports.view";
 
     // CloudStorage / Media Security Gateway
@@ -591,6 +593,24 @@ public static class PermissionCatalog
             CampaignsSendersManage,
             "campaigns",
             "Manage campaign sender profiles",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            // Monedero prepago (00_Plan wallet-ledger). view = saldo/ledger/tarifas; manage = recargar.
+            // Editar el catálogo de tarifas NO es permiso de tenant (PlatformAdmin, por actor-type).
+            new Guid("a1000000-0000-0000-0000-000000000187"),
+            WalletView,
+            "wallet",
+            "View wallet balance, ledger and rates",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000188"),
+            WalletManage,
+            "wallet",
+            "Top up the wallet balance",
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),

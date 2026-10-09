@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Messaging;
+using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -24,6 +25,7 @@ public static class SignatureSealedReadyConsumer
     public static async Task Handle(
         FileAvailableIntegrationEvent evt,
         ISignatureRequestRepository repository,
+        IFileMetadataRefRepository fileRepository,
         ISignatureCloudStorageClient storage,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -41,13 +43,40 @@ public static class SignatureSealedReadyConsumer
             if (request is null)
                 return; // el archivo disponible no es un documento sellado
 
+            var sealedDocuments = request
+                .Documents.Where(document => document.SealedFileId is not null)
+                .OrderBy(document => document.Order)
+                .ToList();
+            if (sealedDocuments.Count != request.Documents.Count)
+                return;
+
+            foreach (var document in sealedDocuments)
+            {
+                if (document.SealedFileId == evt.FileId)
+                    continue;
+
+                var projection = await fileRepository.GetByFileIdAsync(
+                    request.TenantId,
+                    document.SealedFileId!.Value,
+                    ct
+                );
+                if (projection?.Status != FileScanStatus.Available)
+                    return;
+            }
+
             var emails = request.Signers.Select(s => s.Email.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             // P2: solo se emite el share-link si la request pide entregar el documento firmado; si no,
             // el evento igual sale (con flag false) para no romper otros consumidores, pero sin link.
-            var shareToken = request.SendSealedDocumentToSigners
-                ? await MintShareTokenAsync(request, evt.FileId, emails, storage, logger, ct)
-                : null;
+            var sealedFiles = new List<SealedFileDescriptor>(sealedDocuments.Count);
+            foreach (var document in sealedDocuments)
+            {
+                var sealedFileId = document.SealedFileId!.Value;
+                var shareToken = request.SendSealedDocumentToSigners
+                    ? await MintShareTokenAsync(request, sealedFileId, emails, storage, logger, ct)
+                    : null;
+                sealedFiles.Add(new SealedFileDescriptor(document.Id, sealedFileId, document.Title, shareToken));
+            }
 
             await bus.PublishAsync(
                 new SignatureReadyForDownloadIntegrationEvent
@@ -55,9 +84,8 @@ public static class SignatureSealedReadyConsumer
                     TenantId = request.TenantId,
                     CorrelationId = correlationId,
                     SignatureRequestId = request.Id,
-                    SealedFileId = evt.FileId,
+                    SealedFiles = sealedFiles,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
-                    ShareToken = shareToken,
                     SendSealedDocumentToSigners = request.SendSealedDocumentToSigners,
                     Signers = request
                         .Signers.Select(s => new SignerContactSnapshot(

@@ -21,8 +21,13 @@ public static class PlanModuleCatalog
     /// Módulos de Starter. Incluye <c>comms</c> —chat, llamadas y vídeo— a propósito: el portal del
     /// cliente existe en todos los planes, y un portal sin forma de que el cliente hable con su
     /// preparador es un portal mudo. Las reuniones van aparte (<c>meetings</c>).
+    ///
+    /// <para><c>wallet</c> también es transversal: es la infraestructura de saldo para consumos
+    /// medidos de otros módulos. Incluir el monedero no habilita Campaigns, Email ni ningún canal;
+    /// esos productos conservan sus propios permisos y entitlements. Cobrar por abrir la billetera
+    /// y volver a cobrar por el consumo produciría además un bloqueo circular para Starter.</para>
     /// </summary>
-    public static readonly string[] Starter = ["customers", "signatures", "documents", "planner", "comms"];
+    public static readonly string[] Starter = ["customers", "signatures", "documents", "planner", "comms", "wallet"];
 
     /// <summary>Módulos de Pro.</summary>
     public static readonly string[] Pro =
@@ -35,6 +40,7 @@ public static class PlanModuleCatalog
         "comms",
         "meetings",
         "campaigns",
+        "wallet",
     ];
 
     /// <summary>
@@ -55,6 +61,7 @@ public static class PlanModuleCatalog
         "comms",
         "meetings",
         "campaigns",
+        "wallet",
     ];
 
     /// <summary>Los módulos del plan, por su código. Vacío si el código no es del catálogo.</summary>

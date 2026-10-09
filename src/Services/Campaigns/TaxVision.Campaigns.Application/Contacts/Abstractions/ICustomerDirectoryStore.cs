@@ -51,7 +51,13 @@ public interface ICustomerDirectoryStore
     );
 
     /// <summary>Cambia solo el estado (Archived/Inactive/Active). Si falta la fila, no hace nada (llegará por reconciliación/Created).</summary>
-    Task SetStatusAsync(Guid tenantId, Guid customerId, string status, DateTime version, CancellationToken ct = default);
+    Task SetStatusAsync(
+        Guid tenantId,
+        Guid customerId,
+        string status,
+        DateTime version,
+        CancellationToken ct = default
+    );
 
     /// <summary>¿Existe un cliente con ese email (normalizado) en el tenant? Para la regla contacto⇔cliente.</summary>
     Task<CustomerDirectoryRecord?> FindByEmailAsync(Guid tenantId, string email, CancellationToken ct = default);

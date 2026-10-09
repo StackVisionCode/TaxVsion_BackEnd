@@ -101,5 +101,23 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Metadata.FindNavigation(nameof(Signer.FieldValues))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(signer => signer.DocumentViews)
+            .WithOne()
+            .HasForeignKey(view => view.SignerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata.FindNavigation(nameof(Signer.DocumentViews))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(signer => signer.DocumentCompletions)
+            .WithOne()
+            .HasForeignKey(completion => completion.SignerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder
+            .Metadata.FindNavigation(nameof(Signer.DocumentCompletions))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
     }
 }

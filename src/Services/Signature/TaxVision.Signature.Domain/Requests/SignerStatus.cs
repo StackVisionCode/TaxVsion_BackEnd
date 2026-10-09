@@ -7,6 +7,7 @@ namespace TaxVision.Signature.Domain.Requests;
 public enum SignerStatus
 {
     Pending,
+    InProgress,
     Signed,
     Rejected,
     Expired,

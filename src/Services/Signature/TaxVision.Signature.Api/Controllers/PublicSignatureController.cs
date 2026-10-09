@@ -55,6 +55,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     [HttpGet("{token}/document")]
     [RateLimitExempt(PublicExemptReason)]
     [EnableRateLimiting("public-signature-document")]
+    [Produces("application/pdf")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
@@ -62,7 +63,34 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     {
         var (ip, ua) = ExtractClientContext();
         var result = await bus.InvokeAsync<Result<PublicDocumentStream>>(
-            new GetPublicDocumentCommand(token, ip, ua),
+            new GetPublicDocumentCommand(token, null, ip, ua),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        var stream = result.Value;
+        return File(stream.Content, stream.ContentType, stream.FileName);
+    }
+
+    // ---------- GET /signature/public/{token}/document/{documentId} ----------
+    [HttpGet("{token}/document/{documentId:guid}")]
+    [RateLimitExempt(PublicExemptReason)]
+    [EnableRateLimiting("public-signature-document")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetDocumentById(
+        [FromRoute] string token,
+        [FromRoute] Guid documentId,
+        CancellationToken ct
+    )
+    {
+        var (ip, ua) = ExtractClientContext();
+        var result = await bus.InvokeAsync<Result<PublicDocumentStream>>(
+            new GetPublicDocumentCommand(token, documentId, ip, ua),
             ct
         );
         if (result.IsFailure)
@@ -86,6 +114,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/sign ----------
     [HttpPost("{token}/sign")]
+    [HttpPut("{token}/submit")]
     [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -104,7 +133,8 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
                 body.SignatureImageFileId,
                 ip,
                 ua,
-                body.FieldValues
+                body.FieldValues,
+                body.DocumentIds
             ),
             ct
         );
@@ -269,7 +299,8 @@ public sealed record SubmitSignatureBody(
     SignatureCaptureMethod Method,
     string? TypedName,
     Guid? SignatureImageFileId,
-    IReadOnlyList<SubmitFieldValueDto>? FieldValues = null
+    IReadOnlyList<SubmitFieldValueDto>? FieldValues = null,
+    IReadOnlyList<Guid>? DocumentIds = null
 );
 
 public sealed record AttachSignatureImageResponse(Guid FileId);

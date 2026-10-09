@@ -6,6 +6,7 @@ public sealed record PlaceFieldCommand(
     Guid TenantId,
     Guid SignatureRequestId,
     Guid SignerId,
+    Guid DocumentId,
     SignatureFieldKind Kind,
     int Page,
     double X,

@@ -8,6 +8,7 @@ $fleet = @(
   @{ n = "Auth";           d = "src\Services\Auth\Api";                                p = 5124 },
   @{ n = "Tenant";         d = "src\Services\Tenant\TaxVision.Tenant.Api";             p = 5217 },
   @{ n = "Customer";       d = "src\Services\Customer\TaxVision.Customer.Api";         p = 5263 },
+  @{ n = "Wallet";         d = "src\Services\Wallet\TaxVision.Wallet.Api";             p = 5270 },
   @{ n = "Notification";   d = "src\Services\Notification\TaxVision.Notification.Api"; p = 5320 },
   @{ n = "CloudStorage";   d = "src\Services\CloudStorage\TaxVision.CloudStorage.Api"; p = 5330 },
   @{ n = "Signature";      d = "src\Services\Signature\TaxVision.Signature.Api";       p = 5340 },

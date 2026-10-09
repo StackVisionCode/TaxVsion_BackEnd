@@ -19,6 +19,7 @@ public sealed class TemplateField : BaseEntity
     private TemplateField() { }
 
     public Guid SignatureTemplateId { get; private set; }
+    public Guid TemplateDocumentId { get; private set; }
     public int SlotOrder { get; private set; }
     public SignatureFieldKind Kind { get; private set; }
     public FieldPosition Position { get; private set; } = default!;
@@ -27,6 +28,7 @@ public sealed class TemplateField : BaseEntity
 
     internal static Result<TemplateField> Create(
         Guid templateId,
+        Guid templateDocumentId,
         int slotOrder,
         SignatureFieldKind kind,
         FieldPosition position,
@@ -37,6 +39,10 @@ public sealed class TemplateField : BaseEntity
         if (templateId == Guid.Empty)
             return Result.Failure<TemplateField>(
                 new Error("Signature.TemplateField.Template", "TemplateId is required.")
+            );
+        if (templateDocumentId == Guid.Empty)
+            return Result.Failure<TemplateField>(
+                new Error("Signature.TemplateField.Document", "TemplateDocumentId is required.")
             );
         if (slotOrder < 1)
             return Result.Failure<TemplateField>(
@@ -55,6 +61,7 @@ public sealed class TemplateField : BaseEntity
             {
                 Id = Guid.NewGuid(),
                 SignatureTemplateId = templateId,
+                TemplateDocumentId = templateDocumentId,
                 SlotOrder = slotOrder,
                 Kind = kind,
                 Position = position,

@@ -31,9 +31,11 @@ public sealed class SignatureTemplate : TenantEntity
     public const int MaxDescriptionLength = 2000;
     public const int MinSlots = 1;
     public const int MaxSlots = 20;
+    public const int MaxDocuments = 20;
     public const int DefaultReminderIntervalHours = 48;
 
     private readonly List<TemplateSignerSlot> _slots = [];
+    private readonly List<TemplateDocument> _documents = [];
     private readonly List<TemplateField> _fields = [];
     private readonly List<TemplatePreparerField> _preparerFields = [];
 
@@ -106,6 +108,7 @@ public sealed class SignatureTemplate : TenantEntity
     public DateTime? ArchivedAtUtc { get; private set; }
 
     public IReadOnlyList<TemplateSignerSlot> Slots => _slots.AsReadOnly();
+    public IReadOnlyList<TemplateDocument> Documents => _documents.OrderBy(document => document.Order).ToList();
     public IReadOnlyList<TemplateField> Fields => _fields.AsReadOnly();
     public IReadOnlyList<TemplatePreparerField> PreparerFields => _preparerFields.AsReadOnly();
 
@@ -180,6 +183,13 @@ public sealed class SignatureTemplate : TenantEntity
             UpdatedAtUtc = now,
         };
         template.SetTenant(tenantId);
+        if (template.BaseDocumentFileId is { } baseFileId)
+        {
+            var document = TemplateDocument.Create(template.Id, 1, baseFileId, template.Title);
+            if (document.IsFailure)
+                return Result.Failure<SignatureTemplate>(document.Error);
+            template._documents.Add(document.Value);
+        }
         return Result.Success(template);
     }
 
@@ -334,6 +344,74 @@ public sealed class SignatureTemplate : TenantEntity
     {
         EnsureDraft();
         BaseDocumentFileId = baseDocumentFileId == Guid.Empty ? null : baseDocumentFileId;
+        _fields.Clear();
+        _preparerFields.Clear();
+        _documents.Clear();
+        if (BaseDocumentFileId is { } fileId)
+        {
+            var document = TemplateDocument.Create(Id, 1, fileId, Title);
+            if (document.IsFailure)
+                return Result.Failure(document.Error);
+            _documents.Add(document.Value);
+        }
+        Touch();
+        return Result.Success();
+    }
+
+    public Result<TemplateDocument> AddDocument(Guid fileId, string title)
+    {
+        EnsureDraft();
+        if (_documents.Count >= MaxDocuments)
+            return Result.Failure<TemplateDocument>(
+                new Error("Signature.Template.TooManyDocuments", $"Document count cannot exceed {MaxDocuments}.")
+            );
+        if (_documents.Any(document => document.FileId == fileId))
+            return Result.Failure<TemplateDocument>(
+                new Error("Signature.Template.DocumentDuplicate", "The document is already part of this template.")
+            );
+        var created = TemplateDocument.Create(Id, _documents.Count + 1, fileId, title);
+        if (created.IsFailure)
+            return created;
+        _documents.Add(created.Value);
+        BaseDocumentFileId = _documents.OrderBy(document => document.Order).First().FileId;
+        Touch();
+        return created;
+    }
+
+    public Result RemoveDocument(Guid documentId)
+    {
+        EnsureDraft();
+        var document = _documents.Find(candidate => candidate.Id == documentId);
+        if (document is null)
+            return Result.Failure(new Error("Signature.Template.DocumentMissing", "Template document was not found."));
+        _documents.Remove(document);
+        _fields.RemoveAll(field => field.TemplateDocumentId == documentId);
+        _preparerFields.RemoveAll(field => field.TemplateDocumentId == documentId);
+        var remainingDocuments = _documents.OrderBy(item => item.Order).ToList();
+        for (var index = 0; index < remainingDocuments.Count; index++)
+            remainingDocuments[index].Reorder(index + 1);
+        BaseDocumentFileId = _documents.OrderBy(item => item.Order).FirstOrDefault()?.FileId;
+        Touch();
+        return Result.Success();
+    }
+
+    public Result ReorderDocuments(IReadOnlyList<Guid> orderedDocumentIds)
+    {
+        EnsureDraft();
+        if (orderedDocumentIds.Count != _documents.Count || orderedDocumentIds.Distinct().Count() != _documents.Count)
+            return Result.Failure(
+                new Error("Signature.Template.DocumentOrder", "Document order must contain every document once.")
+            );
+        for (var index = 0; index < orderedDocumentIds.Count; index++)
+        {
+            var document = _documents.Find(candidate => candidate.Id == orderedDocumentIds[index]);
+            if (document is null)
+                return Result.Failure(
+                    new Error("Signature.Template.DocumentOrder", "Document order contains an unknown document.")
+                );
+            document.Reorder(index + 1);
+        }
+        BaseDocumentFileId = _documents.OrderBy(item => item.Order).FirstOrDefault()?.FileId;
         Touch();
         return Result.Success();
     }
@@ -447,6 +525,7 @@ public sealed class SignatureTemplate : TenantEntity
     // ------------------------------------------------------------------
 
     public Result<TemplateField> PlaceField(
+        Guid templateDocumentId,
         int slotOrder,
         SignatureFieldKind kind,
         FieldPosition position,
@@ -456,12 +535,17 @@ public sealed class SignatureTemplate : TenantEntity
     {
         EnsureDraft();
 
+        if (_documents.All(document => document.Id != templateDocumentId))
+            return Result.Failure<TemplateField>(
+                new Error("Signature.Template.DocumentMissing", "Cannot place a field on an unknown document.")
+            );
+
         if (FindSlotByOrderOrNull(slotOrder) is null)
             return Result.Failure<TemplateField>(
                 new Error("Signature.Template.SlotMissing", "Cannot place a field on an unknown slot.")
             );
 
-        var fieldResult = TemplateField.Create(Id, slotOrder, kind, position, label, isRequired);
+        var fieldResult = TemplateField.Create(Id, templateDocumentId, slotOrder, kind, position, label, isRequired);
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -469,6 +553,23 @@ public sealed class SignatureTemplate : TenantEntity
         Touch();
         return fieldResult;
     }
+
+    [Obsolete("Pass TemplateDocumentId explicitly for multi-document templates.")]
+    public Result<TemplateField> PlaceField(
+        int slotOrder,
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label,
+        bool isRequired
+    ) =>
+        _documents.Count == 1
+            ? PlaceField(_documents[0].Id, slotOrder, kind, position, label, isRequired)
+            : Result.Failure<TemplateField>(
+                new Error(
+                    "Signature.Template.DocumentRequired",
+                    "TemplateDocumentId is required for multi-document templates."
+                )
+            );
 
     public Result RemoveField(Guid fieldId)
     {
@@ -485,6 +586,7 @@ public sealed class SignatureTemplate : TenantEntity
 
     /// <summary>Predefine un campo de firma del preparador (sin slot). Solo en Draft.</summary>
     public Result<TemplatePreparerField> PlacePreparerField(
+        Guid templateDocumentId,
         SignatureFieldKind kind,
         FieldPosition position,
         string? label
@@ -492,7 +594,12 @@ public sealed class SignatureTemplate : TenantEntity
     {
         EnsureDraft();
 
-        var fieldResult = TemplatePreparerField.Create(Id, kind, position, label);
+        if (_documents.All(document => document.Id != templateDocumentId))
+            return Result.Failure<TemplatePreparerField>(
+                new Error("Signature.Template.DocumentMissing", "Cannot place a preparer field on an unknown document.")
+            );
+
+        var fieldResult = TemplatePreparerField.Create(Id, templateDocumentId, kind, position, label);
         if (fieldResult.IsFailure)
             return fieldResult;
 
@@ -500,6 +607,21 @@ public sealed class SignatureTemplate : TenantEntity
         Touch();
         return fieldResult;
     }
+
+    [Obsolete("Pass TemplateDocumentId explicitly for multi-document templates.")]
+    public Result<TemplatePreparerField> PlacePreparerField(
+        SignatureFieldKind kind,
+        FieldPosition position,
+        string? label
+    ) =>
+        _documents.Count == 1
+            ? PlacePreparerField(_documents[0].Id, kind, position, label)
+            : Result.Failure<TemplatePreparerField>(
+                new Error(
+                    "Signature.Template.DocumentRequired",
+                    "TemplateDocumentId is required for multi-document templates."
+                )
+            );
 
     public Result RemovePreparerField(Guid fieldId)
     {
@@ -531,6 +653,19 @@ public sealed class SignatureTemplate : TenantEntity
 
         if (_slots.Count < MinSlots)
             return Result.Failure(new Error("Signature.Template.NoSlots", "At least one slot is required to publish."));
+
+        if (_documents.Count == 0)
+            return Result.Failure(
+                new Error("Signature.Template.NoDocuments", "At least one document is required to publish.")
+            );
+
+        if (_documents.Any(document => document.FileId == Guid.Empty))
+            return Result.Failure(
+                new Error(
+                    "Signature.Template.DocumentRepairRequired",
+                    "A legacy placeholder document must be replaced before the template can be published."
+                )
+            );
 
         if (!HasAnyRequiredSignatureField())
             return Result.Failure(
@@ -665,6 +800,7 @@ public sealed class SignatureTemplate : TenantEntity
         TemplateField
             .Create(
                 original.SignatureTemplateId,
+                original.TemplateDocumentId,
                 newSlotOrder,
                 original.Kind,
                 original.Position,

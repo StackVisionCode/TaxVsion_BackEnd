@@ -56,8 +56,9 @@ public sealed record ModuleAddOnDefinition(
 /// Ni endpoint que los exija ni pantalla en el CRM. Se vendían a 29-49 USD/mes con renovación
 /// automática, o sea pagar por nada. Medido antes de retirarlos: ningún tenant había comprado
 /// ninguno.</item>
-/// <item><c>comms</c>: existe y funciona, pero pasó a estar incluido en TODOS los planes, así que ya
-/// no hay a quién vendérselo — el guard <c>AddOn.AlreadyIncludedInPlan</c> lo rechazaría siempre.</item>
+/// <item><c>comms</c> y <c>wallet</c>: existen y funcionan, pero están incluidos en TODOS los planes,
+/// así que no hay a quién vendérselos — el guard <c>AddOn.AlreadyIncludedInPlan</c> los rechazaría
+/// siempre. Wallet es infraestructura de saldo para consumos medidos, no el producto consumido.</item>
 /// </list>
 /// </summary>
 public static class ModuleAddOnCatalog
@@ -98,6 +99,16 @@ public static class ModuleAddOnCatalog
             "campaigns",
             29m,
             Availability: AddOnAvailability.Offered
+        ),
+        new(
+            new Guid("d1000000-0000-0000-0000-000000000010"),
+            "addon-wallet",
+            "Monedero",
+            "wallet",
+            29m,
+            // Se conserva el id para retirar de forma idempotente cualquier definición que haya
+            // llegado a una base existente durante el desarrollo. Nunca se ofrece en la tienda.
+            Availability: AddOnAvailability.IncludedInEveryPlan
         ),
         // ---- Sin nada construido detrás: no se ofrecen ----
         new(

@@ -153,13 +153,121 @@
           "name": "CreateSignatureRequest",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const configured = pm.variables.get('signaturePdfDocuments');",
+                  "const fallbackFileId = pm.variables.get('fileId');",
+                  "const accessToken = pm.variables.get('accessToken');",
+                  "const baseUrl = pm.variables.replaceIn('{{UrlBase}}').replace(/\\\/$/, '');",
+                  "",
+                  "if (!configured) {",
+                  "  if (!fallbackFileId) {",
+                  "    throw new Error('Set signaturePdfDocuments or fileId before creating the request.');",
+                  "  }",
+                  "  pm.variables.set('signatureRequestDocumentsPayload', JSON.stringify([{",
+                  "    originalFileId: fallbackFileId,",
+                  "    title: 'Form 1040 - 2025',",
+                  "    note: 'Existing CloudStorage file'",
+                  "  }]));",
+                  "} else {",
+                  "  let documents;",
+                  "  try { documents = JSON.parse(configured); }",
+                  "  catch (_) { throw new Error('signaturePdfDocuments must be valid JSON.'); }",
+                  "",
+                  "  if (!Array.isArray(documents) || documents.length < 1 || documents.length > 20) {",
+                  "    throw new Error('signaturePdfDocuments must contain between 1 and 20 PDFs.');",
+                  "  }",
+                  "  documents.forEach((document, index) => {",
+                  "    if (!document.path || !document.fileName || !document.title || !Number.isInteger(document.sizeBytes) || document.sizeBytes <= 0) {",
+                  "      throw new Error(`Document ${index + 1} requires path, fileName, title and positive integer sizeBytes.`);",
+                  "    }",
+                  "  });",
+                  "",
+                  "  const authorizedHeaders = { Authorization: `Bearer ${accessToken}` };",
+                  "  const fail = (step, response) => {",
+                  "    throw new Error(`${step} failed with ${response.code}: ${response.text()}`);",
+                  "  };",
+                  "  const uploaded = [];",
+                  "",
+                  "  const uploadNext = index => {",
+                  "    if (index >= documents.length) {",
+                  "      pm.variables.set('signatureRequestDocumentsPayload', JSON.stringify(uploaded));",
+                  "      pm.variables.set('signatureDocumentFileIds', JSON.stringify(uploaded.map(document => document.originalFileId)));",
+                  "      return;",
+                  "    }",
+                  "",
+                  "    const document = documents[index];",
+                  "    pm.sendRequest({",
+                  "      url: `${baseUrl}/signature/documents/validate`,",
+                  "      method: 'POST',",
+                  "      header: authorizedHeaders,",
+                  "      body: { mode: 'formdata', formdata: [{ key: 'file', type: 'file', src: document.path }] }",
+                  "    }, (validationError, validationResponse) => {",
+                  "      if (validationError) throw validationError;",
+                  "      if (validationResponse.code !== 200) fail(`Validation for ${document.fileName}`, validationResponse);",
+                  "      const validation = validationResponse.json();",
+                  "      if (!validation.isAcceptable || !validation.validationRecordId) {",
+                  "        throw new Error(`Validation rejected ${document.fileName}: ${validationResponse.text()}`);",
+                  "      }",
+                  "",
+                  "      pm.sendRequest({",
+                  "        url: `${baseUrl}/storage/files/uploads`,",
+                  "        method: 'POST',",
+                  "        header: { ...authorizedHeaders, 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({",
+                  "          originalName: document.fileName,",
+                  "          contentType: 'application/pdf',",
+                  "          sizeBytes: document.sizeBytes,",
+                  "          ownerType: 'Signature',",
+                  "          ownerId: validation.validationRecordId,",
+                  "          folderType: 'Signatures',",
+                  "          taxYear: document.taxYear || new Date().getUTCFullYear()",
+                  "        }) }",
+                  "      }, (initiateError, initiateResponse) => {",
+                  "        if (initiateError) throw initiateError;",
+                  "        if (initiateResponse.code !== 201) fail(`CloudStorage initiate for ${document.fileName}`, initiateResponse);",
+                  "        const initiated = initiateResponse.json();",
+                  "        const formdata = Object.entries(initiated.formData || {}).map(([key, value]) => ({ key, value: String(value), type: 'text' }));",
+                  "        formdata.push({ key: 'file', type: 'file', src: document.path });",
+                  "",
+                  "        pm.sendRequest({ url: initiated.uploadUrl, method: 'POST', body: { mode: 'formdata', formdata } }, (uploadError, uploadResponse) => {",
+                  "          if (uploadError) throw uploadError;",
+                  "          if (uploadResponse.code < 200 || uploadResponse.code >= 300) fail(`Presigned upload for ${document.fileName}`, uploadResponse);",
+                  "",
+                  "          pm.sendRequest({",
+                  "            url: `${baseUrl}/storage/files/${initiated.fileId}/complete`,",
+                  "            method: 'POST',",
+                  "            header: authorizedHeaders",
+                  "          }, (completeError, completeResponse) => {",
+                  "            if (completeError) throw completeError;",
+                  "            if (completeResponse.code !== 202) fail(`CloudStorage complete for ${document.fileName}`, completeResponse);",
+                  "            uploaded.push({ originalFileId: initiated.fileId, title: document.title, note: document.note || null });",
+                  "            uploadNext(index + 1);",
+                  "          });",
+                  "        });",
+                  "      });",
+                  "    });",
+                  "  };",
+                  "",
+                  "  uploadNext(0);",
+                  "}"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
                   "const r = pm.response.json();",
-                  "if (r && r.id) { pm.environment.set('signatureRequestId', r.id); console.log('signatureRequestId guardado: ' + r.id); }"
+                  "if (r && r.id) { pm.environment.set('signatureRequestId', r.id); console.log('signatureRequestId guardado: ' + r.id); }",
+                  "if (r && Array.isArray(r.documents) && r.documents.length) {",
+                  "  pm.environment.set('signatureDocumentId', r.documents[0].id);",
+                  "  pm.environment.set('signatureDocumentOrder', JSON.stringify(r.documents.map(document => document.id)));",
+                  "}"
                 ]
               }
             }
@@ -175,7 +283,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Form 1040 - Ana Perez 2025\",\n  \"description\": \"Declaracion federal 2025\",\n  \"category\": \"Form1040\",\n  \"originalFileId\": \"{{fileId}}\",\n  \"tokenExpirationHours\": 168,\n  \"requiresSequentialSigning\": false,\n  \"requiresConsent\": true,\n  \"generateCertificate\": true,\n  \"sendSealedDocumentToSigners\": null,\n  \"sendPartialCopyOnEachSignature\": null,\n  \"partialCopyAudience\": null,\n  \"expirationEnabled\": null\n}",
+              "raw": "{\n  \"title\": \"Form 1040 package - Ana Perez 2025\",\n  \"description\": \"Multi-document federal package 2025\",\n  \"category\": \"Form1040\",\n  \"documents\": {{signatureRequestDocumentsPayload}},\n  \"tokenExpirationHours\": 168,\n  \"requiresSequentialSigning\": false,\n  \"requiresConsent\": true,\n  \"generateCertificate\": true,\n  \"sendSealedDocumentToSigners\": null,\n  \"sendCertificateToSigners\": false,\n  \"autoRemindersEnabled\": null,\n  \"reminderIntervalHours\": null,\n  \"sendPartialCopyOnEachSignature\": null,\n  \"partialCopyAudience\": null,\n  \"expirationEnabled\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -192,7 +300,7 @@
                 "requests"
               ]
             },
-            "description": "Crea una SignatureRequest en Draft. originalFileId debe existir en CloudStorage con OwnerType=Signature. Requiere signature.request.create."
+            "description": "Crea una SignatureRequest multi-documento en Draft (1-20 PDFs). El pre-request acepta signaturePdfDocuments como JSON: [{\"path\":\"C:/docs/w2.pdf\",\"fileName\":\"w2.pdf\",\"sizeBytes\":12345,\"title\":\"W-2 2025\",\"note\":null,\"taxYear\":2025}]. Por cada archivo ejecuta validate -> CloudStorage initiate -> POST presignado -> complete y construye documents. Si signaturePdfDocuments esta vacio, reutiliza {{fileId}}. Requiere signature.request.create y storage.file.upload."
           },
           "response": []
         },
@@ -389,7 +497,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"expectedUpdatedAtUtc\": \"{{signatureDraftUpdatedAtUtc}}\",\n  \"title\": \"Consent to Disclose 2026 (autosave)\",\n  \"description\": null,\n  \"category\": \"ConsentToDisclose\",\n  \"tokenExpirationHours\": 72,\n  \"sendSealedDocumentToSigners\": true,\n  \"sendCertificateToSigners\": false,\n  \"autoRemindersEnabled\": true,\n  \"reminderIntervalHours\": 48,\n  \"sendPartialCopyOnEachSignature\": true,\n  \"partialCopyAudience\": { \"kind\": \"All\" },\n  \"expirationEnabled\": true,\n  \"signers\": [\n    { \"id\": null, \"email\": \"alice@example.com\", \"fullName\": \"Alice A\", \"phoneNumber\": null, \"language\": \"En\", \"verificationMethod\": null }\n  ],\n  \"fields\": [\n    { \"id\": null, \"signerIndex\": 0, \"kind\": \"Signature\", \"page\": 1, \"x\": 0.1, \"y\": 0.1, \"width\": 0.2, \"height\": 0.05, \"label\": null, \"isRequired\": true }\n  ]\n}"
+              "raw": "{\n  \"expectedUpdatedAtUtc\": \"{{signatureDraftUpdatedAtUtc}}\",\n  \"title\": \"Consent to Disclose 2026 (autosave)\",\n  \"description\": null,\n  \"category\": \"ConsentToDisclose\",\n  \"tokenExpirationHours\": 72,\n  \"sendSealedDocumentToSigners\": true,\n  \"sendCertificateToSigners\": false,\n  \"autoRemindersEnabled\": true,\n  \"reminderIntervalHours\": 48,\n  \"sendPartialCopyOnEachSignature\": true,\n  \"partialCopyAudience\": { \"kind\": \"All\" },\n  \"expirationEnabled\": true,\n  \"documents\": [\n    { \"localId\": \"document-1\", \"id\": \"{{signatureDocumentId}}\", \"originalFileId\": \"{{fileId}}\", \"title\": \"Consent form\", \"note\": null }\n  ],\n  \"signers\": [\n    { \"id\": null, \"email\": \"alice@example.com\", \"fullName\": \"Alice A\", \"phoneNumber\": null, \"language\": \"En\", \"verificationMethod\": null }\n  ],\n  \"fields\": [\n    { \"id\": null, \"signerIndex\": 0, \"documentLocalId\": \"document-1\", \"kind\": \"Signature\", \"page\": 1, \"x\": 0.1, \"y\": 0.1, \"width\": 0.2, \"height\": 0.05, \"label\": null, \"isRequired\": true }\n  ]\n}"
             },
             "url": {
               "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/draft",
@@ -559,6 +667,77 @@
           "response": []
         },
         {
+          "name": "AddRequestDocument",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "const r = pm.response.json();",
+                  "if (r && r.id) { pm.environment.set('signatureAddedDocumentId', r.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalFileId\": \"{{fileId}}\",\n  \"title\": \"Supporting schedule\",\n  \"note\": \"Added while the request is still editable\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/documents",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "requests", "{{signatureRequestId}}", "documents" ]
+            },
+            "description": "Agrega un PDF ya cargado en CloudStorage a una solicitud Draft/Ready. La solicitud admite como maximo 20 documentos. Requiere signature.request.create y ownership."
+          },
+          "response": []
+        },
+        {
+          "name": "ReorderRequestDocuments",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderedDocumentIds\": [\n    \"{{signatureDocumentId}}\",\n    \"{{signatureAddedDocumentId}}\"\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/documents/order",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "requests", "{{signatureRequestId}}", "documents", "order" ]
+            },
+            "description": "Reordena todos los documentos de la solicitud. El arreglo debe contener cada documentId exactamente una vez. Requiere signature.request.create y ownership."
+          },
+          "response": []
+        },
+        {
+          "name": "RemoveRequestDocument",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/documents/{{signatureAddedDocumentId}}",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "requests", "{{signatureRequestId}}", "documents", "{{signatureAddedDocumentId}}" ]
+            },
+            "description": "Elimina un documento de una solicitud editable. No permite dejar la solicitud sin documentos ni quitar un documento que aun tenga campos. Requiere signature.request.create y ownership."
+          },
+          "response": []
+        },
+        {
           "name": "PlaceField",
           "event": [
             {
@@ -584,7 +763,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"signerId\": \"{{signerId}}\",\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
+              "raw": "{\n  \"signerId\": \"{{signerId}}\",\n  \"documentId\": \"{{signatureDocumentId}}\",\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -603,7 +782,7 @@
                 "fields"
               ]
             },
-            "description": "Coloca un campo (Signature/Initial/Date/TypedName). Requiere signature.document.prepare."
+            "description": "Coloca un campo (Signature/Initial/Date/TypedName/Text/Checkbox) en un documento concreto. Requiere signature.document.prepare."
           },
           "response": []
         },
@@ -1091,7 +1270,7 @@
           "request": {
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
-            "body": { "mode": "raw", "raw": "{\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"documentId\": \"{{signatureDocumentId}}\",\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
             "url": { "raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer-fields", "host": [ "{{UrlBase}}" ], "path": [ "signature", "requests", "{{signatureRequestId}}", "preparer-fields" ] },
             "description": "Coloca un campo del preparador (parte aparte, no firmante; el firmante NO lo ve). Coords normalizadas [0..1]. Requiere signature.document.prepare."
           },
@@ -1330,6 +1509,63 @@
           "response": []
         },
         {
+          "name": "AddTemplateDocument",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "const r = pm.response.json();",
+                  "if (r && r.id) { pm.environment.set('templateDocumentId', r.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"title\": \"Form 1040 2025\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/documents",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "templates", "{{signatureTemplateId}}", "documents" ]
+            },
+            "description": "Agrega un documento base a una plantilla Draft. Guarda templateDocumentId para colocar campos en ese documento. Requiere signature.template.update."
+          },
+          "response": []
+        },
+        {
+          "name": "ReorderTemplateDocuments",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentIds\": [\n    \"{{templateDocumentId}}\"\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/documents/order",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "templates", "{{signatureTemplateId}}", "documents", "order" ]
+            },
+            "description": "Reordena todos los documentos de una plantilla Draft. El arreglo debe contener cada templateDocumentId exactamente una vez. Requiere signature.template.update."
+          },
+          "response": []
+        },
+        {
           "name": "AddTemplateSlot",
           "event": [
             {
@@ -1430,7 +1666,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"slotOrder\": 0,\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
+              "raw": "{\n  \"templateDocumentId\": \"{{templateDocumentId}}\",\n  \"slotOrder\": 0,\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1558,7 +1794,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"originalFileId\": \"{{fileId}}\",\n  \"descriptionOverride\": \"Instancia 2026\",\n  \"slotBindings\": [\n    { \"slotOrder\": 0, \"email\": \"ana.perez@example.com\", \"fullName\": \"Ana Perez\" }\n  ]\n}",
+              "raw": "{\n  \"descriptionOverride\": \"Instancia multi-documento 2026\",\n  \"slotBindings\": [\n    { \"slotOrder\": 0, \"email\": \"ana.perez@example.com\", \"fullName\": \"Ana Perez\" }\n  ],\n  \"documents\": [\n    { \"templateDocumentId\": \"{{templateDocumentId}}\", \"originalFileId\": \"{{fileId}}\", \"title\": \"Form 1040 - Ana Perez\" }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1577,7 +1813,7 @@
                 "instantiate"
               ]
             },
-            "description": "Crea una SignatureRequest a partir de la plantilla. Requiere signature.request.create."
+            "description": "Crea una SignatureRequest a partir de todos los documentos de la plantilla. documents permite reemplazar archivo y titulo por templateDocumentId; los no incluidos conservan el archivo de la plantilla. Requiere signature.request.create."
           },
           "response": []
         },
@@ -1586,7 +1822,7 @@
           "request": {
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" } ],
-            "body": { "mode": "raw", "raw": "{\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"templateDocumentId\": \"{{templateDocumentId}}\",\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 0.55,\n  \"y\": 0.8,\n  \"width\": 0.25,\n  \"height\": 0.08,\n  \"label\": null\n}", "options": { "raw": { "language": "json" } } },
             "url": { "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/preparer-fields", "host": [ "{{UrlBase}}" ], "path": [ "signature", "templates", "{{signatureTemplateId}}", "preparer-fields" ] },
             "description": "Coloca un placeholder del preparador en la plantilla (solo posicion; kind Signature/Initials/Date). La imagen se resuelve por-preparador al instanciar. Requiere signature.template.update."
           },
@@ -1599,6 +1835,20 @@
             "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
             "url": { "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/preparer-fields/{{templatePreparerFieldId}}", "host": [ "{{UrlBase}}" ], "path": [ "signature", "templates", "{{signatureTemplateId}}", "preparer-fields", "{{templatePreparerFieldId}}" ] },
             "description": "Elimina un campo del preparador de la plantilla. Requiere signature.template.update."
+          },
+          "response": []
+        },
+        {
+          "name": "RemoveTemplateDocument",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" } ],
+            "url": {
+              "raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/documents/{{templateDocumentId}}",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "templates", "{{signatureTemplateId}}", "documents", "{{templateDocumentId}}" ]
+            },
+            "description": "Elimina un documento de una plantilla Draft. Deben quitarse primero sus campos y la plantilla debe conservar al menos un documento. Requiere signature.template.update."
           },
           "response": []
         }
@@ -2053,6 +2303,23 @@
       "item": [
         {
           "name": "ViewPublicSigner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "const r = pm.response.json();",
+                  "const documents = Array.isArray(r.documents) ? r.documents.filter(document => document.hasFieldsToSign && !document.signedAtUtc) : [];",
+                  "if (documents.length) {",
+                  "  pm.environment.set('signatureDocumentId', documents[0].documentId);",
+                  "  pm.environment.set('signerDocumentIdsPayload', JSON.stringify(documents.map(document => document.documentId)));",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -2082,6 +2349,20 @@
               "path": [ "signature", "public", "{{signerToken}}", "document" ]
             },
             "description": "F5 — Sirve el PDF original al firmante autenticado por token. Valida token+epoch+expiry, exige verificacion completa (403 'Signature.Document.VerificationRequired' si falta) y exige que el archivo este FileScanStatus.Available (409 'Signature.Document.NotAvailable' en otro caso). Descarga por M2M de Signature y hace streaming (Content-Type: application/pdf). Registra el evento SignerDocumentViewed en el audit chain (semantica distinta a SignerViewed del enlace). Rate limit propio 'public-signature-document' (30/min)."
+          },
+          "response": []
+        },
+        {
+          "name": "GetDocumentById (F8)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/signature/public/{{signerToken}}/document/{{signatureDocumentId}}",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "signature", "public", "{{signerToken}}", "document", "{{signatureDocumentId}}" ]
+            },
+            "description": "F8 - Sirve un PDF concreto de la ceremonia multi-documento. Ademas de token, epoch, expiracion y verificacion, comprueba que documentId pertenece a la solicitud y que el firmante tiene acceso a ese documento. Devuelve application/pdf; 404 si el documento no pertenece a la solicitud."
           },
           "response": []
         },
@@ -2225,7 +2506,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"method\": \"Typed\",\n  \"typedName\": \"Ana Perez\"\n}",
+              "raw": "{\n  \"method\": \"Typed\",\n  \"typedName\": \"Ana Perez\",\n  \"fieldValues\": [],\n  \"documentIds\": {{signerDocumentIdsPayload}}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2243,7 +2524,8 @@
                 "{{signerToken}}",
                 "sign"
               ]
-            }
+            },
+            "description": "Confirmacion final unica para todos los documentos pendientes del firmante. documentIds se deriva de ViewPublicSigner; fieldValues incluye los valores de campos Text requeridos."
           },
           "response": []
         },
@@ -2260,7 +2542,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"method\": \"Drawn\",\n  \"signatureImageFileId\": \"{{signatureImageFileId}}\"\n}",
+              "raw": "{\n  \"method\": \"Drawn\",\n  \"signatureImageFileId\": \"{{signatureImageFileId}}\",\n  \"fieldValues\": [],\n  \"documentIds\": {{signerDocumentIdsPayload}}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2279,7 +2561,7 @@
                 "sign"
               ]
             },
-            "description": "Requiere subir previamente el trazo/imagen a CloudStorage con OwnerType=Signature."
+            "description": "Confirmacion final unica para todos los documentos pendientes. Requiere subir previamente el trazo/imagen a CloudStorage con OwnerType=Signature; documentIds se deriva de ViewPublicSigner."
           },
           "response": []
         },
@@ -2449,6 +2731,26 @@
         }
       ],
       "description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+    }
+  ],
+  "variable": [
+    {
+      "key": "signaturePdfDocuments",
+      "value": "",
+      "type": "string",
+      "description": "Opcional. JSON de 1-20 PDFs locales para CreateSignatureRequest. Ejemplo: [{\"path\":\"C:/docs/w2.pdf\",\"fileName\":\"w2.pdf\",\"sizeBytes\":12345,\"title\":\"W-2 2025\",\"note\":null,\"taxYear\":2025}]. Postman Desktop debe tener acceso a esas rutas."
+    },
+    {
+      "key": "signatureRequestDocumentsPayload",
+      "value": "[]",
+      "type": "string",
+      "description": "Generada por el pre-request de CreateSignatureRequest despues de validar y subir los PDFs."
+    },
+    {
+      "key": "signerDocumentIdsPayload",
+      "value": "[]",
+      "type": "string",
+      "description": "Generada por ViewPublicSigner con los documentos pendientes que el firmante debe confirmar una sola vez."
     }
   ]
 }

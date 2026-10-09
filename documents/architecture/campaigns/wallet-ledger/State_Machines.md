@@ -1,101 +1,107 @@
 # Wallet/Ledger — State Machines
 
 - **Servicio:** `TaxVision.Wallet`
-- **Fecha:** 2026-07-28
+- **Fecha:** 2026-10-06
 - **Estado:** DISEÑO — no implementado
-- Ver `Domain_Design.md`, `Transactional_Protocol.md`, `06_Cross_Service_Transactional_Protocol.md`.
+- **Coherente con:** `00_Plan_And_Architecture.md §5/§6`, `Domain_Design.md`, `Transactional_Protocol.md`, `Commands_And_Events.md`, `../06_Cross_Service_Transactional_Protocol.md`.
+
+> **Modelo prepago (ADR-WAL-005).** NO hay máquina de estados de Reserva (`Held→Consumed/Released/Expired` queda obsoleta junto con ADR-WAL-004). El cobro de un run es un **único débito** gobernado por la autorización del PEP. Las máquinas vigentes son: (1) la **autorización de cobro del run** (vista Wallet), (2) el **top-up** (recarga), (3) el **Wallet** (opcional Freeze).
 
 ---
 
-## 1. Máquina de estados de una **Reservation**
+## 1. Autorización de cobro de un run (el PEP)
 
-Corazón del protocolo `reserve → consume/refund`. Corrige el legado que **debitaba una sola vez al crear** sin estados intermedios (`CreateCampaignCommandHandler.cs:278-320`).
-
-```
-                 ┌──────────────────────────────────────────────┐
-                 │                                              │
-   Reserve       ▼        ConsumeReservation (parcial)          │
-  (Available>=amt)   ┌─────────┐  consume < Remaining     ┌─────────────────┐
- ──────────────────► │  HELD   │ ───────────────────────► │  HELD (parcial) │
-                     └────┬────┘                          └───────┬─────────┘
-                          │  ConsumeReservation (total)           │ ConsumeReservation (resto)
-                          │  consume == Remaining                 │ consume == Remaining
-                          ▼                                       ▼
-                     ┌──────────┐  ◄──────────────────────────────┘
-                     │ CONSUMED │  (Remaining == 0; terminal)
-                     └──────────┘
-                          
-   HELD / HELD(parcial) ── ReleaseReservation / RefundRemainder ──► ┌──────────┐
-                                                                    │ RELEASED │ (terminal)
-                                                                    └──────────┘
-   HELD / HELD(parcial) ── expira (ExpiresAtUtc < now, sweep) ────► ┌──────────┐
-                                                                    │ EXPIRED  │ (terminal)
-```
-
-### Estados
-
-| Estado | Semántica | `Held` aporta | `Posted` afectado | Terminal |
-|---|---|---|---|---|
-| **Held** | Fondos apartados, nada consumido. `RemainingCents == AmountCents`. | sí (`Remaining`) | no | no |
-| **Held (parcial)** | Consumo parcial ya aplicado; `0 < ConsumedCents < AmountCents`. | sí (`Remaining`) | sí (por lo consumido) | no |
-| **Consumed** | `ConsumedCents == AmountCents`. Todo el reserve se gastó. | no | sí (total) | **sí** |
-| **Released** | El remanente no consumido se devolvió a Available (cancelación / fin de run). | no | no (neto 0) | **sí** |
-| **Expired** | Hold abandonado que superó `ExpiresAtUtc`; el remanente se libera automáticamente. | no | no | **sí** |
-
-### Transiciones (guardas → `Result`)
-
-| Desde | Evento | Guarda | Hacia | LedgerEntry emitido |
-|---|---|---|---|---|
-| (none) | `Reserve` | `Available >= amount`, balance Active | Held | `Reserve` (+Held) |
-| Held / Held(p) | `Consume(c)` | `c > 0`, `c <= Remaining` | Held(p) si `c<Remaining`; Consumed si `c==Remaining` | `Consume` (−Posted, −Held) |
-| Held / Held(p) | `Release` / `RefundRemainder` | reserva no terminal | Released | `Refund` (−Held, +Available; neto Posted 0) |
-| Held / Held(p) | `expire` (sweep) | `ExpiresAtUtc < now` | Expired | `Refund` (−Held; motivo=expiry) |
-| Consumed/Released/Expired | cualquiera | — | (rechazado) | — (idempotente: ver abajo) |
-
-**Idempotencia de terminal:** reintentar `Consume`/`Release` sobre una reserva ya terminal NO falla ruidosamente: el ejecutor idempotente (`ProcessedBusinessMessage`) detecta la clave repetida y **replica la respuesta previa** (ver `Idempotency_Spec.md`). Reintentar `Consume` con una **clave nueva** sobre una reserva Consumed → `Result.Failure(Wallet.ReservationNotConsumable)`.
-
-**Consumo total ≠ suma exacta:** si la entrega real cuesta menos que lo reservado (p.ej. destinatarios que fallan pre-envío y no se cobran), el run hace `Consume(realCost)` y luego `Release`/`RefundRemainder` del sobrante. La reserva queda **Released tras consumo parcial** (variante de Released, no Consumed).
-
-## 2. Máquina de estados del **TenantBalance**
+Corazón del modelo prepago: un único débito antes del fan-out. Campaigns publica conteos; Wallet decide.
 
 ```
-        crear (primer Recharge o Reserve)
-   ────────────────────────────────────────►  ┌──────────┐
-                                               │  ACTIVE  │◄────┐ Unfreeze (admin)
-                                               └────┬─────┘     │
-                                     Freeze (admin) │           │
-                                                    ▼           │
-                                               ┌──────────┐─────┘
-                                               │  FROZEN  │
-                                               └──────────┘
+   CampaignRunPendingAuthorization { RunId, PerChannelUnits }
+ ─────────────────────────────────────────────────────────────►  ┌──────────────┐
+                                                                  │  EVALUANDO   │
+                                                                  └──────┬───────┘
+                                     costo = Σ(units×ChannelPrice)        │
+                        ┌──────────────────────────────────────────────┬─┘
+          PostedCents >= costo │                      PostedCents < costo │
+                    Debit(costo)▼                               (no debita)▼
+             ┌──────────────────────┐                     ┌────────────────────────┐
+             │ AUTHORIZED (debitado)│                     │ DENIED (InsufficientFunds)│
+             └──────────┬───────────┘                     └───────────┬────────────┘
+                        │                                             │
+      CampaignRunAuthorized{RunId}                    CampaignRunAuthorizationDenied
+                        ▼                                   {RunId, Reason}▼
+          Campaigns ejecuta fan-out                   Campaigns: CampaignRun.Reject
+          + MarkDispatched                            ("InsufficientFunds") → Rejected
 ```
 
-| Estado | Recharge | Reserve | Consume | Release/Refund | Adjust |
-|---|---|---|---|---|---|
-| **Active** | ✔ | ✔ | ✔ | ✔ | ✔ |
-| **Frozen** | ✖ (rechaza) | ✖ (rechaza) | ✔ (permite cerrar reservas ya vivas) | ✔ | ✔ (admin) |
+### Resultados (terminales desde la vista Wallet)
 
-`Frozen` es una salvaguarda operativa (fraude/dispute). No borra saldo ni reservas; solo bloquea nuevas recargas y reservas. Consume/Release siguen permitidos para **cerrar** operaciones en vuelo sin dejar holds colgados.
+| Resultado | Semántica | `PostedCents` | Evento publicado |
+|---|---|---|---|
+| **Authorized** | Costo debitado (un `LedgerEntry Debit/CampaignCharge`). | `−= costo` | `CampaignRunAuthorizedIntegrationEvent { RunId }` |
+| **Denied** | Saldo insuficiente; **no** se debita. | sin cambio | `CampaignRunAuthorizationDeniedIntegrationEvent { RunId, Reason="InsufficientFunds" }` |
 
-## 3. Interacción con la saga de dispatch (visión externa)
+**Idempotencia:** `opKey="run:"+RunId`. Reentrega del `PendingAuthorization` de un run **ya autorizado** → replay de `Authorized` **sin re-debitar** (candado `UNIQUE(TenantId, OperationKey)`). Un run `Denied` que luego recibe otro `PendingAuthorization` (p.ej. tras recarga y reintento) se evalúa de nuevo: si ahora alcanza, debita y `Authorized`.
 
-Alineado con `06_Cross_Service_Transactional_Protocol.md`. Wallet solo ve reserve/consume/refund; no conoce campaigns.
+**Sin reembolso (ADR-WAL-005):** no hay transición de reconciliación al cerrar el run. `CampaignRunCompletedIntegrationEvent` (Delivered/Failed/Skipped) **se ignora para dinero**. Lo que falle/rebote en el proveedor no se devuelve.
+
+**Scheduler:** cada fire programado/recurrente (`CampaignSchedulerService`) es un run nuevo ⇒ su propio `PendingAuthorization` ⇒ su propio débito. Saldo insuficiente ⇒ ese fire queda `Rejected`; los siguientes lo reintentan.
+
+### Lado Campaigns (estados ya existentes)
+
+`CampaignRun.Rejected` ya existe (`RunEnums.cs:8-17`) y `RejectionReason` (`CampaignRun.cs:36`, `nvarchar(200)`). Se introduce la constante de razón `InsufficientFunds` (no existe hoy; grep = 0). El gate se inserta entre `CampaignRun.Start` (`StartCampaignRunCommand.cs:83`) y el loop de fan-out (`106-133`): el run queda pendiente de autorización y el fan-out NO ocurre hasta `Authorized`.
+
+## 2. Máquina de estados del **WalletTopUp** (recarga, money-IN)
 
 ```
-Campaigns: run start ─ reserve(estCost, scope=RunId, key=run-reserve-{RunId}) ──► HELD
-   fan-out por destinatario (ejecutores entregan)
-Campaigns agrega resultados ─────────────────────────────────────────────────────►
-   consume(sum(delivered unit prices), key=run-consume-{RunId})  ──► HELD(parcial)/CONSUMED
-   refundRemainder(key=run-refund-{RunId})                       ──► RELEASED
+   POST /wallet/top-up { amountCents }
+ ──────────────────────────────────────►  ┌──────────┐
+   crea WalletTopUp + publica             │ PENDING  │
+   WalletTopUpDueIntegrationEvent         └────┬─────┘
+                                               │  PaymentApp cobra Stripe off-session
+                         ┌─────────────────────┴─────────────────────┐
+         WalletTopUpPaymentSucceeded │              WalletTopUpPaymentFailed │
+                   Credit(opKey=topup:Id)▼                         (no acredita)▼
+                    ┌──────────────────┐                        ┌──────────────┐
+                    │    SUCCEEDED     │                        │   FAILED     │
+                    │ (saldo +amount)  │                        │              │
+                    └──────────────────┘                        └──────────────┘
 ```
 
-Nota: la política de "un consume total al cierre" vs "consume incremental por lote" la decide Campaigns; Wallet soporta ambas (Consume es acumulativo e idempotente por clave).
+| Estado | Semántica | `PostedCents` | Terminal |
+|---|---|---|---|
+| **Pending** | Recarga creada; PaymentApp aún cobrando. | sin cambio | no |
+| **Succeeded** | Pago cobrado; `Credit` aplicado (idempotente por `topup:{Id}`). | `+= amount` | **sí** |
+| **Failed** | Pago rechazado; no se acredita. | sin cambio | **sí** |
+
+**Idempotencia:** `opKey="topup:"+topUpId`. Reentrega de `WalletTopUpPaymentSucceeded` → una sola `Credit`.
+
+## 3. Máquina de estados del **Wallet** (opcional Freeze)
+
+```
+        crear (primer Credit)
+   ───────────────────────────►  ┌──────────┐
+                                  │  ACTIVE  │◄────┐ Unfreeze (admin)
+                                  └────┬─────┘     │
+                        Freeze (admin) │           │
+                                       ▼           │
+                                  ┌──────────┐─────┘
+                                  │  FROZEN  │
+                                  └──────────┘
+```
+
+| Estado | Credit (TopUp) | Debit (CampaignCharge) | Adjustment |
+|---|---|---|---|
+| **Active** | ✔ | ✔ | ✔ |
+| **Frozen** | ✖ (rechaza) | ✖ (rechaza → Denied) | ✔ (admin) |
+
+`Frozen` es una salvaguarda operativa (fraude/dispute): bloquea recargas y cobros sin destruir saldo ni historia. Opcional en MVP (puede diferirse si no se requiere).
 
 ## 4. Tabla de evidencia
 
 | Afirmación | Evidencia | Clasificación | Confianza |
 |---|---|---|---|
-| Legado no tiene estados de reserva (débito único al crear) | `CreateCampaignCommandHandler.cs:278-320` | VERIFIED | 95% |
-| `Status=Sending` no-atómico y doble-scheduler en legado (motiva estados atómicos) | `05_Master_ADR.md:49` | DOCUMENTED_ONLY | 85% |
-| Máquina Held→Consumed/Released/Expired | diseño | NEW | n/a |
-| Freeze/Unfreeze como salvaguarda | diseño | NEW | n/a |
+| `CampaignRun.Rejected` + `RejectionReason` ya existen | `RunEnums.cs:8-17`; `CampaignRun.cs:36` | VERIFIED | 99% |
+| `InsufficientFunds` NO existe (crear constante) | grep en Campaigns = 0 | VERIFIED | 95% |
+| Gate entre Start (`:83`) y fan-out (`106-133`) | `StartCampaignRunCommand.cs` | VERIFIED | 95% |
+| Patrón top-up money-IN (Due→charge→succeeded/failed) | `SubscriptionPlanChangeDueConsumer.cs:21-61`; `SaaSPaymentResultPublisher.cs:76-119` | VERIFIED | 90% |
+| Máquina de autorización single-debit (prepago) | `00_Plan §5` (diseño) | NEW | n/a |
+| Máquina WalletTopUp Pending→Succeeded/Failed | `00_Plan §6` (diseño) | NEW | n/a |

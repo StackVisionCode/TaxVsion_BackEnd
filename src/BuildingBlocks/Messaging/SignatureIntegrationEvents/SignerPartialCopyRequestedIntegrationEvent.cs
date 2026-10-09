@@ -9,6 +9,7 @@ public sealed record SignerPartialCopyRequestedIntegrationEvent : IntegrationEve
 {
     public required Guid SignatureRequestId { get; init; }
     public required Guid SignerId { get; init; }
+    public required IReadOnlyList<Guid> DocumentIds { get; init; }
     public required DateTime SignedAtUtc { get; init; }
 
     /// <summary>

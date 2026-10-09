@@ -39,15 +39,27 @@ public static class SubmitSignatureHandler
             return evidenceValidation;
 
         var signedAt = DateTime.UtcNow;
+        var documentIds = ResolveDocumentIds(cmd.DocumentIds, signer);
+        if (documentIds.Count == 0)
+            return Result.Failure(
+                new Error("Signature.Public.DocumentsRequired", "There are no pending documents to complete.")
+            );
+        var signerWasSigned = signer.Status == SignerStatus.Signed;
 
         // P4: anclar los valores de los campos de texto ANTES de firmar (el aggregate valida
         // propiedad del campo, tipo Text y requeridos). Un fallo aquí aborta la firma.
-        var captureValues = request.CaptureSignerFieldValues(signer.Id, MapFieldValues(cmd.FieldValues), signedAt);
+        var captureValues = request.CaptureSignerFieldValues(
+            signer.Id,
+            documentIds,
+            MapFieldValues(cmd.FieldValues),
+            signedAt
+        );
         if (captureValues.IsFailure)
             return captureValues;
 
-        var sign = request.MarkSignerSigned(
+        var sign = request.MarkSignerDocumentsCompleted(
             signer.Id,
+            documentIds,
             signedAt,
             cmd.Method,
             cmd.TypedName,
@@ -56,22 +68,60 @@ public static class SubmitSignatureHandler
             cmd.UserAgent
         );
         if (sign.IsFailure)
-            return sign;
+            return Result.Failure(sign.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(request.TenantId, ct);
-        await PublishSignedAsync(request, signer, signedAt, cmd.ClientIp, correlation, bus);
+        var readyDocumentIds = sign
+            .Value.Where(documentId =>
+                request.IsDocumentReadyForSealing(documentId)
+                && request.Documents.Any(document => document.Id == documentId && document.SealedFileId is null)
+            )
+            .Distinct()
+            .ToList();
+        if (readyDocumentIds.Count > 0)
+            await PublishDocumentsReadyForSealingAsync(request, readyDocumentIds, signedAt, correlation, bus);
+        if (!signerWasSigned && signer.Status == SignerStatus.Signed)
+            await PublishSignedAsync(request, signer, signedAt, cmd.ClientIp, correlation, bus);
         // F7 — si el aggregate dejó enganchada la copia parcial, dispara el pipeline de delivery.
-        if (signer.PartialCopyRequestedAtUtc is not null)
-            await PublishPartialCopyRequestedAsync(request, signer, correlation, bus);
+        if (
+            sign.Value.Count > 0
+            && request.SendPartialCopyOnEachSignature
+            && request.PartialCopyAudience.Includes(signer.Id)
+        )
+            await PublishPartialCopyRequestedAsync(request, signer, sign.Value, signedAt, correlation, bus);
         if (request.Status == SignatureRequestStatus.Completed)
             await PublishCompletedAsync(request, correlation, bus);
         return Result.Success();
     }
 
+    private static Task PublishDocumentsReadyForSealingAsync(
+        SignatureRequest request,
+        IReadOnlyList<Guid> documentIds,
+        DateTime readyAtUtc,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    ) =>
+        bus.PublishAsync(
+                new SignatureDocumentsReadyForSealingIntegrationEvent
+                {
+                    TenantId = request.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                    SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
+                    DocumentIds = documentIds,
+                    ReadyAtUtc = readyAtUtc,
+                    IdempotencyKey =
+                        $"signature.documents_ready:{request.Id:N}:{string.Join('-', documentIds.Order().Select(id => id.ToString("N")))}:v1",
+                }
+            )
+            .AsTask();
+
     private static Task PublishPartialCopyRequestedAsync(
         SignatureRequest request,
         Signer signer,
+        IReadOnlyList<Guid> documentIds,
+        DateTime completedAtUtc,
         ICorrelationContext correlation,
         IMessageBus bus
     ) =>
@@ -82,9 +132,10 @@ public static class SubmitSignatureHandler
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
                     SignerId = signer.Id,
-                    SignedAtUtc = signer.SignedAtUtc ?? DateTime.UtcNow,
+                    DocumentIds = documentIds,
+                    SignedAtUtc = completedAtUtc,
                     // v1 inicial; cada "resend" del preparador incrementa el sufijo.
-                    IdempotencyKey = $"signature.partial_copy:{request.Id:N}:{signer.Id:N}:v1",
+                    IdempotencyKey = BuildPartialCopyBatchKey(request.Id, signer.Id, documentIds),
                 }
             )
             .AsTask();
@@ -95,6 +146,18 @@ public static class SubmitSignatureHandler
 
     private static IReadOnlyList<SignerFieldValueInput> MapFieldValues(IReadOnlyList<SubmitFieldValueDto>? values) =>
         values is null ? [] : values.Select(v => new SignerFieldValueInput(v.FieldId, v.Value)).ToList();
+
+    private static IReadOnlyList<Guid> ResolveDocumentIds(IReadOnlyList<Guid>? requested, Signer signer) =>
+        requested is { Count: > 0 }
+            ? requested.Distinct().ToList()
+            : signer
+                .Fields.Select(field => field.DocumentId)
+                .Distinct()
+                .Where(documentId => signer.DocumentCompletions.All(item => item.DocumentId != documentId))
+                .ToList();
+
+    private static string BuildPartialCopyBatchKey(Guid requestId, Guid signerId, IReadOnlyList<Guid> documentIds) =>
+        $"signature.partial_copy:{requestId:N}:{signerId:N}:{string.Join('-', documentIds.Order().Select(id => id.ToString("N")))}:v1";
 
     private static Result ValidateEvidence(SubmitSignatureCommand cmd, Signer signer) =>
         cmd.Method switch
@@ -176,8 +239,13 @@ public static class SubmitSignatureHandler
                     SignatureRequestId = request.Id,
                     CreatedByUserId = request.CreatedByUserId,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
-                    OriginalFileId = request.OriginalFileId,
-                    DocumentHashPre = request.DocumentHashPre!.Value,
+                    Documents = request
+                        .Documents.Select(document => new DocumentHashDescriptor(
+                            document.Id,
+                            document.OriginalFileId,
+                            document.DocumentHashPre!.Value
+                        ))
+                        .ToList(),
                     SignerIds = request.Signers.Select(s => s.Id).ToList(),
                     GenerateCertificate = request.GenerateCertificate,
                     Signers = request

@@ -31,6 +31,9 @@ public static class CampaignTemplateErrors
         "CampaignTemplate.SubjectTooLong",
         "Subject exceeds the maximum length."
     );
-    public static readonly Error TitleTooLong = new("CampaignTemplate.TitleTooLong", "Title exceeds the maximum length.");
+    public static readonly Error TitleTooLong = new(
+        "CampaignTemplate.TitleTooLong",
+        "Title exceeds the maximum length."
+    );
     public static readonly Error NotFound = new("CampaignTemplate.NotFound", "Template not found.");
 }

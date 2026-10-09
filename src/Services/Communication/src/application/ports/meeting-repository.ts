@@ -39,16 +39,20 @@ export interface MeetingRepository {
     userId: string;
     take: number;
     skip: number;
+    /** Perfil del cliente: solo meetings donde este usuario (portal del cliente) participa o está invitado. */
+    counterpartUserId?: string;
   }): Promise<MeetingSnapshot[]>;
-  countUpcomingForUser(tenantId: string, userId: string): Promise<number>;
+  countUpcomingForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number>;
   /** Fase Frontend 9 — "historial" (Ended/Cancelled), separado de upcoming (Scheduled/Live). */
   listPastForUser(input: {
     tenantId: string;
     userId: string;
     take: number;
     skip: number;
+    /** Perfil del cliente: solo meetings donde este usuario (portal del cliente) participa o está invitado. */
+    counterpartUserId?: string;
   }): Promise<MeetingSnapshot[]>;
-  countPastForUser(tenantId: string, userId: string): Promise<number>;
+  countPastForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number>;
   /**
    * Contadores para las tarjetas del dashboard de meetings, calculados sobre TODOS los meetings del
    * usuario (no la página cargada en el cliente). Las fronteras de día/semana vienen ya resueltas a UTC

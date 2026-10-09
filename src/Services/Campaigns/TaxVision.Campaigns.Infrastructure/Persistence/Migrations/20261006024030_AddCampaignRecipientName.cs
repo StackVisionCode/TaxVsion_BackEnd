@@ -15,15 +15,14 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                 table: "CampaignRecipients",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Name",
-                table: "CampaignRecipients");
+            migrationBuilder.DropColumn(name: "Name", table: "CampaignRecipients");
         }
     }
 }

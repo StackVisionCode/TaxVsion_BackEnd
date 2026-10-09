@@ -16,6 +16,8 @@ public static class SignatureReadyForDownloadConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.CompletedKey;
 
+    private sealed record DownloadItem(string Title, string Link);
+
     public static async Task Handle(
         SignatureReadyForDownloadIntegrationEvent evt,
         IEmailDispatchGateway gateway,
@@ -38,15 +40,24 @@ public static class SignatureReadyForDownloadConsumer
 
             foreach (var signer in evt.Signers)
             {
-                var downloadLink = string.IsNullOrEmpty(evt.ShareToken)
-                    ? null
-                    : TenantEmailLinks.PublicShareDownloadLink(tenantHost, portal.Value, evt.ShareToken, signer.Email);
+                var downloads = evt
+                    .SealedFiles.Where(file => !string.IsNullOrEmpty(file.ShareToken))
+                    .Select(file => new DownloadItem(
+                        file.Title,
+                        TenantEmailLinks.PublicShareDownloadLink(
+                            tenantHost,
+                            portal.Value,
+                            file.ShareToken!,
+                            signer.Email
+                        )
+                    ))
+                    .ToList();
 
                 // Canal preferido del firmante: SMS con el enlace de descarga si lo eligió y hay teléfono;
                 // si no, el correo de siempre. Sin link (share-token vacío) no tiene sentido el SMS → email.
-                if (PrefersSms(signer) && !string.IsNullOrEmpty(downloadLink))
+                if (PrefersSms(signer) && downloads.Count > 0)
                 {
-                    var smsBody = BuildReadySms(signer, downloadLink, portal.Value);
+                    var smsBody = BuildReadySms(signer, downloads, portal.Value);
                     await smsSender.SendAsync(signer.PhoneE164!, smsBody, ct);
                     continue;
                 }
@@ -59,7 +70,14 @@ public static class SignatureReadyForDownloadConsumer
                         {
                             ["full_name"] = signer.FullName,
                             ["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                            ["download_link"] = downloadLink,
+                            ["download_links"] = downloads
+                                .Select(download => new Dictionary<string, object?>
+                                {
+                                    ["title"] = download.Title,
+                                    ["url"] = download.Link,
+                                })
+                                .ToList(),
+                            ["document_count"] = evt.SealedFiles.Count,
                             ["language"] = signer.Language,
                         },
                         ct
@@ -84,12 +102,17 @@ public static class SignatureReadyForDownloadConsumer
         string.Equals(signer.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(signer.PhoneE164);
 
-    private static string BuildReadySms(SignerContactSnapshot signer, string downloadLink, PortalOptions portal)
+    private static string BuildReadySms(
+        SignerContactSnapshot signer,
+        IReadOnlyList<DownloadItem> downloads,
+        PortalOptions portal
+    )
     {
         var product = portal.ProductName;
+        var links = string.Join(" ", downloads.Select(download => $"{download.Title}: {download.Link}"));
         return signer.Language == "Es"
-            ? $"{product}: {signer.FullName}, tu documento firmado está listo. Descárgalo aquí: {downloadLink}"
-            : $"{product}: {signer.FullName}, your signed document is ready. Download it here: {downloadLink}";
+            ? $"{product}: {signer.FullName}, tus documentos firmados están listos. {links}"
+            : $"{product}: {signer.FullName}, your signed documents are ready. {links}";
     }
 
     private static string ResolveCorrelationId(SignatureReadyForDownloadIntegrationEvent evt) =>

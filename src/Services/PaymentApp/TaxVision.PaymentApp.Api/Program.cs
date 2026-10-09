@@ -183,6 +183,8 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<SubscriptionPlanChangePaymentSucceededIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionPlanChangePaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<WalletTopUpPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<WalletTopUpPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SaaSPaymentMethodExpiringSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 8) — resultado del pago inicial de un onboarding pago-primero.
     options.PublishMessage<OnboardingPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");

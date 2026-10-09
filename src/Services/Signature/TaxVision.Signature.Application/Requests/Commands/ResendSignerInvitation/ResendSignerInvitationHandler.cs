@@ -37,7 +37,7 @@ public static class ResendSignerInvitationHandler
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found on this request."));
 
-        if (signer.Status != SignerStatus.Pending)
+        if (signer.Status is not (SignerStatus.Pending or SignerStatus.InProgress))
             return Result.Failure(
                 new Error("Signature.Signer.NotPending", "Only pending signers can receive a resent invitation.")
             );

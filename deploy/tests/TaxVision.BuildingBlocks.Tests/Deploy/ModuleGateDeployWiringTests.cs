@@ -15,7 +15,7 @@ namespace TaxVision.BuildingBlocks.Tests.Deploy;
 /// </summary>
 public sealed class ModuleGateDeployWiringTests
 {
-    /// <summary>Un flag por servicio con gate: 13 .NET + Communication (Node).</summary>
+    /// <summary>Un flag por servicio con gate: 14 .NET + Communication (Node).</summary>
     private static readonly string[] ModuleGateEnvVars =
     [
         "CAMPAIGNS_MODULE_GATE_ENFORCE",
@@ -32,6 +32,7 @@ public sealed class ModuleGateDeployWiringTests
         "NOTES_MODULE_GATE_ENFORCE",
         "REMINDER_MODULE_GATE_ENFORCE",
         "TASKS_MODULE_GATE_ENFORCE",
+        "WALLET_MODULE_GATE_ENFORCE",
     ];
 
     [Theory]
@@ -100,7 +101,7 @@ public sealed class ModuleGateDeployWiringTests
         var enforceCount = Regex.Matches(compose, @"Authorization__ModuleGate__Enforce:").Count;
         var moduleCount = Regex.Matches(compose, @"Authorization__ModuleGate__EnforcedModules__\d+:").Count;
 
-        Assert.Equal(13, enforceCount);
+        Assert.Equal(14, enforceCount);
         Assert.True(
             moduleCount >= enforceCount,
             $"Hay {enforceCount} servicios con Enforce y solo {moduleCount} entradas de módulo."

@@ -109,6 +109,23 @@ public sealed class SignatureTemplateTests
     }
 
     [Fact]
+    public void Publish_rejects_a_legacy_placeholder_document_until_it_is_repaired()
+    {
+        var template = NewDraft().Value;
+        template.AddSlot(TemplateSlotRole.Create("Solo").Value, "En");
+        var position = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
+        template.PlaceField(1, SignatureFieldKind.Signature, position, null, false);
+        var document = Assert.Single(template.Documents);
+        typeof(TemplateDocument).GetProperty(nameof(TemplateDocument.FileId))!.SetValue(document, Guid.Empty);
+
+        var result = template.Publish();
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Template.DocumentRepairRequired", result.Error.Code);
+        Assert.Equal(SignatureTemplateStatus.Draft, template.Status);
+    }
+
+    [Fact]
     public void Cannot_edit_after_publish()
     {
         var template = NewPublishedTemplate();
@@ -316,7 +333,8 @@ public sealed class SignatureTemplateTests
             defaultTokenExpirationHours: 72,
             requiresSequentialSigning: false,
             requiresConsent: true,
-            generateCertificate: false
+            generateCertificate: false,
+            baseDocumentFileId: Guid.NewGuid()
         );
 
     private static SignatureTemplate NewPublishedTemplate()

@@ -43,7 +43,12 @@ public static class ReassignSealedDocumentOwnersHandler
             if (ownerType != "Customer")
                 continue;
 
-            foreach (var fileId in new[] { request.SealedFileId, request.CertificateFileId })
+            var fileIds = request
+                .Documents.Where(document => document.SealedFileId.HasValue)
+                .Select(document => document.SealedFileId)
+                .Append(request.CertificateFileId);
+
+            foreach (var fileId in fileIds)
             {
                 if (fileId is not { } id)
                     continue;

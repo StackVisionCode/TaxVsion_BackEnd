@@ -40,7 +40,10 @@ public static class CancelSignatureRequestHandler
         );
 
     private static IReadOnlyList<Guid> CollectPendingSignerIds(SignatureRequest request) =>
-        request.Signers.Where(s => s.Status == SignerStatus.Pending).Select(s => s.Id).ToList();
+        request
+            .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
+            .Select(s => s.Id)
+            .ToList();
 
     private static Task PublishCanceledEventAsync(
         SignatureRequest request,

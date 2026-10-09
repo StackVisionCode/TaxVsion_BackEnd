@@ -113,7 +113,7 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
     [RateLimit("billing.f.invoice_read")]
     [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> List([FromQuery] int take, CancellationToken ct)
+    public async Task<IActionResult> List([FromQuery] int take, [FromQuery] Guid? customerId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
@@ -121,7 +121,7 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las facturas.
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<InvoiceSummaryResponse>>>(
-            new ListInvoicesQuery(tenantId, userId, canViewAll, take),
+            new ListInvoicesQuery(tenantId, userId, canViewAll, take, customerId),
             ct
         );
 

@@ -13,10 +13,17 @@ public sealed class TemplateFieldConfiguration : IEntityTypeConfiguration<Templa
         builder.Property(f => f.Id).ValueGeneratedNever();
 
         builder.Property(f => f.SignatureTemplateId).IsRequired();
+        builder.Property(f => f.TemplateDocumentId).IsRequired();
         builder.Property(f => f.SlotOrder).IsRequired();
         builder.Property(f => f.Kind).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(f => f.Label).HasMaxLength(TemplateField.MaxLabelLength);
         builder.Property(f => f.IsRequired).IsRequired();
+
+        builder
+            .HasOne<TemplateDocument>()
+            .WithMany()
+            .HasForeignKey(f => f.TemplateDocumentId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         builder.OwnsOne(
             f => f.Position,
@@ -30,6 +37,11 @@ public sealed class TemplateFieldConfiguration : IEntityTypeConfiguration<Templa
             }
         );
 
-        builder.HasIndex(f => new { f.SignatureTemplateId, f.SlotOrder });
+        builder.HasIndex(f => new
+        {
+            f.SignatureTemplateId,
+            f.TemplateDocumentId,
+            f.SlotOrder,
+        });
     }
 }

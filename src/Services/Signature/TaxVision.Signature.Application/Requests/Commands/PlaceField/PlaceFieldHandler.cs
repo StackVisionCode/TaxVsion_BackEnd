@@ -25,7 +25,14 @@ public static class PlaceFieldHandler
                 new Error("Signature.Request.NotFound", "The signature request does not exist for this tenant.")
             );
 
-        var placement = request.PlaceField(cmd.SignerId, cmd.Kind, positionResult.Value, cmd.Label, cmd.IsRequired);
+        var placement = request.PlaceField(
+            cmd.SignerId,
+            cmd.DocumentId,
+            cmd.Kind,
+            positionResult.Value,
+            cmd.Label,
+            cmd.IsRequired
+        );
         if (placement.IsFailure)
             return Result.Failure<SignatureFieldResponse>(placement.Error);
 
@@ -37,6 +44,7 @@ public static class PlaceFieldHandler
         new(
             field.Id,
             signerId,
+            field.DocumentId,
             field.Kind,
             field.Position.Page,
             field.Position.X,

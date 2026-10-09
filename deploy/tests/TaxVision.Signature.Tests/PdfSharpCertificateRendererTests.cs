@@ -17,6 +17,7 @@ public class PdfSharpCertificateRendererTests
 
     private static CertificateSignerEntry Signer(int order, string? ua = null) =>
         new(
+            SignerId: Guid.NewGuid(),
             FullName: $"Signer Number {order} With A Fairly Long Display Name",
             Email: $"signer.number.{order}.with.a.very.long.local.part@example-domain.com",
             Order: order,
@@ -39,9 +40,7 @@ public class PdfSharpCertificateRendererTests
             Category: "Fiscal",
             CreatedAtUtc: DateTime.UtcNow.AddHours(-2),
             CompletedAtUtc: DateTime.UtcNow,
-            DocumentHashPre: new string('a', 64),
-            DocumentHashPost: new string('b', 64),
-            Signers: Enumerable
+            SignersGlobal: Enumerable
                 .Range(1, signerCount)
                 .Select(i =>
                     Signer(
@@ -50,6 +49,44 @@ public class PdfSharpCertificateRendererTests
                     )
                 )
                 .ToList(),
+            Documents:
+            [
+                new CertificateDocumentEntry(
+                    Guid.NewGuid(),
+                    1,
+                    "Form 1040 - Individual Income Tax Return",
+                    new string('a', 64),
+                    new string('b', 64),
+                    DateTime.UtcNow,
+                    Enumerable
+                        .Range(1, signerCount)
+                        .Select(i => new CertificateDocumentSignerEntry(
+                            Guid.NewGuid(),
+                            $"Signer Number {i}",
+                            DateTime.UtcNow.AddMinutes(-i),
+                            "203.0.113.7",
+                            "Mozilla/5.0"
+                        ))
+                        .ToList()
+                ),
+                new CertificateDocumentEntry(
+                    Guid.NewGuid(),
+                    2,
+                    "Supporting W-2",
+                    new string('c', 64),
+                    new string('d', 64),
+                    DateTime.UtcNow,
+                    [
+                        new CertificateDocumentSignerEntry(
+                            Guid.NewGuid(),
+                            "Signer Number 1",
+                            DateTime.UtcNow.AddMinutes(-1),
+                            "203.0.113.7",
+                            "Mozilla/5.0"
+                        ),
+                    ]
+                ),
+            ],
             IssuerName: issuer,
             TenantLogo: tenantLogo
         );

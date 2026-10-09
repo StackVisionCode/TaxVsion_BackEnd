@@ -214,4 +214,10 @@
     <Project Path="deploy/tests/TaxVision.Tasks.Tests/TaxVision.Tasks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>
+  <Folder Name="/src/Services/Wallet/">
+    <Project Path="src/Services/Wallet/TaxVision.Wallet.Domain/TaxVision.Wallet.Domain.csproj" />
+    <Project Path="src/Services/Wallet/TaxVision.Wallet.Application/TaxVision.Wallet.Application.csproj" />
+    <Project Path="src/Services/Wallet/TaxVision.Wallet.Infrastructure/TaxVision.Wallet.Infrastructure.csproj" />
+    <Project Path="src/Services/Wallet/TaxVision.Wallet.Api/TaxVision.Wallet.Api.csproj" />
+  </Folder>
 </Solution>

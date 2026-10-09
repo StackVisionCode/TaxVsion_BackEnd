@@ -42,7 +42,9 @@ public static class RejectSignatureHandler
     }
 
     private static IReadOnlyList<Signer> CollectPendingSignersExcluding(SignatureRequest request, Guid excluded) =>
-        request.Signers.Where(s => s.Id != excluded && s.Status == SignerStatus.Pending).ToList();
+        request
+            .Signers.Where(s => s.Id != excluded && s.Status is SignerStatus.Pending or SignerStatus.InProgress)
+            .ToList();
 
     private static Task PublishRejectedAsync(
         SignatureRequest request,

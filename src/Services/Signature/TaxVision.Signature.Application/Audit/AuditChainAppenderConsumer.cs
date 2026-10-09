@@ -41,7 +41,8 @@ public static class AuditChainAppenderConsumer
                 evt.SignatureRequestId,
                 evt.CreatedByUserId,
                 evt.Category,
-                evt.OriginalFileId,
+                evt.OriginalFileIds,
+                evt.DocumentCount,
                 evt.ExpiresAtUtc,
             };
             await AppendAsync(
@@ -135,6 +136,7 @@ public static class AuditChainAppenderConsumer
             var payload = new
             {
                 evt.SignerId,
+                evt.DocumentId,
                 evt.ViewedAtUtc,
                 evt.ClientIp,
             };
@@ -387,7 +389,7 @@ public static class AuditChainAppenderConsumer
             var payload = new
             {
                 evt.CompletedAtUtc,
-                evt.DocumentHashPre,
+                evt.Documents,
                 evt.GenerateCertificate,
             };
             await AppendAsync(
@@ -405,7 +407,7 @@ public static class AuditChainAppenderConsumer
     }
 
     public static async Task Handle(
-        SignatureRequestSealedIntegrationEvent evt,
+        SignatureDocumentSealedIntegrationEvent evt,
         IAuditChainAppender appender,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -417,6 +419,7 @@ public static class AuditChainAppenderConsumer
         {
             var payload = new
             {
+                evt.DocumentId,
                 evt.SealedFileId,
                 evt.DocumentHashPost,
                 evt.CertificateFileId,

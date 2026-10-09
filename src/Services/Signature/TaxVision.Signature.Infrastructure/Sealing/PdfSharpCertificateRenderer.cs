@@ -59,8 +59,8 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
 
             WriteHeader(ctx, model, platformLogo);
             WriteSummary(ctx, model);
-            WriteIntegrity(ctx, model);
-            WriteSigners(ctx, model.Signers);
+            WriteDocuments(ctx, model.Documents);
+            WriteSigners(ctx, model.SignersGlobal);
             WritePreparer(ctx, model.Preparer);
             WriteLegalFooter(ctx, model);
 
@@ -168,23 +168,85 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
         WriteRow(ctx, "Reference", ShortReference(model.SignatureRequestId));
         WriteRow(ctx, "Status", "Completed");
         WriteRow(ctx, "Category", model.Category.ToString());
+        WriteRow(ctx, "Documents", model.Documents.Count.ToString());
+        WriteRow(ctx, "Signers", model.SignersGlobal.Count.ToString());
         WriteRow(ctx, "Created (UTC)", FormatUtc(model.CreatedAtUtc));
         WriteRow(ctx, "Completed (UTC)", FormatUtc(model.CompletedAtUtc));
         ctx.CursorY += 8;
     }
 
-    private static void WriteIntegrity(RenderContext ctx, CertificateOfCompletionModel model)
+    private static void WriteDocuments(RenderContext ctx, IReadOnlyList<CertificateDocumentEntry> documents)
     {
-        WriteSectionHeader(ctx, "Document Integrity  •  SHA-256");
-        WriteHashBlock(ctx, "Original document", model.DocumentHashPre);
-        WriteHashBlock(ctx, "Sealed document (after signatures)", model.DocumentHashPost);
+        WriteSectionHeader(ctx, $"Documents  ({documents.Count})");
+        foreach (var document in documents.OrderBy(entry => entry.Order))
+        {
+            ctx.EnsureSpace(80);
+            WriteWrapped(
+                ctx,
+                $"Document {document.Order} of {documents.Count}: {document.Title}",
+                new XFont(SansFamily, 11, XFontStyleEx.Bold),
+                TextPrimary,
+                MarginLeft,
+                ctx.ContentWidth,
+                lineHeight: 14
+            );
+            ctx.CursorY += 4;
+            WriteRow(ctx, "Document reference", ShortReference(document.DocumentId));
+            WriteRow(ctx, "Sealed (UTC)", FormatUtc(document.SealedAtUtc));
+            WriteHashBlock(ctx, "Original SHA-256", document.HashPre);
+            WriteHashBlock(ctx, "Sealed SHA-256", document.HashPost);
+            WriteDocumentParticipants(ctx, document.Signers);
+            ctx.CursorY += 12;
+        }
 
         var noteFont = new XFont(SansFamily, 7.5, XFontStyleEx.Italic);
         var note =
-            "To verify: recompute the SHA-256 of the sealed PDF and compare it with the sealed hash above. "
-            + "A match proves the document has not been altered since signing.";
+            "To verify a document, recompute the SHA-256 of its sealed PDF and compare it with that document's sealed hash above. "
+            + "A match proves that specific document has not been altered since signing.";
         WriteWrapped(ctx, note, noteFont, TextMuted, MarginLeft, ctx.ContentWidth, lineHeight: 11);
         ctx.CursorY += 8;
+    }
+
+    private static void WriteDocumentParticipants(
+        RenderContext ctx,
+        IReadOnlyList<CertificateDocumentSignerEntry> signers
+    )
+    {
+        var labelFont = new XFont(SansFamily, 8.5, XFontStyleEx.Bold);
+        var valueFont = new XFont(SansFamily, 8.5, XFontStyleEx.Regular);
+        ctx.EnsureSpace(20);
+        ctx.Gfx.DrawString(
+            $"PARTICIPANTS ({signers.Count})",
+            labelFont,
+            new XSolidBrush(BrandAccent),
+            new XPoint(MarginLeft, ctx.CursorY + 9)
+        );
+        ctx.CursorY += 16;
+
+        foreach (var signer in signers)
+        {
+            ctx.EnsureSpace(42);
+            ctx.Gfx.DrawString(
+                signer.FullName,
+                labelFont,
+                new XSolidBrush(TextPrimary),
+                new XPoint(MarginLeft + 10, ctx.CursorY + 9)
+            );
+            ctx.CursorY += 13;
+            var evidence = $"Completed {FormatUtc(signer.SignedAtUtc)}  |  IP {signer.ClientIp ?? "-"}";
+            WriteWrapped(ctx, evidence, valueFont, TextMuted, MarginLeft + 10, ctx.ContentWidth - 10, 11);
+            if (!string.IsNullOrWhiteSpace(signer.UserAgent))
+                WriteWrapped(
+                    ctx,
+                    $"User agent: {signer.UserAgent}",
+                    valueFont,
+                    TextMuted,
+                    MarginLeft + 10,
+                    ctx.ContentWidth - 10,
+                    11
+                );
+            ctx.CursorY += 5;
+        }
     }
 
     private static void WriteSigners(RenderContext ctx, IReadOnlyList<CertificateSignerEntry> signers)

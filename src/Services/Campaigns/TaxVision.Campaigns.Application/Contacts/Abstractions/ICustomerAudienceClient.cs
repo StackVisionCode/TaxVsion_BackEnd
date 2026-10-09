@@ -1,7 +1,12 @@
 namespace TaxVision.Campaigns.Application.Contacts.Abstractions;
 
 /// <summary>Un cliente del directorio de Customer como miembro de audiencia (email/teléfono resueltos).</summary>
-public sealed record CustomerAudienceMember(Guid CustomerId, string? Email, string? PhoneE164, string? DisplayName = null);
+public sealed record CustomerAudienceMember(
+    Guid CustomerId,
+    string? Email,
+    string? PhoneE164,
+    string? DisplayName = null
+);
 
 /// <summary>
 /// Puerto hacia el servicio <c>Customer</c> (M2M) para usar clientes activos como audiencia de campaña

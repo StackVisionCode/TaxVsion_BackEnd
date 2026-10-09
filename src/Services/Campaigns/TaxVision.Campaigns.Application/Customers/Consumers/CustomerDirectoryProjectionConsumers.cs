@@ -70,7 +70,19 @@ public static class CustomerDirectoryProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => ApplyStatusAsync(evt.TenantId, evt.CustomerId, CustomerDirectoryStatus.Archived, evt.OccurredOn, evt.CorrelationId, evt.EventId, store, unitOfWork, correlation, ct);
+    ) =>
+        ApplyStatusAsync(
+            evt.TenantId,
+            evt.CustomerId,
+            CustomerDirectoryStatus.Archived,
+            evt.OccurredOn,
+            evt.CorrelationId,
+            evt.EventId,
+            store,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerDeactivatedIntegrationEvent evt,
@@ -78,7 +90,19 @@ public static class CustomerDirectoryProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => ApplyStatusAsync(evt.TenantId, evt.CustomerId, CustomerDirectoryStatus.Inactive, evt.OccurredOn, evt.CorrelationId, evt.EventId, store, unitOfWork, correlation, ct);
+    ) =>
+        ApplyStatusAsync(
+            evt.TenantId,
+            evt.CustomerId,
+            CustomerDirectoryStatus.Inactive,
+            evt.OccurredOn,
+            evt.CorrelationId,
+            evt.EventId,
+            store,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerActivatedIntegrationEvent evt,
@@ -86,7 +110,19 @@ public static class CustomerDirectoryProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => ApplyStatusAsync(evt.TenantId, evt.CustomerId, CustomerDirectoryStatus.Active, evt.OccurredOn, evt.CorrelationId, evt.EventId, store, unitOfWork, correlation, ct);
+    ) =>
+        ApplyStatusAsync(
+            evt.TenantId,
+            evt.CustomerId,
+            CustomerDirectoryStatus.Active,
+            evt.OccurredOn,
+            evt.CorrelationId,
+            evt.EventId,
+            store,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerReactivatedIntegrationEvent evt,
@@ -94,7 +130,19 @@ public static class CustomerDirectoryProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => ApplyStatusAsync(evt.TenantId, evt.CustomerId, CustomerDirectoryStatus.Active, evt.OccurredOn, evt.CorrelationId, evt.EventId, store, unitOfWork, correlation, ct);
+    ) =>
+        ApplyStatusAsync(
+            evt.TenantId,
+            evt.CustomerId,
+            CustomerDirectoryStatus.Active,
+            evt.OccurredOn,
+            evt.CorrelationId,
+            evt.EventId,
+            store,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     private static async Task ApplyStatusAsync(
         Guid tenantId,
