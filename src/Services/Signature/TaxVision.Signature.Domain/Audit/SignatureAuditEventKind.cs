@@ -32,4 +32,10 @@ public enum SignatureAuditEventKind
 
     /// <summary>F7 — fallo irrecuperable al entregar la copia parcial (no bloquea el flujo).</summary>
     PartialCopyFailed,
+
+    /// <summary>
+    /// F9 — El preparador reemplazó el PDF original de un documento del borrador. Si cambió el
+    /// número de páginas, el payload reporta cuántos campos quedaron invalidados.
+    /// </summary>
+    DocumentReplaced,
 }

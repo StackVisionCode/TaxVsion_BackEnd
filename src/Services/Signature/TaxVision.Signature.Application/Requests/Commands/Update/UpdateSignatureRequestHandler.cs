@@ -47,6 +47,13 @@ public static class UpdateSignatureRequestHandler
                 return applied;
         }
 
+        if (cmd.CertificateGenerationMode is { } certificateMode)
+        {
+            var applied = request.SetCertificateGenerationMode(certificateMode);
+            if (applied.IsFailure)
+                return applied;
+        }
+
         if (cmd.AutoRemindersEnabled is { } remindersEnabled)
         {
             var applied = request.SetReminderPolicy(

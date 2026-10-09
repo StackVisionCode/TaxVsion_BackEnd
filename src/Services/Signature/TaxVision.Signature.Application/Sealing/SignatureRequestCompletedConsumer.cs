@@ -219,9 +219,12 @@ public static class SignatureRequestCompletedConsumer
     private sealed record PipelineOutcome(
         IReadOnlyList<DocumentSealOutcome> SealedDocuments,
         Guid? CertificateFileId,
+        IReadOnlyDictionary<Guid, Guid> DocumentCertificateFileIds,
         DateTime CompletedAtUtc,
         bool RequestSealingCompleted
     );
+
+    private sealed record CertificateRenderArtifact(Guid? DocumentId, string Title, byte[] Bytes);
 
     // ============== Fase 1: cargar aggregate y saltar si ya está sellado ==============
 
@@ -265,7 +268,7 @@ public static class SignatureRequestCompletedConsumer
             request.Status == SignatureRequestStatus.Completed
             && request.AllDocumentsSealed()
             && request.GenerateCertificate
-            && request.CertificateFileId is null;
+            && !request.AllCertificateArtifactsGenerated();
         if (!hasReadyDocument && !needsCertificate)
         {
             logger.LogInformation(
@@ -470,6 +473,9 @@ public static class SignatureRequestCompletedConsumer
                 new PipelineOutcome(
                     sealedDocuments,
                     request.CertificateFileId,
+                    request
+                        .Documents.Where(document => document.CertificateFileId is not null)
+                        .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value),
                     DateTime.UtcNow,
                     RequestSealingCompleted: false
                 )
@@ -484,7 +490,7 @@ public static class SignatureRequestCompletedConsumer
         // (render del certificado + descarga del logo de oficina, ~1-2s) ANTES de subir nada, y luego subir
         // sellado y certificado espalda con espalda justo antes del commit. Así ambos FileAvailable llegan
         // con una ventana mínima (~ms) respecto al commit y los consumers encuentran el request.
-        var certificateBytesResult = await GenerateCertificateBytesAsync(
+        var certificateArtifactsResult = await GenerateCertificateArtifactsAsync(
             request,
             certificateRenderer,
             storage,
@@ -492,15 +498,18 @@ public static class SignatureRequestCompletedConsumer
             logger,
             ct
         );
-        if (certificateBytesResult.IsFailure)
-            return Result.Failure<PipelineOutcome>(certificateBytesResult.Error);
+        if (certificateArtifactsResult.IsFailure)
+            return Result.Failure<PipelineOutcome>(certificateArtifactsResult.Error);
 
         // Certificado PRIMERO y sellado de ÚLTIMO: así el FileAvailable del sellado (el correo que fallaba)
         // llega con la ventana más chica posible respecto al commit — sube y a renglón seguido se persiste.
         var certificateFileId = request.CertificateFileId;
-        if (certificateBytesResult.Value is { Length: > 0 } certificateBytes)
+        var documentCertificateFileIds = request
+            .Documents.Where(document => document.CertificateFileId is not null)
+            .ToDictionary(document => document.Id, document => document.CertificateFileId!.Value);
+        foreach (var artifact in certificateArtifactsResult.Value)
         {
-            var certificateUpload = BuildCertificateUpload(request, certificateBytes);
+            var certificateUpload = BuildCertificateUpload(request, artifact.Title, artifact.Bytes);
             var certificateUploadResult = await storage.UploadAsync(request.TenantId, certificateUpload, ct);
             if (certificateUploadResult.IsFailure)
             {
@@ -512,15 +521,27 @@ public static class SignatureRequestCompletedConsumer
                 return Result.Failure<PipelineOutcome>(certificateUploadResult.Error);
             }
 
-            certificateFileId = certificateUploadResult.Value;
-            var recorded = request.RecordCertificate(certificateFileId.Value);
+            var recorded = artifact.DocumentId is { } documentId
+                ? request.RecordDocumentCertificate(documentId, certificateUploadResult.Value)
+                : request.RecordCertificate(certificateUploadResult.Value);
             if (recorded.IsFailure)
                 return Result.Failure<PipelineOutcome>(recorded.Error);
+
+            if (artifact.DocumentId is { } perDocumentId)
+                documentCertificateFileIds[perDocumentId] = certificateUploadResult.Value;
+            else
+                certificateFileId = certificateUploadResult.Value;
         }
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(
-            new PipelineOutcome(sealedDocuments, certificateFileId, DateTime.UtcNow, RequestSealingCompleted: true)
+            new PipelineOutcome(
+                sealedDocuments,
+                certificateFileId,
+                documentCertificateFileIds,
+                DateTime.UtcNow,
+                RequestSealingCompleted: true
+            )
         );
     }
 
@@ -686,7 +707,7 @@ public static class SignatureRequestCompletedConsumer
     /// commit — ver el comentario de ORDEN CRÍTICO en <see cref="SealAndPersistAsync"/>. Devuelve null si la
     /// request no pidió certificado.
     /// </summary>
-    private static async Task<Result<byte[]?>> GenerateCertificateBytesAsync(
+    private static async Task<Result<IReadOnlyList<CertificateRenderArtifact>>> GenerateCertificateArtifactsAsync(
         SignatureRequest request,
         ICertificateOfCompletionRenderer renderer,
         ISignatureCloudStorageClient storage,
@@ -696,7 +717,7 @@ public static class SignatureRequestCompletedConsumer
     )
     {
         if (!request.GenerateCertificate)
-            return Result.Success<byte[]?>(null);
+            return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([]);
 
         // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
         // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
@@ -722,17 +743,44 @@ public static class SignatureRequestCompletedConsumer
             platformLogo = resolvedPlatformLogo;
         }
 
-        var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo);
-        var rendered = renderer.Render(model);
-        return Result.Success<byte[]?>(rendered.CertificatePdfBytes);
+        if (request.CertificateGenerationMode == CertificateGenerationMode.SingleForRequest)
+        {
+            if (request.CertificateFileId is not null)
+                return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([]);
+
+            var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, documentId: null);
+            var rendered = renderer.Render(model);
+            return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([
+                new CertificateRenderArtifact(null, request.Title, rendered.CertificatePdfBytes),
+            ]);
+        }
+
+        var artifacts = request
+            .Documents.Where(document => document.CertificateFileId is null)
+            .OrderBy(document => document.Order)
+            .Select(document =>
+            {
+                var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, document.Id);
+                return new CertificateRenderArtifact(
+                    document.Id,
+                    document.Title,
+                    renderer.Render(model).CertificatePdfBytes
+                );
+            })
+            .ToList();
+        return Result.Success<IReadOnlyList<CertificateRenderArtifact>>(artifacts);
     }
 
-    private static SignatureFileUpload BuildCertificateUpload(SignatureRequest request, byte[] certificateBytes)
+    private static SignatureFileUpload BuildCertificateUpload(
+        SignatureRequest request,
+        string title,
+        byte[] certificateBytes
+    )
     {
         var (ownerType, ownerId) = ResolveSealedOwner(request);
         return new(
             Content: certificateBytes,
-            FileName: BuildDocumentFileName(request.Title, "_Certificate.pdf"),
+            FileName: BuildDocumentFileName(title, "_Certificate.pdf"),
             ContentType: "application/pdf",
             OwnerType: ownerType,
             OwnerId: ownerId,
@@ -809,16 +857,30 @@ public static class SignatureRequestCompletedConsumer
         SignatureRequest request,
         string? issuerName,
         byte[]? platformLogo,
-        byte[]? tenantLogo
-    ) =>
-        new(
+        byte[]? tenantLogo,
+        Guid? documentId
+    )
+    {
+        var documents = request
+            .Documents.Where(document => documentId is null || document.Id == documentId.Value)
+            .OrderBy(document => document.Order)
+            .ToList();
+        var participatingSignerIds = documents
+            .SelectMany(document =>
+                request.Signers.Where(signer => signer.Fields.Any(field => field.DocumentId == document.Id))
+            )
+            .Select(signer => signer.Id)
+            .ToHashSet();
+
+        return new(
             SignatureRequestId: request.Id,
-            Title: request.Title,
+            Title: documentId is null ? request.Title : documents[0].Title,
             Category: request.Category,
             CreatedAtUtc: request.CreatedAtUtc,
             CompletedAtUtc: request.CompletedAtUtc ?? DateTime.UtcNow,
             SignersGlobal: request
-                .Signers.Select(s => new CertificateSignerEntry(
+                .Signers.Where(s => documentId is null || participatingSignerIds.Contains(s.Id))
+                .Select(s => new CertificateSignerEntry(
                     s.Id,
                     s.FullName.Value,
                     s.Email.Value,
@@ -831,8 +893,7 @@ public static class SignatureRequestCompletedConsumer
                     s.UserAgent
                 ))
                 .ToList(),
-            Documents: request
-                .Documents.OrderBy(document => document.Order)
+            Documents: documents
                 .Select(document => new CertificateDocumentEntry(
                     document.Id,
                     document.Order,
@@ -863,6 +924,7 @@ public static class SignatureRequestCompletedConsumer
             // Referencia del preparador (ERO): solo si firmó internamente. Identificador enmascarado, sin imagen.
             Preparer: BuildPreparerEntry(request)
         );
+    }
 
     private static CertificatePreparerEntry? BuildPreparerEntry(SignatureRequest request)
     {
@@ -917,7 +979,13 @@ public static class SignatureRequestCompletedConsumer
                     SealedFileId = sealedDocument.SealedFileId,
                     DocumentHashPost = sealedDocument.HashPost,
                     CertificateFileId =
-                        sealedDocument.DocumentId == finalSealedDocumentId ? outcome.CertificateFileId : null,
+                        outcome.DocumentCertificateFileIds.TryGetValue(
+                            sealedDocument.DocumentId,
+                            out var documentCertificateFileId
+                        )
+                            ? documentCertificateFileId
+                        : sealedDocument.DocumentId == finalSealedDocumentId ? outcome.CertificateFileId
+                        : null,
                     SealedAtUtc = sealedDocument.SealedAtUtc,
                 }
             );

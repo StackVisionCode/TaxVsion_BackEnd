@@ -6,6 +6,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application.Abstractions;
+using TaxVision.Sms.Application.Messages.Abstractions;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Domain;
 using TaxVision.Sms.Domain.Messages;
@@ -36,7 +37,12 @@ public sealed record SendSmsBatchCommand(
     string CorrelationId,
     IReadOnlyList<SmsSendItemDto> Items,
     Guid? ActorUserId,
-    bool CanViewAll
+    bool CanViewAll,
+    // Cobro money-OUT (F6): SOLO el envío individual (MessagesController) lo prende. El dispatch de campaña
+    // deja esto en false — ya lo cobró Campaigns (referenceType="campaign-run"); así no se cobra dos veces.
+    bool ChargeWallet = false,
+    // Bearer de la sesión para reservar on-behalf-of en el Wallet; null → el cliente usa M2M del tenant.
+    string? CallerBearerToken = null
 );
 
 public sealed record SmsSendItemResult(
@@ -60,6 +66,7 @@ public static class SendSmsBatchHandler
         IOptions<SmsOptions> options,
         IOptions<SmsVisibilityOptions> visibility,
         ISmsCustomerAssignmentReader assignments,
+        IWalletSpendClient wallet,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<SendSmsBatchCommand> logger,
@@ -83,6 +90,27 @@ public static class SendSmsBatchHandler
         if (providers.Count == 0)
             return Result.Failure<SendSmsBatchResponse>(new Error("sms.noProvider", "No SMS provider is configured."));
         var nowUtc = DateTime.UtcNow;
+
+        // Cobro money-OUT (F6): reservar el saldo ANTES de despachar (solo envío individual; la campaña ya
+        // cobró). Se reserva por la cantidad de mensajes del lote; al cerrar se consume lo realmente aceptado
+        // y se libera el resto. Si no alcanza, se rechaza el lote entero sin enviar nada.
+        if (command.ChargeWallet)
+        {
+            var reserve = await wallet.ReserveAsync(
+                command.TenantId,
+                WalletReferenceTypes.IndividualSms,
+                batchId,
+                new WalletUnitCounts(0, command.Items.Count, 0, 0),
+                command.CallerBearerToken,
+                ct
+            );
+            if (!reserve.Reachable)
+                return Result.Failure<SendSmsBatchResponse>(SmsErrors.WalletUnavailable);
+            if (!reserve.Authorized)
+                return Result.Failure<SendSmsBatchResponse>(
+                    SmsErrors.InsufficientFunds(reserve.DeficitMicros, reserve.Currency)
+                );
+        }
 
         var results = new List<SmsSendItemResult>(command.Items.Count);
 
@@ -119,6 +147,35 @@ public static class SendSmsBatchHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        // Liquidación del cobro (F6): consume lo realmente aceptado por el proveedor; el resto (suppressed,
+        // inválidos, rechazos) se libera. No tira el envío si el settle falla — los mensajes ya salieron; la
+        // reserva queda viva para reconciliar. (El envío de campaña no entra acá: ChargeWallet=false.)
+        if (command.ChargeWallet)
+        {
+            var consumed = results.Count(r => r.Status == SmsMessageStatus.Accepted.ToString());
+            try
+            {
+                await wallet.SettleAsync(
+                    command.TenantId,
+                    WalletReferenceTypes.IndividualSms,
+                    batchId,
+                    consumed,
+                    command.CallerBearerToken,
+                    ct
+                );
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "SMS batch {BatchId}: wallet settle failed ({Consumed}/{Total}); reservation left open for reconcile.",
+                    batchId,
+                    consumed,
+                    command.Items.Count
+                );
+            }
+        }
 
         logger.LogInformation(
             "SMS batch {BatchId} processed {Count} message(s) for tenant {TenantId} (correlation {CorrelationId}).",
@@ -241,20 +298,38 @@ public static class SendSmsBatchHandler
                 continue;
             }
 
-            var sendResult = await provider.SendAsync(sendRequest, ct);
-            if (sendResult.IsSuccess && sendResult.Value.Accepted)
+            // Un proveedor que LANZA (p. ej. fallo de transporte, bug del adapter) NO debe abortar el lote:
+            // se trata como un fallo de ese proveedor y se pasa al siguiente (failover). Abortar aquí haría
+            // que Wolverine reintente todo el comando y, con el cobro F6, dejaría una reserva huérfana.
+            try
             {
-                accepted = sendResult.Value;
-                usedProvider = provider;
-                break;
+                var sendResult = await provider.SendAsync(sendRequest, ct);
+                if (sendResult.IsSuccess && sendResult.Value.Accepted)
+                {
+                    accepted = sendResult.Value;
+                    usedProvider = provider;
+                    break;
+                }
+
+                lastError = sendResult.IsFailure
+                    ? sendResult.Error
+                    : new Error(
+                        sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code,
+                        sendResult.Value.ErrorMessage ?? string.Empty
+                    );
+            }
+            catch (Exception ex)
+            {
+                lastError = new Error(SmsErrors.ProviderRejected.Code, ex.Message);
+                logger.LogWarning(
+                    ex,
+                    "SMS provider {Provider} threw sending to {To}; trying next if any.",
+                    provider.Code,
+                    phone.Value
+                );
+                continue;
             }
 
-            lastError = sendResult.IsFailure
-                ? sendResult.Error
-                : new Error(
-                    sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code,
-                    sendResult.Value.ErrorMessage ?? string.Empty
-                );
             logger.LogWarning(
                 "SMS provider {Provider} did not accept {To} ({Code}); trying next if any.",
                 provider.Code,

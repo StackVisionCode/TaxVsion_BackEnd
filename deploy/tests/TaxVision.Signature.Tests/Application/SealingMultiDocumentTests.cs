@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -75,6 +76,76 @@ public sealed class SealingMultiDocumentTests
         Assert.Equal(4, unitOfWork.SaveCount);
     }
 
+    [Fact]
+    public async Task Per_document_mode_generates_a_certificate_for_each_document()
+    {
+        var request = NewRequest(out var firstSigner, out var secondSigner, perDocumentCertificates: true);
+        var repository = new StoredRequestRepository(request);
+        var storage = new MemoryStorage(request.Documents.Select(document => document.OriginalFileId));
+        var bus = new SealingMessageBus();
+        var unitOfWork = new CountingUnitOfWork();
+        var correlation = new FixedCorrelationContext("per-document-certificates");
+        var signedAt = DateTime.UtcNow;
+
+        await SubmitAndSeal(
+            request,
+            firstSigner,
+            request.Documents[0].Id,
+            signedAt,
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+        await SubmitAndSeal(
+            request,
+            secondSigner,
+            request.Documents[1].Id,
+            signedAt.AddMinutes(1),
+            repository,
+            storage,
+            unitOfWork,
+            bus,
+            correlation
+        );
+
+        Assert.Null(request.CertificateFileId);
+        Assert.True(request.AllCertificateArtifactsGenerated());
+        Assert.All(request.Documents, document => Assert.NotNull(document.CertificateFileId));
+        Assert.Equal(4, storage.Uploads.Count);
+        Assert.Equal(
+            ["Federal_return_Certificate.pdf", "State_return_Certificate.pdf"],
+            storage.Uploads.Skip(2).Select(item => item.Upload.FileName)
+        );
+
+        var firstDocument = request.Documents[0];
+        await SignatureCertificateReadyConsumer.Handle(
+            new FileAvailableIntegrationEvent
+            {
+                TenantId = request.TenantId,
+                CorrelationId = "certificate-ready",
+                FileId = firstDocument.CertificateFileId!.Value,
+                ObjectKey = "certificates/federal-return.pdf",
+                ContentType = "application/pdf",
+                SizeBytes = 3,
+                ChecksumSha256 = new string('f', 64),
+                CreatedBy = request.CreatedByUserId,
+            },
+            repository,
+            storage,
+            bus,
+            correlation,
+            NullLogger<SignatureRequest>.Instance,
+            CancellationToken.None
+        );
+
+        var ready = Assert.Single(bus.Messages.OfType<SignatureCertificateReadyForDownloadIntegrationEvent>());
+        Assert.Equal(firstDocument.Id, ready.DocumentId);
+        Assert.Equal(firstDocument.Title, ready.DocumentTitle);
+        Assert.Equal(firstSigner.Id, Assert.Single(ready.Signers).SignerId);
+    }
+
     private static async Task SubmitAndSeal(
         SignatureRequest request,
         Signer signer,
@@ -129,7 +200,11 @@ public sealed class SealingMultiDocumentTests
         );
     }
 
-    private static SignatureRequest NewRequest(out Signer firstSigner, out Signer secondSigner)
+    private static SignatureRequest NewRequest(
+        out Signer firstSigner,
+        out Signer secondSigner,
+        bool perDocumentCertificates = false
+    )
     {
         var request = SignatureRequest
             .CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "Two-document package", null, "Fiscal", 72, false, false, true)
@@ -150,6 +225,11 @@ public sealed class SealingMultiDocumentTests
         PlaceSignature(request, secondSigner.Id, request.Documents[1].Id);
         request.AttachDocumentHash(request.Documents[0].Id, Hash('a'));
         request.AttachDocumentHash(request.Documents[1].Id, Hash('b'));
+        if (perDocumentCertificates)
+        {
+            Assert.True(request.SetCertificateGenerationMode(CertificateGenerationMode.PerDocument).IsSuccess);
+            Assert.True(request.SetCertificateDelivery(true).IsSuccess);
+        }
         Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
         return request;
     }
@@ -220,7 +300,16 @@ public sealed class SealingMultiDocumentTests
             Guid tenantId,
             Guid certificateFileId,
             CancellationToken ct = default
-        ) => Task.FromResult<SignatureRequest?>(null);
+        ) =>
+            Task.FromResult(
+                request.TenantId == tenantId
+                && (
+                    request.CertificateFileId == certificateFileId
+                    || request.Documents.Any(document => document.CertificateFileId == certificateFileId)
+                )
+                    ? request
+                    : null
+            );
 
         public Task<IReadOnlyList<SignatureRequest>> ListDraftsWaitingForFileAsync(
             Guid tenantId,

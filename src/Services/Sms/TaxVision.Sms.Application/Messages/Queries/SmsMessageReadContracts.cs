@@ -35,6 +35,21 @@ public sealed record SmsMessageSummaryResponse(
 /// <summary>Media adjunta (MMS) — solo metadatos, nunca el binario.</summary>
 public sealed record SmsMediaResponse(string Url, string ContentType, string? FileName, long? SizeBytes);
 
+/// <summary>Fila de la vista de CONVERSACIONES: un cliente agrupa todos sus SMS. Trae el último mensaje
+/// (cuerpo/estado/fecha) como preview y el total de mensajes del hilo. El hilo completo se pide con
+/// <c>SearchMessages(customerId)</c>. Igual que el resto, sin datos de infraestructura.</summary>
+public sealed record SmsConversationSummaryResponse(
+    Guid CustomerId,
+    string To,
+    string? RecipientName,
+    Guid LastMessageId,
+    string LastBody,
+    SmsMessageStatus LastStatus,
+    string? LastFailureCode,
+    DateTime LastSentAtUtc,
+    int MessageCount
+);
+
 /// <summary>Detalle de un mensaje con su línea de tiempo de estado (timestamps) y su media.</summary>
 public sealed record SmsMessageDetailResponse(
     Guid Id,

@@ -21,9 +21,17 @@ public sealed class RequestDocument : BaseEntity
     public Guid OriginalFileId { get; private set; }
     public DocumentHash? DocumentHashPre { get; private set; }
     public Guid? SealedFileId { get; private set; }
+    public Guid? CertificateFileId { get; private set; }
     public DocumentHash? DocumentHashPost { get; private set; }
     public DateTime? SealedAtUtc { get; private set; }
     public string? Note { get; private set; }
+
+    /// <summary>
+    /// F9 — número de páginas del PDF cargado. Se usa al reemplazar el documento para decidir si
+    /// las coordenadas normalizadas de los campos siguen siendo válidas. `null` para registros
+    /// anteriores a F9 que no reportaron el conteo.
+    /// </summary>
+    public int? PageCount { get; private set; }
 
     internal static Result<RequestDocument> Create(
         Guid tenantId,
@@ -31,7 +39,8 @@ public sealed class RequestDocument : BaseEntity
         int order,
         string title,
         Guid originalFileId,
-        string? note
+        string? note,
+        int? pageCount = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -59,6 +68,11 @@ public sealed class RequestDocument : BaseEntity
                 new Error("Signature.Document.Note", $"Document note cannot exceed {MaxNoteLength} characters.")
             );
 
+        if (pageCount is <= 0)
+            return Result.Failure<RequestDocument>(
+                new Error("Signature.Document.PageCount", "PageCount must be greater than zero when provided.")
+            );
+
         return Result.Success(
             new RequestDocument
             {
@@ -68,6 +82,7 @@ public sealed class RequestDocument : BaseEntity
                 Title = titleResult.Value,
                 OriginalFileId = originalFileId,
                 Note = normalizedNote,
+                PageCount = pageCount,
             }
         );
     }
@@ -94,16 +109,34 @@ public sealed class RequestDocument : BaseEntity
         return Result.Success();
     }
 
-    internal Result ReplaceOriginalFile(Guid newFileId)
+    internal Result RecordCertificate(Guid certificateFileId)
+    {
+        if (certificateFileId == Guid.Empty)
+            return Result.Failure(new Error("Signature.Document.CertificateFile", "CertificateFileId is required."));
+
+        if (SealedFileId is null || DocumentHashPost is null || SealedAtUtc is null)
+            return Result.Failure(
+                new Error("Signature.Document.NotSealed", "A document certificate requires a sealed document.")
+            );
+
+        CertificateFileId = certificateFileId;
+        return Result.Success();
+    }
+
+    internal Result ReplaceOriginalFile(Guid newFileId, int? newPageCount)
     {
         if (newFileId == Guid.Empty)
-            return Result.Failure<RequestDocument>(
-                new Error("Signature.Document.OriginalFile", "OriginalFileId is required.")
+            return Result.Failure(new Error("Signature.Document.OriginalFile", "OriginalFileId is required."));
+        if (newPageCount is <= 0)
+            return Result.Failure(
+                new Error("Signature.Document.PageCount", "PageCount must be greater than zero when provided.")
             );
 
         OriginalFileId = newFileId;
+        PageCount = newPageCount;
         DocumentHashPre = null;
         SealedFileId = null;
+        CertificateFileId = null;
         DocumentHashPost = null;
         SealedAtUtc = null;
         return Result.Success();

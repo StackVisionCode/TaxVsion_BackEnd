@@ -31,6 +31,7 @@ using TaxVision.Signature.Application.Requests.Commands.RemoveField;
 using TaxVision.Signature.Application.Requests.Commands.RemoveSigner;
 using TaxVision.Signature.Application.Requests.Commands.ReorderDocuments;
 using TaxVision.Signature.Application.Requests.Commands.ReorderSigners;
+using TaxVision.Signature.Application.Requests.Commands.ReplaceDocumentFile;
 using TaxVision.Signature.Application.Requests.Commands.ResendSignerInvitation;
 using TaxVision.Signature.Application.Requests.Commands.ScheduleSend;
 using TaxVision.Signature.Application.Requests.Commands.Send;
@@ -144,7 +145,8 @@ public sealed class SignatureRequestsController(
             body.ReminderIntervalHours,
             body.SendPartialCopyOnEachSignature,
             audienceResult.Value,
-            body.ExpirationEnabled
+            body.ExpirationEnabled,
+            body.CertificateGenerationMode
         );
 
         var result = await bus.InvokeAsync<Result<SignatureRequestResponse>>(cmd, ct);
@@ -319,12 +321,42 @@ public sealed class SignatureRequestsController(
             return forbidden;
 
         var result = await bus.InvokeAsync<Result<SignatureRequestDocumentResponse>>(
-            new AddDocumentCommand(tenantId, id, body.OriginalFileId, body.Title, body.Note),
+            new AddDocumentCommand(tenantId, id, body.OriginalFileId, body.Title, body.Note, body.PageCount),
             ct
         );
         return result.IsSuccess
             ? Created($"/signature/requests/{id}/documents/{result.Value.Id}", result.Value)
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/requests/{id}/documents/{documentId}/original ----------
+    // F9 — Reemplaza el PDF original de un documento del borrador. Si cambia el número de páginas,
+    // el aggregate invalida los campos y la respuesta reporta cuántos cayeron para que la UI avise.
+    [HttpPut("{id:guid}/documents/{documentId:guid}/original")]
+    [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
+    [ProducesResponseType<ReplaceDocumentFileResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReplaceDocumentFile(
+        [FromRoute] Guid id,
+        [FromRoute] Guid documentId,
+        [FromBody] ReplaceRequestDocumentFileBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await bus.InvokeAsync<Result<ReplaceDocumentFileResponse>>(
+            new ReplaceDocumentFileCommand(tenantId, id, documentId, body.NewFileId, body.NewPageCount),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- DELETE /signature/requests/{id}/documents/{documentId} ----------
@@ -660,7 +692,8 @@ public sealed class SignatureRequestsController(
                 body.ReminderIntervalHours,
                 body.SendPartialCopyOnEachSignature,
                 audienceResult.Value,
-                body.ExpirationEnabled
+                body.ExpirationEnabled,
+                body.CertificateGenerationMode
             ),
             ct
         );
@@ -746,7 +779,8 @@ public sealed class SignatureRequestsController(
                 fields,
                 body.SendPartialCopyOnEachSignature,
                 audienceResult.Value,
-                body.ExpirationEnabled
+                body.ExpirationEnabled,
+                body.CertificateGenerationMode
             ),
             ct
         );

@@ -19,5 +19,6 @@ public sealed record UpdateSignatureRequestCommand(
     // F7 — null = no tocar; audiencia obligatoria cuando SendPartialCopy pasa a true.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudience? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode? CertificateGenerationMode = null
 );

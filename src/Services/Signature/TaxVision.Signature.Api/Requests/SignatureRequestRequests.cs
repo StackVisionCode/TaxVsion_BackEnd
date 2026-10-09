@@ -21,7 +21,8 @@ public sealed record CreateSignatureRequestBody(
     // F7 — copia parcial + expiración opcional. null = default del tenant.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudienceBody? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode CertificateGenerationMode = CertificateGenerationMode.SingleForRequest
 );
 
 // Edición de metadata de un borrador (Draft/Ready). GenerateCertificate y el documento no se editan
@@ -38,7 +39,8 @@ public sealed record UpdateSignatureRequestBody(
     // F7 — null = no tocar.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudienceBody? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode? CertificateGenerationMode = null
 );
 
 /// <summary>F7 — audiencia de la copia parcial. Kind=All ignora SignerIds; Kind=Specific exige lista no vacía.</summary>
@@ -54,9 +56,18 @@ public sealed record AddSignerBody(
 
 public sealed record ReorderSignersBody(IReadOnlyList<Guid> OrderedSignerIds);
 
-public sealed record AddRequestDocumentBody(Guid OriginalFileId, string Title, string? Note = null);
+public sealed record AddRequestDocumentBody(
+    Guid OriginalFileId,
+    string Title,
+    string? Note = null,
+    int? PageCount = null
+);
 
 public sealed record ReorderDocumentsBody(IReadOnlyList<Guid> OrderedDocumentIds);
+
+// F9 — Reemplazo de documentos. PageCount viene del preflight; si cambia respecto del PDF viejo, el
+// backend invalida los campos de ese documento y lo reporta en la respuesta (`FieldsInvalidated`).
+public sealed record ReplaceRequestDocumentFileBody(Guid NewFileId, int? NewPageCount = null);
 
 public sealed record PlaceFieldBody(
     Guid SignerId,
@@ -115,7 +126,8 @@ public sealed record UpsertDraftBody(
     // F7 — null = no tocar.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudienceBody? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode? CertificateGenerationMode = null
 );
 
 public sealed record UpsertDraftDocumentBody(string LocalId, Guid? Id, Guid OriginalFileId, string Title, string? Note);

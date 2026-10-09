@@ -35,6 +35,7 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindCorrespondenceConsumers } from './application/event-handlers/correspondence-consumers.js';
 import { bindCampaignConsumers } from './application/event-handlers/campaign-consumers.js';
 import { bindWalletConsumers } from './application/event-handlers/wallet-consumers.js';
+import { bindSmsConsumers } from './application/event-handlers/sms-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
 import { shouldEnforceModule } from './domain/shared/module-gate-settings.js';
@@ -250,6 +251,7 @@ async function main(): Promise<void> {
   bindCorrespondenceConsumers(consumers.register.bind(consumers), { emitter });
   bindCampaignConsumers(consumers.register.bind(consumers), { emitter });
   bindWalletConsumers(consumers.register.bind(consumers), { emitter });
+  bindSmsConsumers(consumers.register.bind(consumers), { emitter });
   bindCalendarConsumers(consumers.register.bind(consumers), {
     meetings: container.meetings,
     publisher: container.publisher,

@@ -101,6 +101,92 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
         return new PagedResult<SmsMessageSummaryResponse>(items, page, size, totalCount);
     }
 
+    public async Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
+        Guid tenantId,
+        string? term,
+        string? sourceContext,
+        int page,
+        int size,
+        Guid? assignedToUserId = null,
+        CancellationToken ct = default
+    )
+    {
+        page = page < 1 ? 1 : page;
+        size = size is < 1 or > 100 ? 20 : size;
+
+        var query = db.SmsMessages.AsNoTracking().IgnoreQueryFilters().Where(m => m.TenantId == tenantId);
+        query = ApplyAssignmentFilter(query, tenantId, assignedToUserId);
+
+        // Mismo alcance de módulo que SearchMessages: solo los SMS del preparador (crm-sms), nunca OTP/sistema.
+        if (!string.IsNullOrWhiteSpace(sourceContext))
+            query = query.Where(m => m.SourceContext == sourceContext);
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var normalized = term.Trim().ToLowerInvariant();
+            query = query.Where(m =>
+                m.To.Contains(normalized)
+                || m.Body.ToLower().Contains(normalized)
+                || (m.RecipientName != null && m.RecipientName.ToLower().Contains(normalized))
+            );
+        }
+
+        // Una fila por cliente: el más reciente manda el orden; el conteo es el tamaño del hilo.
+        var grouped = query
+            .GroupBy(m => m.CustomerId)
+            .Select(g => new
+            {
+                CustomerId = g.Key,
+                LastSentAtUtc = g.Max(x => x.CreatedAtUtc),
+                MessageCount = g.Count(),
+            });
+
+        var totalCount = await grouped.CountAsync(ct);
+
+        var pageKeys = await grouped
+            .OrderByDescending(x => x.LastSentAtUtc)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        // Preview = último mensaje de cada cliente de la página (subconsulta por fila; empate de fecha
+        // desempatado por Id). N consultas pequeñas e indexadas por página (~size); se prioriza claridad.
+        var items = new List<SmsConversationSummaryResponse>(pageKeys.Count);
+        foreach (var key in pageKeys)
+        {
+            var last = await query
+                .Where(m => m.CustomerId == key.CustomerId)
+                .OrderByDescending(m => m.CreatedAtUtc)
+                .ThenByDescending(m => m.Id)
+                .Select(m => new
+                {
+                    m.Id,
+                    m.To,
+                    m.RecipientName,
+                    m.Body,
+                    m.Status,
+                    m.FailureCode,
+                })
+                .FirstAsync(ct);
+
+            items.Add(
+                new SmsConversationSummaryResponse(
+                    key.CustomerId,
+                    last.To,
+                    last.RecipientName,
+                    last.Id,
+                    last.Body,
+                    last.Status,
+                    last.FailureCode,
+                    key.LastSentAtUtc,
+                    key.MessageCount
+                )
+            );
+        }
+
+        return new PagedResult<SmsConversationSummaryResponse>(items, page, size, totalCount);
+    }
+
     public async Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
         Guid tenantId,
         Guid messageId,

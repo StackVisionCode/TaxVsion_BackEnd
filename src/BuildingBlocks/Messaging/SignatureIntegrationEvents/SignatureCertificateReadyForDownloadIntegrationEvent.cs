@@ -19,6 +19,13 @@ public sealed record SignatureCertificateReadyForDownloadIntegrationEvent : Inte
     public required Guid CertificateFileId { get; init; }
     public required DateTime CompletedAtUtc { get; init; }
 
+    /// <summary>
+    /// Documento al que pertenece el certificado cuando la solicitud usa un certificado por documento.
+    /// Ambos valores son null para el certificado único de la solicitud.
+    /// </summary>
+    public Guid? DocumentId { get; init; }
+    public string? DocumentTitle { get; init; }
+
     /// <summary>Token del share-link público del certificado. Null si no se pudo emitir.</summary>
     public string? ShareToken { get; init; }
 
