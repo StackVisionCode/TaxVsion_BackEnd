@@ -68,6 +68,27 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
         return Ok(result);
     }
 
+    [HttpGet("conversations")]
+    [RateLimit("sms.h.read")]
+    [ProducesResponseType<PagedResult<SmsConversationSummaryResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListConversations(
+        [FromQuery] string? term = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20,
+        CancellationToken ct = default
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<PagedResult<SmsConversationSummaryResponse>>(
+            new SearchSmsConversationsQuery(tenantId, term, CrmSourceContext, page, size, userId, canViewAll),
+            ct
+        );
+        return Ok(result);
+    }
+
     [HttpGet("messages/stats")]
     [RateLimit("sms.h.read")]
     [ProducesResponseType<SmsStatsResponse>(StatusCodes.Status200OK)]

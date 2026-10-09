@@ -1237,6 +1237,8 @@ services:
       # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
       Sms__AssignmentVisibility__Enabled: ${SMS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # F6 — cobro money-OUT de SMS individuales por el PEP del Wallet (reserve/settle, M2M).
+      WalletService__BaseUrl: http://wallet-api:8080
       # Proveedor SMS global (MVP). El adapter concreto y sus secretos se configuran por env
       # Sms__Providers__<code>__... ; por defecto arranca con el proveedor "fake" para dev/E2E.
       Sms__DefaultProvider: ${SMS_DEFAULT_PROVIDER:-fake}

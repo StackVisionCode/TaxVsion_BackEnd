@@ -37,4 +37,19 @@ public static class SmsErrors
 
     // Búsqueda
     public static Error MessageNotFound => new("sms.messageNotFound", "SMS message not found.");
+
+    // Cobro money-OUT (Wallet PEP): el envío individual se cobra reservando antes de despachar. Si el Wallet
+    // no responde → 503; si no alcanza el saldo → 402 con el faltante. (El envío de campaña NO pasa por acá:
+    // ya lo cobró Campaigns.)
+    public static Error WalletUnavailable =>
+        new("sms.walletUnavailable", "No se pudo autorizar el cobro del monedero; intentá de nuevo en unos segundos.");
+
+    public static Error InsufficientFunds(long deficitMicros, string currency)
+    {
+        var dollars = deficitMicros / 1_000_000m;
+        return new Error(
+            "sms.insufficientFunds",
+            $"Saldo insuficiente para enviar: faltan {dollars:0.######} {currency} ({deficitMicros} micros)."
+        );
+    }
 }

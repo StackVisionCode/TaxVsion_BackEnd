@@ -407,6 +407,9 @@ public static class ErrorHttpMapping
             // responde, el envío se bloquea (fail-closed) con 503 transitorio.
             "CampaignRun.InsufficientFunds" => StatusCodes.Status402PaymentRequired,
             "CampaignRun.WalletUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            // Cobro de SMS individual (F6): mismo criterio que campañas.
+            "sms.insufficientFunds" => StatusCodes.Status402PaymentRequired,
+            "sms.walletUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "PayPal.ConfigurationMissing" or "PayPal.WebhookId.Missing" => StatusCodes.Status503ServiceUnavailable,
             "Growth.Idempotency.ConcurrentClaimUnavailable" or "Growth.Idempotency.SavepointsRequired" =>
                 StatusCodes.Status503ServiceUnavailable,
