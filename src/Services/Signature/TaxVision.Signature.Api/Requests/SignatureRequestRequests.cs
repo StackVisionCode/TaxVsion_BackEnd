@@ -56,9 +56,18 @@ public sealed record AddSignerBody(
 
 public sealed record ReorderSignersBody(IReadOnlyList<Guid> OrderedSignerIds);
 
-public sealed record AddRequestDocumentBody(Guid OriginalFileId, string Title, string? Note = null);
+public sealed record AddRequestDocumentBody(
+    Guid OriginalFileId,
+    string Title,
+    string? Note = null,
+    int? PageCount = null
+);
 
 public sealed record ReorderDocumentsBody(IReadOnlyList<Guid> OrderedDocumentIds);
+
+// F9 — Reemplazo de documentos. PageCount viene del preflight; si cambia respecto del PDF viejo, el
+// backend invalida los campos de ese documento y lo reporta en la respuesta (`FieldsInvalidated`).
+public sealed record ReplaceRequestDocumentFileBody(Guid NewFileId, int? NewPageCount = null);
 
 public sealed record PlaceFieldBody(
     Guid SignerId,

@@ -170,7 +170,7 @@ public static class UpsertSignatureDraftHandler
 
                 if (document.OriginalFileId != spec.OriginalFileId)
                 {
-                    var replace = request.ReplaceDocumentFile(document.Id, spec.OriginalFileId);
+                    var replace = request.ReplaceDocumentFile(document.Id, spec.OriginalFileId, spec.PageCount);
                     if (replace.IsFailure)
                         return Result.Failure<IReadOnlyDictionary<string, Guid>>(replace.Error);
                 }
@@ -184,7 +184,7 @@ public static class UpsertSignatureDraftHandler
             }
             else
             {
-                var added = request.AddDocument(spec.OriginalFileId, spec.Title, spec.Note);
+                var added = request.AddDocument(spec.OriginalFileId, spec.Title, spec.Note, spec.PageCount);
                 if (added.IsFailure)
                     return Result.Failure<IReadOnlyDictionary<string, Guid>>(added.Error);
                 document = added.Value;

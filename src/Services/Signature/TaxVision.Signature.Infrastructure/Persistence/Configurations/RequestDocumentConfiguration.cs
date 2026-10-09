@@ -21,6 +21,7 @@ public sealed class RequestDocumentConfiguration : IEntityTypeConfiguration<Requ
         builder.Property(document => document.CertificateFileId);
         builder.Property(document => document.SealedAtUtc);
         builder.Property(document => document.Note).HasMaxLength(RequestDocument.MaxNoteLength);
+        builder.Property(document => document.PageCount);
 
         builder.OwnsOne(
             document => document.DocumentHashPre,

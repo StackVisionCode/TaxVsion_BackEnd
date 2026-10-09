@@ -26,13 +26,21 @@ public sealed class RequestDocument : BaseEntity
     public DateTime? SealedAtUtc { get; private set; }
     public string? Note { get; private set; }
 
+    /// <summary>
+    /// F9 — número de páginas del PDF cargado. Se usa al reemplazar el documento para decidir si
+    /// las coordenadas normalizadas de los campos siguen siendo válidas. `null` para registros
+    /// anteriores a F9 que no reportaron el conteo.
+    /// </summary>
+    public int? PageCount { get; private set; }
+
     internal static Result<RequestDocument> Create(
         Guid tenantId,
         Guid requestId,
         int order,
         string title,
         Guid originalFileId,
-        string? note
+        string? note,
+        int? pageCount = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -60,6 +68,11 @@ public sealed class RequestDocument : BaseEntity
                 new Error("Signature.Document.Note", $"Document note cannot exceed {MaxNoteLength} characters.")
             );
 
+        if (pageCount is <= 0)
+            return Result.Failure<RequestDocument>(
+                new Error("Signature.Document.PageCount", "PageCount must be greater than zero when provided.")
+            );
+
         return Result.Success(
             new RequestDocument
             {
@@ -69,6 +82,7 @@ public sealed class RequestDocument : BaseEntity
                 Title = titleResult.Value,
                 OriginalFileId = originalFileId,
                 Note = normalizedNote,
+                PageCount = pageCount,
             }
         );
     }
@@ -109,14 +123,17 @@ public sealed class RequestDocument : BaseEntity
         return Result.Success();
     }
 
-    internal Result ReplaceOriginalFile(Guid newFileId)
+    internal Result ReplaceOriginalFile(Guid newFileId, int? newPageCount)
     {
         if (newFileId == Guid.Empty)
-            return Result.Failure<RequestDocument>(
-                new Error("Signature.Document.OriginalFile", "OriginalFileId is required.")
+            return Result.Failure(new Error("Signature.Document.OriginalFile", "OriginalFileId is required."));
+        if (newPageCount is <= 0)
+            return Result.Failure(
+                new Error("Signature.Document.PageCount", "PageCount must be greater than zero when provided.")
             );
 
         OriginalFileId = newFileId;
+        PageCount = newPageCount;
         DocumentHashPre = null;
         SealedFileId = null;
         CertificateFileId = null;

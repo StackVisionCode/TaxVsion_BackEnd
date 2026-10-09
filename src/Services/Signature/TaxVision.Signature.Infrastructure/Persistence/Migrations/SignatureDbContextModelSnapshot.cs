@@ -606,6 +606,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OriginalFileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("SealedAtUtc")
                         .HasColumnType("datetime2");
 

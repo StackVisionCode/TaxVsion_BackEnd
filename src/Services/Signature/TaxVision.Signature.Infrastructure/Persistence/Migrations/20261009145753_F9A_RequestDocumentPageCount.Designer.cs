@@ -12,8 +12,8 @@ using TaxVision.Signature.Infrastructure.Persistence;
 namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SignatureDbContext))]
-    [Migration("20261009115610_AddCertificateGenerationMode")]
-    partial class AddCertificateGenerationMode
+    [Migration("20261009145753_F9A_RequestDocumentPageCount")]
+    partial class F9A_RequestDocumentPageCount
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -608,6 +608,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("OriginalFileId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("SealedAtUtc")
                         .HasColumnType("datetime2");

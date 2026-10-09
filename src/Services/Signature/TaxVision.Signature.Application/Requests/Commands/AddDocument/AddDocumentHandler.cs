@@ -23,7 +23,7 @@ public static class AddDocumentHandler
                 new Error("Signature.Request.NotFound", "The signature request does not exist for this tenant.")
             );
 
-        var added = request.AddDocument(cmd.OriginalFileId, cmd.Title, cmd.Note);
+        var added = request.AddDocument(cmd.OriginalFileId, cmd.Title, cmd.Note, cmd.PageCount);
         if (added.IsFailure)
             return Result.Failure<SignatureRequestDocumentResponse>(added.Error);
 

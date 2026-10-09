@@ -29,7 +29,16 @@ public sealed record UpsertSignatureDraftCommand(
     CertificateGenerationMode? CertificateGenerationMode = null
 );
 
-public sealed record DraftDocumentSpec(string LocalId, Guid? Id, Guid OriginalFileId, string Title, string? Note);
+public sealed record DraftDocumentSpec(
+    string LocalId,
+    Guid? Id,
+    Guid OriginalFileId,
+    string Title,
+    string? Note,
+    // F9 — page count del preflight. Null = desconocido (p. ej. clientes viejos); al reemplazar, el
+    // aggregate solo invalida los campos cuando ambos (viejo y nuevo) están presentes y difieren.
+    int? PageCount = null
+);
 
 // Guardrail #2: identidad explícita. Id null = crear; Id presente = reconciliar; ausente del payload = borrar.
 public sealed record DraftSignerSpec(

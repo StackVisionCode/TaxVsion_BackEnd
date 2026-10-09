@@ -279,10 +279,10 @@ public sealed class Signer : BaseEntity
         return Result.Success();
     }
 
-    internal void RemoveFieldsForDocument(Guid documentId)
+    internal int RemoveFieldsForDocument(Guid documentId)
     {
         EnsurePending();
-        _fields.RemoveAll(field => field.DocumentId == documentId);
+        return _fields.RemoveAll(field => field.DocumentId == documentId);
     }
 
     /// <summary>
