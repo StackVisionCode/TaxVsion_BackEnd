@@ -62,7 +62,7 @@ public sealed class SmsVisibilityFilterTests
         );
 
         Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastSearchAssignee);
-        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastConversationAssignee);
+        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastConversationsAssignee);
     }
 
     [Fact]
@@ -147,20 +147,6 @@ public sealed class SmsVisibilityFilterTests
         {
             LastDetailAssignee = assignedToUserId;
             return Task.FromResult<SmsMessageDetailResponse?>(null);
-        }
-
-        public Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
-            Guid tenantId,
-            string? term,
-            string? sourceContext,
-            int page,
-            int size,
-            Guid? assignedToUserId = null,
-            CancellationToken ct = default
-        )
-        {
-            LastConversationAssignee = assignedToUserId;
-            return Task.FromResult(new PagedResult<SmsConversationSummaryResponse>([], page, size, 0));
         }
 
         public Task<SmsStatsResponse> GetStatsAsync(
