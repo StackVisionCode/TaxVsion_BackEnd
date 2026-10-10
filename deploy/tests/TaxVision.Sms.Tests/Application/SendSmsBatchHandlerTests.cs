@@ -38,9 +38,6 @@ public sealed class SendSmsBatchHandlerTests
         /// <summary>Clientes asignados al remitente; solo se consulta cuando el alcance aplica.</summary>
         public FakeSmsCustomerAssignmentReader Assignments { get; } = new();
 
-        /// <summary>Cobro money-OUT (F6): no se invoca con ChargeWallet=false (default de estos lotes).</summary>
-        public FakeWalletSpendClient Wallet { get; } = new();
-
         public Task<BuildingBlocks.Results.Result<SendSmsBatchResponse>> Run(SendSmsBatchCommand command)
         {
             IReadOnlyList<ISmsProvider> order = Order.Count > 0 ? Order : [Provider];
@@ -58,43 +55,6 @@ public sealed class SendSmsBatchHandlerTests
                 NullLogger<SendSmsBatchCommand>.Instance,
                 CancellationToken.None
             );
-        }
-    }
-
-    /// <summary>Fake del PEP del Wallet: reserva siempre autorizada, liquidación no-op. Registra las
-    /// llamadas por si un test de cobro (ChargeWallet=true) quiere afirmarlas.</summary>
-    private sealed class FakeWalletSpendClient : IWalletSpendClient
-    {
-        public int ReserveCalls { get; private set; }
-        public int SettleCalls { get; private set; }
-        public int? LastSettledUnits { get; private set; }
-
-        public Task<WalletReserveResult> ReserveAsync(
-            Guid tenantId,
-            string referenceType,
-            Guid referenceId,
-            WalletUnitCounts units,
-            string? callerBearerToken,
-            CancellationToken ct = default
-        )
-        {
-            ReserveCalls++;
-            var cost = units.Sms * 250000;
-            return Task.FromResult(new WalletReserveResult(true, true, cost, cost, 0, "USD"));
-        }
-
-        public Task SettleAsync(
-            Guid tenantId,
-            string referenceType,
-            Guid referenceId,
-            int consumedUnits,
-            string? callerBearerToken,
-            CancellationToken ct = default
-        )
-        {
-            SettleCalls++;
-            LastSettledUnits = consumedUnits;
-            return Task.CompletedTask;
         }
     }
 
