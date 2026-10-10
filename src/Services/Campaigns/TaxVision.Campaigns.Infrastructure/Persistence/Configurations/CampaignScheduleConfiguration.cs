@@ -17,8 +17,13 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(s => s.Status).HasConversion<int>().IsRequired();
         builder.Property(s => s.NextFireAtUtc);
         builder.Property(s => s.IntervalMinutes);
+        builder.Property(s => s.Frequency).HasConversion<int?>();
+        builder.Property(s => s.EndsAtUtc);
+        builder.Property(s => s.MaxOccurrences);
+        builder.Property(s => s.OccurrenceCount).IsRequired().HasDefaultValue(0);
         builder.Property(s => s.ContactListIdsCsv).HasMaxLength(4000).IsRequired();
         builder.Property(s => s.IncludeCustomers).IsRequired();
+        builder.Property(s => s.CustomerIdsCsv).HasMaxLength(4000).IsRequired().HasDefaultValue(string.Empty);
         builder.Property(s => s.LastFiredAtUtc);
         builder.Property(s => s.ActiveRunId);
         builder.Property(s => s.LeaseToken);

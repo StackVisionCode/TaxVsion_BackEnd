@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Campaigns.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Campaigns.Infrastructure.Persistence;
 namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CampaignsDbContext))]
-    partial class CampaignsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010015824_AddScheduleCustomerIds")]
+    partial class AddScheduleCustomerIds
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -563,12 +566,6 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(4000)")
                         .HasDefaultValue("");
 
-                    b.Property<DateTime?>("EndsAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("Frequency")
-                        .HasColumnType("int");
-
                     b.Property<bool>("IncludeCustomers")
                         .HasColumnType("bit");
 
@@ -587,16 +584,8 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LeasedUntilUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("MaxOccurrences")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("NextFireAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<int>("OccurrenceCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
