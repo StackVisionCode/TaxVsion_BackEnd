@@ -86,6 +86,7 @@ public sealed class SmsVisibilityFilterTests
     private sealed class CapturingReader : ISmsReadService
     {
         public Guid? LastSearchAssignee { get; private set; }
+        public Guid? LastConversationsAssignee { get; private set; }
         public Guid? LastDetailAssignee { get; private set; }
         public Guid? LastStatsAssignee { get; private set; }
         public Guid? LastOptOutAssignee { get; private set; }
@@ -106,6 +107,20 @@ public sealed class SmsVisibilityFilterTests
         {
             LastSearchAssignee = assignedToUserId;
             return Task.FromResult(new PagedResult<SmsMessageSummaryResponse>([], page, size, 0));
+        }
+
+        public Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
+            Guid tenantId,
+            string? term,
+            string? sourceContext,
+            int page,
+            int size,
+            Guid? assignedToUserId = null,
+            CancellationToken ct = default
+        )
+        {
+            LastConversationsAssignee = assignedToUserId;
+            return Task.FromResult(new PagedResult<SmsConversationSummaryResponse>([], page, size, 0));
         }
 
         public Task<SmsMessageDetailResponse?> GetMessageByIdAsync(

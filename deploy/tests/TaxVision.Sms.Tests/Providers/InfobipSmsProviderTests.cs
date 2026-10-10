@@ -60,6 +60,63 @@ public sealed class InfobipSmsProviderTests
     private static SmsSendRequest Send(string to = "+18095551234", string body = "hola") =>
         new(Guid.NewGuid(), Guid.NewGuid(), to, body, [], "corr", "idem", null);
 
+    /// <summary>Lanza <see cref="HttpRequestException"/> en los primeros <c>throwFirst</c> envíos (transitorio
+    /// que el pipeline de resiliencia reintenta) y luego responde 200. Cuenta cuántas veces se le llamó.</summary>
+    private sealed class FlakyHandler(int throwFirst) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            if (Calls <= throwFirst)
+                throw new HttpRequestException("transient");
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"messages\":[{\"to\":\"+18095551234\",\"status\":{\"groupId\":1,\"groupName\":\"PENDING\",\"name\":\"PENDING_ACCEPTED\"},\"messageId\":\"ibx-retry\"}]}"
+                    ),
+                }
+            );
+        }
+    }
+
+    private static InfobipSmsProvider BuildWith(HttpMessageHandler handler)
+    {
+        var config = new SmsProviderConfig
+        {
+            BaseUrl = "https://vyg8je.api.infobip.test",
+            SendPath = "/sms/2/text/advanced",
+            SenderId = "InfoSMS",
+            Auth = new SmsAuthConfig { Type = "app", Credential = ApiKey },
+        };
+        var options = Options.Create(new SmsProvidersOptions { Providers = { ["infobip"] = config } });
+        return new InfobipSmsProvider(
+            new SingleClientFactory(handler),
+            options,
+            new HttpResiliencePipelineRegistry(),
+            NullLogger<InfobipSmsProvider>.Instance
+        );
+    }
+
+    // Regresión: un transitorio reintentado NO debe reusar el mismo HttpRequestMessage (eso lanzaba
+    // "The request message was already sent"). Con el request reconstruido por intento, el reintento
+    // reenvía y el envío termina Accepted. Dos llamadas al handler: la que falla + la que acierta.
+    [Fact]
+    public async Task Send_rebuilds_request_and_succeeds_after_a_transient_retry()
+    {
+        var handler = new FlakyHandler(throwFirst: 1);
+        var provider = BuildWith(handler);
+
+        var result = await provider.SendAsync(Send());
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Accepted);
+        Assert.Equal("ibx-retry", result.Value.ProviderMessageId);
+        Assert.Equal(2, handler.Calls);
+    }
+
     [Fact]
     public void Capabilities_support_dlr_inbound_bulk_but_not_media()
     {

@@ -245,7 +245,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 manual,
                 IncludeCustomers: request.IncludeCustomers,
                 CanViewAllCustomers: canViewAllCustomers,
-                CallerBearerToken: ExtractBearerToken()
+                CallerBearerToken: ExtractBearerToken(),
+                CustomerIds: request.CustomerIds
             ),
             ct
         );
@@ -279,7 +280,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 manual,
                 request.IncludeCustomers,
                 canViewAllCustomers,
-                userId
+                userId,
+                request.CustomerIds
             ),
             ct
         );

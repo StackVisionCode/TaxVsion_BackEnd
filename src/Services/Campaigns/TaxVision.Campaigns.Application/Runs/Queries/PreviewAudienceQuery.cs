@@ -19,7 +19,8 @@ public sealed record PreviewAudienceQuery(
     IReadOnlyList<ManualAudienceEntry> Manual,
     bool IncludeCustomers = false,
     bool CanViewAllCustomers = true,
-    Guid TriggeredByUserId = default
+    Guid TriggeredByUserId = default,
+    IReadOnlyList<Guid>? CustomerIds = null
 );
 
 /// <summary>
@@ -46,16 +47,16 @@ public static class PreviewAudienceHandler
         if (campaign is null)
             return Result.Failure<AudiencePreviewResponse>(CampaignErrors.NotFound);
 
-        IReadOnlySet<Guid>? restrictCustomerIds = null;
-        if (query.IncludeCustomers && visibility.Value.Enabled && !query.CanViewAllCustomers)
-        {
-            var assigned = await assignmentReader.GetAssignedCustomerIdsAsync(
-                query.TenantId,
-                query.TriggeredByUserId,
-                ct
-            );
-            restrictCustomerIds = assigned.ToHashSet();
-        }
+        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
+            query.TenantId,
+            query.TriggeredByUserId,
+            query.IncludeCustomers,
+            query.CustomerIds,
+            query.CanViewAllCustomers,
+            visibility.Value.Enabled,
+            assignmentReader,
+            ct
+        );
 
         var units = await AudienceResolver.ResolveAsync(
             query.TenantId,
@@ -64,7 +65,7 @@ public static class PreviewAudienceHandler
             query.Manual ?? [],
             contacts,
             lists,
-            query.IncludeCustomers,
+            includeCustomers,
             customerClient,
             restrictCustomerIds,
             ct

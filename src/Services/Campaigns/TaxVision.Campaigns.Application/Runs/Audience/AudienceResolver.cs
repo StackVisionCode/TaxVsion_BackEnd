@@ -25,6 +25,47 @@ public sealed record ManualAudienceEntry(string? Email, string? PhoneE164);
 /// </summary>
 public static class AudienceResolver
 {
+    /// <summary>
+    /// Calcula el alcance de la fuente "Clients" para un run/preview: si incluir clientes y a cuáles acotar.
+    /// <list type="bullet">
+    ///   <item><paramref name="selectedCustomerIds"/> no vacío ⇒ se incluyen SOLO esos (selección explícita
+    ///   del usuario), además intersectado con la visibilidad por asignación si aplica.</item>
+    ///   <item>vacío + <paramref name="includeCustomers"/> ⇒ TODOS los activos (acotados por asignación si el
+    ///   actor no ve todo).</item>
+    ///   <item>vacío + no include ⇒ no se incluye la fuente Clients.</item>
+    /// </list>
+    /// Devuelve <c>Restrict=null</c> = sin restricción (todos); un set = solo esos; set vacío = ninguno.
+    /// </summary>
+    public static async Task<(bool Include, IReadOnlySet<Guid>? Restrict)> ResolveCustomerScopeAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        bool includeCustomers,
+        IReadOnlyCollection<Guid>? selectedCustomerIds,
+        bool canViewAllCustomers,
+        bool visibilityEnabled,
+        ICampaignCustomerAssignmentReader assignmentReader,
+        CancellationToken ct = default
+    )
+    {
+        var selected = selectedCustomerIds is { Count: > 0 } ? selectedCustomerIds.ToHashSet() : null;
+        var include = includeCustomers || selected is not null;
+        if (!include)
+            return (false, null);
+
+        HashSet<Guid>? assigned = null;
+        if (visibilityEnabled && !canViewAllCustomers)
+            assigned = (await assignmentReader.GetAssignedCustomerIdsAsync(tenantId, actorUserId, ct)).ToHashSet();
+
+        IReadOnlySet<Guid>? restrict = (selected, assigned) switch
+        {
+            (not null, not null) => selected.Where(assigned.Contains).ToHashSet(),
+            (not null, null) => selected,
+            (null, not null) => assigned,
+            _ => null,
+        };
+        return (true, restrict);
+    }
+
     public static async Task<IReadOnlyList<RunRecipientDraft>> ResolveAsync(
         Guid tenantId,
         CampaignChannel channels,

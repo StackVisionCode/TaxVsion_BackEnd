@@ -73,19 +73,33 @@ public sealed class TwilioSmsProvider(
             );
 
         var http = httpClientFactory.CreateClient(nameof(TwilioSmsProvider));
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config, accountSid))
+
+        // Request fresco por intento: un HttpRequestMessage (y su HttpContent) solo se envía una vez;
+        // reusarlo entre reintentos lanza "The request message was already sent".
+        HttpRequestMessage BuildHttpRequest()
         {
-            Content = BuildForm(config, request, StatusCallbackUrl()),
-        };
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
-            "Basic",
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(config.Auth.Credential ?? string.Empty))
-        );
+            var req = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config, accountSid))
+            {
+                Content = BuildForm(config, request, StatusCallbackUrl()),
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(config.Auth.Credential ?? string.Empty))
+            );
+            return req;
+        }
 
         try
         {
             var breaker = resilience.GetOrCreate(nameof(TwilioSmsProvider));
-            using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+            using var response = await breaker.ExecuteAsync(
+                async token =>
+                {
+                    using var httpRequest = BuildHttpRequest();
+                    return await http.SendAsync(httpRequest, token);
+                },
+                ct
+            );
             var payload = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
@@ -207,13 +221,20 @@ public sealed class TwilioSmsProvider(
         {
             var url =
                 $"{baseUrl.TrimEnd('/')}/2010-04-01/Accounts/{accountSid}/Messages/{Uri.EscapeDataString(sid)}.json";
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url)
-            {
-                Headers = { Authorization = basicAuth },
-            };
             try
             {
-                using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+                // Request fresco por intento (un HttpRequestMessage no se reenvía, también para GET).
+                using var response = await breaker.ExecuteAsync(
+                    async token =>
+                    {
+                        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url)
+                        {
+                            Headers = { Authorization = basicAuth },
+                        };
+                        return await http.SendAsync(httpRequest, token);
+                    },
+                    ct
+                );
                 if (!response.IsSuccessStatusCode)
                     continue;
                 var payload = await response.Content.ReadAsStringAsync(ct);

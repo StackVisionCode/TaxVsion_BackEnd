@@ -23,6 +23,9 @@ public sealed record UpdateContactListRequest(string Name, string? Description);
 
 public sealed record AddListMemberRequest(Guid ContactId);
 
+/// <summary>Agrega clientes seleccionados (ids del directorio de Customer) como miembros de la lista.</summary>
+public sealed record AddCustomersToListRequest(IReadOnlyList<Guid>? CustomerIds);
+
 /// <summary>Import CSV: contenido crudo <c>name,email,phone</c> por línea (encabezado opcional).</summary>
 public sealed record ImportContactsRequest(string Csv);
 
@@ -34,5 +37,7 @@ public sealed record ManualAudienceEntryRequest(string? Email, string? PhoneE164
 public sealed record SendToAudienceRequest(
     IReadOnlyList<Guid>? ContactListIds,
     IReadOnlyList<ManualAudienceEntryRequest>? Manual,
-    bool IncludeCustomers = false
+    bool IncludeCustomers = false,
+    // Clientes seleccionados (fuente "Clients" acotada). No vacío ⇒ solo esos; vacío + IncludeCustomers ⇒ todos.
+    IReadOnlyList<Guid>? CustomerIds = null
 );

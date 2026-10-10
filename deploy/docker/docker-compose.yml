@@ -311,6 +311,10 @@ services:
 
   auth-api:
     image: taxvision/auth-api:dev
+    # Dev local: el stack corre en Production, pero el front/pruebas entran por localhost/127.0.0.1,
+    # que NO resuelve a un tenant por Host → con EnforceHostResolution=true (default de appsettings.json)
+    # /auth/login devuelve 404. En dev se fuerza a false (como appsettings.Development) para aceptar el
+    # TenantId del body. En prod real (hosts de tenant reales) se quita este override.
     container_name: taxvision-auth-api
     build:
       context: ../..
@@ -320,6 +324,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Dev override (ver comentario del servicio): acepta login por TenantId del body sin Host de tenant.
+      TenantDomains__EnforceHostResolution: ${AUTH_ENFORCE_HOST_RESOLUTION:-false}
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -800,6 +806,26 @@ services:
       Smtp__User: ${SMTP_USER:-}
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__FromAddress: ${SMTP_FROM:-no-reply@taxvision.local}
+      # Email de CAMPAÑA: ejecutor propio, INDEPENDIENTE de Postmaster y agnóstico de proveedor
+      # (CampaignEmailDispatchConsumer → ICampaignEmailProvider). Cambiar de proveedor = cambiar
+      # CAMPAIGN_EMAIL_PROVIDER + su bloque SMTP. Hoy: SMTP2GO vía SMTP directo.
+      CampaignEmail__Provider: ${CAMPAIGN_EMAIL_PROVIDER:-smtp2go}
+      CampaignEmail__Smtp__Host: ${CAMPAIGN_EMAIL_SMTP_HOST:-mail.smtp2go.com}
+      CampaignEmail__Smtp__Port: ${CAMPAIGN_EMAIL_SMTP_PORT:-2525}
+      CampaignEmail__Smtp__UseTls: ${CAMPAIGN_EMAIL_SMTP_USE_TLS:-true}
+      CampaignEmail__Smtp__Username: ${CAMPAIGN_EMAIL_SMTP_USERNAME:-}
+      CampaignEmail__Smtp__Password: ${CAMPAIGN_EMAIL_SMTP_PASSWORD:-}
+      CampaignEmail__Smtp__FromAddress: ${CAMPAIGN_EMAIL_SMTP_FROM_ADDRESS:-}
+      CampaignEmail__Smtp__FromName: ${CAMPAIGN_EMAIL_SMTP_FROM_NAME:-TaxProffice}
+      # API HTTP de SMTP2GO (recomendada para volumen; Provider=smtp2go-api). Sin handshake por correo.
+      CampaignEmail__Api__BaseUrl: ${CAMPAIGN_EMAIL_API_BASE_URL:-https://api.smtp2go.com/v3/}
+      CampaignEmail__Api__ApiKey: ${CAMPAIGN_EMAIL_API_KEY:-}
+      CampaignEmail__Api__FromAddress: ${CAMPAIGN_EMAIL_API_FROM_ADDRESS:-}
+      CampaignEmail__Api__FromName: ${CAMPAIGN_EMAIL_API_FROM_NAME:-TaxProffice}
+      # Throttle: correos/min del ejecutor de campaña (0 = sin límite). Respeta el límite de la cuenta.
+      CampaignEmail__MaxPerMinute: ${CAMPAIGN_EMAIL_MAX_PER_MIN:-0}
+      # Secreto opcional del webhook de estado (X-Webhook-Secret / ?key=). Vacío en dev = sin exigir.
+      CampaignEmail__WebhookSecret: ${CAMPAIGN_EMAIL_WEBHOOK_SECRET:-}
       # Clave de cifrado de secretos del módulo email (config SMTP/API).
       # Base64 de 32 bytes; requerida para los endpoints de configuración de correo.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
@@ -883,6 +909,9 @@ services:
       SystemEmailProvider__FromAddressDefault: ${SYSTEM_EMAIL_FROM_ADDRESS:-}
       SystemEmailProvider__FromDisplayNameDefault: ${SYSTEM_EMAIL_FROM_NAME:-}
       SystemEmailProvider__DisplayName: ${SYSTEM_EMAIL_DISPLAY_NAME:-}
+      # Cupo del stream Bulk (campañas). SIN esto el email de campaña falla como "bulk no configurado".
+      SystemEmailProvider__RateLimitPerMinute: ${SYSTEM_EMAIL_RATE_PER_MIN:-60}
+      SystemEmailProvider__BulkRateLimitPerMinute: ${SYSTEM_EMAIL_BULK_RATE_PER_MIN:-120}
       # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
       # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
       #

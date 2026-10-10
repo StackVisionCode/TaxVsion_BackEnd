@@ -24,6 +24,10 @@ public sealed class SystemEmailProviderOptions
     public string? FromAddressDefault { get; init; }
     public string? FromDisplayNameDefault { get; init; }
     public int RateLimitPerMinute { get; init; } = 60;
+
+    /// <summary>Cupo por-minuto del stream Bulk (campañas). Debe venir seteado para que el email de
+    /// campaña pueda salir: null ⇒ todo envío Bulk falla como no-configurado (ver SystemEmailProvider).</summary>
+    public int? BulkRateLimitPerMinute { get; init; }
 }
 
 /// <summary>
@@ -93,7 +97,8 @@ public sealed class SystemEmailProviderSeeder(
                 fromAddressDefault,
                 _options.FromDisplayNameDefault,
                 _options.RateLimitPerMinute,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                _options.BulkRateLimitPerMinute
             );
             if (updateResult.IsFailure)
             {
@@ -125,7 +130,8 @@ public sealed class SystemEmailProviderSeeder(
             username: _options.Username,
             passwordCipher: passwordCipher,
             rateLimitPerMinute: _options.RateLimitPerMinute,
-            createdAtUtc: DateTime.UtcNow
+            createdAtUtc: DateTime.UtcNow,
+            bulkRateLimitPerMinute: _options.BulkRateLimitPerMinute
         );
         if (createResult.IsFailure)
         {

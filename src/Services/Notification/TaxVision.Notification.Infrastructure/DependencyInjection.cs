@@ -151,6 +151,51 @@ public static class DependencyInjection
         // más arriba, gateado por Notification:UsePostmasterDispatch (Fase 19) — no acá.
         services.AddScoped<IOutboundEmailRepository, OutboundEmailRepository>();
 
+        // Ejecutor de email de CAMPAÑA, independiente de Postmaster y agnóstico de proveedor (pedido del
+        // usuario, 2026-10-09). El adapter activo se elige por CampaignEmail:Provider. Punto único de
+        // selección: sumar un proveedor = su adapter + un case acá. Hoy SMTP (smtp2go) vía MailKit.
+        services.Configure<Email.Campaign.CampaignEmailOptions>(
+            configuration.GetSection(Email.Campaign.CampaignEmailOptions.SectionName)
+        );
+        // Throttle compartido (singleton): pacea los envíos a CampaignEmail:MaxPerMinute entre handlers paralelos.
+        services.AddSingleton<
+            TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailThrottle,
+            Email.Campaign.CampaignEmailThrottle
+        >();
+        // Adapter API HTTP de SMTP2GO: cliente tipado con BaseUrl de config.
+        services.AddHttpClient<Email.Campaign.Smtp2GoApiCampaignEmailProvider>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<
+                    Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>
+                >().Value.Api;
+                var baseUrl = string.IsNullOrWhiteSpace(opt.BaseUrl) ? "https://api.smtp2go.com/v3/" : opt.BaseUrl;
+                http.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddScoped<
+            TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider
+        >(sp =>
+        {
+            var opts = sp.GetRequiredService<
+                Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>
+            >();
+            var provider = opts.Value.Provider?.Trim().ToLowerInvariant();
+            return provider switch
+            {
+                // API HTTP de SMTP2GO (recomendado para volumen).
+                "smtp2go-api" or "api" => sp.GetRequiredService<Email.Campaign.Smtp2GoApiCampaignEmailProvider>(),
+                // SMTP2GO (y cualquier relay SMTP) comparten el mismo adapter SMTP.
+                "smtp2go" or "smtp" or "" or null => ActivatorUtilities.CreateInstance<
+                    Email.Campaign.SmtpCampaignEmailProvider
+                >(sp),
+                _ => throw new InvalidOperationException(
+                    $"CampaignEmail:Provider '{opts.Value.Provider}' no tiene adapter registrado."
+                ),
+            };
+        });
+
         // Observabilidad del ciclo de vida de la suscripción (Expiración/Dunning, Fase 6).
         services.AddSingleton<
             TaxVision.Notification.Application.Abstractions.ISubscriptionEmailMetrics,
