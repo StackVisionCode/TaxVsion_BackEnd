@@ -67,6 +67,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public bool RequiresSequentialSigning { get; private set; }
     public bool RequiresConsent { get; private set; }
     public bool GenerateCertificate { get; private set; }
+    public CertificateGenerationMode CertificateGenerationMode { get; private set; } =
+        CertificateGenerationMode.SingleForRequest;
 
     /// <summary>
     /// F7 — entrega del PDF final SELLADO (todas las firmas + PAdES) a los firmantes al completar.
@@ -217,7 +219,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         int reminderIntervalHours = 48,
         bool expirationEnabled = true,
         bool sendPartialCopyOnEachSignature = false,
-        PartialCopyAudience? partialCopyAudience = null
+        PartialCopyAudience? partialCopyAudience = null,
+        CertificateGenerationMode certificateGenerationMode = CertificateGenerationMode.SingleForRequest
     )
     {
         var baseValidation = ValidateFactoryInputs(tenantId, createdByUserId, title, description, tokenExpirationHours);
@@ -253,6 +256,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             RequiresSequentialSigning = requiresSequentialSigning,
             RequiresConsent = requiresConsent,
             GenerateCertificate = generateCertificate,
+            CertificateGenerationMode = certificateGenerationMode,
             SendSealedDocumentToSigners = sendSealedDocumentToSigners,
             SendCertificateToSigners = sendCertificateToSigners && generateCertificate,
             SendPartialCopyOnEachSignature = sendPartialCopyOnEachSignature,
@@ -289,7 +293,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         int reminderIntervalHours = 48,
         bool expirationEnabled = true,
         bool sendPartialCopyOnEachSignature = false,
-        PartialCopyAudience? partialCopyAudience = null
+        PartialCopyAudience? partialCopyAudience = null,
+        CertificateGenerationMode certificateGenerationMode = CertificateGenerationMode.SingleForRequest
     )
     {
         if (originalFileId == Guid.Empty)
@@ -313,7 +318,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             reminderIntervalHours,
             expirationEnabled,
             sendPartialCopyOnEachSignature,
-            partialCopyAudience
+            partialCopyAudience,
+            certificateGenerationMode
         );
         if (requestResult.IsFailure)
             return requestResult;
@@ -326,7 +332,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     // Documents
     // ------------------------------------------------------------------
 
-    public Result<RequestDocument> AddDocument(Guid fileId, string title, string? note = null)
+    public Result<RequestDocument> AddDocument(Guid fileId, string title, string? note = null, int? pageCount = null)
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
@@ -340,7 +346,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
                 new Error("Signature.Request.DuplicateDocument", "This file is already part of the request.")
             );
 
-        var result = RequestDocument.Create(TenantId, Id, NextDocumentOrder(), title, fileId, note);
+        var result = RequestDocument.Create(TenantId, Id, NextDocumentOrder(), title, fileId, note, pageCount);
         if (result.IsFailure)
             return result;
 
@@ -409,25 +415,63 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    public Result ReplaceDocumentFile(Guid documentId, Guid newFileId)
+    /// <summary>
+    /// F9 — Reemplaza el PDF original de un documento del borrador. Si el nuevo PDF tiene distinto
+    /// número de páginas que el anterior, invalida los campos (SignatureFields + PreparerFields) de
+    /// ese documento porque las coordenadas normalizadas dejan de ser válidas. Devuelve en el result
+    /// la cantidad de campos invalidados para que el caller pueda avisar al usuario.
+    /// Si cualquiera de los dos page counts es `null` (dato ausente) no se invalida — el caller
+    /// debería pasar siempre el conteo del preflight para que la regla aplique.
+    /// </summary>
+    public Result<DocumentReplaceOutcome> ReplaceDocumentFile(Guid documentId, Guid newFileId, int? newPageCount)
     {
         var editable = EnsureCanBeEdited();
         if (editable.IsFailure)
-            return editable;
+            return Result.Failure<DocumentReplaceOutcome>(editable.Error);
         var document = FindDocumentOrNull(documentId);
         if (document is null)
-            return Result.Failure(
+            return Result.Failure<DocumentReplaceOutcome>(
                 new Error("Signature.Request.DocumentMissing", "Document not found in this request.")
             );
         if (_documents.Any(candidate => candidate.Id != documentId && candidate.OriginalFileId == newFileId))
-            return Result.Failure(
+            return Result.Failure<DocumentReplaceOutcome>(
                 new Error("Signature.Request.DuplicateDocument", "This file is already part of the request.")
             );
 
-        var result = document.ReplaceOriginalFile(newFileId);
-        if (result.IsSuccess)
-            Touch();
-        return result;
+        var oldFileId = document.OriginalFileId;
+        var oldPageCount = document.PageCount;
+        if (oldFileId == newFileId && oldPageCount == newPageCount)
+            return Result.Success(new DocumentReplaceOutcome(oldFileId, newFileId, oldPageCount, newPageCount, 0));
+
+        var replace = document.ReplaceOriginalFile(newFileId, newPageCount);
+        if (replace.IsFailure)
+            return Result.Failure<DocumentReplaceOutcome>(replace.Error);
+
+        var pageCountKnown = oldPageCount is not null && newPageCount is not null;
+        var pageCountChanged = pageCountKnown && oldPageCount != newPageCount;
+        var fieldsInvalidated = 0;
+        if (pageCountChanged)
+        {
+            foreach (var signer in _signers)
+                fieldsInvalidated += signer.RemoveFieldsForDocument(documentId);
+            fieldsInvalidated += _preparerFields.RemoveAll(field => field.DocumentId == documentId);
+        }
+
+        AddDomainEvent(
+            new DocumentReplaced(
+                documentId,
+                oldFileId,
+                newFileId,
+                oldPageCount,
+                newPageCount,
+                fieldsInvalidated,
+                DateTime.UtcNow
+            )
+        );
+        Touch();
+        return Result.Success(
+            new DocumentReplaceOutcome(oldFileId, newFileId, oldPageCount, newPageCount, fieldsInvalidated)
+        );
     }
 
     public Result RenameDocument(Guid documentId, string title)
@@ -703,6 +747,22 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             );
 
         SendCertificateToSigners = enabled;
+        Touch();
+        return Result.Success();
+    }
+
+    public Result SetCertificateGenerationMode(CertificateGenerationMode mode)
+    {
+        var editable = EnsureCanBeEdited();
+        if (editable.IsFailure)
+            return editable;
+
+        if (!Enum.IsDefined(mode))
+            return Result.Failure(
+                new Error("Signature.Request.CertificateGenerationMode", "Certificate generation mode is invalid.")
+            );
+
+        CertificateGenerationMode = mode;
         Touch();
         return Result.Success();
     }
@@ -2014,6 +2074,39 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         Touch();
         return Result.Success();
     }
+
+    public Result RecordDocumentCertificate(Guid documentId, Guid certificateFileId)
+    {
+        if (Status != SignatureRequestStatus.Completed)
+            return Result.Failure(
+                new Error("Signature.Request.NotCompleted", "Certificate can only be attached to a completed request.")
+            );
+
+        if (CertificateGenerationMode != CertificateGenerationMode.PerDocument)
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.CertificateModeMismatch",
+                    "Document certificates require PerDocument certificate generation mode."
+                )
+            );
+
+        var document = _documents.Find(candidate => candidate.Id == documentId);
+        if (document is null)
+            return Result.Failure(new Error("Signature.Request.DocumentNotFound", "Document was not found."));
+
+        var result = document.RecordCertificate(certificateFileId);
+        if (result.IsSuccess)
+            Touch();
+        return result;
+    }
+
+    public bool AllCertificateArtifactsGenerated() =>
+        !GenerateCertificate
+        || (
+            CertificateGenerationMode == CertificateGenerationMode.SingleForRequest
+                ? CertificateFileId is not null
+                : _documents.Count > 0 && _documents.All(document => document.CertificateFileId is not null)
+        );
 
     // ==================================================================
     // Helpers privados — cada uno con propósito único

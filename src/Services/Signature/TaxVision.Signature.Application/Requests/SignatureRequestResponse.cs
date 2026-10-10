@@ -52,6 +52,7 @@ public sealed record SignatureRequestDocumentResponse(
     Guid OriginalFileId,
     string? HashPre,
     Guid? SealedFileId,
+    Guid? CertificateFileId,
     string? HashPost,
     DateTime? SealedAtUtc,
     string? Note
@@ -70,6 +71,7 @@ public sealed record SignatureRequestResponse(
     bool RequiresSequentialSigning,
     bool RequiresConsent,
     bool GenerateCertificate,
+    CertificateGenerationMode CertificateGenerationMode,
     bool SendSealedDocumentToSigners,
     bool SendCertificateToSigners,
     bool AutoRemindersEnabled,
@@ -114,6 +116,7 @@ public sealed record SignatureRequestResponse(
             request.RequiresSequentialSigning,
             request.RequiresConsent,
             request.GenerateCertificate,
+            request.CertificateGenerationMode,
             request.SendSealedDocumentToSigners,
             request.SendCertificateToSigners,
             request.AutoRemindersEnabled,
@@ -193,6 +196,7 @@ public sealed record SignatureRequestResponse(
             document.OriginalFileId,
             document.DocumentHashPre?.Value,
             document.SealedFileId,
+            document.CertificateFileId,
             document.DocumentHashPost?.Value,
             document.SealedAtUtc,
             document.Note

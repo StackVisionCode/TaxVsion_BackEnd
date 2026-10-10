@@ -279,10 +279,10 @@ public sealed class Signer : BaseEntity
         return Result.Success();
     }
 
-    internal void RemoveFieldsForDocument(Guid documentId)
+    internal int RemoveFieldsForDocument(Guid documentId)
     {
         EnsurePending();
-        _fields.RemoveAll(field => field.DocumentId == documentId);
+        return _fields.RemoveAll(field => field.DocumentId == documentId);
     }
 
     /// <summary>
@@ -600,14 +600,25 @@ public sealed class Signer : BaseEntity
                 marked.Add(completion.DocumentId);
         }
 
+        // F8-fix: espeja al nivel del Signer para que la UI (y el badge "Copy sent to…") lea el estado
+        // sin tener que agregar per-doc. MarkPartialCopyRequested es idempotente.
+        if (marked.Count > 0)
+            MarkPartialCopyRequested(requestedAtUtc);
+
         return marked;
     }
 
-    internal void MarkDocumentPartialCopySent(Guid documentId, Guid fileId, DateTime sentAtUtc) =>
+    internal void MarkDocumentPartialCopySent(Guid documentId, Guid fileId, DateTime sentAtUtc)
+    {
         FindDocumentCompletion(documentId).MarkPartialCopySent(fileId, sentAtUtc);
+        MarkPartialCopySent(fileId, sentAtUtc);
+    }
 
-    internal void MarkDocumentPartialCopyFailed(Guid documentId, string reason) =>
+    internal void MarkDocumentPartialCopyFailed(Guid documentId, string reason)
+    {
         FindDocumentCompletion(documentId).MarkPartialCopyFailed(reason);
+        MarkPartialCopyFailed(reason);
+    }
 
     // ------------------------------------------------------------------
     // Practitioner PIN — cada regla en su método

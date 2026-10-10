@@ -45,7 +45,19 @@ public static class SignatureCertificateReadyConsumer
             if (!request.SendCertificateToSigners)
                 return; // la request no pidió entregar el certificado a los firmantes
 
-            var emails = request.Signers.Select(s => s.Email.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var certificateDocument = request.Documents.SingleOrDefault(document =>
+                document.CertificateFileId == evt.FileId
+            );
+            var recipientSigners = certificateDocument is null
+                ? request.Signers
+                : request
+                    .Signers.Where(signer => signer.Fields.Any(field => field.DocumentId == certificateDocument.Id))
+                    .ToList();
+
+            var emails = recipientSigners
+                .Select(s => s.Email.Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             var shareToken =
                 emails.Count == 0 ? null : await MintShareTokenAsync(request, evt.FileId, emails, storage, logger, ct);
 
@@ -57,9 +69,11 @@ public static class SignatureCertificateReadyConsumer
                     SignatureRequestId = request.Id,
                     CertificateFileId = evt.FileId,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
+                    DocumentId = certificateDocument?.Id,
+                    DocumentTitle = certificateDocument?.Title,
                     ShareToken = shareToken,
-                    Signers = request
-                        .Signers.Select(s => new SignerContactSnapshot(
+                    Signers = recipientSigners
+                        .Select(s => new SignerContactSnapshot(
                             s.Id,
                             s.Email.Value,
                             s.FullName.Value,

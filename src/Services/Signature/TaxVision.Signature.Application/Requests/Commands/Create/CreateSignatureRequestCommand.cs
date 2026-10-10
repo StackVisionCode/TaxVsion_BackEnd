@@ -27,5 +27,6 @@ public sealed record CreateSignatureRequestCommand(
     // F7 — copia parcial + expiración opcional. Null → default del tenant.
     bool? SendPartialCopyOnEachSignature = null,
     PartialCopyAudience? PartialCopyAudience = null,
-    bool? ExpirationEnabled = null
+    bool? ExpirationEnabled = null,
+    CertificateGenerationMode CertificateGenerationMode = CertificateGenerationMode.SingleForRequest
 );

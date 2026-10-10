@@ -46,7 +46,8 @@ public static class ReassignSealedDocumentOwnersHandler
             var fileIds = request
                 .Documents.Where(document => document.SealedFileId.HasValue)
                 .Select(document => document.SealedFileId)
-                .Append(request.CertificateFileId);
+                .Append(request.CertificateFileId)
+                .Concat(request.Documents.Select(document => document.CertificateFileId));
 
             foreach (var fileId in fileIds)
             {

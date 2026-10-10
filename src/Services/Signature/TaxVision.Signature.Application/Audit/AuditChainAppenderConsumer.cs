@@ -439,6 +439,43 @@ public static class AuditChainAppenderConsumer
         }
     }
 
+    // F9 — Reemplazo del PDF original de un documento. El payload lleva page counts y el conteo de
+    // campos que quedaron invalidados al cambiar las páginas, para que el acta refleje por qué.
+    public static async Task Handle(
+        SignatureDocumentReplacedIntegrationEvent evt,
+        IAuditChainAppender appender,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<SignatureAuditEvent> logger,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(evt.CorrelationId))
+        {
+            var payload = new
+            {
+                evt.DocumentId,
+                evt.OldFileId,
+                evt.NewFileId,
+                evt.OldPageCount,
+                evt.NewPageCount,
+                evt.FieldsInvalidated,
+                evt.ReplacedByUserId,
+            };
+            await AppendAsync(
+                evt.TenantId,
+                evt.SignatureRequestId,
+                SignatureAuditEventKind.DocumentReplaced,
+                evt.ReplacedAtUtc,
+                payload,
+                appender,
+                unitOfWork,
+                logger,
+                ct
+            );
+        }
+    }
+
     public static async Task Handle(
         PreparerSignedIntegrationEvent evt,
         IAuditChainAppender appender,

@@ -155,6 +155,27 @@ public sealed class SignatureRequestMultiDocumentTests
         Assert.True(request.AllDocumentsSealed());
     }
 
+    [Fact]
+    public void Per_document_certificates_require_one_artifact_for_every_document()
+    {
+        var request = NewReadyRequest();
+        Assert.True(request.SetCertificateGenerationMode(CertificateGenerationMode.PerDocument).IsSuccess);
+        var signer = request.Signers.Single();
+        request.Send(DateTime.UtcNow);
+        request.MarkSignerSigned(signer.Id, DateTime.UtcNow, null, null);
+        request.MarkDocumentSealed(request.Documents[0].Id, Guid.NewGuid(), Hash('c'), DateTime.UtcNow);
+        request.MarkDocumentSealed(request.Documents[1].Id, Guid.NewGuid(), Hash('d'), DateTime.UtcNow);
+
+        Assert.False(request.AllCertificateArtifactsGenerated());
+        Assert.True(request.RecordDocumentCertificate(request.Documents[0].Id, Guid.NewGuid()).IsSuccess);
+        Assert.False(request.AllCertificateArtifactsGenerated());
+        Assert.True(request.RecordDocumentCertificate(request.Documents[1].Id, Guid.NewGuid()).IsSuccess);
+
+        Assert.True(request.AllCertificateArtifactsGenerated());
+        Assert.Null(request.CertificateFileId);
+        Assert.All(request.Documents, document => Assert.NotNull(document.CertificateFileId));
+    }
+
     private static SignatureRequest NewReadyRequest()
     {
         var request = NewDraftWithTwoHashedDocuments();

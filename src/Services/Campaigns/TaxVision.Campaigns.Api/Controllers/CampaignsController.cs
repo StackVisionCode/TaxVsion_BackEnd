@@ -347,7 +347,11 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
     [HasPermission(CampaignsPermissions.Send)]
     [RateLimit("campaigns.g.create")]
     [ProducesResponseType<CampaignScheduleResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetScheduleState(Guid scheduleId, [FromRoute] string scheduleAction, CancellationToken ct)
+    public async Task<IActionResult> SetScheduleState(
+        Guid scheduleId,
+        [FromRoute] string scheduleAction,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();

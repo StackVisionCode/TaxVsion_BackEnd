@@ -56,4 +56,31 @@ public sealed class NotificationTemplateSeedSourceTests
         var withPreheader = NotificationTemplateSeedSource.VariablesWithPreheader(seed);
         Assert.Contains(withPreheader, v => v.Name == "preheader");
     }
+
+    [Fact]
+    public void Partial_copy_subject_does_not_expose_internal_progress_state()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "sig.partial_copy_ready.v1"
+        );
+
+        Assert.DoesNotContain("in progress", seed.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("en progreso", seed.Subject, StringComparison.OrdinalIgnoreCase);
+        Assert.True(seed.ContentVersion >= 16);
+    }
+
+    [Fact]
+    public void Certificate_template_can_identify_a_per_document_certificate()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "sig.certificate_ready.v1"
+        );
+
+        Assert.Contains(seed.Variables, variable => variable.Name == "document_title" && !variable.Required);
+        Assert.Contains("document_title", seed.Subject);
+        Assert.Contains("document_title", seed.Html);
+        Assert.True(seed.ContentVersion >= 17);
+    }
 }

@@ -46,8 +46,23 @@ public sealed class SmsVisibilityFilterTests
         );
 
         await SearchSmsMessagesHandler.Handle(query, reader, Options(enabled), CancellationToken.None);
+        await SearchSmsConversationsHandler.Handle(
+            new SearchSmsConversationsQuery(
+                Tenant,
+                Term: null,
+                SourceContext: "crm-sms",
+                Page: 1,
+                Size: 20,
+                ActorUserId: Actor,
+                CanViewAll: canViewAll
+            ),
+            reader,
+            Options(enabled),
+            CancellationToken.None
+        );
 
         Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastSearchAssignee);
+        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastConversationAssignee);
     }
 
     [Fact]
@@ -132,6 +147,20 @@ public sealed class SmsVisibilityFilterTests
         {
             LastDetailAssignee = assignedToUserId;
             return Task.FromResult<SmsMessageDetailResponse?>(null);
+        }
+
+        public Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
+            Guid tenantId,
+            string? term,
+            string? sourceContext,
+            int page,
+            int size,
+            Guid? assignedToUserId = null,
+            CancellationToken ct = default
+        )
+        {
+            LastConversationAssignee = assignedToUserId;
+            return Task.FromResult(new PagedResult<SmsConversationSummaryResponse>([], page, size, 0));
         }
 
         public Task<SmsStatsResponse> GetStatsAsync(

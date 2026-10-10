@@ -27,6 +27,7 @@ public sealed class SendSmsBatchHandlerTests
         public FakeSmsProvider Provider { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public FakeMessageBus Bus { get; } = new();
+        public FakeWalletSpendClient Wallet { get; } = new();
         public SmsOptions Options { get; } = new() { DefaultProvider = "fake", MaxBatchSize = 1000 };
 
         /// <summary>Cadena de proveedores (failover). Vacía ⇒ solo <see cref="Provider"/>.</summary>
@@ -107,6 +108,17 @@ public sealed class SendSmsBatchHandlerTests
     private static SendSmsBatchCommand Batch(params SmsSendItemDto[] items) =>
         new(Tenant, "corr-1", items, ActorUserId: null, CanViewAll: false);
 
+    private static SendSmsBatchCommand ChargedBatch(params SmsSendItemDto[] items) =>
+        new(
+            Tenant,
+            "corr-1",
+            items,
+            ActorUserId: Guid.NewGuid(),
+            CanViewAll: true,
+            ChargeWallet: true,
+            CallerBearerToken: "bearer-token"
+        );
+
     /// <summary>Lote enviado por una persona: es el único caso al que se le mide el alcance.</summary>
     private static SendSmsBatchCommand BatchFrom(Guid sender, bool canViewAll, params SmsSendItemDto[] items) =>
         new(Tenant, "corr-1", items, sender, canViewAll);
@@ -148,6 +160,52 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(1, h.Provider.SendAsyncCallCount);
         Assert.NotNull(h.Bus.LastOfType<SmsMessageAcceptedIntegrationEvent>());
         Assert.Equal(1, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Charged_batch_reserves_before_sending_and_settles_only_accepted_messages()
+    {
+        var h = new Harness();
+
+        var result = await h.Run(
+            ChargedBatch(Item(idempotencyKey: "accepted"), Item(to: "bad-phone", idempotencyKey: "invalid"))
+        );
+
+        Assert.True(result.IsSuccess);
+        var reserve = Assert.Single(h.Wallet.Reservations);
+        var settle = Assert.Single(h.Wallet.Settlements);
+        Assert.Equal(Tenant, reserve.TenantId);
+        Assert.Equal(WalletReferenceTypes.IndividualSms, reserve.ReferenceType);
+        Assert.Equal(result.Value.BatchId, reserve.ReferenceId);
+        Assert.Equal(2, reserve.Units.Sms);
+        Assert.Equal("bearer-token", reserve.CallerBearerToken);
+        Assert.Equal(reserve.ReferenceId, settle.ReferenceId);
+        Assert.Equal(1, settle.ConsumedUnits);
+        Assert.Equal("bearer-token", settle.CallerBearerToken);
+    }
+
+    [Fact]
+    public async Task Insufficient_wallet_balance_rejects_the_batch_without_sending()
+    {
+        var h = new Harness();
+        h.Wallet.ReserveResult = new WalletReserveResult(
+            Reachable: true,
+            Authorized: false,
+            CostMicros: 50_000,
+            AvailableMicros: 10_000,
+            DeficitMicros: 40_000,
+            Currency: "USD"
+        );
+
+        var result = await h.Run(ChargedBatch(Item()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(SmsErrors.InsufficientFunds(40_000, "USD").Code, result.Error.Code);
+        Assert.Single(h.Wallet.Reservations);
+        Assert.Empty(h.Wallet.Settlements);
+        Assert.Equal(0, h.Provider.SendAsyncCallCount);
+        Assert.Empty(h.Messages.Added);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -413,5 +471,63 @@ public sealed class SendSmsBatchHandlerTests
         Assert.True(result.IsSuccess);
         Assert.NotEqual(SmsErrors.CustomerNotAssigned.Code, Assert.Single(result.Value.Results).ErrorCode);
         Assert.False(h.Assignments.WasAsked);
+    }
+
+    private sealed class FakeWalletSpendClient : IWalletSpendClient
+    {
+        public WalletReserveResult ReserveResult { get; set; } =
+            new(
+                Reachable: true,
+                Authorized: true,
+                CostMicros: 0,
+                AvailableMicros: 1_000_000,
+                DeficitMicros: 0,
+                Currency: "USD"
+            );
+
+        public List<ReservationCall> Reservations { get; } = [];
+        public List<SettlementCall> Settlements { get; } = [];
+
+        public Task<WalletReserveResult> ReserveAsync(
+            Guid tenantId,
+            string referenceType,
+            Guid referenceId,
+            WalletUnitCounts units,
+            string? callerBearerToken,
+            CancellationToken ct = default
+        )
+        {
+            Reservations.Add(new ReservationCall(tenantId, referenceType, referenceId, units, callerBearerToken));
+            return Task.FromResult(ReserveResult);
+        }
+
+        public Task SettleAsync(
+            Guid tenantId,
+            string referenceType,
+            Guid referenceId,
+            int consumedUnits,
+            string? callerBearerToken,
+            CancellationToken ct = default
+        )
+        {
+            Settlements.Add(new SettlementCall(tenantId, referenceType, referenceId, consumedUnits, callerBearerToken));
+            return Task.CompletedTask;
+        }
+
+        public sealed record ReservationCall(
+            Guid TenantId,
+            string ReferenceType,
+            Guid ReferenceId,
+            WalletUnitCounts Units,
+            string? CallerBearerToken
+        );
+
+        public sealed record SettlementCall(
+            Guid TenantId,
+            string ReferenceType,
+            Guid ReferenceId,
+            int ConsumedUnits,
+            string? CallerBearerToken
+        );
     }
 }
