@@ -37,13 +37,31 @@ public sealed class ConnectorsDeployConfigWiringTests
     }
 
     [Theory]
-    [MemberData(nameof(RequiredVars))]
-    public void PerEnvVar_IsPassedByDeployWorkflow(string varName)
+    [InlineData("CONNECTORS_GMAIL_WATCH_TOPIC")]
+    [InlineData("CONNECTORS_GRAPH_WATCH_CLIENT_STATE")]
+    [InlineData("CONNECTORS_GMAIL_PUSH_AUDIENCE")]
+    public void SecretVar_IsPassedByDeployWorkflow(string varName)
     {
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");
 
         // El .env de prod se escribe como VAR=${{ secrets.VAR }} — sin esta línea el contenedor cae al default.
         Assert.Contains($"{varName}=${{{{ secrets.{varName} }}}}", workflow);
+    }
+
+    /// <summary>
+    /// Las URLs públicas de Connectors no son secrets propios: salen del host de la API, así que un
+    /// cambio de dominio no deja una URL vieja suelta en otro secret.
+    /// </summary>
+    [Theory]
+    [InlineData("CONNECTORS_GOOGLE_REDIRECT_URI", "/connectors/oauth/callback/gmail")]
+    [InlineData("CONNECTORS_MICROSOFT_REDIRECT_URI", "/connectors/oauth/callback/graph")]
+    [InlineData("CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI", "/connectors/oauth/admin-consent-callback")]
+    [InlineData("CONNECTORS_GRAPH_NOTIFICATION_URL", "/connectors/webhooks/graph-notification")]
+    public void PublicUrlVar_IsDerivedFromApiHost(string varName, string routePath)
+    {
+        var workflow = ReadRepoFile(".github/workflows/deploy.yml");
+
+        Assert.Contains($"{varName}=https://${{{{ secrets.TAXVISION_DOMAIN }}}}{routePath}", workflow);
     }
 
     [Theory]

@@ -1,6 +1,7 @@
-using BuildingBlocks.Common;
+﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -32,7 +33,7 @@ public static class TenantSubscriptionEmailConsumer
         IUserRepository users,
         ITenantRegistry tenants,
         IMessageBus bus,
-        IOptions<TenantDomainOptions> domainOptions,
+        IPlatformSettings platform,
         ICorrelationContext correlation,
         ILogger<TenantSubscriptionEmailRequestedIntegrationEvent> logger,
         CancellationToken ct
@@ -59,11 +60,11 @@ public static class TenantSubscriptionEmailConsumer
             }
 
             var tenant = await tenants.GetByIdAsync(evt.TenantId, ct);
-            var baseDomain = domainOptions.Value.BaseDomain.Trim().Trim('.');
+            var settings = platform.Current;
             var renewUrl =
                 tenant is not null && !string.IsNullOrWhiteSpace(tenant.SubDomain)
-                    ? $"https://{tenant.SubDomain}.{baseDomain}"
-                    : $"https://{baseDomain}";
+                    ? $"https://{settings.TenantHost(tenant.SubDomain)}"
+                    : settings.Website;
 
             bus.TenantId = PlatformTenant.Id.ToString();
             await bus.PublishAsync(

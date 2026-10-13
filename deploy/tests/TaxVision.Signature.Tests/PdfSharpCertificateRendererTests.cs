@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using BuildingBlocks.Platform;
 using PdfSharp.Fonts;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Requests;
@@ -8,6 +9,22 @@ namespace TaxVision.Signature.Tests;
 
 public class PdfSharpCertificateRendererTests
 {
+    private static readonly IPlatformSettings Platform = new FixedPlatformSettings();
+
+    private sealed class FixedPlatformSettings : IPlatformSettings
+    {
+        public PlatformSettingsSnapshot Current { get; } =
+            new(
+                1,
+                "TaxOffix",
+                "TaxOffix LLC",
+                "taxoffix.io",
+                "api.taxoffix.io",
+                "support@taxoffix.io",
+                "billing@taxoffix.io"
+            );
+    }
+
     public PdfSharpCertificateRendererTests()
     {
         // PdfSharp 6.x exige un IFontResolver explícito (lo registra el arranque del servicio).
@@ -94,7 +111,7 @@ public class PdfSharpCertificateRendererTests
     [Fact]
     public void Renders_a_nonempty_pdf_with_matching_checksum()
     {
-        var renderer = new PdfSharpCertificateRenderer();
+        var renderer = new PdfSharpCertificateRenderer(Platform);
 
         var result = renderer.Render(Model(1));
 
@@ -110,7 +127,7 @@ public class PdfSharpCertificateRendererTests
     [Fact]
     public void Paginates_many_signers_without_throwing()
     {
-        var renderer = new PdfSharpCertificateRenderer();
+        var renderer = new PdfSharpCertificateRenderer(Platform);
 
         var result = renderer.Render(Model(12, issuer: "Manfer Tax Office"));
 
@@ -120,7 +137,7 @@ public class PdfSharpCertificateRendererTests
     [Fact]
     public void Ignores_an_unreadable_logo_instead_of_failing()
     {
-        var renderer = new PdfSharpCertificateRenderer();
+        var renderer = new PdfSharpCertificateRenderer(Platform);
 
         var result = renderer.Render(Model(1, tenantLogo: [1, 2, 3, 4]));
 
@@ -130,7 +147,7 @@ public class PdfSharpCertificateRendererTests
     [Fact]
     public void Renders_the_seal_panel_and_signer_verification_without_throwing()
     {
-        var renderer = new PdfSharpCertificateRenderer();
+        var renderer = new PdfSharpCertificateRenderer(Platform);
 
         var signer = new CertificateSignerEntry(
             SignerId: Guid.NewGuid(),
@@ -176,8 +193,8 @@ public class PdfSharpCertificateRendererTests
             ],
             IssuerName: "Reyes Tax & Accounting, LLC",
             Seal: new CertificateSealInfo(
-                "CN=TaxProffice Signature Service, O=TaxProffice, C=US",
-                "CN=TaxProffice Signature Service, O=TaxProffice, C=US",
+                "CN=TaxOffix Signature Service, O=TaxOffix, C=US",
+                "CN=TaxOffix Signature Service, O=TaxOffix, C=US",
                 "0098272DF02BB7964D",
                 "sha256RSA (3072-bit)",
                 DateTime.UtcNow.AddYears(5)
@@ -188,5 +205,18 @@ public class PdfSharpCertificateRendererTests
 
         Assert.NotEmpty(result.CertificatePdfBytes);
         Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(result.CertificatePdfBytes, 0, 4));
+    }
+
+    [Fact]
+    public void The_certificate_carries_the_platform_brand_from_settings()
+    {
+        var renderer = new PdfSharpCertificateRenderer(Platform);
+
+        var result = renderer.Render(Model(1));
+
+        // El Author del PDF va en el diccionario Info, que no se comprime.
+        var raw = System.Text.Encoding.Latin1.GetString(result.CertificatePdfBytes);
+        Assert.Contains("(TaxOffix)", raw);
+        Assert.DoesNotContain("TaxProffice", raw);
     }
 }

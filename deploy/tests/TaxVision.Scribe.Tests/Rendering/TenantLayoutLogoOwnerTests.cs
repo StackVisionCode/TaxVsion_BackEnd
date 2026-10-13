@@ -186,6 +186,7 @@ public sealed class TenantLayoutLogoOwnerTests
             cloudStorage,
             logoResolver,
             Profiles,
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

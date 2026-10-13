@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -18,8 +20,6 @@ namespace TaxVision.PaymentApp.Application.AddOnCheckouts.Commands;
 /// </summary>
 public static class CreateAddOnCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION ADDON";
-
     public static async Task<Result<AddOnCheckoutResponse>> Handle(
         CreateAddOnCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -29,6 +29,7 @@ public static class CreateAddOnCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -43,7 +44,7 @@ public static class CreateAddOnCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command),
+            PolicyFor(command, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -66,13 +67,16 @@ public static class CreateAddOnCheckoutHandler
             );
     }
 
-    private static HostedCheckoutPolicy PolicyFor(CreateAddOnCheckoutCommand command) =>
+    private static HostedCheckoutPolicy PolicyFor(
+        CreateAddOnCheckoutCommand command,
+        PlatformSettingsSnapshot platform
+    ) =>
         new()
         {
             PaymentType = SaaSPaymentType.AddOnPurchaseCharge,
             Subject = "Add-on checkout",
             ReferenceId = command.AddOnPurchaseIntentId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "ADDON"),
             // Subscription (dueño del catálogo y del prorrateo) ya resolvió el total.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>

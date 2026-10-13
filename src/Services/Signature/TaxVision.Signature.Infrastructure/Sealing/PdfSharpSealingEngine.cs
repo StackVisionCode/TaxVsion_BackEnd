@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using BuildingBlocks.Platform;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -29,7 +30,8 @@ namespace TaxVision.Signature.Infrastructure.Sealing;
 ///   <item>El hash se calcula sobre el buffer final entregado al caller.</item>
 /// </list>
 /// </summary>
-public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDocumentSealingEngine
+public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSigner? cmsSigner = null)
+    : IDocumentSealingEngine
 {
     public SealingResult Seal(SealingRequest request)
     {
@@ -39,7 +41,7 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Modify);
 
         StampAllFields(pdf, request.Fields);
-        AppendAuditFooter(pdf, request);
+        AppendAuditFooter(pdf, request, platform.Current.BrandName);
 
         using var output = new MemoryStream();
         pdf.Save(output, closeStream: false);
@@ -456,7 +458,7 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         return lines;
     }
 
-    private static void AppendAuditFooter(PdfDocument pdf, SealingRequest request)
+    private static void AppendAuditFooter(PdfDocument pdf, SealingRequest request, string brandName)
     {
         var monoFont = new XFont("Courier", 6, XFontStyleEx.Regular);
         var labelFont = new XFont("Helvetica", 6, XFontStyleEx.Bold);
@@ -477,10 +479,12 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
 
             // Thin separator rule.
             gfx.DrawLine(rulePen, 24, y - 4, pageWidth - 24, y - 4);
+            var brandWidth = gfx.MeasureString(brandName, labelFont).Width;
 
-            // Left: brand + audit line.
-            gfx.DrawString("TaxProffice", labelFont, accentBrush, new XPoint(24, y + 2));
-            gfx.DrawString($" • {request.AuditFooter}", textFont, mutedBrush, new XPoint(24 + 42, y + 2));
+            // Left: brand + audit line. La línea de auditoría arranca donde termina la marca (se mide):
+            // un ancho fijo dejaba un hueco o pisaba el texto según lo largo del nombre.
+            gfx.DrawString(brandName, labelFont, accentBrush, new XPoint(24, y + 2));
+            gfx.DrawString($" • {request.AuditFooter}", textFont, mutedBrush, new XPoint(24 + brandWidth, y + 2));
 
             // Right: page number.
             var pageLabel = $"Page {i + 1} / {pdf.PageCount}";

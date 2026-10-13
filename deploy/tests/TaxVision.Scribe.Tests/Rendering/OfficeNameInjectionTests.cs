@@ -159,6 +159,7 @@ public sealed class OfficeNameInjectionTests
             cloudStorage,
             new FakeLogoResolver(Logo),
             profiles,
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

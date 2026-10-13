@@ -7,4 +7,7 @@ public interface ITenantBrandingRefRepository
 {
     Task<TenantBrandingRef?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantBrandingRef branding, CancellationToken ct = default);
+
+    /// <summary>Todas las filas, rastreadas. Solo para el backfill de arranque (una fila por oficina).</summary>
+    Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default);
 }

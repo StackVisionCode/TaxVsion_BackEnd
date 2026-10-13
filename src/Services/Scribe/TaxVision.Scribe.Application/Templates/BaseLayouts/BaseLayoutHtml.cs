@@ -5,17 +5,20 @@
 /// La cáscara (barra superior, card redondeada, wordmark/logo, footer) vive acá; cada template solo
 /// aporta el contenido que entra en {{ body | raw }} (eyebrow + título + cuerpo + botón). Ambos usan
 /// {{ body | raw }} (no {{ body }} a secas) porque FluidTemplateRenderer renderiza el layout completo
-/// con Fluid. El renderer inyecta subject/current_year/tenant_logo_missing; tenant_name/tenant_address
-/// llegan como variables de runtime. Paleta Bold Blue, forzada a light, compatible Outlook/MSO + móvil.
+/// con Fluid. El renderer inyecta subject/current_year/tenant_logo_missing y la marca de la plataforma
+/// (product_name, platform_legal_name: salen de PlatformSettings, nunca escritas acá); tenant_name/
+/// tenant_address llegan como variables de runtime. Paleta Bold Blue, forzada a light, compatible Outlook/MSO + móvil.
 /// </summary>
 public static class BaseLayoutHtml
 {
     // Subir esto cuando cambie el HTML del layout: el seeder republica si supera al guardado.
-    public const int SystemBaseVersion = 10;
+    // v11: la marca sale de product_name/platform_legal_name en vez de "TaxProffice" escrito.
+    public const int SystemBaseVersion = 12;
 
     // v7: fuera el aviso "Set your logo in Settings -> Branding". tenant-base lo lee el CLIENTE de la
     // oficina, no su personal; con logo o sin logo el correo no habla de la configuracion interna.
-    public const int TenantBaseVersion = 7;
+    // v8: "Sent from {{ product_name }}" en vez de la marca escrita.
+    public const int TenantBaseVersion = 9;
 
     public const string SystemBaseV1 = """
         <!DOCTYPE html>
@@ -27,7 +30,7 @@ public static class BaseLayoutHtml
         <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
         <meta name="color-scheme" content="light">
         <meta name="supported-color-schemes" content="light">
-        <title>TaxProffice</title>
+        <title>{{ product_name }}</title>
         <!--[if mso]>
         <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
         <style type="text/css">
@@ -63,7 +66,7 @@ public static class BaseLayoutHtml
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
                         <td valign="middle" style="padding-right:11px;">
-                          <img src="cid:logo-header" width="40" height="40" alt="TaxProffice" style="display:block;border:0;outline:none;-ms-interpolation-mode:bicubic;width:40px;height:40px;">
+                          <img src="cid:logo-header" width="40" height="40" alt="{{ product_name }}" style="display:block;border:0;outline:none;-ms-interpolation-mode:bicubic;width:40px;height:40px;">
                         </td>
                         <td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:24px;font-weight:bold;letter-spacing:-0.2px;color:#1E466B;mso-line-height-rule:exactly;">Tax<span style="color:#67BAF4;">Proffice</span></td>
                       </tr>
@@ -80,12 +83,12 @@ public static class BaseLayoutHtml
                 </tr>
                 <tr>
                   <td class="mobile-padding" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:22px 40px 26px 40px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#70869A;mso-line-height-rule:exactly;border-radius:0 0 14px 14px;">
-                    This is an automated message from <strong style="color:#1E466B;">TaxProffice</strong>. Please do not reply to this address.
+                    This is an automated message from <strong style="color:#1E466B;">{{ product_name }}</strong>. Please do not reply to this address.
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding:18px 16px 4px 16px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#70869A;mso-line-height-rule:exactly;">
-                    &copy; {{ current_year }} TaxProffice &middot; All rights reserved
+                    &copy; {{ current_year }} {{ platform_legal_name }} &middot; All rights reserved
                   </td>
                 </tr>
               </table>
@@ -156,7 +159,7 @@ public static class BaseLayoutHtml
                 </tr>
                 <tr>
                   <td class="mobile-padding" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:22px 40px 26px 40px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#70869A;mso-line-height-rule:exactly;border-radius:0 0 14px 14px;">
-                    <strong style="color:#1E466B;">{{ tenant_name }}</strong>{% if tenant_address != blank %} &middot; {{ tenant_address }}{% endif %}<br />Sent from TaxProffice
+                    <strong style="color:#1E466B;">{{ tenant_name }}</strong>{% if tenant_address != blank %} &middot; {{ tenant_address }}{% endif %}<br />Sent from {{ product_name }}
                   </td>
                 </tr>
                 <tr>

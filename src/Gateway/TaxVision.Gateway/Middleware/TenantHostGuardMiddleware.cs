@@ -1,3 +1,4 @@
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Gateway.Observability;
 
@@ -10,6 +11,8 @@ namespace TaxVision.Gateway.Middleware;
 ///   <item><c>tenant_id</c> del JWT <b>distinto</b> al tenant del Host → 403 (acceso cruzado entre oficinas).</item>
 /// </list>
 /// Los hosts de sistema (<c>api.*</c>, apex, subdominios reservados, <c>localhost</c>) pasan sin validar.
+/// Qué es un host de oficina lo decide <see cref="PlatformSettingsSnapshot.TryGetTenantSlug"/> con el
+/// dominio vigente de la plataforma: la misma regla que usa Auth.
 /// Fail-open: si Auth no responde, la request pasa — un hipo de Auth no debe tumbar el tráfico de todas
 /// las oficinas; solo un 404 definitivo de "no registrado" bloquea. Corre después de
 /// <c>UseAuthentication</c> (necesita el JWT ya parseado) y antes del <c>MapReverseProxy</c>.
@@ -17,6 +20,7 @@ namespace TaxVision.Gateway.Middleware;
 public sealed class TenantHostGuardMiddleware(
     RequestDelegate next,
     IOptions<TenantHostGuardOptions> options,
+    IPlatformSettings platform,
     ILogger<TenantHostGuardMiddleware> logger
 )
 {
@@ -36,7 +40,11 @@ public sealed class TenantHostGuardMiddleware(
         context.Request.Headers.Remove(ResolvedTenantHeader);
 
         // CORS preflight no lleva credenciales ni debe bloquearse acá; el host de sistema tampoco se valida.
-        if (!opts.Enabled || HttpMethods.IsOptions(context.Request.Method) || !IsTenantSubdomain(host, opts))
+        if (
+            !opts.Enabled
+            || HttpMethods.IsOptions(context.Request.Method)
+            || !platform.Current.TryGetTenantSlug(host, out _)
+        )
         {
             await next(context);
             return;
@@ -92,27 +100,6 @@ public sealed class TenantHostGuardMiddleware(
         }
 
         await next(context);
-    }
-
-    /// <summary>
-    /// <c>true</c> si el Host es un subdominio de oficina (no <c>api/app/www/admin</c>, ni el apex,
-    /// ni <c>localhost</c> ni un dominio ajeno). Sin <c>BaseDomain</c> configurado, nada se valida.
-    /// </summary>
-    private static bool IsTenantSubdomain(string host, TenantHostGuardOptions opts)
-    {
-        if (string.IsNullOrEmpty(opts.BaseDomain) || string.IsNullOrEmpty(host))
-            return false;
-
-        host = host.ToLowerInvariant();
-        var suffix = "." + opts.BaseDomain.ToLowerInvariant();
-        if (!host.EndsWith(suffix, StringComparison.Ordinal))
-            return false;
-
-        var slug = host[..^suffix.Length];
-        if (slug.Length == 0 || slug.Contains('.'))
-            return false;
-
-        return !opts.SystemSubdomains.Contains(slug, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

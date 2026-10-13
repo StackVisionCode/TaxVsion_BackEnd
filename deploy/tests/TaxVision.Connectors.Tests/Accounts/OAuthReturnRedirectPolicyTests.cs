@@ -10,11 +10,16 @@ namespace TaxVision.Connectors.Tests.Accounts;
 public sealed class OAuthReturnRedirectPolicyTests
 {
     private const string ProdBase = "https://app.taxproffice.com";
+    private const string PlatformDomain = "taxproffice.com";
 
     [Fact]
     public void Resolve_TenantSubdomain_ReturnsItWithoutPathOrQuery()
     {
-        var result = OAuthReturnRedirectPolicy.Resolve("https://manfer.taxproffice.com/email?x=1", ProdBase);
+        var result = OAuthReturnRedirectPolicy.Resolve(
+            "https://manfer.taxproffice.com/email?x=1",
+            ProdBase,
+            PlatformDomain
+        );
 
         Assert.Equal("https://manfer.taxproffice.com", result);
     }
@@ -24,7 +29,7 @@ public sealed class OAuthReturnRedirectPolicyTests
     {
         Assert.Equal(
             "https://app.taxproffice.com",
-            OAuthReturnRedirectPolicy.Resolve("https://app.taxproffice.com", ProdBase)
+            OAuthReturnRedirectPolicy.Resolve("https://app.taxproffice.com", ProdBase, PlatformDomain)
         );
     }
 
@@ -33,7 +38,7 @@ public sealed class OAuthReturnRedirectPolicyTests
     {
         Assert.Equal(
             "https://a.b.taxproffice.com",
-            OAuthReturnRedirectPolicy.Resolve("https://a.b.taxproffice.com", ProdBase)
+            OAuthReturnRedirectPolicy.Resolve("https://a.b.taxproffice.com", ProdBase, PlatformDomain)
         );
     }
 
@@ -44,7 +49,7 @@ public sealed class OAuthReturnRedirectPolicyTests
     [InlineData("http://localhost:4200")] // localhost NO permitido cuando el base es prod
     public void Resolve_HostileOrForeignHost_FallsBackToBase(string origin)
     {
-        Assert.Equal(ProdBase, OAuthReturnRedirectPolicy.Resolve(origin, ProdBase));
+        Assert.Equal(ProdBase, OAuthReturnRedirectPolicy.Resolve(origin, ProdBase, PlatformDomain));
     }
 
     [Theory]
@@ -56,7 +61,7 @@ public sealed class OAuthReturnRedirectPolicyTests
     [InlineData(null)]
     public void Resolve_NonHttpOrMalformed_FallsBackToBase(string? origin)
     {
-        Assert.Equal(ProdBase, OAuthReturnRedirectPolicy.Resolve(origin, ProdBase));
+        Assert.Equal(ProdBase, OAuthReturnRedirectPolicy.Resolve(origin, ProdBase, PlatformDomain));
     }
 
     [Fact]
@@ -64,7 +69,22 @@ public sealed class OAuthReturnRedirectPolicyTests
     {
         Assert.Equal(
             "https://app.taxproffice.com",
-            OAuthReturnRedirectPolicy.Resolve(null, "https://app.taxproffice.com/")
+            OAuthReturnRedirectPolicy.Resolve(null, "https://app.taxproffice.com/", PlatformDomain)
+        );
+    }
+
+    [Fact]
+    public void Resolve_FollowsThePlatformDomain_NotTheBaseUrl()
+    {
+        // El dominio permitido es el de PlatformSettings: cambiarlo mueve la allowlist aunque el BaseUrl
+        // configurado todavía apunte al anterior.
+        Assert.Equal(
+            "https://manfer.taxoffix.io",
+            OAuthReturnRedirectPolicy.Resolve("https://manfer.taxoffix.io", ProdBase, "taxoffix.io")
+        );
+        Assert.Equal(
+            ProdBase,
+            OAuthReturnRedirectPolicy.Resolve("https://manfer.taxproffice.com", ProdBase, "taxoffix.io")
         );
     }
 
@@ -74,7 +94,7 @@ public sealed class OAuthReturnRedirectPolicyTests
         // Dev: base y retorno son localhost (puertos distintos permitidos: se compara host, no puerto).
         Assert.Equal(
             "http://localhost:4200",
-            OAuthReturnRedirectPolicy.Resolve("http://localhost:4200", "http://localhost:5047")
+            OAuthReturnRedirectPolicy.Resolve("http://localhost:4200", "http://localhost:5047", PlatformDomain)
         );
     }
 }

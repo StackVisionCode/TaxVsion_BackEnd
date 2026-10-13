@@ -1,5 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -26,6 +27,7 @@ public static class SignerInvitedConsumer
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         ILogger<SignerInvitedIntegrationEvent> logger,
@@ -43,7 +45,7 @@ public static class SignerInvitedConsumer
             // enlace de firma; si no, se mantiene el correo. El puente publica al microservicio Sms.
             if (PrefersSms(evt))
             {
-                var smsBody = BuildInviteSms(evt, inviteLink, portal.Value);
+                var smsBody = BuildInviteSms(evt, inviteLink, platform.Current.BrandName);
                 var smsResult = await smsSender.SendAsync(evt.PhoneE164!, smsBody, ct);
                 if (smsResult.IsSuccess)
                     logger.LogInformation(
@@ -114,9 +116,8 @@ public static class SignerInvitedConsumer
         string.Equals(evt.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(evt.PhoneE164);
 
-    private static string BuildInviteSms(SignerInvitedIntegrationEvent evt, string inviteLink, PortalOptions portal)
+    private static string BuildInviteSms(SignerInvitedIntegrationEvent evt, string inviteLink, string product)
     {
-        var product = portal.ProductName;
         return evt.Language == "Es"
             ? $"{product}: {evt.FullName}, tienes un documento para firmar. Ábrelo aquí: {inviteLink}"
             : $"{product}: {evt.FullName}, you have a document to sign. Open it here: {inviteLink}";

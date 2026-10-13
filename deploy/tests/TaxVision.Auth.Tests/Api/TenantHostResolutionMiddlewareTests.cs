@@ -80,7 +80,12 @@ public sealed class TenantHostResolutionMiddlewareTests
         };
 
         return (
-            new TenantHostResolutionMiddleware(next, options, NullLogger<TenantHostResolutionMiddleware>.Instance),
+            new TenantHostResolutionMiddleware(
+                next,
+                options,
+                TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
+                NullLogger<TenantHostResolutionMiddleware>.Instance
+            ),
             resolver,
             tenantContext,
             audit,
@@ -123,7 +128,7 @@ public sealed class TenantHostResolutionMiddlewareTests
         resolver.ResolveFn = _ => HostResolutionResult.Resolved(tenantId);
 
         var context = new DefaultHttpContext();
-        context.Request.Host = new HostString("oficina1.taxproffice.com");
+        context.Request.Host = new HostString("oficina1.taxoffix.io");
 
         await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
 
@@ -142,7 +147,7 @@ public sealed class TenantHostResolutionMiddlewareTests
         resolver.ResolveFn = _ => HostResolutionResult.Unresolved(TenantResolutionFailureReason.HostUnknown);
 
         var context = new DefaultHttpContext();
-        context.Request.Host = new HostString("no-existe.taxproffice.com");
+        context.Request.Host = new HostString("no-existe.taxoffix.io");
 
         await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
 
@@ -153,15 +158,15 @@ public sealed class TenantHostResolutionMiddlewareTests
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.Single(
             bus.Published.OfType<TenantResolutionFailedIntegrationEvent>(),
-            evt => evt.Host == "no-existe.taxproffice.com" && evt.Reason == "HostUnknown"
+            evt => evt.Host == "no-existe.taxoffix.io" && evt.Reason == "HostUnknown"
         );
     }
 
     [Theory]
-    [InlineData("taxproffice.com")]
-    [InlineData("www.taxproffice.com")]
-    [InlineData("app.taxproffice.com")]
-    [InlineData("client.taxproffice.com")]
+    [InlineData("taxoffix.io")]
+    [InlineData("www.taxoffix.io")]
+    [InlineData("app.taxoffix.io")]
+    [InlineData("client.taxoffix.io")]
     public async Task Platform_system_hosts_pass_without_lookup_or_audit_even_when_enforced(string host)
     {
         var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
@@ -226,13 +231,13 @@ public sealed class TenantHostResolutionMiddlewareTests
         resolver.ResolveFn = _ => HostResolutionResult.Resolved(tenantId);
 
         var context = new DefaultHttpContext();
-        context.Request.Host = new HostString("coretaxpro.taxproffice.com");
+        context.Request.Host = new HostString("coretaxpro.taxoffix.io");
         context.Request.Path = "/auth/password/forgot";
 
         await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
 
         Assert.True(nextCalled[0]);
-        Assert.Equal("coretaxpro.taxproffice.com", resolver.LastRequestedHost);
+        Assert.Equal("coretaxpro.taxoffix.io", resolver.LastRequestedHost);
         Assert.Equal(tenantId, tenantContext.ResolvedTenantId);
     }
 
@@ -268,16 +273,16 @@ public sealed class TenantHostResolutionMiddlewareTests
         var (middleware, resolver, tenantContext, audit, unitOfWork, bus, rateCounter, nextCalled) = BuildMiddleware(
             enforce: true
         );
-        // El resolver SI conoce "legit-tenant.taxproffice.com" — pero el middleware
+        // El resolver SI conoce "legit-tenant.taxoffix.io" — pero el middleware
         // nunca debe preguntarle por ese Host si vino solo en X-Forwarded-Host.
         resolver.ResolveFn = host =>
-            host == "legit-tenant.taxproffice.com"
+            host == "legit-tenant.taxoffix.io"
                 ? HostResolutionResult.Resolved(legitTenantId)
                 : HostResolutionResult.Unresolved(TenantResolutionFailureReason.HostUnknown);
 
         var context = new DefaultHttpContext();
         context.Request.Host = new HostString("attacker-controlled.invalid");
-        context.Request.Headers["X-Forwarded-Host"] = "legit-tenant.taxproffice.com";
+        context.Request.Headers["X-Forwarded-Host"] = "legit-tenant.taxoffix.io";
 
         await InvokeAsync(middleware, context, resolver, tenantContext, audit, unitOfWork, bus, rateCounter);
 

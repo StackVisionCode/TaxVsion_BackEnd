@@ -82,14 +82,28 @@ public sealed class AccountSessionControllerTests
         Assert.Equal("Auth.OriginNotAllowed", Assert.IsType<Error>(result.Value).Code);
     }
 
-    [Fact]
-    public void The_landing_origin_is_allowed()
+    [Theory]
+    [InlineData("https://taxoffix.io/")]
+    [InlineData("https://www.taxoffix.io")]
+    [InlineData("http://localhost:4201")]
+    public void The_landing_origins_of_the_platform_and_the_configured_extras_are_allowed(string origin)
     {
-        var context = FilterContext("https://taxproffice.com/");
+        var context = FilterContext(origin);
 
         new RequireAccountOriginAttribute().OnAuthorization(context);
 
         Assert.Null(context.Result);
+    }
+
+    [Fact]
+    public void The_landing_follows_the_platform_domain_not_a_fixed_list()
+    {
+        // El landing del dominio anterior ya no puede usar la sesión del Account.
+        var context = FilterContext("https://taxproffice.com");
+
+        new RequireAccountOriginAttribute().OnAuthorization(context);
+
+        Assert.IsType<ObjectResult>(context.Result);
     }
 
     [Fact]
@@ -184,13 +198,9 @@ public sealed class AccountSessionControllerTests
     private static AuthorizationFilterContext FilterContext(string? origin)
     {
         var services = new ServiceCollection()
-            .AddSingleton(
-                Options.Create(
-                    new AccountSessionOptions
-                    {
-                        AllowedOrigins = ["https://taxproffice.com", "https://www.taxproffice.com"],
-                    }
-                )
+            .AddSingleton(Options.Create(new AccountSessionOptions { AllowedOrigins = ["http://localhost:4201"] }))
+            .AddSingleton<BuildingBlocks.Platform.IPlatformSettings>(
+                TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io")
             )
             .BuildServiceProvider();
         var httpContext = new DefaultHttpContext { RequestServices = services };

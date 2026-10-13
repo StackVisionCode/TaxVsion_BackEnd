@@ -1,3 +1,4 @@
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
@@ -18,6 +19,7 @@ public static class ResendOnboardingReceiptAdminHandler
         ITenantOnboardingRepository onboardings,
         IPlanCatalogClient planCatalog,
         IMessageBus bus,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -31,7 +33,7 @@ public static class ResendOnboardingReceiptAdminHandler
             );
 
         var planName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
-        var planLabel = string.IsNullOrWhiteSpace(planName) ? "Suscripción TaxProffice" : planName!;
+        var planLabel = string.IsNullOrWhiteSpace(planName) ? $"Suscripción {platform.Current.BrandName}" : planName!;
 
         await bus.PublishAsync(
             new RequestOnboardingReceiptCommand(

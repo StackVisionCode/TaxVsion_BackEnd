@@ -15,6 +15,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.ResourceAuthorization;
 using BuildingBlocks.Web.Security;
@@ -56,6 +57,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddSignatureInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
@@ -214,6 +218,7 @@ builder.Host.UseWolverine(options =>
 {
     // Descubre consumers y handlers en el assembly Application.
     options.Discovery.IncludeAssembly(typeof(TenantCreatedConsumer).Assembly);
+    options.ListenForPlatformSettings();
     // P2 — consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;

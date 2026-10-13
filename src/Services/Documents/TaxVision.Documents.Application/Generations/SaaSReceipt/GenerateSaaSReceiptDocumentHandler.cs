@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Documents.Application.Abstractions;
@@ -26,6 +27,7 @@ public static class GenerateSaaSReceiptDocumentHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IPlatformSettings platform,
         TimeProvider clock,
         ILogger<GenerateSaaSReceiptDocumentResult> logger,
         CancellationToken ct
@@ -53,7 +55,9 @@ public static class GenerateSaaSReceiptDocumentHandler
                     return Result.Failure<GenerateSaaSReceiptDocumentResult>(retry.Error);
 
                 await unitOfWork.SaveChangesAsync(ct);
-                await bus.PublishAsync(ToProcessCommand(command, existing.Id, correlationId));
+                await bus.PublishAsync(
+                    ToProcessCommand(command, existing.Id, correlationId, platform.Current.BrandName)
+                );
 
                 return Result.Success(
                     new GenerateSaaSReceiptDocumentResult(existing.Id, DocumentGenerationStatus.Queued.ToString())
@@ -79,7 +83,9 @@ public static class GenerateSaaSReceiptDocumentHandler
                 throw;
             }
 
-            await bus.PublishAsync(ToProcessCommand(command, built.Value.Id, correlationId));
+            await bus.PublishAsync(
+                ToProcessCommand(command, built.Value.Id, correlationId, platform.Current.BrandName)
+            );
 
             logger.LogInformation(
                 "SaaS receipt generation {GenerationId} accepted for payment {PaymentId} of tenant {TenantId}.",
@@ -160,7 +166,8 @@ public static class GenerateSaaSReceiptDocumentHandler
     private static ProcessSaaSReceiptGenerationCommand ToProcessCommand(
         GenerateSaaSReceiptDocumentCommand command,
         Guid generationId,
-        string correlationId
+        string correlationId,
+        string platformBrand
     ) =>
         new(
             GenerationId: generationId,
@@ -168,7 +175,7 @@ public static class GenerateSaaSReceiptDocumentHandler
             SaaSPaymentId: command.SaaSPaymentId,
             TemplateKey: command.TemplateKey,
             TemplateVersion: command.TemplateVersion,
-            FileName: $"TaxProffice_Receipt_{command.Receipt.PaidAtUtc:yyyy-MM-dd}.pdf",
+            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc),
             CorrelationId: correlationId,
             Receipt: command.Receipt
         );

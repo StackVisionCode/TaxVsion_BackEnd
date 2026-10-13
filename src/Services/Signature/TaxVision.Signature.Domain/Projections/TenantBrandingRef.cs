@@ -4,7 +4,8 @@ namespace TaxVision.Signature.Domain.Projections;
 
 /// <summary>
 /// Proyección local del tenant: nombre, subdominio y logo. La fuente de verdad es Tenant; esto se
-/// alimenta de <c>TenantCreatedIntegrationEvent</c> y <c>TenantLogoUpdatedIntegrationEvent</c>.
+/// alimenta de <c>TenantCreatedIntegrationEvent</c> y <c>TenantLogoUpdatedIntegrationEvent</c>, y el
+/// backfill de arranque completa las oficinas anteriores a esos consumers.
 /// </summary>
 public sealed class TenantBrandingRef : ITenantOwned
 {
@@ -34,6 +35,29 @@ public sealed class TenantBrandingRef : ITenantOwned
     {
         SubDomain = subDomain?.Trim().ToLowerInvariant() ?? string.Empty;
         UpdatedAtUtc = updatedAtUtc;
+    }
+
+    /// <summary>
+    /// Completa nombre y subdominio SOLO donde están vacíos (backfill desde el directorio de Tenant). Lo que
+    /// ya llegó por evento no se pisa: un evento en vuelo puede ser más nuevo que el listado. Devuelve si
+    /// cambió algo, para no reescribir la fila en cada arranque.
+    /// </summary>
+    public bool FillMissingIdentity(string officeName, string subDomain, DateTime updatedAtUtc)
+    {
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(OfficeName) && !string.IsNullOrWhiteSpace(officeName))
+        {
+            SetOfficeName(officeName, updatedAtUtc);
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(SubDomain) && !string.IsNullOrWhiteSpace(subDomain))
+        {
+            SetSubDomain(subDomain, updatedAtUtc);
+            changed = true;
+        }
+
+        return changed;
     }
 
     public void SetLogo(Guid fileId, string contentType, long sizeBytes, DateTime updatedAtUtc)

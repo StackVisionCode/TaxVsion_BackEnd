@@ -54,6 +54,9 @@ public sealed class ReserveSubdomainHandlerTests
         public Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default) =>
             Task.FromResult<TenantDomain?>(null);
 
+        public Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default) =>
+            Task.FromResult<TenantDomain?>(null);
+
         public Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantDomain>>([]);
 

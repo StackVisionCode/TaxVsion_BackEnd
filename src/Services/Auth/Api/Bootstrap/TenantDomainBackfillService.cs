@@ -1,8 +1,8 @@
-using BuildingBlocks.Infrastructure.Hosting;
+﻿using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using TaxVision.Auth.Application.TenantDomains;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Infrastructure.Persistence;
 
@@ -16,20 +16,27 @@ namespace TaxVision.Auth.Api.Bootstrap;
 /// Idempotente: no hace nada en corridas posteriores una vez que todos los tenants
 /// tienen su dominio primario. Los tenants creados a partir de ahora ya reciben el
 /// suyo directamente en TenantCreatedConsumer.
+///
+/// Antes del backfill re-apunta las filas existentes al dominio de la plataforma
+/// (<see cref="ITenantDomainRebaser"/>). Si después llega una versión nueva de PlatformSettings, lo
+/// repite el consumer del evento.
 /// </summary>
 public sealed class TenantDomainBackfillService(
     IServiceScopeFactory scopeFactory,
-    IOptions<TenantDomainOptions> options,
+    IPlatformSettings platform,
     IHostApplicationLifetime lifetime,
     ILogger<TenantDomainBackfillService> logger
 ) : DeferredStartupHostedService(lifetime, logger)
 {
-    private readonly TenantDomainOptions _options = options.Value;
-
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+        var settings = platform.Current;
+
+        await scope
+            .ServiceProvider.GetRequiredService<ITenantDomainRebaser>()
+            .RebaseAsync(settings.BaseDomain, settings.ApiHost, cancellationToken);
 
         // RBAC Fase 5 — este backfill recorre TODOS los tenants en una sola query correlacionada
         // (Tenant no es ITenantOwned, no lo afecta el filtro; TenantDomain sí lo es — la subquery
@@ -63,7 +70,7 @@ public sealed class TenantDomainBackfillService(
                 continue;
             }
 
-            var host = $"{slugResult.Value.Value}.{_options.BaseDomain}";
+            var host = settings.TenantHost(slugResult.Value.Value);
             // RBAC Fase 5 — unicidad de host es GLOBAL (cruza tenants a propósito).
             if (await db.TenantDomains.IgnoreQueryFilters().AnyAsync(domain => domain.Host == host, cancellationToken))
             {
@@ -79,7 +86,7 @@ public sealed class TenantDomainBackfillService(
             var domainResult = TenantDomain.CreateSubdomain(
                 tenant.Id,
                 slugResult.Value,
-                _options.BaseDomain,
+                settings.BaseDomain,
                 createdByUserId: Guid.Empty,
                 DateTime.UtcNow
             );

@@ -9,7 +9,7 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// </summary>
 public static class OAuthReturnRedirectPolicy
 {
-    public static string Resolve(string? returnOrigin, string baseUrl)
+    public static string Resolve(string? returnOrigin, string baseUrl, string platformDomain)
     {
         var fallback = (baseUrl ?? string.Empty).TrimEnd('/');
         if (string.IsNullOrWhiteSpace(returnOrigin))
@@ -18,17 +18,18 @@ public static class OAuthReturnRedirectPolicy
             return fallback;
         if (origin.Scheme != Uri.UriSchemeHttp && origin.Scheme != Uri.UriSchemeHttps)
             return fallback;
-        if (!IsAllowedHost(origin.Host, baseUrl))
+        if (!IsAllowedHost(origin.Host, baseUrl, platformDomain))
             return fallback;
         return origin.GetLeftPart(UriPartial.Authority);
     }
 
     /// <summary>
-    /// Permite el mismo host del BaseUrl y cualquier subdominio de su dominio registrable (p. ej.
-    /// *.taxproffice.com). localhost solo se acepta cuando el BaseUrl TAMBIÉN es local (dev) — nunca
-    /// en prod, para no redirigir a la máquina del usuario desde un dominio de producción.
+    /// Permite el mismo host del BaseUrl y el dominio de la plataforma con cualquier subdominio (p. ej.
+    /// *.taxoffix.io; el dominio sale de PlatformSettings). localhost solo se acepta cuando el BaseUrl
+    /// TAMBIÉN es local (dev) — nunca en prod, para no redirigir a la máquina del usuario desde un dominio
+    /// de producción.
     /// </summary>
-    public static bool IsAllowedHost(string host, string? baseUrl)
+    public static bool IsAllowedHost(string host, string? baseUrl, string platformDomain)
     {
         if (string.IsNullOrWhiteSpace(host))
             return false;
@@ -38,22 +39,15 @@ public static class OAuthReturnRedirectPolicy
             return true;
         if (host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase))
             return true;
-        var registrable = RegistrableDomain(baseUri.Host);
-        return registrable is not null
+        var domain = platformDomain?.Trim().TrimEnd('.') ?? string.Empty;
+        return domain.Length > 0
             && (
-                host.Equals(registrable, StringComparison.OrdinalIgnoreCase)
-                // El "." previo evita la confusión de sufijo: "eviltaxproffice.com" NO termina en ".taxproffice.com".
-                || host.EndsWith("." + registrable, StringComparison.OrdinalIgnoreCase)
+                host.Equals(domain, StringComparison.OrdinalIgnoreCase)
+                // El "." previo evita la confusión de sufijo: "eviltaxoffix.io" NO termina en ".taxoffix.io".
+                || host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)
             );
     }
 
     private static bool IsLocal(string host) =>
         host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host == "127.0.0.1";
-
-    /// <summary>Heurística de 2 labels (dominio.tld) — suficiente para los dominios propios de TaxVision.</summary>
-    private static string? RegistrableDomain(string host)
-    {
-        var labels = host.Split('.');
-        return labels.Length >= 2 ? $"{labels[^2]}.{labels[^1]}" : null;
-    }
 }

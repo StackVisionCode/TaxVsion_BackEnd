@@ -48,6 +48,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -88,6 +89,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -124,6 +126,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -166,6 +169,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -207,6 +211,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -247,6 +252,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 

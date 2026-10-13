@@ -27,15 +27,43 @@ public interface IHostTenantResolver
 }
 
 /// <summary>
+/// Respuestas definitivas de Auth por host, compartidas por todas las instancias del resolver (que es un
+/// typed HttpClient, transitorio). Singleton.
+/// </summary>
+public sealed class HostTenantCache
+{
+    public sealed record Entry(HostTenantResult Result, DateTime FetchedUtc);
+
+    private readonly ConcurrentDictionary<string, Entry> _entries = new();
+    private readonly ConcurrentDictionary<string, byte> _revalidating = new();
+
+    public bool TryGet(string host, out Entry entry) => _entries.TryGetValue(host, out entry!);
+
+    public void Set(string host, HostTenantResult result, DateTime nowUtc) =>
+        _entries[host] = new Entry(result, nowUtc);
+
+    /// <summary>Marca el host como "revalidándose". Falso si ya hay una revalidación en curso.</summary>
+    public bool TryBeginRevalidation(string host) => _revalidating.TryAdd(host, 0);
+
+    public void EndRevalidation(string host) => _revalidating.TryRemove(host, out _);
+}
+
+/// <summary>
 /// Resuelve Host→tenant llamando al <c>by-host</c> de Auth (que ya devuelve el <c>TenantId</c>),
-/// reenviando el Host de oficina como header. Cachea en memoria: los subdominios casi nunca cambian,
-/// así que evita una llamada por request. Nunca lanza: cualquier fallo de red/HTTP es
-/// <see cref="HostTenantOutcome.Unavailable"/> y el middleware lo deja pasar (fail-open). Solo se
-/// cachean respuestas definitivas de Auth — un <c>Unavailable</c> se reintenta en la próxima request.
+/// reenviando el Host de oficina como header. Nunca lanza: cualquier fallo de red/HTTP es
+/// <see cref="HostTenantOutcome.Unavailable"/> y el middleware lo deja pasar (fail-open).
+///
+/// <para>Cache stale-while-revalidate: una entrada positiva se sirve al instante, y si tiene más de
+/// <see cref="TenantHostGuardOptions.RevalidateAfter"/> se vuelve a pedir a Auth en segundo plano. Así un
+/// renombre o un dominio deshabilitado se nota en segundos sin evento (el Gateway no usa el bus: no puede
+/// depender de RabbitMQ para arrancar) y sin sumar latencia. <see cref="TenantHostGuardOptions.PositiveCacheTtl"/>
+/// es el tope si Auth no contesta. Un <c>Unavailable</c> no se cachea nunca.</para>
 /// </summary>
 public sealed class HostTenantResolver(
     HttpClient httpClient,
+    HostTenantCache cache,
     IOptions<TenantHostGuardOptions> options,
+    TimeProvider clock,
     ILogger<HostTenantResolver> logger
 ) : IHostTenantResolver
 {
@@ -45,28 +73,48 @@ public sealed class HostTenantResolver(
         PropertyNameCaseInsensitive = true,
     };
 
-    private sealed record CacheEntry(HostTenantResult Result, DateTime ExpiresUtc);
-
-    private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new();
-
     public async Task<HostTenantResult> ResolveAsync(string host, CancellationToken ct = default)
     {
         var key = host.ToLowerInvariant();
-        if (Cache.TryGetValue(key, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
-            return cached.Result;
+        var now = clock.GetUtcNow().UtcDateTime;
+        var settings = options.Value;
 
-        var result = await FetchAsync(key, ct);
-
-        if (result.Outcome != HostTenantOutcome.Unavailable)
+        if (cache.TryGet(key, out var cached))
         {
-            var ttl =
-                result.Outcome == HostTenantOutcome.Resolved
-                    ? options.Value.PositiveCacheTtl
-                    : options.Value.NegativeCacheTtl;
-            Cache[key] = new CacheEntry(result, DateTime.UtcNow.Add(ttl));
+            var age = now - cached.FetchedUtc;
+            var resolved = cached.Result.Outcome == HostTenantOutcome.Resolved;
+            var ttl = resolved ? settings.PositiveCacheTtl : settings.NegativeCacheTtl;
+            if (age < ttl)
+            {
+                if (resolved && age >= settings.RevalidateAfter && cache.TryBeginRevalidation(key))
+                    _ = RevalidateAsync(key);
+                return cached.Result;
+            }
         }
 
+        var result = await FetchAsync(key, ct);
+        Remember(key, result);
         return result;
+    }
+
+    private async Task RevalidateAsync(string host)
+    {
+        try
+        {
+            // Fuera del request: no se cancela si el cliente corta. El timeout del HttpClient lo acota.
+            var result = await FetchAsync(host, CancellationToken.None);
+            Remember(host, result);
+        }
+        finally
+        {
+            cache.EndRevalidation(host);
+        }
+    }
+
+    private void Remember(string host, HostTenantResult result)
+    {
+        if (result.Outcome != HostTenantOutcome.Unavailable)
+            cache.Set(host, result, clock.GetUtcNow().UtcDateTime);
     }
 
     private async Task<HostTenantResult> FetchAsync(string host, CancellationToken ct)

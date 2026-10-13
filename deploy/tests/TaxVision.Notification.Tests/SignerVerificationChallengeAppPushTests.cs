@@ -39,6 +39,7 @@ public sealed class SignerVerificationChallengeAppPushTests
             logs,
             uow,
             new NoOpCorrelationContext(),
+            TestPlatform.Settings,
             NullLogger<SignerVerificationChallengeIssuedIntegrationEvent>.Instance,
             CancellationToken.None
         );
@@ -70,6 +71,7 @@ public sealed class SignerVerificationChallengeAppPushTests
             logs,
             uow,
             new NoOpCorrelationContext(),
+            TestPlatform.Settings,
             NullLogger<SignerVerificationChallengeIssuedIntegrationEvent>.Instance,
             CancellationToken.None
         );
@@ -100,6 +102,7 @@ public sealed class SignerVerificationChallengeAppPushTests
             logs,
             uow,
             new NoOpCorrelationContext(),
+            TestPlatform.Settings,
             NullLogger<SignerVerificationChallengeIssuedIntegrationEvent>.Instance,
             CancellationToken.None
         );

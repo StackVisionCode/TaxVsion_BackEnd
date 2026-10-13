@@ -68,6 +68,10 @@ const rawEnv = z
     OTEL_SERVICE_NAME: z.string().optional(),
 
     COMMUNICATION_CORS_ORIGINS: z.string().default(''),
+    // PlatformSettings (Tenant): de ahí salen los orígenes web de la plataforma para el CORS. El dominio
+    // de config solo rige hasta la primera lectura; sin TENANT_BASE_URL no se refresca.
+    COMMUNICATION_TENANT_BASE_URL: z.string().url().optional(),
+    COMMUNICATION_PLATFORM_BASE_DOMAIN: z.string().default(''),
 
     // Fase Backend 11 — antes literales inline en cada socket handler; ahora
     // configurables por env sin tocar codigo. Defaults = los valores que ya
@@ -123,7 +127,7 @@ const rawEnv = z
     COMMUNICATION_FRONTEND_BASE_URL: z.string().url().default('http://localhost:5173'),
     COMMUNICATION_JOIN_TICKET_SECRET: z.string().min(32),
     COMMUNICATION_JOIN_TICKET_TTL_SECONDS: z.coerce.number().int().positive().default(300),
-    // El link de invitación va al SUBDOMINIO del tenant ({subdomain}.taxproffice.com), resuelto por
+    // El link de invitación va al SUBDOMINIO del tenant ({subdomain}.taxoffix.io), resuelto por
     // M2M contra Auth; el portal del cliente vive bajo este prefijo dentro del subdominio. Solo se usa
     // COMMUNICATION_FRONTEND_BASE_URL como fallback si no se puede resolver el host del tenant.
     COMMUNICATION_PORTAL_PATH_PREFIX: z.string().default('/portal'),
@@ -216,9 +220,15 @@ const corsOrigins = rawEnv.COMMUNICATION_CORS_ORIGINS.split(',')
 // cuando `cors.origins` esta vacio) — inaceptable fuera de dev/test. En
 // development/test se mantiene permisivo (vacio = allow-all) por conveniencia
 // local, igual que siempre.
-if (rawEnv.NODE_ENV === 'production' && corsOrigins.length === 0) {
+// Los orígenes de la plataforma (apex, www, app, client) salen de COMMUNICATION_PLATFORM_BASE_DOMAIN /
+// PlatformSettings, así que en producción basta con uno de los dos.
+if (
+  rawEnv.NODE_ENV === 'production' &&
+  corsOrigins.length === 0 &&
+  rawEnv.COMMUNICATION_PLATFORM_BASE_DOMAIN.trim().length === 0
+) {
   throw new Error(
-    'COMMUNICATION_CORS_ORIGINS is required and must be non-empty when NODE_ENV=production (fail-closed CORS policy).',
+    'COMMUNICATION_CORS_ORIGINS or COMMUNICATION_PLATFORM_BASE_DOMAIN is required when NODE_ENV=production (fail-closed CORS policy).',
   );
 }
 
@@ -290,6 +300,11 @@ export const config = {
 
   cors: {
     origins: corsOrigins,
+  },
+
+  platform: {
+    tenantBaseUrl: rawEnv.COMMUNICATION_TENANT_BASE_URL,
+    baseDomain: rawEnv.COMMUNICATION_PLATFORM_BASE_DOMAIN,
   },
 
   rateLimit: {

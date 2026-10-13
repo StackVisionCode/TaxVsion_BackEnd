@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +43,7 @@ public sealed class SystemEmailProviderOptions
 public sealed class SystemEmailProviderSeeder(
     IServiceScopeFactory scopeFactory,
     IOptions<SystemEmailProviderOptions> options,
+    IPlatformSettings platform,
     IHostApplicationLifetime lifetime,
     ILogger<SystemEmailProviderSeeder> logger
 ) : DeferredStartupHostedService(lifetime, logger)
@@ -67,7 +69,7 @@ public sealed class SystemEmailProviderSeeder(
             if (existing is not null)
                 return;
 
-            var placeholderResult = CreatePlaceholderProvider(secretProtector);
+            var placeholderResult = CreatePlaceholderProvider(secretProtector, platform.Current);
             if (placeholderResult.IsFailure)
             {
                 logger.LogError(
@@ -148,15 +150,18 @@ public sealed class SystemEmailProviderSeeder(
         );
     }
 
+    // El placeholder solo existe mientras no hay SMTP real configurado; el remitente sale de la marca y
+    // el dominio de la plataforma para no dejar uno viejo escrito.
     private static BuildingBlocks.Results.Result<SystemEmailProvider> CreatePlaceholderProvider(
-        ISecretProtector secretProtector
+        ISecretProtector secretProtector,
+        PlatformSettingsSnapshot platform
     ) =>
         SystemEmailProvider.Create(
             providerCode: DefaultProviderCode,
             displayName: "Default SMTP (placeholder)",
             providerType: EmailProviderType.Smtp,
-            fromAddressDefault: "noreply@taxproffice.com",
-            fromDisplayNameDefault: "TaxProffice",
+            fromAddressDefault: $"noreply@{platform.BaseDomain}",
+            fromDisplayNameDefault: platform.BrandName,
             host: "localhost",
             port: 1025,
             useTls: false,

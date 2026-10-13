@@ -1,12 +1,15 @@
 using System.Net;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Gateway.Health;
@@ -21,35 +24,44 @@ builder.Services.AddBuildingBlocks();
 // GW-10 — sin override: se deja el default de Kestrel (~28,6 MB). El endpoint con el cuerpo más
 // grande que atraviesa el Gateway es POST signature/documents (25 MB), así que el default cubre
 // todo con margen. El límite fino por ruta va en ReverseProxy:Routes:*:MaxRequestBodySize.
-// CORS explícito para la SPA (orígenes en Cors:Origins).
+// CORS explícito para la SPA: los orígenes de las apps de la plataforma salen del dominio vigente en
+// PlatformSettings (se leen en cada preflight, así que siguen a un cambio de dominio sin redeploy); los
+// de Cors:Origins son los extra (localhost y apps móviles).
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
-builder.Services.AddCors(options =>
-    options.AddPolicy(
-        "spa",
-        policy =>
-            policy
-                .WithOrigins(corsOrigins)
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials()
-                // Sin esto el navegador oculta estos headers a la SPA en cross-origin y el front no puede
-                // decirle al usuario cuánto esperar tras un 429/503.
-                //
-                // ETag es del mismo tipo de olvido y costaba más de lo que parece: `GET /auth/me/access`
-                // responde 304 si el cliente manda `If-None-Match`, pero el navegador le ocultaba el ETag
-                // a la SPA, así que nunca podía mandarlo y CADA comprobación de acceso bajaba el bootstrap
-                // entero (~140 permissions). Detectado en la QA de B10 contra la flota local.
-                .WithExposedHeaders(
-                    "Retry-After",
-                    "X-RateLimit-Limit",
-                    "X-RateLimit-Remaining",
-                    "X-RateLimit-Reset",
-                    "X-RateLimit-Policy",
-                    "X-RateLimit-Layer",
-                    "ETag"
-                )
-    )
-);
+builder.Services.AddCors();
+builder
+    .Services.AddOptions<Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions>()
+    .Configure<IPlatformSettings>(
+        (options, platform) =>
+            options.AddPolicy(
+                "spa",
+                policy =>
+                    policy
+                        .SetIsOriginAllowed(origin =>
+                            PlatformSettingsSnapshot.IsOriginIn(origin, corsOrigins)
+                            || PlatformSettingsSnapshot.IsOriginIn(origin, platform.Current.WebOrigins)
+                        )
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .AllowCredentials()
+                        // Sin esto el navegador oculta estos headers a la SPA en cross-origin y el front no puede
+                        // decirle al usuario cuánto esperar tras un 429/503.
+                        //
+                        // ETag es del mismo tipo de olvido y costaba más de lo que parece: `GET /auth/me/access`
+                        // responde 304 si el cliente manda `If-None-Match`, pero el navegador le ocultaba el ETag
+                        // a la SPA, así que nunca podía mandarlo y CADA comprobación de acceso bajaba el bootstrap
+                        // entero (~140 permissions). Detectado en la QA de B10 contra la flota local.
+                        .WithExposedHeaders(
+                            "Retry-After",
+                            "X-RateLimit-Limit",
+                            "X-RateLimit-Remaining",
+                            "X-RateLimit-Reset",
+                            "X-RateLimit-Policy",
+                            "X-RateLimit-Layer",
+                            "ETag"
+                        )
+            )
+    );
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionGatewayRateLimiting(builder.Configuration);
@@ -95,6 +107,13 @@ builder
 builder.Services.Configure<TenantHostGuardOptions>(
     builder.Configuration.GetSection(TenantHostGuardOptions.SectionName)
 );
+
+// Qué host es de una oficina sale del dominio vigente de la plataforma (Tenant); el Gateway no usa
+// Wolverine, así que se entera de un cambio por el refresco periódico, no por el evento. Por lo mismo, la
+// cache host→tenant se revalida sola contra Auth (stale-while-revalidate, ver HostTenantResolver).
+builder.Services.AddPlatformSettings(builder.Configuration);
+builder.Services.AddSingleton<HostTenantCache>();
+builder.Services.TryAddSingleton(TimeProvider.System);
 var authClusterAddress =
     builder
         .Configuration.GetSection("ReverseProxy:Clusters:auth:Destinations")

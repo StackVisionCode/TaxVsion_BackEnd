@@ -307,6 +307,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             tokenReferences,
             Options.Create(RegistrationOptions),
             bus,
+            TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
             NullLogger<OnboardingSuccessCompleter>.Instance
         );
 }

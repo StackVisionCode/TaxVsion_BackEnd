@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BuildingBlocks.Platform;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -28,13 +29,21 @@ public sealed class TenantHostGuardMiddlewareTests
         }
     }
 
-    private static TenantHostGuardOptions DefaultOptions(bool enabled = true) =>
-        new()
-        {
-            Enabled = enabled,
-            BaseDomain = "taxproffice.com",
-            SystemSubdomains = ["api", "app", "www", "admin"],
-        };
+    private static TenantHostGuardOptions DefaultOptions(bool enabled = true) => new() { Enabled = enabled };
+
+    private sealed class FixedPlatformSettings(string baseDomain) : IPlatformSettings
+    {
+        public PlatformSettingsSnapshot Current { get; } =
+            new(
+                1,
+                "TaxOffix",
+                "TaxOffix LLC",
+                baseDomain,
+                $"api.{baseDomain}",
+                $"support@{baseDomain}",
+                $"billing@{baseDomain}"
+            );
+    }
 
     private static HostTenantResult Resolved(Guid tenantId) => new(HostTenantOutcome.Resolved, tenantId);
 
@@ -43,7 +52,8 @@ public sealed class TenantHostGuardMiddlewareTests
         HostTenantResult resolverResult,
         TenantHostGuardOptions? options = null,
         string? method = null,
-        Guid? jwtTenantId = null
+        Guid? jwtTenantId = null,
+        string baseDomain = "taxproffice.com"
     )
     {
         var reachedNext = false;
@@ -55,6 +65,7 @@ public sealed class TenantHostGuardMiddlewareTests
                 return Task.CompletedTask;
             },
             Options.Create(options ?? DefaultOptions()),
+            new FixedPlatformSettings(baseDomain),
             NullLogger<TenantHostGuardMiddleware>.Instance
         );
 
@@ -75,6 +86,7 @@ public sealed class TenantHostGuardMiddlewareTests
     [InlineData("app.taxproffice.com")]
     [InlineData("www.taxproffice.com")]
     [InlineData("admin.taxproffice.com")]
+    [InlineData("client.taxproffice.com")] // portal de clientes: antes el Gateway lo trataba como oficina
     [InlineData("taxproffice.com")] // apex
     [InlineData("localhost")]
     [InlineData("otro-dominio.com")]
@@ -167,5 +179,32 @@ public sealed class TenantHostGuardMiddlewareTests
 
         Assert.True(reachedNext);
         Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task Tras_cambiar_el_dominio_el_host_viejo_ya_no_se_valida_como_oficina()
+    {
+        var (_, reachedNext, resolverCalls) = await InvokeAsync(
+            "oficina1.taxproffice.com",
+            new HostTenantResult(HostTenantOutcome.NotRegistered, Guid.Empty),
+            baseDomain: "taxoffix.io"
+        );
+
+        Assert.True(reachedNext);
+        Assert.Equal(0, resolverCalls);
+    }
+
+    [Fact]
+    public async Task Tras_cambiar_el_dominio_el_host_nuevo_se_valida_como_oficina()
+    {
+        var (status, reachedNext, resolverCalls) = await InvokeAsync(
+            "oficina1.taxoffix.io",
+            new HostTenantResult(HostTenantOutcome.NotRegistered, Guid.Empty),
+            baseDomain: "taxoffix.io"
+        );
+
+        Assert.Equal(StatusCodes.Status404NotFound, status);
+        Assert.False(reachedNext);
+        Assert.Equal(1, resolverCalls);
     }
 }

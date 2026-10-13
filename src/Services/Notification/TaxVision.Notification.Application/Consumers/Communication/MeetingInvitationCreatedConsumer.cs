@@ -69,7 +69,6 @@ public static class MeetingInvitationCreatedConsumer
                         ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
                         ["join_link"] = evt.JoinUrl,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

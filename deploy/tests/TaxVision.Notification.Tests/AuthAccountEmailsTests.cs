@@ -16,12 +16,7 @@ namespace TaxVision.Notification.Tests;
 public sealed class AuthAccountEmailsTests
 {
     private static readonly IOptions<PortalOptions> Portal = Options.Create(
-        new PortalOptions
-        {
-            BaseUrl = "https://app.test",
-            ClientBaseUrl = "https://app.test",
-            ProductName = "TaxProffice",
-        }
+        new PortalOptions { BaseUrl = "https://app.test", ClientBaseUrl = "https://app.test" }
     );
 
     private const string Host = "acme.taxproffice.com";
@@ -45,6 +40,7 @@ public sealed class AuthAccountEmailsTests
             new CapturingGateway(),
             scribe,
             Portal,
+            TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             new Correlation(),
             CancellationToken.None
@@ -75,6 +71,7 @@ public sealed class AuthAccountEmailsTests
             new CapturingGateway(),
             scribe,
             Portal,
+            TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             new Correlation(),
             CancellationToken.None
@@ -106,6 +103,7 @@ public sealed class AuthAccountEmailsTests
             gateway,
             scribe,
             Portal,
+            TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             new Correlation(),
             CancellationToken.None
@@ -141,6 +139,7 @@ public sealed class AuthAccountEmailsTests
             new CapturingGateway(),
             scribe,
             Portal,
+            TestPlatform.Settings,
             new Correlation(),
             CancellationToken.None
         );

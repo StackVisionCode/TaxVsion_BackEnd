@@ -36,7 +36,7 @@ public sealed class TenantDomain : AggregateRoot
 
     public TenantDomainType DomainType { get; private set; }
 
-    /// <summary>Host completo normalizado (ej. "oficina1.taxproffice.com"). Único globalmente.</summary>
+    /// <summary>Host completo normalizado (ej. "oficina1.taxoffix.io"). Único globalmente.</summary>
     public string Host { get; private set; } = default!;
 
     /// <summary>Solo para DomainType.Subdomain — el slug elegido por la oficina.</summary>
@@ -56,7 +56,7 @@ public sealed class TenantDomain : AggregateRoot
     public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>
-    /// Crea un subdominio de plataforma (ej. oficina1.taxproffice.com). Con wildcard DNS
+    /// Crea un subdominio de plataforma (ej. oficina1.taxoffix.io). Con wildcard DNS
     /// (Fase A5) el certificado ya cubre el host, así que arranca directo en Active —
     /// no hay paso de provisioning para este tipo.
     /// </summary>
@@ -202,6 +202,7 @@ public sealed class TenantDomain : AggregateRoot
             return Result.Failure(new Error("TenantDomain.Disabled", "Domain has been disabled."));
 
         var oldHost = Host;
+        var oldSlug = SubdomainSlug ?? string.Empty;
         var newHost = $"{newSlug.Value}.{baseDomain.Trim().ToLowerInvariant()}";
         if (newHost == oldHost)
             return Result.Failure(
@@ -211,9 +212,54 @@ public sealed class TenantDomain : AggregateRoot
         SubdomainSlug = newSlug.Value;
         Host = newHost;
         AddDomainEvent(
-            new TenantSubdomainChanged(TenantId, Id, oldHost, newHost, NormalizeActor(actingUserId ?? Guid.Empty))
+            new TenantSubdomainChanged(
+                TenantId,
+                Id,
+                oldHost,
+                newHost,
+                NormalizeActor(actingUserId ?? Guid.Empty),
+                oldSlug,
+                newSlug.Value,
+                IsPrimary
+            )
         );
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Re-apunta el subdominio al dominio vigente de la plataforma. Es un cambio de dominio, no un
+    /// renombre: el slug queda igual y no hay evento. Devuelve si el host cambió.
+    /// </summary>
+    public bool RebaseOnPlatformDomain(string baseDomain)
+    {
+        if (DomainType != TenantDomainType.Subdomain || string.IsNullOrEmpty(SubdomainSlug))
+            return false;
+        if (string.IsNullOrWhiteSpace(baseDomain))
+            return false;
+
+        var host = $"{SubdomainSlug}.{baseDomain.Trim().ToLowerInvariant()}";
+        if (host == Host)
+            return false;
+
+        Host = host;
+        return true;
+    }
+
+    /// <summary>
+    /// Re-apunta un host de la plataforma que no está en Cloudflare (el api.* del tenant Platform) al
+    /// host vigente. El dominio propio de una oficina no pasa por acá: vive provisionado en Cloudflare.
+    /// </summary>
+    public bool RebasePlatformHost(string host)
+    {
+        if (DomainType != TenantDomainType.CustomHostname || CloudflareCustomHostnameId is not null)
+            return false;
+
+        var normalized = host?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (normalized.Length is 0 or > 253 || !normalized.Contains('.') || normalized == Host)
+            return false;
+
+        Host = normalized;
+        return true;
     }
 
     /// <summary>Deshabilita el dominio (desprovisioning) — no lo borra, queda en el historial/auditoría.</summary>

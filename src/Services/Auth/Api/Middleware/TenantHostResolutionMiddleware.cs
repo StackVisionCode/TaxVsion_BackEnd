@@ -3,6 +3,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Tenancy;
 using Microsoft.Extensions.Options;
@@ -29,6 +30,7 @@ namespace TaxVision.Auth.Api.Middleware;
 public sealed class TenantHostResolutionMiddleware(
     RequestDelegate next,
     IOptions<TenantDomainOptions> options,
+    IPlatformSettings platform,
     ILogger<TenantHostResolutionMiddleware> logger
 )
 {
@@ -49,7 +51,7 @@ public sealed class TenantHostResolutionMiddleware(
         "/auth/.well-known",
         "/openapi",
         "/swagger",
-        // Fase A4 — llamables desde el apex (taxproffice.com), que nunca resuelve a un
+        // Fase A4 — llamables desde el apex (taxoffix.io), que nunca resuelve a un
         // tenant: alta de oficina (check-availability) y "encuentra tu oficina" por
         // email. "by-host" NO se exime a propósito: depende de que este middleware ya
         // haya resuelto el Host, es justo lo que ese endpoint expone al frontend.
@@ -82,7 +84,7 @@ public sealed class TenantHostResolutionMiddleware(
         var host = context.Request.Host.Host;
 
         // Hosts de la plataforma sin oficina (apex, www, app, client): pasan sin buscar ni auditar.
-        if (options.Value.IsSystemHost(host))
+        if (options.Value.IsSystemHost(host, platform.Current))
         {
             await next(context);
             return;

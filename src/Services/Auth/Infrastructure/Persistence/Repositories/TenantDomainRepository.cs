@@ -22,6 +22,15 @@ public sealed class TenantDomainRepository(AuthDbContext db) : ITenantDomainRepo
     public Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default) =>
         db.TenantDomains.IgnoreQueryFilters().FirstOrDefaultAsync(domain => domain.Host == host, ct);
 
+    // IgnoreQueryFilters(): mismo motivo que GetByHostAsync — corre antes de que haya tenant.
+    public Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default) =>
+        db
+            .TenantDomains.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                domain => domain.DomainType == TenantDomainType.Subdomain && domain.SubdomainSlug == slug,
+                ct
+            );
+
     public async Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
         await db
             .TenantDomains.IgnoreQueryFilters()

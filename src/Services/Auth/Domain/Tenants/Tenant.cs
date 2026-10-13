@@ -69,6 +69,13 @@ public sealed class Tenant : BaseEntity
         );
     }
 
+    /// <summary>La oficina renombró su subdominio primario (el slug sale de ahí).</summary>
+    public void ChangeSubDomain(string subDomain)
+    {
+        if (!string.IsNullOrWhiteSpace(subDomain))
+            SubDomain = subDomain.Trim().ToLowerInvariant();
+    }
+
     public void UpdateFromCreatedEvent(string name, string subDomain, TenantKind kind, string defaultTimeZoneId)
     {
         Name = name.Trim();

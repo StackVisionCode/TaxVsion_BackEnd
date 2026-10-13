@@ -78,6 +78,7 @@ import type {
 import type { SfuService } from '../application/ports/sfu-service.js';
 import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
 import type { TenantHostResolver } from '../application/ports/tenant-host-resolver.js';
+import type { TenantHostCache } from '../application/ports/tenant-host-cache.js';
 import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
 import type { CloudStorageDownloadClient } from '../application/ports/cloudstorage-download-client.js';
 import type { CloudStorageUploadClient } from '../application/ports/cloudstorage-upload-client.js';
@@ -133,6 +134,8 @@ export interface AppContainer {
   readonly customerReconciliation: HttpCustomerReconciliationClient;
   readonly customerAssignmentsReconciliation: HttpCustomerAssignmentsReconciliationClient;
   readonly tenantHostResolver: TenantHostResolver;
+  /** La misma instancia que tenantHostResolver: los consumers invalidan lo que el resolver cachea. */
+  readonly tenantHostCache: TenantHostCache;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
    * Socket.IO server, porque `SocketRealtimeEmitter` necesita el `io` que a
@@ -152,6 +155,7 @@ export function buildContainer(): AppContainer {
   const planCodeCache = new CachedPlanCodeReader(limitsRepository);
   const tenantModulesCache = new CachedTenantModulesReader(limitsRepository);
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
+  const tenantHost = new HttpTenantHostResolver(serviceTokens);
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
@@ -195,6 +199,7 @@ export function buildContainer(): AppContainer {
     cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
     customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
     customerAssignmentsReconciliation: new HttpCustomerAssignmentsReconciliationClient(serviceTokens),
-    tenantHostResolver: new HttpTenantHostResolver(serviceTokens),
+    tenantHostResolver: tenantHost,
+    tenantHostCache: tenantHost,
   };
 }

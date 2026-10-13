@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IPlatformSettings platform,
         TimeProvider clock,
         ILogger<GenerateOnboardingReceiptDocumentResult> logger,
         CancellationToken ct
@@ -59,7 +61,9 @@ public static class GenerateOnboardingReceiptDocumentHandler
                     return Result.Failure<GenerateOnboardingReceiptDocumentResult>(retry.Error);
 
                 await unitOfWork.SaveChangesAsync(ct);
-                await bus.PublishAsync(ToProcessCommand(command, existing.Id, correlationId));
+                await bus.PublishAsync(
+                    ToProcessCommand(command, existing.Id, correlationId, platform.Current.BrandName)
+                );
 
                 logger.LogInformation(
                     "Onboarding receipt document generation {GenerationId} re-queued for onboarding {OnboardingId}.",
@@ -93,7 +97,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
                 throw;
             }
 
-            await bus.PublishAsync(ToProcessCommand(command, generation.Id, correlationId));
+            await bus.PublishAsync(ToProcessCommand(command, generation.Id, correlationId, platform.Current.BrandName));
 
             logger.LogInformation(
                 "Onboarding receipt document generation {GenerationId} accepted for onboarding {OnboardingId}.",
@@ -164,7 +168,8 @@ public static class GenerateOnboardingReceiptDocumentHandler
     private static ProcessOnboardingReceiptGenerationCommand ToProcessCommand(
         GenerateOnboardingReceiptDocumentCommand command,
         Guid generationId,
-        string correlationId
+        string correlationId,
+        string platformBrand
     ) =>
         new(
             GenerationId: generationId,
@@ -172,7 +177,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
             TemplateVersion: command.TemplateVersion,
             OnboardingId: command.OnboardingId,
             DocumentVersion: command.DocumentVersion,
-            FileName: $"TaxProffice_Receipt_{command.Receipt.PaidAtUtc:yyyy-MM-dd}.pdf",
+            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc),
             CorrelationId: correlationId,
             Receipt: command.Receipt
         );

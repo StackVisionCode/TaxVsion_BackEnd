@@ -16,9 +16,16 @@ public static class TenantSubdomainChangedHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IMessageBus bus,
+        ITenantRegistry tenants,
+        ITenantResolutionCache resolutionCache,
         CancellationToken ct
     )
     {
+        // La réplica local del tenant guarda el slug (lo usan el link de renovación y las invitaciones):
+        // si cambió el primario, cambia acá en la misma transacción que la auditoría y el evento.
+        if (evt.IsPrimary && await tenants.GetByIdAsync(evt.TenantId, ct) is { } tenant)
+            tenant.ChangeSubDomain(evt.NewSlug);
+
         await audit.AddAsync(
             AuthAuditLog.Record(
                 evt.TenantId,
@@ -42,8 +49,15 @@ public static class TenantSubdomainChangedHandler
                 DomainId = evt.DomainId,
                 OldHost = evt.OldHost,
                 NewHost = evt.NewHost,
+                OldSlug = evt.OldSlug,
+                NewSlug = evt.NewSlug,
+                IsPrimary = evt.IsPrimary,
                 CorrelationId = correlation.CorrelationId,
             }
         );
+
+        // El host viejo deja de resolver ya (además del que invalida el comando, por si el rename vino
+        // de otro camino).
+        await resolutionCache.InvalidateAsync(evt.OldHost, ct);
     }
 }

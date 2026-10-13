@@ -8,5 +8,8 @@ public sealed record TenantSubdomainChanged(
     Guid DomainId,
     string OldHost,
     string NewHost,
-    Guid? ActingUserId
+    Guid? ActingUserId,
+    string OldSlug,
+    string NewSlug,
+    bool IsPrimary
 ) : IDomainEvent;

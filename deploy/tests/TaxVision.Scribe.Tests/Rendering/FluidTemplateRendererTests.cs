@@ -94,6 +94,7 @@ public sealed class FluidTemplateRendererTests
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             l1Cache,
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -106,6 +107,34 @@ public sealed class FluidTemplateRendererTests
             Locale: null,
             Variables: new Dictionary<string, object?> { ["name"] = "Ana", ["link"] = "https://x" }
         );
+
+    [Fact]
+    public async Task RenderAsync_imposes_the_platform_brand_over_whatever_the_caller_sends()
+    {
+        _cloudStorage.Seed(
+            _layoutHtmlFileId,
+            "<html><body>{{ body | raw }}<footer>{{ product_name }} | {{ platform_legal_name }} | "
+                + "{{ platform_website }} | {{ platform_support_email }}</footer></body></html>"
+        );
+        var renderer = BuildRenderer(new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }));
+        var request = new RenderRequest(
+            TestEventKey,
+            TenantId: null,
+            Locale: null,
+            Variables: new Dictionary<string, object?>
+            {
+                ["name"] = "Ana",
+                ["link"] = "https://x",
+                ["product_name"] = "OldBrand",
+            }
+        );
+
+        var result = await renderer.RenderAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("TaxOffix | TaxOffix LLC | https://taxoffix.io | support@taxoffix.io", result.Value.Html);
+        Assert.DoesNotContain("OldBrand", result.Value.Html);
+    }
 
     [Fact]
     public async Task RenderAsync_parses_and_renders_variables_into_subject_html_and_text()
@@ -197,6 +226,7 @@ public sealed class FluidTemplateRendererTests
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -314,6 +344,7 @@ public sealed class FluidTemplateRendererTests
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -425,6 +456,7 @@ public sealed class FluidTemplateRendererTests
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -446,6 +478,7 @@ public sealed class FluidTemplateRendererTests
             _cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -474,6 +507,7 @@ public sealed class FluidTemplateRendererTests
             _cloudStorage,
             new FakeLogoResolver(fallbackLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance
@@ -500,6 +534,7 @@ public sealed class FluidTemplateRendererTests
             _cloudStorage,
             new FakeLogoResolver(ownLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             _l2Cache,
             NullLogger<FluidTemplateRenderer>.Instance

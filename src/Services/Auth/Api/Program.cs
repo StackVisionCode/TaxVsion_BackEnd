@@ -15,6 +15,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Tenancy;
@@ -104,6 +105,10 @@ builder.Services.Configure<PlatformEmergencyAccessOptions>(
 );
 builder.Services.AddHostedService<PlatformAdminEmergencyAccessService>();
 builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
+
+// Dominio y marca de la plataforma (Tenant): la resolución de oficinas por Host y los links salen
+// de acá. Va junto a ListenForPlatformSettings() en la config de Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<PermissionsBackfillService>();
 builder.Services.AddHostedService<PermissionsReconciliationService>();
@@ -463,6 +468,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(LoginHandler).Assembly);
+    options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var rabbitUri =

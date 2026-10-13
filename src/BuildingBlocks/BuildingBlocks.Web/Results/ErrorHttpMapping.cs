@@ -99,7 +99,9 @@ public static class ErrorHttpMapping
             or "inventory.supplierNotFound"
             or "inventory.itemSupplierNotFound"
             or "Signature.Profile.NotFound"
-            or "Signature.Profile.NoEffective" => StatusCodes.Status404NotFound,
+            or "Signature.Profile.NoEffective"
+            // Tenant todavía no sembró la marca de la plataforma (el seeder corre al arrancar).
+            or "PlatformSettings.NotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"

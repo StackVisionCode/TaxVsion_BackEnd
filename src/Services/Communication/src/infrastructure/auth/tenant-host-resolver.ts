@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import type { TenantHostResolver } from '../../application/ports/tenant-host-resolver.js';
+import type { TenantHostCache } from '../../application/ports/tenant-host-cache.js';
 import type { ServiceTokenClient } from './service-token-client.js';
 
 /**
@@ -21,7 +22,7 @@ interface PrimaryHostResponse {
   readonly host: string;
 }
 
-export class HttpTenantHostResolver implements TenantHostResolver {
+export class HttpTenantHostResolver implements TenantHostResolver, TenantHostCache {
   private readonly cache = new Map<string, CachedHost>();
 
   constructor(private readonly serviceTokens: ServiceTokenClient) {}
@@ -37,6 +38,14 @@ export class HttpTenantHostResolver implements TenantHostResolver {
       this.cache.set(tenantId, { host, expiresAtMs: Date.now() + CACHE_TTL_MS });
     }
     return host;
+  }
+
+  forget(tenantId: string): void {
+    this.cache.delete(tenantId);
+  }
+
+  forgetAll(): void {
+    this.cache.clear();
   }
 
   private async fetchHost(tenantId: string): Promise<string | null> {

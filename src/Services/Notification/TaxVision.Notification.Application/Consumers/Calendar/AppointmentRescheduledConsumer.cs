@@ -64,7 +64,6 @@ public static class AppointmentRescheduledConsumer
                         ["new_local"] = CalendarTimeFormatting.InZone(evt.NewStartUtc, evt.TimeZoneId),
                         ["time_zone"] = evt.TimeZoneId,
                         ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

@@ -1,7 +1,6 @@
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import type { Server as HttpServer } from 'node:http';
-import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import { redisPub, redisSub } from '../redis/redis-client.js';
 import {
@@ -12,6 +11,7 @@ import {
 import { InvalidJoinTicketError, verifyGuestJoinTicket } from '../jwks/join-ticket.js';
 import { socketConnectionsActive } from '../telemetry/metrics.js';
 import { isStaffActor } from '../../domain/shared/permissions.js';
+import { isAllowedOrigin } from '../http/cors-origins.js';
 
 /**
  * `SocketData` es el tercer generic de `Server<S2C, C2S, IE, SocketData>` en
@@ -84,7 +84,8 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
       skipMiddlewares: false,
     },
     cors: {
-      origin: config.cors.origins.length === 0 ? true : config.cors.origins,
+      // Misma política que HTTP: orígenes de la plataforma (PlatformSettings) + los extra de config.
+      origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
       credentials: true,
     },
     // Rechazar frames enormes desde el cliente (chat max ~4 KB por mensaje, WebRTC

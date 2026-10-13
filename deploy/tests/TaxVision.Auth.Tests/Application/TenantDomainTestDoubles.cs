@@ -22,6 +22,13 @@ internal sealed class FakeTenantDomainRepository : ITenantDomainRepository
     public Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default) =>
         Task.FromResult(_byId.Values.FirstOrDefault(domain => domain.Host == host));
 
+    public Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default) =>
+        Task.FromResult(
+            _byId.Values.FirstOrDefault(domain =>
+                domain.DomainType == TenantDomainType.Subdomain && domain.SubdomainSlug == slug
+            )
+        );
+
     public Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<TenantDomain>>(
             _byId.Values.Where(domain => domain.TenantId == tenantId).ToList()

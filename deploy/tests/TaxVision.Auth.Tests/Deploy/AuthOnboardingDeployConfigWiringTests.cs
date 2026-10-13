@@ -21,12 +21,10 @@ public sealed class AuthOnboardingDeployConfigWiringTests
         var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
 
         Assert.Contains("Onboarding__AuthPublicBaseUrl: http://auth-api:8080", compose);
-        Assert.Contains(
-            "Onboarding__ReceiptDownloadBaseUrl: https://${TAXVISION_DOMAIN:-api.taxproffice.com}",
-            compose
-        );
-        Assert.Contains("Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}", compose);
-        Assert.Contains("Onboarding__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}", compose);
+        Assert.Contains("Onboarding__ReceiptDownloadBaseUrl: https://${TAXVISION_DOMAIN:-api.taxoffix.io}", compose);
+        Assert.Contains("Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxoffix.io}", compose);
+        // El dominio de las oficinas ya no es config de Onboarding: sale de PlatformSettings (Tenant).
+        Assert.DoesNotContain("Onboarding__TenantBaseDomain", compose);
     }
 
     [Fact]

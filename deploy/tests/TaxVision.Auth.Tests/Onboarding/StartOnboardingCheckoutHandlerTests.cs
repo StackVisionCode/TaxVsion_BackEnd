@@ -31,6 +31,7 @@ public sealed class StartOnboardingCheckoutHandlerTests
             new FakeTokenReferenceStore(),
             Options.Create(RegistrationOptions),
             new FakeMessageBus(),
+            TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io"),
             NullLogger<OnboardingSuccessCompleter>.Instance
         );
 

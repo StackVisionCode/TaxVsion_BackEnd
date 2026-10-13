@@ -10,19 +10,16 @@ public sealed class AccountSurfaceDeployWiringTests
         Assert.DoesNotContain("TenantDomains__EnforceHostResolution", compose);
     }
 
+    /// <summary>
+    /// Los orígenes del landing salen del dominio de PlatformSettings: una lista fija en el compose es justo
+    /// lo que se quedaba con el dominio viejo al cambiarlo.
+    /// </summary>
     [Fact]
-    public void Production_declares_the_landing_origins_for_the_account_cookie()
+    public void Production_does_not_pin_the_landing_origins_for_the_account_cookie()
     {
         var compose = File.ReadAllText(Path.Combine(RepoRoot(), "deploy", "docker", "docker-compose.yml"));
 
-        Assert.Contains(
-            "AccountSession__AllowedOrigins__0: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}",
-            compose
-        );
-        Assert.Contains(
-            "AccountSession__AllowedOrigins__1: https://www.${TAXVISION_BASE_DOMAIN:-taxproffice.com}",
-            compose
-        );
+        Assert.DoesNotContain("AccountSession__AllowedOrigins", compose);
     }
 
     [Fact]

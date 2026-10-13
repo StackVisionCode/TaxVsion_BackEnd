@@ -68,6 +68,25 @@ public partial class Tenant : BaseEntity
         return Result.Success(tenant);
     }
 
+    /// <summary>
+    /// La oficina renombró su subdominio primario. El dueño del dominio es Auth (lo valida y lo publica);
+    /// acá se refleja el slug con la misma regla de formato que al crear la oficina.
+    /// </summary>
+    public Result ChangeSubDomain(string subdomain)
+    {
+        var sub = (subdomain ?? "").Trim().ToLower();
+        if (!MyRegex().IsMatch(sub))
+            return Result.Failure(
+                new Error(
+                    "Tenant.Subdomain",
+                    "Subdomain must be 3-40 characters long and contain only lowercase letters and numbers (a-z, 0-9) and hyphens (-)."
+                )
+            );
+
+        SubDomain = sub;
+        return Result.Success();
+    }
+
     public Result Suspend()
     {
         if (Status != EnumTenantStatus.TenantStatus.Active)

@@ -35,6 +35,7 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
             unitOfWork,
             bus,
             new TestCorrelationContext("corr-1"),
+            TestPlatform.Settings,
             TimeProvider.System,
             NullLogger<GenerateOnboardingReceiptDocumentResult>.Instance,
             CancellationToken.None
@@ -70,6 +71,7 @@ public sealed class GenerateOnboardingReceiptDocumentHandlerTests
             unitOfWork,
             bus,
             new TestCorrelationContext("corr-1"),
+            TestPlatform.Settings,
             TimeProvider.System,
             NullLogger<GenerateOnboardingReceiptDocumentResult>.Instance,
             CancellationToken.None

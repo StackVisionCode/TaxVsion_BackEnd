@@ -4067,7 +4067,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             DefaultTimeZoneId = "Etc/UTC",
                             IsActive = true,
                             Kind = "Platform",
-                            Name = "TaxVision Platform",
+                            Name = "Platform",
                             SubDomain = "platform-internal"
                         });
                 });

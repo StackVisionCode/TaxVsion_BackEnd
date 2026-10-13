@@ -1,5 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -22,6 +23,7 @@ public static class SignatureCertificateReadyConsumer
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -49,7 +51,7 @@ public static class SignatureCertificateReadyConsumer
                 {
                     await smsSender.SendAsync(
                         signer.PhoneE164!,
-                        BuildSms(signer, portal.Value, downloadLink, evt.DocumentTitle),
+                        BuildSms(signer, platform.Current.BrandName, downloadLink, evt.DocumentTitle),
                         ct
                     );
                     continue;
@@ -87,15 +89,15 @@ public static class SignatureCertificateReadyConsumer
 
     private static string BuildSms(
         SignerContactSnapshot signer,
-        PortalOptions portal,
+        string product,
         string downloadLink,
         string? documentTitle
     ) =>
         signer.Language == "Es"
             ? string.IsNullOrWhiteSpace(documentTitle)
-                ? $"{portal.ProductName}: {signer.FullName}, tu certificado de firma está listo. Descárgalo: {downloadLink}"
-                : $"{portal.ProductName}: {signer.FullName}, el certificado de {documentTitle} está listo. Descárgalo: {downloadLink}"
+                ? $"{product}: {signer.FullName}, tu certificado de firma está listo. Descárgalo: {downloadLink}"
+                : $"{product}: {signer.FullName}, el certificado de {documentTitle} está listo. Descárgalo: {downloadLink}"
             : string.IsNullOrWhiteSpace(documentTitle)
-                ? $"{portal.ProductName}: {signer.FullName}, your signature certificate is ready. Download it: {downloadLink}"
-                : $"{portal.ProductName}: {signer.FullName}, the certificate for {documentTitle} is ready. Download it: {downloadLink}";
+                ? $"{product}: {signer.FullName}, your signature certificate is ready. Download it: {downloadLink}"
+                : $"{product}: {signer.FullName}, the certificate for {documentTitle} is ready. Download it: {downloadLink}";
 }

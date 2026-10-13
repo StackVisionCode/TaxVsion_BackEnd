@@ -9,6 +9,12 @@ public interface ITenantDomainRepository
     /// <summary>Resuelve un Host completo (subdominio o custom hostname) a su TenantDomain — Fase A3.</summary>
     Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default);
 
+    /// <summary>
+    /// El subdominio de plataforma con ese slug. Así se resuelve un host de oficina: por el slug, no
+    /// por el host guardado, para que un cambio de dominio no deje a nadie sin resolver.
+    /// </summary>
+    Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default);
+
     Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Todo host en estado Active — la allowlist que valida el middleware de resolución (Fase A3).</summary>

@@ -1,6 +1,6 @@
-using BuildingBlocks.Persistence;
+﻿using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 
@@ -8,7 +8,7 @@ namespace TaxVision.Auth.Application.TenantDomains.Commands;
 
 /// <summary>
 /// Fase A7 — le permite al tenant admin cambiar el subdominio primario ya activo
-/// (ej. oficina1.taxproffice.com -&gt; oficina2.taxproffice.com). Solo aplica a
+/// (ej. oficina1.taxoffix.io -&gt; oficina2.taxoffix.io). Solo aplica a
 /// DomainType.Subdomain: un custom hostname no se renombra por acá, ver
 /// TenantDomain.ChangeSubdomain.
 /// </summary>
@@ -20,7 +20,8 @@ public static class ChangeSubdomainHandler
         ChangeSubdomainCommand command,
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
-        IOptions<TenantDomainOptions> options,
+        IPlatformSettings platform,
+        ITenantResolutionCache resolutionCache,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -53,11 +54,17 @@ public static class ChangeSubdomainHandler
                 new Error("TenantDomain.SlugReservedTemporarily", "This subdomain is temporarily reserved.")
             );
 
-        var changeResult = domain.ChangeSubdomain(slug, options.Value.BaseDomain, command.ActingUserId);
+        var settings = platform.Current;
+        var previousHost = domain.SubdomainSlug is null ? null : settings.TenantHost(domain.SubdomainSlug);
+        var changeResult = domain.ChangeSubdomain(slug, settings.BaseDomain, command.ActingUserId);
         if (changeResult.IsFailure)
             return Result.Failure<TenantDomainResponse>(changeResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        // El slug viejo no puede seguir resolviendo a esta oficina mientras dura la cache.
+        if (previousHost is not null)
+            await resolutionCache.InvalidateAsync(previousHost, ct);
         return Result.Success(TenantDomainResponse.From(domain));
     }
 }

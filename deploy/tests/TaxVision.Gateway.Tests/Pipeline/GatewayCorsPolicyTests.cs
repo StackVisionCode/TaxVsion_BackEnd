@@ -49,13 +49,24 @@ public sealed class GatewayCorsPolicyTests
     [InlineData("https://localhost")]
     [InlineData("capacitor://localhost")]
     [InlineData("ionic://localhost")]
-    public void GatewayCors_IncluyeOriginsMovilesEnAppsettingsYCompose(string origin)
+    public void GatewayCors_IncluyeOriginsMovilesEnAppsettings(string origin)
     {
         var appsettings = RepoFile("src/Gateway/TaxVision.Gateway/appsettings.json");
-        var compose = RepoFile("deploy/docker/docker-compose.yml");
 
         Assert.Contains(origin, appsettings);
-        Assert.Contains(origin, compose);
+    }
+
+    /// <summary>
+    /// Los orígenes de las apps de la plataforma salen del dominio vigente de PlatformSettings en cada
+    /// preflight: una lista fija se quedaba con el dominio viejo al cambiarlo.
+    /// </summary>
+    [Fact]
+    public void LaPoliticaSpa_SigueAlDominioDePlatformSettings()
+    {
+        var source = ProgramSource();
+
+        Assert.Contains("SetIsOriginAllowed(", source);
+        Assert.Contains("platform.Current.WebOrigins", source);
     }
 
     [Theory]

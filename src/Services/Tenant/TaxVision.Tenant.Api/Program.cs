@@ -6,6 +6,7 @@ using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Messaging.PlatformIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -15,6 +16,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -62,6 +64,13 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTenantInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
+
+// Tenant ES la fuente de PlatformSettings: no usa el refresco (AddPlatformSettings), solo la config de
+// arranque con la que siembra su fila la primera vez.
+builder.Services.Configure<PlatformSettingsOptions>(
+    builder.Configuration.GetSection(PlatformSettingsOptions.SectionName)
+);
+builder.Services.AddHostedService<PlatformSettingsSeeder>();
 
 // Autorización por permiso ([HasPermission(...)], ver TenantBrandsController) — mismo mecanismo
 // que Postmaster/Signature/Notification/Customer. Coexiste con las policies nombradas de abajo:
@@ -163,6 +172,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PlatformSettingsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 16) — publicado por InternalTenantProvisioningController.
     options.PublishMessage<TenantCreatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

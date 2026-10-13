@@ -407,6 +407,9 @@ public sealed class SealingMultiDocumentTests
             Task.FromResult<TenantBrandingRef?>(null);
 
         public Task AddAsync(TenantBrandingRef branding, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantBrandingRef>>([]);
     }
 
     private sealed class DeterministicSealer : IDocumentSealingEngine

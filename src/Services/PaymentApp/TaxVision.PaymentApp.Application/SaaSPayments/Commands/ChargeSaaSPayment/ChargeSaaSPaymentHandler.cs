@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -16,8 +18,6 @@ public static class ChargeSaaSPaymentHandler
 {
     /// <summary>Descriptor por defecto para todo cobro SaaS en Fase A. Personalización por
     /// tenant/plan queda para una fase futura (PaymentAppSettings).</summary>
-    private const string DefaultStatementDescriptor = "TAXVISION SAAS";
-
     public static async Task<Result<Guid>> Handle(
         ChargeSaaSPaymentCommand command,
         ISaaSPaymentRepository payments,
@@ -29,6 +29,7 @@ public static class ChargeSaaSPaymentHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -42,7 +43,7 @@ public static class ChargeSaaSPaymentHandler
             return Result.Success(existing.Id);
         }
 
-        var preparedResult = PrepareNewPayment(command);
+        var preparedResult = PrepareNewPayment(command, platform.Current);
         if (preparedResult.IsFailure)
             return Result.Failure<Guid>(preparedResult.Error);
 
@@ -88,7 +89,10 @@ public static class ChargeSaaSPaymentHandler
         return Result.Success(payment.Id);
     }
 
-    private static Result<SaaSPayment> PrepareNewPayment(ChargeSaaSPaymentCommand command)
+    private static Result<SaaSPayment> PrepareNewPayment(
+        ChargeSaaSPaymentCommand command,
+        PlatformSettingsSnapshot platform
+    )
     {
         var keyResult = IdempotencyKey.Create(command.IdempotencyKey);
         if (keyResult.IsFailure)
@@ -98,7 +102,7 @@ public static class ChargeSaaSPaymentHandler
         if (amountResult.IsFailure)
             return Result.Failure<SaaSPayment>(amountResult.Error);
 
-        var descriptorResult = StatementDescriptor.Create(DefaultStatementDescriptor);
+        var descriptorResult = StatementDescriptor.Create(PlatformStatementDescriptors.For(platform, "SAAS"));
         if (descriptorResult.IsFailure)
             return Result.Failure<SaaSPayment>(descriptorResult.Error);
 

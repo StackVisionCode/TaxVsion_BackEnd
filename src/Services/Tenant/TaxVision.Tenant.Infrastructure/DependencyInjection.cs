@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Tenant.Application.Abstractions;
 using TaxVision.Tenant.Application.Brands.Abstractions;
+using TaxVision.Tenant.Application.Platform.Abstractions;
 using TaxVision.Tenant.Application.RateLimiting.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Infrastructure.Branding;
@@ -28,6 +29,7 @@ public static class InfrastructureRegistration
 
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<ITenantBrandRepository, TenantBrandRepository>();
+        services.AddScoped<IPlatformSettingsRepository, PlatformSettingsRepository>();
         services.AddScoped<ITenantReadService, TenantReadService>();
 
         AddBranding(services, config);

@@ -254,6 +254,21 @@ public static class DependencyInjection
         );
         services.AddHostedService<CustomerProjectionReconciliationJob>();
 
+        // Backfill de arranque de TenantBrandingRefs (nombre + subdominio de las oficinas anteriores a sus
+        // consumers) desde el directorio M2M de Tenant. Solo lo usa ese backfill: el sellado lee la proyección.
+        services
+            .AddOptions<Seed.TenantClientOptions>()
+            .Bind(configuration.GetSection(Seed.TenantClientOptions.SectionName));
+        services.AddHttpClient<Seed.ITenantDirectoryClient, Seed.TenantDirectoryClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<Seed.TenantClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<Seed.TenantBrandingBackfillService>();
+
         AddPermissionsPullRecovery(services);
         return services;
     }

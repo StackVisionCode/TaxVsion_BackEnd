@@ -29,7 +29,9 @@ public sealed record NotificationTemplateSeed(
     // v13: F7 — no promete el PDF sellado cuando el preparador no lo va a enviar.
     // v14: sig.invitation.v1 — si la request no tiene expiración (expires_at vacío) dice "no vence"
     //      en vez de "The link expires on  UTC" con la fecha en blanco.
-    int ContentVersion = 14,
+    // v15: la marca sale de {{ product_name }} (PlatformSettings) en vez de "TaxProffice" escrito; los
+    //      overrides explícitos subieron uno cada uno por lo mismo.
+    int ContentVersion = 15,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -196,7 +198,13 @@ public static class NotificationTemplateSeedSource
                 ("invite_link", VariableType.Url, true, null, "URL de aceptación de la invitación."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("is_resend", VariableType.Bool, true, "false", "true si es un reenvío del mismo invite."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
                 (
                     "account_kind",
                     VariableType.String,
@@ -205,7 +213,7 @@ public static class NotificationTemplateSeedSource
                     "portal o workspace: la cuenta que crea la invitación."
                 ),
             ],
-            ContentVersion: 9
+            ContentVersion: 10
         );
 
     private static NotificationTemplateSeed MeetingInvitation { get; } =
@@ -258,7 +266,13 @@ public static class NotificationTemplateSeedSource
                     null,
                     "Fecha de expiración de la invitación ya formateada (UTC)."
                 ),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -292,7 +306,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("reset_link", VariableType.Url, true, null, "URL de restablecimiento de contraseña."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
                 (
                     "account_kind",
                     VariableType.String,
@@ -302,7 +322,7 @@ public static class NotificationTemplateSeedSource
                 ),
                 ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
             ],
-            ContentVersion: 9
+            ContentVersion: 10
         );
 
     private static NotificationTemplateSeed OtpCode { get; } =
@@ -325,7 +345,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("code", VariableType.String, true, null, "Código OTP de un solo uso."),
                 ("reason", VariableType.String, true, null, "Motivo en texto ya traducido (p. ej. 'sign in')."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -358,7 +384,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("confirm_link", VariableType.Url, true, null, "URL de confirmación del nuevo email."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
                 (
                     "account_kind",
                     VariableType.String,
@@ -368,7 +400,7 @@ public static class NotificationTemplateSeedSource
                 ),
                 ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
             ],
-            ContentVersion: 9
+            ContentVersion: 10
         );
 
     private static NotificationTemplateSeed SecurityAlert { get; } =
@@ -390,7 +422,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("description", VariableType.String, true, null, "Descripción del evento de seguridad."),
                 ("ip_address", VariableType.String, false, null, "IP de origen, si está disponible."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -415,7 +453,13 @@ public static class NotificationTemplateSeedSource
             Variables:
             [
                 ("offices", VariableType.String, true, null, "Lista de objetos { name, url } por oficina."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -447,7 +491,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("name", VariableType.String, true, null, "Nombre del usuario."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -456,17 +506,17 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.signer_invited.v1",
             TemplateKey: "sig.invitation.v1",
             Name: "Signature — Invitación a firmar",
-            Subject: "{% if language == 'Es' %}TaxProffice — Solicitud de firma pendiente{% else %}TaxProffice — Signature request pending{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Solicitud de firma pendiente{% else %}{{ product_name }} — Signature request pending{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tienes una firma pendiente</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, tienes una solicitud de firma pendiente en TaxProffice.{% if requires_consent %} Se te pedirá aceptar el consentimiento antes de firmar.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, tienes una solicitud de firma pendiente en {{ product_name }}.{% if requires_consent %} Se te pedirá aceptar el consentimiento antes de firmar.{% endif %}</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You have a pending signature</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, you have a pending signature request on TaxProffice.{% if requires_consent %} You'll be asked to accept the consent before signing.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, you have a pending signature request on {{ product_name }}.{% if requires_consent %} You'll be asked to accept the consent before signing.{% endif %}</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 22px 0;">
@@ -485,7 +535,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("invite_link", VariableType.Url, true, null, "URL pública de firma."),
-                ("expires_at", VariableType.String, false, null, "Fecha de expiración ya formateada (UTC); vacío si la request no expira."),
+                (
+                    "expires_at",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Fecha de expiración ya formateada (UTC); vacío si la request no expira."
+                ),
                 ("requires_consent", VariableType.Bool, true, "false", "true si requiere aceptar consent antes."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ]
@@ -496,7 +552,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "storage.share_invited.v1",
             TemplateKey: "storage.share_invited.v1",
             Name: "Documents — Documento compartido con externo",
-            Subject: "{% if language == 'Es' %}TaxProffice — Te compartieron un documento{% else %}TaxProffice — A document was shared with you{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Te compartieron un documento{% else %}{{ product_name }} — A document was shared with you{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Documento{% else %}Document{% endif %}</td></tr>
@@ -536,17 +592,17 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.request_reminder_due.v1",
             TemplateKey: "sig.reminder.v1",
             Name: "Signature — Recordatorio de firma",
-            Subject: "{% if language == 'Es' %}TaxProffice — Recordatorio: tu firma sigue pendiente{% else %}TaxProffice — Reminder: your signature is still pending{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Recordatorio: tu firma sigue pendiente{% else %}{{ product_name }} — Reminder: your signature is still pending{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu firma sigue pendiente</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, este es un recordatorio ({{ reminders_sent }} de 3) de que tu firma sigue pendiente en TaxProffice. El enlace vence el {{ expires_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, este es un recordatorio ({{ reminders_sent }} de 3) de que tu firma sigue pendiente en {{ product_name }}. El enlace vence el {{ expires_at }} UTC.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your signature is still pending</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, this is reminder {{ reminders_sent }} of 3 that your signature is still pending on TaxProffice. The link expires on {{ expires_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, this is reminder {{ reminders_sent }} of 3 that your signature is still pending on {{ product_name }}. The link expires on {{ expires_at }} UTC.</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 4px 0;">
@@ -575,7 +631,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.request_completed.v1",
             TemplateKey: "sig.completed.v1",
             Name: "Signature — Firma completada",
-            Subject: "{% if language == 'Es' %}TaxProffice — Firma completada{% else %}TaxProffice — Signature completed{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Firma completada{% else %}{{ product_name }} — Signature completed{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
@@ -607,7 +663,7 @@ public static class NotificationTemplateSeedSource
                 ("document_count", VariableType.Number, true, "1", "Cantidad de documentos sellados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ],
-            ContentVersion: 14
+            ContentVersion: 15
         );
 
     // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
@@ -682,7 +738,7 @@ public static class NotificationTemplateSeedSource
                     "True si el preparador va a enviar el PDF sellado al final."
                 ),
             ],
-            ContentVersion: 16
+            ContentVersion: 17
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =
@@ -690,7 +746,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.certificate_ready.v1",
             TemplateKey: "sig.certificate.v1",
             Name: "Signature — Certificado listo",
-            Subject: "{% if language == 'Es' %}TaxProffice — Tu certificado de firma{% if document_title %}: {{ document_title }}{% endif %}{% else %}TaxProffice — Your signature certificate{% if document_title %}: {{ document_title }}{% endif %}{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Tu certificado de firma{% if document_title %}: {{ document_title }}{% endif %}{% else %}{{ product_name }} — Your signature certificate{% if document_title %}: {{ document_title }}{% endif %}{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
@@ -730,7 +786,7 @@ public static class NotificationTemplateSeedSource
                 ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ],
-            ContentVersion: 17
+            ContentVersion: 18
         );
 
     private static NotificationTemplateSeed SignatureExpired { get; } =
@@ -738,7 +794,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.request_expired.v1",
             TemplateKey: "sig.expired.v1",
             Name: "Signature — Solicitud expirada",
-            Subject: "{% if language == 'Es' %}TaxProffice — Solicitud de firma expirada{% else %}TaxProffice — Signature request expired{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Solicitud de firma expirada{% else %}{{ product_name }} — Signature request expired{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
@@ -765,7 +821,7 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.signer_rejected.v1",
             TemplateKey: "sig.declined.v1",
             Name: "Signature — Solicitud cancelada",
-            Subject: "{% if language == 'Es' %}TaxProffice — Solicitud de firma cancelada{% else %}TaxProffice — Signature request cancelled{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Solicitud de firma cancelada{% else %}{{ product_name }} — Signature request cancelled{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Firma{% else %}Signature{% endif %}</td></tr>
@@ -791,17 +847,17 @@ public static class NotificationTemplateSeedSource
             EventKey: "sig.verification_challenge_issued.v1",
             TemplateKey: "sig.verification-challenge.v1",
             Name: "Signature — Código de verificación",
-            Subject: "{% if language == 'Es' %}TaxProffice — Código de verificación{% else %}TaxProffice — Verification code{% endif %}",
+            Subject: "{% if language == 'Es' %}{{ product_name }} — Código de verificación{% else %}{{ product_name }} — Verification code{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Verificación{% else %}Verification{% endif %}</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu código de verificación</td></tr>
-              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, tu código de verificación de TaxProffice es:</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, tu código de verificación de {{ product_name }} es:</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your verification code</td></tr>
-              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, your TaxProffice verification code is:</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, your {{ product_name }} verification code is:</td></tr>
               {% endif %}
               <tr><td style="padding:14px 0 18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:12px;"><tr><td align="center" style="padding:22px 16px;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;letter-spacing:10px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ code }}</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Vence el {{ expires_at }} UTC. Si no solicitaste este código, ignora este correo.{% else %}Expires on {{ expires_at }} UTC. If you did not request this code, please ignore this email.{% endif %}</td></tr>
@@ -845,7 +901,13 @@ public static class NotificationTemplateSeedSource
                     "Nombre del comprador (con fallback ya resuelto por el consumer)."
                 ),
                 ("expires_in_minutes", VariableType.Number, true, null, "Minutos hasta la expiración del código."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -903,7 +965,13 @@ public static class NotificationTemplateSeedSource
                     null,
                     "Link mediador de descarga del recibo, si ya llegó."
                 ),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -941,7 +1009,13 @@ public static class NotificationTemplateSeedSource
                     null,
                     "Link mediador de descarga del recibo (Auth), nunca vence."
                 ),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -991,7 +1065,13 @@ public static class NotificationTemplateSeedSource
                     "Motivo legible del fallo; si falta, se omite la línea."
                 ),
                 ("retry_url", VariableType.Url, true, null, "Entrada del landing con el plan/ciclo preseleccionados."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1046,7 +1126,13 @@ public static class NotificationTemplateSeedSource
                     "Motivo legible del fallo; si falta, se omite la línea."
                 ),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para actualizar el pago."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1081,7 +1167,13 @@ public static class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para renovar."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1118,7 +1210,13 @@ public static class NotificationTemplateSeedSource
                 ("access_ends_date", VariableType.String, true, null, "Fecha en la que termina el acceso."),
                 ("days_until_end", VariableType.String, true, "0", "Días que faltan para esa fecha."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1154,7 +1252,13 @@ public static class NotificationTemplateSeedSource
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("access_ends_date", VariableType.String, true, null, "Fecha hasta la que llega el acceso pagado."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1189,7 +1293,13 @@ public static class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para renovar."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1223,7 +1333,13 @@ public static class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 
@@ -1277,7 +1393,13 @@ public static class NotificationTemplateSeedSource
                 ("category", VariableType.String, true, "General", "General | Calendar | Task | Note."),
                 ("snooze_count", VariableType.Number, true, "0", "Cuántas veces se pospuso."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
-                ("product_name", VariableType.String, true, "TaxProffice", "Branding del producto."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
             ]
         );
 

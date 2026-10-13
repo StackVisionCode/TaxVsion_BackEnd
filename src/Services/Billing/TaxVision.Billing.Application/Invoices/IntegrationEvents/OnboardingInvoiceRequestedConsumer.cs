@@ -2,6 +2,7 @@ using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,6 +31,7 @@ public static class OnboardingInvoiceRequestedConsumer
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         IOptions<PlatformIssuerOptions> platformIssuer,
+        IPlatformSettings platform,
         TimeProvider clock,
         ICorrelationContext correlation,
         ILogger<Invoice> logger,
@@ -87,7 +89,7 @@ public static class OnboardingInvoiceRequestedConsumer
             evt.PaymentId,
             invoiceNumber,
             customer,
-            platformIssuer.Value.ToSnapshot(),
+            platformIssuer.Value.ToSnapshot(platform.Current),
             evt.PlanDescription,
             evt.GrossAmountCents,
             evt.DiscountAmountCents,
@@ -128,12 +130,12 @@ public static class OnboardingInvoiceRequestedConsumer
 }
 
 /// <summary>Identidad del emisor de las facturas de onboarding = la plataforma (aún no hay tenant).
-/// Config <c>Billing:PlatformIssuer</c>. Defaults razonables para dev.</summary>
+/// Nombre legal, correo de facturación y web salen de PlatformSettings; dirección, teléfono y Tax ID son
+/// de la entidad legal y van por config <c>Billing:PlatformIssuer</c>.</summary>
 public sealed class PlatformIssuerOptions
 {
     public const string SectionName = "Billing:PlatformIssuer";
 
-    public string Name { get; set; } = "TaxVision";
     public string AddressLine1 { get; set; } = "N/A";
     public string? AddressLine2 { get; set; }
     public string City { get; set; } = "N/A";
@@ -141,17 +143,15 @@ public sealed class PlatformIssuerOptions
     public string Zip { get; set; } = "00000";
     public string Country { get; set; } = "US";
     public string? Phone { get; set; }
-    public string? Email { get; set; }
-    public string? Website { get; set; }
     public string? TaxId { get; set; }
 
-    public IssuerSnapshot ToSnapshot() =>
+    public IssuerSnapshot ToSnapshot(PlatformSettingsSnapshot platform) =>
         new(
-            Name,
+            platform.LegalName,
             new Address(AddressLine1, AddressLine2, City, State, Zip, Country),
             Phone,
-            Email,
-            Website,
+            platform.BillingEmail,
+            platform.Website,
             LogoFileId: null,
             TaxId
         );

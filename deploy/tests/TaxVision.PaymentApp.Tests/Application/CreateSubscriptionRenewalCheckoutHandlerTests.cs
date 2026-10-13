@@ -47,6 +47,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 

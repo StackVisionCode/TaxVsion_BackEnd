@@ -54,7 +54,6 @@ public static class AppointmentCancelledConsumer
                         ["scope"] = evt.Scope,
                         ["reason"] = evt.Reason,
                         ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

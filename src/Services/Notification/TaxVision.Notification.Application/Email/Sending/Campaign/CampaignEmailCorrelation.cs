@@ -7,11 +7,12 @@ namespace TaxVision.Notification.Application.Email.Sending.Campaign;
 ///
 /// <para>Formato del local-part: <c>{tenant:N}.{campaign:N}.{run:N}.{dispatchId}</c>; el <c>dispatchId</c>
 /// va último porque puede traer guiones (p. ej. "...-1") pero nunca puntos. Dominio fijo
-/// <see cref="Domain"/> solo para formar un Message-Id válido.</para>
+/// <see cref="Domain"/> solo para formar un Message-Id válido; neutro a propósito (sin la marca, que
+/// cambia): el webhook lo compara exacto para reconocer los suyos.</para>
 /// </summary>
 public static class CampaignEmailCorrelation
 {
-    public const string Domain = "cmp.taxproffice.local";
+    public const string Domain = "campaign.notification.local";
 
     public static string BuildMessageId(Guid tenantId, Guid campaignId, Guid runId, string dispatchId) =>
         $"{tenantId:N}.{campaignId:N}.{runId:N}.{dispatchId}@{Domain}";

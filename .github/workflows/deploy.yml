@@ -89,6 +89,16 @@ jobs:
       # excede y deja el workflow invalido antes de arrancar. El primero crea el
       # archivo; los otros dos agregan.
       # ---------------------------------------------------------------------
+      # Todo host/URL publico sale de DOS secrets: TAXVISION_BASE_DOMAIN (apex, ej. taxoffix.io) y
+      # TAXVISION_DOMAIN (host de la API, ej. api.taxoffix.io). Cambiar de dominio = cambiar esos dos.
+      # Sin ellos el .env saldria con "https://app." y links rotos: se corta aca.
+      - name: Validate domain secrets
+        run: |
+          if [ -z "${{ secrets.TAXVISION_BASE_DOMAIN }}" ] || [ -z "${{ secrets.TAXVISION_DOMAIN }}" ]; then
+            echo "::error::TAXVISION_BASE_DOMAIN and TAXVISION_DOMAIN secrets are required."
+            exit 1
+          fi
+
       - name: Write production .env (1/3)
         run: |
           cat > .env <<EOF
@@ -152,7 +162,7 @@ jobs:
           RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}
           MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
-          MINIO_PUBLIC_ENDPOINT=${{ secrets.MINIO_PUBLIC_ENDPOINT }}
+          MINIO_PUBLIC_ENDPOINT=${{ secrets.TAXVISION_DOMAIN }}
           # IP interna de la VPN para bindear las UIs de management (rabbitmq:15672,
           # minio:9001) sin exponerlas. Fuera del repo por si acaso; el compose cae a
           # loopback si falta, asi que no rompe el deploy.
@@ -191,15 +201,17 @@ jobs:
           MSGRAPH_CLIENT_ID=${{ secrets.MSGRAPH_CLIENT_ID }}
           MSGRAPH_CLIENT_SECRET=${{ secrets.MSGRAPH_CLIENT_SECRET }}
           MSGRAPH_TENANT_ID=${{ secrets.MSGRAPH_TENANT_ID }}
-          PORTAL_BASE_URL=${{ secrets.PORTAL_BASE_URL }}
-          CLIENT_PORTAL_BASE_URL=${{ secrets.CLIENT_PORTAL_BASE_URL }}
+          PORTAL_BASE_URL=https://app.${{ secrets.TAXVISION_BASE_DOMAIN }}
+          CLIENT_PORTAL_BASE_URL=https://client.${{ secrets.TAXVISION_BASE_DOMAIN }}
 
           # ---------- Connectors (OAuth connect-account flow + Watch/webhooks) ----------
-          CONNECTORS_GOOGLE_REDIRECT_URI=${{ secrets.CONNECTORS_GOOGLE_REDIRECT_URI }}
-          CONNECTORS_MICROSOFT_REDIRECT_URI=${{ secrets.CONNECTORS_MICROSOFT_REDIRECT_URI }}
-          CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI=${{ secrets.CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI }}
+          # Callbacks y webhook de Graph: rutas fijas de los controllers sobre el host de la API. Las
+          # mismas URLs tienen que estar registradas en Google Cloud y Entra (no se cambian solas).
+          CONNECTORS_GOOGLE_REDIRECT_URI=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/oauth/callback/gmail
+          CONNECTORS_MICROSOFT_REDIRECT_URI=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/oauth/callback/graph
+          CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/oauth/admin-consent-callback
           CONNECTORS_GMAIL_WATCH_TOPIC=${{ secrets.CONNECTORS_GMAIL_WATCH_TOPIC }}
-          CONNECTORS_GRAPH_NOTIFICATION_URL=${{ secrets.CONNECTORS_GRAPH_NOTIFICATION_URL }}
+          CONNECTORS_GRAPH_NOTIFICATION_URL=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/webhooks/graph-notification
           CONNECTORS_GRAPH_WATCH_CLIENT_STATE=${{ secrets.CONNECTORS_GRAPH_WATCH_CLIENT_STATE }}
           CONNECTORS_GMAIL_PUSH_AUDIENCE=${{ secrets.CONNECTORS_GMAIL_PUSH_AUDIENCE }}
 
@@ -363,19 +375,19 @@ jobs:
           # -- sin esto, cualquier link publico generado por PaymentClient en produccion
           # (payment links, redirects post-checkout) apuntaba a localhost. Faltaba del
           # todo en este workflow.
-          PAYMENTCLIENT_PUBLIC_BASE_URL=${{ secrets.PAYMENTCLIENT_PUBLIC_BASE_URL }}
-          PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN=${{ secrets.PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN }}
+          PAYMENTCLIENT_PUBLIC_BASE_URL=https://${{ secrets.TAXVISION_DOMAIN }}
           # Pagina de checkout (frontend) para el fallback sin-subdominio; con subdominio se usa
-          # TenantBaseDomain. Default en compose https://taxproffice.com si el secret esta vacio.
-          PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL=${{ secrets.PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL }}
+          # TenantBaseDomain. app.<dominio> sirve la misma SPA que los hosts de oficina.
+          PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL=https://app.${{ secrets.TAXVISION_BASE_DOMAIN }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
-          # compartido viajan por aca.
-          COMMUNICATION_TURN_URL=${{ secrets.COMMUNICATION_TURN_URL }}
+          # compartido viajan por aca. El host sale del dominio (turn.<dominio>): era el ultimo
+          # secret con el dominio escrito a mano. turns: en 5349 es el respaldo para redes que
+          # bloquean UDP; el STUN se deriva del primer URL (ver hmac-turn-credential-factory.ts).
+          COMMUNICATION_TURN_URL=turn:turn.${{ secrets.TAXVISION_BASE_DOMAIN }}:3478,turns:turn.${{ secrets.TAXVISION_BASE_DOMAIN }}:5349?transport=tcp
           COMMUNICATION_TURN_STATIC_AUTH_SECRET=${{ secrets.COMMUNICATION_TURN_STATIC_AUTH_SECRET }}
           COMMUNICATION_TURN_TTL_SECONDS=${{ secrets.COMMUNICATION_TURN_TTL_SECONDS }}
-          COMMUNICATION_CORS_ORIGINS=${{ secrets.COMMUNICATION_CORS_ORIGINS }}
           COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
           # Faltaban desde la propia Fase Backend 5/8 — sin esto communication-api no
@@ -386,7 +398,7 @@ jobs:
           COMMUNICATION_JOIN_TICKET_SECRET=${{ secrets.COMMUNICATION_JOIN_TICKET_SECRET }}
           COMMUNICATION_SERVICE_AUTH_CLIENT_ID=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_ID }}
           COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET }}
-          COMMUNICATION_FRONTEND_BASE_URL=${{ secrets.COMMUNICATION_FRONTEND_BASE_URL }}
+          # CORS y link de invitacion de Communication salen de TAXVISION_BASE_DOMAIN en el compose.
 
           # ---------- Bootstrap / dominio ----------
           # PLATFORM_BOOTSTRAP_ENABLED se deja apagado salvo que el secret exista y sea "true"
@@ -615,7 +627,6 @@ jobs:
       - name: Healthcheck
         run: |
           domain="${{ secrets.TAXVISION_DOMAIN }}"
-          domain="${domain:-api.taxproffice.com}"
           for i in $(seq 1 20); do
             status="$(curl -sS -o /tmp/taxvision-ready.txt -w '%{http_code}' "https://${domain}/health/ready" || true)"
             if [ "$status" = "200" ]; then

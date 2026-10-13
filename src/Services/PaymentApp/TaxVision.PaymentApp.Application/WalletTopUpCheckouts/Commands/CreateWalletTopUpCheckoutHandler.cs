@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -20,8 +22,6 @@ namespace TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands;
 /// </summary>
 public static class CreateWalletTopUpCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION WALLET";
-
     public static async Task<Result<WalletTopUpCheckoutResponse>> Handle(
         CreateWalletTopUpCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -31,6 +31,7 @@ public static class CreateWalletTopUpCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -45,7 +46,7 @@ public static class CreateWalletTopUpCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command),
+            PolicyFor(command, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -68,13 +69,16 @@ public static class CreateWalletTopUpCheckoutHandler
             );
     }
 
-    private static HostedCheckoutPolicy PolicyFor(CreateWalletTopUpCheckoutCommand command) =>
+    private static HostedCheckoutPolicy PolicyFor(
+        CreateWalletTopUpCheckoutCommand command,
+        PlatformSettingsSnapshot platform
+    ) =>
         new()
         {
             PaymentType = SaaSPaymentType.WalletTopUp,
             Subject = "Wallet top-up checkout",
             ReferenceId = command.TopUpId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "WALLET"),
             // El Wallet (dueño del saldo) ya fijó el monto de la recarga.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>

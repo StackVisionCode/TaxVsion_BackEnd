@@ -23,6 +23,13 @@ public sealed class TenantResolverTests
         public Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default) =>
             Task.FromResult(DomainToReturn?.Host == host ? DomainToReturn : null);
 
+        public Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default) =>
+            Task.FromResult(
+                DomainToReturn?.DomainType == TenantDomainType.Subdomain && DomainToReturn.SubdomainSlug == slug
+                    ? DomainToReturn
+                    : null
+            );
+
         public Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantDomain>>([]);
 
@@ -85,6 +92,8 @@ public sealed class TenantResolverTests
         }
     }
 
+    private static readonly FixedPlatformSettings Platform = FixedPlatformSettings.For("taxproffice.com");
+
     private static TenantDomain ActiveDomain(Guid tenantId, string host) =>
         TenantDomain
             .CreateSubdomain(
@@ -108,7 +117,7 @@ public sealed class TenantResolverTests
         {
             TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
         };
-        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
+        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache(), Platform);
 
         var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
 
@@ -120,7 +129,7 @@ public sealed class TenantResolverTests
     public async Task Unknown_host_never_resolves_to_a_default_tenant()
     {
         var domains = new FakeTenantDomainRepository(); // sin dominio configurado
-        var resolver = new TenantResolver(domains, new FakeTenantRegistry(), new FakeTenantResolutionCache());
+        var resolver = new TenantResolver(domains, new FakeTenantRegistry(), new FakeTenantResolutionCache(), Platform);
 
         var result = await resolver.ResolveAsync("no-existe.taxproffice.com");
 
@@ -134,7 +143,8 @@ public sealed class TenantResolverTests
         var resolver = new TenantResolver(
             new FakeTenantDomainRepository(),
             new FakeTenantRegistry(),
-            new FakeTenantResolutionCache()
+            new FakeTenantResolutionCache(),
+            Platform
         );
 
         var result = await resolver.ResolveAsync(null);
@@ -154,7 +164,7 @@ public sealed class TenantResolverTests
         var inactiveTenant = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value;
         inactiveTenant.Deactivate();
         var tenants = new FakeTenantRegistry { TenantToReturn = inactiveTenant };
-        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
+        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache(), Platform);
 
         var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
 
@@ -174,7 +184,7 @@ public sealed class TenantResolverTests
         {
             TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
         };
-        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
+        var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache(), Platform);
 
         var result = await resolver.ResolveAsync("OFICINA1.taxproffice.com");
 
@@ -195,12 +205,110 @@ public sealed class TenantResolverTests
             TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
         };
         var cache = new FakeTenantResolutionCache();
-        var resolver = new TenantResolver(domains, tenants, cache);
+        var resolver = new TenantResolver(domains, tenants, cache, Platform);
 
         await resolver.ResolveAsync("oficina1.taxproffice.com");
         domains.DomainToReturn = null; // simula que la BD ya no respondería esto — el cache debe seguir sirviendo
 
         var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
+
+        Assert.True(result.IsResolved);
+        Assert.Equal(tenantId, result.TenantId);
+    }
+
+    [Fact]
+    public async Task An_office_resolves_by_slug_under_the_current_domain_even_if_its_stored_host_is_old()
+    {
+        var tenantId = Guid.NewGuid();
+        var domains = new FakeTenantDomainRepository
+        {
+            // Fila todavía no re-apuntada: guarda el dominio anterior.
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
+        };
+        var tenants = new FakeTenantRegistry
+        {
+            TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
+        };
+        var resolver = new TenantResolver(
+            domains,
+            tenants,
+            new FakeTenantResolutionCache(),
+            FixedPlatformSettings.For("taxoffix.io")
+        );
+
+        var result = await resolver.ResolveAsync("oficina1.taxoffix.io");
+
+        Assert.True(result.IsResolved);
+        Assert.Equal(tenantId, result.TenantId);
+    }
+
+    [Fact]
+    public async Task A_host_under_the_previous_domain_no_longer_resolves()
+    {
+        var tenantId = Guid.NewGuid();
+        var domains = new FakeTenantDomainRepository
+        {
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
+        };
+        var tenants = new FakeTenantRegistry
+        {
+            TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
+        };
+        var resolver = new TenantResolver(
+            domains,
+            tenants,
+            new FakeTenantResolutionCache(),
+            FixedPlatformSettings.For("taxoffix.io")
+        );
+
+        var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
+
+        Assert.False(result.IsResolved);
+        Assert.Equal(TenantResolutionFailureReason.HostUnknown, result.FailureReason);
+    }
+
+    [Fact]
+    public async Task The_api_host_resolves_to_the_platform_tenant_without_a_domain_row()
+    {
+        var tenants = new FakeTenantRegistry
+        {
+            TenantToReturn = Tenant
+                .Register(PlatformTenant.Id, "Platform", "platform-internal", TenantKind.Platform, "Etc/UTC")
+                .Value,
+        };
+        var resolver = new TenantResolver(
+            new FakeTenantDomainRepository(),
+            tenants,
+            new FakeTenantResolutionCache(),
+            FixedPlatformSettings.For("taxoffix.io")
+        );
+
+        var result = await resolver.ResolveAsync("api.taxoffix.io");
+
+        Assert.True(result.IsResolved);
+        Assert.Equal(PlatformTenant.Id, result.TenantId);
+    }
+
+    [Fact]
+    public async Task An_office_custom_hostname_resolves_by_its_exact_host()
+    {
+        var tenantId = Guid.NewGuid();
+        var custom = TenantDomain
+            .CreateCustomHostname(tenantId, "archivos.suoficina.com", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+        custom.MarkActive(DateTime.UtcNow);
+        var tenants = new FakeTenantRegistry
+        {
+            TenantToReturn = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value,
+        };
+        var resolver = new TenantResolver(
+            new FakeTenantDomainRepository { DomainToReturn = custom },
+            tenants,
+            new FakeTenantResolutionCache(),
+            Platform
+        );
+
+        var result = await resolver.ResolveAsync("archivos.suoficina.com");
 
         Assert.True(result.IsResolved);
         Assert.Equal(tenantId, result.TenantId);

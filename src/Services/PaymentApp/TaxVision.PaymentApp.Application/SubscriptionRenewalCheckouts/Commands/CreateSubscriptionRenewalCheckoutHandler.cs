@@ -1,9 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -17,8 +19,6 @@ namespace TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts.Commands
 /// </summary>
 public static class CreateSubscriptionRenewalCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION RENEWAL";
-
     public static async Task<Result<SubscriptionRenewalCheckoutResponse>> Handle(
         CreateSubscriptionRenewalCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -28,6 +28,7 @@ public static class CreateSubscriptionRenewalCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -42,7 +43,7 @@ public static class CreateSubscriptionRenewalCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command),
+            PolicyFor(command, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -65,13 +66,16 @@ public static class CreateSubscriptionRenewalCheckoutHandler
             );
     }
 
-    private static HostedCheckoutPolicy PolicyFor(CreateSubscriptionRenewalCheckoutCommand command) =>
+    private static HostedCheckoutPolicy PolicyFor(
+        CreateSubscriptionRenewalCheckoutCommand command,
+        PlatformSettingsSnapshot platform
+    ) =>
         new()
         {
             PaymentType = SaaSPaymentType.SubscriptionRenewalCheckout,
             Subject = "Subscription renewal checkout",
             ReferenceId = command.RenewalIntentId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "RENEWAL"),
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>
                 SaaSPayment.Create(

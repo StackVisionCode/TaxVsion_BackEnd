@@ -33,7 +33,8 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
             new IntellipayCreateCustomerRequest(
                 Account: tenantId.ToString("N"),
                 Email: email,
-                FirstName: name ?? "TaxVision Customer"
+                // Sin nombre, el correo identifica al cliente en el panel del proveedor (sin marca escrita).
+                FirstName: string.IsNullOrWhiteSpace(name) ? email : name
             ),
             ct
         );

@@ -13,6 +13,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -55,6 +56,9 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "payment-app-service", PaymentAppMetrics.MeterName);
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("payment_app.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
@@ -148,6 +152,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(ChargeSaaSPaymentCommand).Assembly);
+    options.ListenForPlatformSettings();
     // Registro explícito de los consumers de la proyección RBAC: la discovery convencional no los
     // engancha en este servicio (Wolverine loguea "No known handler para UserRolesChangedIntegrationEvent"),
     // así que la proyección UserPermissionsProjections quedaba vacía y [HasPermission] daba 403. Idénticos

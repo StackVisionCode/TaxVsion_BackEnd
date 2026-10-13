@@ -54,6 +54,12 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'auth.user.deactivated.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent':
     'auth.user.reactivated.v1',
+  // Host de oficina cacheado: se olvida al renombrar el subdominio o al cambiar el dominio de la
+  // plataforma (ver tenant-host-consumers.ts).
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.TenantSubdomainChangedIntegrationEvent':
+    'auth.tenant.subdomain_changed.v1',
+  'BuildingBlocks.Messaging.PlatformIntegrationEvents.PlatformSettingsChangedIntegrationEvent':
+    'platform.settings_changed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent':
     'auth.user.profile_updated.v1',
   // Offboarding (retiro terminal) — reasigna/cancela reuniones del host que se va (ver offboarding-consumers.ts).

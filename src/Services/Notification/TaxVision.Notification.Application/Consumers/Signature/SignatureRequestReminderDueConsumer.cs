@@ -1,5 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -26,6 +27,7 @@ public static class SignatureRequestReminderDueConsumer
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         ILogger<SignatureRequestReminderDueIntegrationEvent> logger,
@@ -47,8 +49,8 @@ public static class SignatureRequestReminderDueConsumer
             {
                 var body =
                     evt.Language == "Es"
-                        ? $"{portal.Value.ProductName}: {evt.FullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {inviteLink}"
-                        : $"{portal.Value.ProductName}: {evt.FullName}, you still have a document to sign. Sign it here: {inviteLink}";
+                        ? $"{platform.Current.BrandName}: {evt.FullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {inviteLink}"
+                        : $"{platform.Current.BrandName}: {evt.FullName}, you still have a document to sign. Sign it here: {inviteLink}";
                 await smsSender.SendAsync(evt.PhoneE164!, body, ct);
                 return;
             }

@@ -12,6 +12,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -52,6 +53,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddNotificationInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
@@ -148,6 +152,7 @@ builder.Services.AddHttpClient<IUserContactSnapshotClient, UserContactSnapshotCl
 // Portal /portal: host primario del tenant (subdominio de plataforma) para armar los links
 // per-tenant de los correos (staff en {host}, cliente en {host}/portal). Mismo patrón M2M y el
 // mismo IServiceTokenAcquirer que el pull de user-contact de arriba.
+builder.Services.AddSingleton<TaxVision.Notification.Application.Abstractions.TenantHostCache>();
 builder.Services.AddHttpClient<ITenantHostResolver, TenantHostResolver>(
     (sp, client) =>
     {
@@ -193,6 +198,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InvitationCreatedConsumer).Assembly);
+    options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

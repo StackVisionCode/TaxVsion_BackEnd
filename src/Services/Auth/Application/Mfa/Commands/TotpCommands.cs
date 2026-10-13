@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
@@ -24,6 +25,7 @@ public static class SetupTotpHandler
         IMfaRepository mfa,
         ITotpService totp,
         ISecretProtector protector,
+        IPlatformSettings platform,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -62,7 +64,9 @@ public static class SetupTotpHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new SetupTotpResponse(secret, totp.BuildOtpAuthUri(user.Email, secret, "TaxProffice")));
+        return Result.Success(
+            new SetupTotpResponse(secret, totp.BuildOtpAuthUri(user.Email, secret, platform.Current.BrandName))
+        );
     }
 }
 
