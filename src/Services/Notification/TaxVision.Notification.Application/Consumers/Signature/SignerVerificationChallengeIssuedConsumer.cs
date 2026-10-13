@@ -2,6 +2,7 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
@@ -37,22 +38,25 @@ public static class SignerVerificationChallengeIssuedConsumer
         INotificationLogRepository logRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IPlatformSettings platform,
         ILogger<SignerVerificationChallengeIssuedIntegrationEvent> logger,
         CancellationToken ct
     )
     {
+        var brand = platform.Current.BrandName;
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
             if (evt.Method is "EmailOtp" or "KbaQuiz")
             {
-                await DispatchEmailAsync(evt, gateway, scribeClient, correlationId, logger, ct);
+                await DispatchEmailAsync(evt, brand, gateway, scribeClient, correlationId, logger, ct);
                 return;
             }
 
             // Canales SMS/Push: se maneja con log manual + sender directo hasta que exista abstracto.
             await DispatchNonEmailAsync(
                 evt,
+                brand,
                 smsSender,
                 pushSender,
                 pushDeviceTokens,
@@ -71,6 +75,7 @@ public static class SignerVerificationChallengeIssuedConsumer
 
     private static async Task DispatchEmailAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         string correlationId,
@@ -106,7 +111,7 @@ public static class SignerVerificationChallengeIssuedConsumer
         {
             // KbaQuiz: mensaje simple, único, sin catálogo. Nunca pasa por Scribe, así que no hay logo
             // que propagar y el carril es el del sistema — justo lo que da el ctor de 3 argumentos.
-            var (subject, html, text) = BuildKbaEmail(evt);
+            var (subject, html, text) = BuildKbaEmail(evt, brand);
             render = new ScribeRenderedEmail(subject, html, text);
         }
 
@@ -146,6 +151,7 @@ public static class SignerVerificationChallengeIssuedConsumer
 
     private static async Task DispatchNonEmailAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand,
         ISmsSender smsSender,
         IPushSender pushSender,
         IPushDeviceTokenRepository pushDeviceTokens,
@@ -163,7 +169,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             evt.TenantId,
             channel,
             recipient,
-            BuildSubject(evt),
+            BuildSubject(evt, brand),
             TemplateKey,
             evt.EventId,
             correlationId
@@ -182,13 +188,14 @@ public static class SignerVerificationChallengeIssuedConsumer
         var log = logResult.Value;
         await logRepository.AddAsync(log, ct);
 
-        var deliver = await DispatchOtherAsync(evt, smsSender, pushSender, pushDeviceTokens, ct);
+        var deliver = await DispatchOtherAsync(evt, brand, smsSender, pushSender, pushDeviceTokens, ct);
         ApplyOutcomeToLog(deliver, log, logger, evt);
         await unitOfWork.SaveChangesAsync(ct);
     }
 
     private static Task<Result> DispatchOtherAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand,
         ISmsSender smsSender,
         IPushSender pushSender,
         IPushDeviceTokenRepository pushDeviceTokens,
@@ -196,9 +203,9 @@ public static class SignerVerificationChallengeIssuedConsumer
     ) =>
         evt.Method switch
         {
-            "SmsOtp" => SendSmsAsync(evt, smsSender, ct),
-            "WhatsAppOtp" => SendSmsAsync(evt, smsSender, ct), // fallback provisional hasta ms WhatsApp
-            "AppPush" => SendAppPushAsync(evt, pushSender, pushDeviceTokens, ct),
+            "SmsOtp" => SendSmsAsync(evt, brand, smsSender, ct),
+            "WhatsAppOtp" => SendSmsAsync(evt, brand, smsSender, ct), // fallback provisional hasta ms WhatsApp
+            "AppPush" => SendAppPushAsync(evt, brand, pushSender, pushDeviceTokens, ct),
             _ => Task.FromResult(
                 Result.Failure(new Error("Notification.UnknownMethod", "Verification method not supported."))
             ),
@@ -222,17 +229,18 @@ public static class SignerVerificationChallengeIssuedConsumer
             _ => NotificationChannel.InApp,
         };
 
-    private static string BuildSubject(SignerVerificationChallengeIssuedIntegrationEvent evt) =>
-        evt.SignerLanguage == "Es" ? "TaxProffice — Código de verificación" : "TaxProffice — Verification code";
+    private static string BuildSubject(SignerVerificationChallengeIssuedIntegrationEvent evt, string brand) =>
+        evt.SignerLanguage == "Es" ? $"{brand} — Código de verificación" : $"{brand} — Verification code";
 
     private static (string Subject, string Html, string Text) BuildKbaEmail(
-        SignerVerificationChallengeIssuedIntegrationEvent evt
+        SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand
     )
     {
         var subject =
             evt.SignerLanguage == "Es"
-                ? "TaxProffice — Verificación de identidad requerida"
-                : "TaxProffice — Identity verification required";
+                ? $"{brand} — Verificación de identidad requerida"
+                : $"{brand} — Identity verification required";
         var body =
             evt.SignerLanguage == "Es"
                 ? $"<p>Hola {evt.SignerFullName},</p><p>Necesitas completar un cuestionario de verificación de identidad antes de firmar.</p>"
@@ -242,19 +250,21 @@ public static class SignerVerificationChallengeIssuedConsumer
 
     private static Task<Result> SendSmsAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand,
         ISmsSender smsSender,
         CancellationToken ct
     )
     {
         var body =
             evt.SignerLanguage == "Es"
-                ? $"Tu codigo TaxProffice: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
-                : $"Your TaxProffice code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
+                ? $"Tu codigo {brand}: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
+                : $"Your {brand} code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
         return smsSender.SendAsync(evt.DeliveryAddress, body, ct);
     }
 
     private static async Task<Result> SendAppPushAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
+        string brand,
         IPushSender pushSender,
         IPushDeviceTokenRepository pushDeviceTokens,
         CancellationToken ct
@@ -270,7 +280,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             );
 
         var title =
-            evt.SignerLanguage == "Es" ? "TaxProffice — Verificación requerida" : "TaxProffice — Verification required";
+            evt.SignerLanguage == "Es" ? $"{brand} — Verificación requerida" : $"{brand} — Verification required";
         var body =
             evt.SignerLanguage == "Es"
                 ? "Abre la app para aprobar tu firma."

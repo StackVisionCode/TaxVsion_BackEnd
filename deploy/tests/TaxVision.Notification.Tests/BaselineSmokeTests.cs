@@ -43,7 +43,7 @@ public sealed class BaselineSmokeTests
             uow,
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
-        var portal = Options.Create(new PortalOptions { BaseUrl = "https://app.test", ProductName = "TaxVision" });
+        var portal = Options.Create(new PortalOptions { BaseUrl = "https://app.test" });
         var correlation = new NoOpCorrelationContext();
         var scribeClient = new FakeScribeRenderClient();
 
@@ -61,6 +61,7 @@ public sealed class BaselineSmokeTests
             gateway,
             scribeClient,
             portal,
+            TestPlatform.Settings,
             new FakeTenantHostResolver(),
             correlation,
             CancellationToken.None
@@ -118,7 +119,8 @@ public sealed class BaselineSmokeTests
             gateway,
             scribeClient,
             new NoOpSmsSender(),
-            Options.Create(new PortalOptions { BaseUrl = "https://app.test", ProductName = "TaxVision" }),
+            Options.Create(new PortalOptions { BaseUrl = "https://app.test" }),
+            TestPlatform.Settings,
             new FakeTenantHostResolver(),
             correlation,
             NullLogger<SignerInvitedIntegrationEvent>.Instance,

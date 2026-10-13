@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Signature.Application.Abstractions;
@@ -79,6 +80,79 @@ public sealed class TenantBrandingSubDomainProjectionTests
         Assert.Equal("nuevo-subdominio", saved!.SubDomain);
     }
 
+    // Auth renombró el subdominio: solo el primario define el slug que ve la página pública de firma.
+
+    [Fact]
+    public async Task SubdomainChanged_primario_renombra_el_slug_y_guarda_una_vez()
+    {
+        var repo = new FakeBrandingRepo();
+        var tenantId = Guid.NewGuid();
+        var existing = TenantBrandingRef.Create(tenantId, DateTime.UtcNow);
+        existing.SetSubDomain("acme-tax", DateTime.UtcNow);
+        await repo.AddAsync(existing);
+        var uow = new FakeUow();
+
+        await HandleSubdomainChangedAsync(SubdomainChanged(tenantId, isPrimary: true), repo, uow);
+
+        Assert.Equal("acme-new", existing.SubDomain);
+        Assert.Equal(1, uow.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task SubdomainChanged_no_primario_no_toca_la_proyeccion()
+    {
+        var repo = new FakeBrandingRepo();
+        var tenantId = Guid.NewGuid();
+        var existing = TenantBrandingRef.Create(tenantId, DateTime.UtcNow);
+        existing.SetSubDomain("acme-tax", DateTime.UtcNow);
+        await repo.AddAsync(existing);
+        var uow = new FakeUow();
+
+        await HandleSubdomainChangedAsync(SubdomainChanged(tenantId, isPrimary: false), repo, uow);
+
+        Assert.Equal("acme-tax", existing.SubDomain);
+        Assert.Equal(0, uow.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task SubdomainChanged_sin_fila_no_hace_nada()
+    {
+        var repo = new FakeBrandingRepo();
+        var tenantId = Guid.NewGuid();
+        var uow = new FakeUow();
+
+        await HandleSubdomainChangedAsync(SubdomainChanged(tenantId, isPrimary: true), repo, uow);
+
+        Assert.Null(await repo.GetByTenantIdAsync(tenantId));
+        Assert.Equal(0, uow.SaveChangesCallCount);
+    }
+
+    private static Task HandleSubdomainChangedAsync(
+        TenantSubdomainChangedIntegrationEvent evt,
+        FakeBrandingRepo repo,
+        FakeUow uow
+    ) =>
+        TenantBrandingProjectionConsumer.Handle(
+            evt,
+            repo,
+            uow,
+            new FakeCorrelation(),
+            NullLogger<TenantBrandingRef>.Instance,
+            CancellationToken.None
+        );
+
+    private static TenantSubdomainChangedIntegrationEvent SubdomainChanged(Guid tenantId, bool isPrimary) =>
+        new()
+        {
+            TenantId = tenantId,
+            DomainId = Guid.NewGuid(),
+            OldHost = "acme-tax.taxproffice.com",
+            NewHost = "acme-new.taxproffice.com",
+            OldSlug = "acme-tax",
+            NewSlug = "acme-new",
+            IsPrimary = isPrimary,
+        };
+
     // ---- fakes mínimos ----
 
     private sealed class FakeBrandingRepo : ITenantBrandingRefRepository
@@ -93,11 +167,20 @@ public sealed class TenantBrandingSubDomainProjectionTests
             _store[branding.TenantId] = branding;
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<TenantBrandingRef>>([.. _store.Values]);
     }
 
     private sealed class FakeUow : IUnitOfWork
     {
-        public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+        public int SaveChangesCallCount { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            SaveChangesCallCount++;
+            return Task.FromResult(0);
+        }
     }
 
     private sealed class FakeCorrelation : BuildingBlocks.Common.ICorrelationContext

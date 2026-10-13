@@ -1,3 +1,4 @@
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -5,18 +6,19 @@ using Microsoft.Extensions.Options;
 
 namespace TaxVision.Auth.Api.Common;
 
-/// <summary>Orígenes del Landing que pueden usar la sesión del Account (misma lista que su CORS).</summary>
+/// <summary>
+/// Orígenes del Landing que pueden usar la sesión del Account. Los de la plataforma (apex y www) salen del
+/// dominio vigente en PlatformSettings; <see cref="AllowedOrigins"/> son los extra (en dev, localhost).
+/// </summary>
 public sealed class AccountSessionOptions
 {
     public const string SectionName = "AccountSession";
 
     public string[] AllowedOrigins { get; set; } = [];
 
-    public bool IsAllowed(string? origin) =>
-        !string.IsNullOrWhiteSpace(origin)
-        && AllowedOrigins.Any(allowed =>
-            string.Equals(allowed.TrimEnd('/'), origin.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)
-        );
+    public bool IsAllowed(string? origin, PlatformSettingsSnapshot platform) =>
+        PlatformSettingsSnapshot.IsOriginIn(origin, AllowedOrigins)
+        || PlatformSettingsSnapshot.IsOriginIn(origin, platform.LandingOrigins);
 }
 
 /// <summary>
@@ -57,8 +59,10 @@ public sealed class RequireAccountOriginAttribute : Attribute, IAuthorizationFil
 {
     public void OnAuthorization(AuthorizationFilterContext context)
     {
-        var options = context.HttpContext.RequestServices.GetRequiredService<IOptions<AccountSessionOptions>>().Value;
-        if (options.IsAllowed(context.HttpContext.Request.Headers.Origin.ToString()))
+        var services = context.HttpContext.RequestServices;
+        var options = services.GetRequiredService<IOptions<AccountSessionOptions>>().Value;
+        var platform = services.GetRequiredService<IPlatformSettings>().Current;
+        if (options.IsAllowed(context.HttpContext.Request.Headers.Origin.ToString(), platform))
             return;
 
         context.Result = new ObjectResult(new Error("Auth.OriginNotAllowed", "This request isn't allowed from here."))

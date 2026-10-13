@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
@@ -23,8 +24,11 @@ namespace TaxVision.PaymentClient.Api.Controllers.Internal;
 [Route("internal/payables")]
 [Authorize(Policy = "CreatePaymentLinksService")]
 [AllowActorTypes(ActorType.Service)]
-public sealed class InternalPayablesController(IMessageBus bus, IOptions<PaymentClientPublicOptions> publicOptions)
-    : ControllerBase
+public sealed class InternalPayablesController(
+    IMessageBus bus,
+    IOptions<PaymentClientPublicOptions> publicOptions,
+    IPlatformSettings platform
+) : ControllerBase
 {
     public sealed record EnsureInvoicePayableRequest(
         long AmountCents,
@@ -64,6 +68,7 @@ public sealed class InternalPayablesController(IMessageBus bus, IOptions<Payment
         // si no, cae a la base por path. Ver PayablePublicUrls / PaymentClientPublicOptions.
         var checkoutUrl = PayablePublicUrls.StableInvoiceUrl(
             publicOptions.Value,
+            platform.Current,
             result.Value.SubDomain,
             result.Value.Reference
         );

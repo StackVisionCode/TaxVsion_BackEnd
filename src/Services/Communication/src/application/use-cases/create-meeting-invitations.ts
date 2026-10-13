@@ -104,7 +104,7 @@ export async function createMeetingInvitations(
     issued.push(issueResult.value);
   }
 
-  // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxproffice.com). Se resuelve el
+  // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxoffix.io). Se resuelve el
   // host UNA vez por batch (cacheado). Si falla, buildMeetingJoinUrl cae al base fijo.
   const tenantHost = await deps.tenantHostResolver.resolveHost(command.tenantId);
 

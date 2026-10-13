@@ -1,3 +1,11 @@
+# Marca y dominio de la plataforma: la fuente es PlatformSettings en Tenant (se lee al arrancar y cada
+# 5 min, y llega por evento al cambiar). Estos valores solo rigen hasta la primera lectura. Lo mezcla
+# con `<<: *platform-settings-env` cada servicio que arma links o muestra la marca.
+x-platform-settings-env: &platform-settings-env
+  PlatformSettings__TenantBaseUrl: http://tenant-api:8080
+  PlatformSettings__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxoffix.io}
+  PlatformSettings__ApiHost: ${TAXVISION_DOMAIN:-api.taxoffix.io}
+
 services:
   rabbitmq:
     image: rabbitmq:4.3.2-management
@@ -267,6 +275,12 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Valores con los que Tenant siembra PlatformSettings la PRIMERA vez (si la fila no existe).
+      # Después la fuente es la fila (PUT platform/settings), no estas variables.
+      PlatformSettings__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxoffix.io}
+      PlatformSettings__ApiHost: ${TAXVISION_DOMAIN:-api.taxoffix.io}
+      PlatformSettings__SupportEmail: support@${TAXVISION_BASE_DOMAIN:-taxoffix.io}
+      PlatformSettings__BillingEmail: billing@${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       # Logo del tenant (Tenant_Service_LogoSupport_Plan.md) — cliente M2M para pedir el
       # download-url presignado y borrar el logo reemplazado/quitado (registrado en auth-api,
       # ServiceAuth__Clients__8 mas abajo).
@@ -322,6 +336,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
@@ -340,10 +355,6 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      # Dominio base para componer subdominios de tenant (oficina1.taxproffice.com).
-      # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
-      # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
-      TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # NOTA: el flag de host-resolution de Auth NO va en este compose compartido — está
       # prohibido por fitness (ver AccountSurfaceDeployWiringTests en TaxVision.Auth.Tests/Deploy).
       # El default es true en appsettings.json; si en DEV quieres apagarlo, usa
@@ -371,15 +382,13 @@ services:
       Onboarding__AuthPublicBaseUrl: http://auth-api:8080
       # Base PÚBLICO (vía Gateway) del link de descarga del recibo del email — /onboarding/receipts/{id}/
       # download. Distinto del loopback interno de arriba: este lo abre el navegador del usuario.
-      Onboarding__ReceiptDownloadBaseUrl: https://${TAXVISION_DOMAIN:-api.taxproffice.com}
+      Onboarding__ReceiptDownloadBaseUrl: https://${TAXVISION_DOMAIN:-api.taxoffix.io}
       # Frontend público que sirve /register (completar cuenta post-pago). El registro vive en el
-      # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:4200) y el
+      # landing (taxoffix.io), no en el CRM. Sin esto cae al default de dev (localhost:4200) y el
       # correo "Completa tu cuenta" salía con un link a localhost.
-      Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
-      # Orígenes del Landing que pueden usar la cookie del Account (chequeo de Origin anti-CSRF).
-      AccountSession__AllowedOrigins__0: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
-      AccountSession__AllowedOrigins__1: https://www.${TAXVISION_BASE_DOMAIN:-taxproffice.com}
-      Onboarding__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxoffix.io}
+      # Orígenes del Landing que pueden usar la cookie del Account: salen del dominio de PlatformSettings
+      # (apex y www), así que no van fijos acá.
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
       # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
@@ -776,6 +785,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
@@ -787,11 +797,10 @@ services:
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
       # Portal del CLIENTE — los correos del cliente (pedidos de doc, doc rechazado) linkean al portal.
-      # Con el host del tenant resuelto van a https://{host}{ClientPathPrefix} (ej. manfer.taxproffice.com/portal);
+      # Con el host del tenant resuelto van a https://{host}{ClientPathPrefix} (ej. manfer.taxoffix.io/portal);
       # ClientBaseUrl solo es el FALLBACK si no se pudo resolver el host.
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
-      Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
       # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
@@ -814,12 +823,12 @@ services:
       CampaignEmail__Smtp__Username: ${CAMPAIGN_EMAIL_SMTP_USERNAME:-}
       CampaignEmail__Smtp__Password: ${CAMPAIGN_EMAIL_SMTP_PASSWORD:-}
       CampaignEmail__Smtp__FromAddress: ${CAMPAIGN_EMAIL_SMTP_FROM_ADDRESS:-}
-      CampaignEmail__Smtp__FromName: ${CAMPAIGN_EMAIL_SMTP_FROM_NAME:-TaxProffice}
+      CampaignEmail__Smtp__FromName: ${CAMPAIGN_EMAIL_SMTP_FROM_NAME:-TaxOffix}
       # API HTTP de SMTP2GO (recomendada para volumen; Provider=smtp2go-api). Sin handshake por correo.
       CampaignEmail__Api__BaseUrl: ${CAMPAIGN_EMAIL_API_BASE_URL:-https://api.smtp2go.com/v3/}
       CampaignEmail__Api__ApiKey: ${CAMPAIGN_EMAIL_API_KEY:-}
       CampaignEmail__Api__FromAddress: ${CAMPAIGN_EMAIL_API_FROM_ADDRESS:-}
-      CampaignEmail__Api__FromName: ${CAMPAIGN_EMAIL_API_FROM_NAME:-TaxProffice}
+      CampaignEmail__Api__FromName: ${CAMPAIGN_EMAIL_API_FROM_NAME:-TaxOffix}
       # Throttle: correos/min del ejecutor de campaña (0 = sin límite). Respeta el límite de la cuenta.
       CampaignEmail__MaxPerMinute: ${CAMPAIGN_EMAIL_MAX_PER_MIN:-0}
       # Secreto opcional del webhook de estado (X-Webhook-Secret / ?key=). Vacío en dev = sin exigir.
@@ -873,6 +882,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
@@ -957,6 +967,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
@@ -1034,6 +1045,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
@@ -1682,7 +1694,7 @@ services:
       # internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si nunca se expone
       # directo. Default "true" para producción (Caddy termina TLS ahí). En dev local
       # sin Caddy/dominio real, dejar sin configurar: cae al endpoint interno de arriba.
-      Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxproffice.com}
+      Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxoffix.io}
       Minio__PublicUseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
@@ -1738,6 +1750,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
@@ -1760,6 +1773,8 @@ services:
       # el CustomerClientOptions caía al default de dev (localhost:5263), inalcanzable dentro de
       # la red de contenedores, y el barrido de 12h moría en silencio (el cliente nunca lanza).
       Signature__Customer__BaseUrl: http://customer-api:8080
+      # Backfill de arranque de TenantBrandingRefs (directorio M2M de Tenant, mismo token de Signature__ServiceAuth).
+      Signature__Tenant__BaseUrl: http://tenant-api:8080
       # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
       # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con Signature__ServiceAuth).
       CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
@@ -1815,6 +1830,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
@@ -1881,6 +1897,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
@@ -1896,12 +1913,10 @@ services:
       Jwt__ValidAudiences__1: taxvision-payments
       # Base pública con la que PaymentClient compone la URL ESTABLE de facturas (la del PDF). Dev = gateway.
       PaymentClient__Public__BaseUrl: ${PAYMENTCLIENT_PUBLIC_BASE_URL:-http://localhost:5047}
-      # Dominio base multi-tenant: con esto la URL de la factura se compone en el subdominio del tenant
-      # ({sub}.{TenantBaseDomain}/payments-client/invoices/{ref}) — el mismo host que la firma. En PROD se
-      # setea PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN (= dominio real); en DEV/local queda VACIO para que la
-      # URL estable caiga a BaseUrl (el gateway localhost:5047), que sí resuelve el redirect a /pay/{token}
-      # — de lo contrario apunta a {sub}.taxproffice.com, que en local sirve el Angular y da 404.
-      PaymentClient__Public__TenantBaseDomain: ${PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN-}
+      # URL de la factura en el host de la oficina ({sub}.<dominio>/payments-client/invoices/{ref}), el
+      # mismo host que la firma. El dominio sale de PlatformSettings. Fuera de este compose (dev/local)
+      # queda apagado y la URL cae a BaseUrl, porque en local {sub}.<dominio> no llega al gateway.
+      PaymentClient__Public__UseTenantHosts: "true"
       # Base (fallback) de la PAGINA de checkout del frontend ({base}/pay/{token}). Dev = ng serve 4200.
       PaymentClient__Public__CheckoutPageBaseUrl: ${PAYMENTCLIENT_CHECKOUT_PAGE_BASE_URL:-http://localhost:4200}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
@@ -1995,6 +2010,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${BILLING_DB_CONNECTION:?Set BILLING_DB_CONNECTION in .env}
@@ -2053,6 +2069,7 @@ services:
     expose:
       - "8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
@@ -2144,13 +2161,12 @@ services:
       # que falla esa validacion y tumba el arranque, a diferencia de TURN_URL/
       # TURN_STATIC_AUTH_SECRET arriba que son string().optional() (vacio es valido).
       COMMUNICATION_TURN_TTL_SECONDS: ${COMMUNICATION_TURN_TTL_SECONDS:-300}
-      # app.taxproffice.com = CRM/staff, client.taxproffice.com = portal de clientes;
-      # + localhost para poder seguir probando contra produccion desde un frontend
-      # local (mismo criterio que Cors__Origins del gateway).
-      # www.taxproffice.com incluido por el mismo motivo que en Cors__Origins del
-      # gateway (linea ~1945) — es un origin CORS distinto de taxproffice.com, sin
-      # redirect de canonicalizacion entre ambos.
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,https://www.taxproffice.com,http://localhost:5173,http://localhost:4200,http://localhost,https://localhost,capacitor://localhost,ionic://localhost}
+      # CORS: los orígenes de las apps de la plataforma (apex, www, app, client) salen del dominio de
+      # PlatformSettings (Tenant, refrescado cada 5 min y por evento); acá solo van los extra: localhost
+      # para probar contra producción desde un front local y las apps móviles.
+      COMMUNICATION_CORS_ORIGINS: http://localhost:5173,http://localhost:4200,http://localhost,https://localhost,capacitor://localhost,ionic://localhost
+      COMMUNICATION_TENANT_BASE_URL: http://tenant-api:8080
+      COMMUNICATION_PLATFORM_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
       # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
       # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
@@ -2199,7 +2215,7 @@ services:
       COMMUNICATION_MODULE_GATE_ENFORCED_MODULES: comms,meetings
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
-      COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}
+      COMMUNICATION_FRONTEND_BASE_URL: https://client.${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
       # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
       # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
@@ -2380,6 +2396,7 @@ services:
     ports:
       - "127.0.0.1:5047:8080"
     environment:
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
@@ -2387,27 +2404,8 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
-      # Origins reales de produccion (app = CRM/staff, client = portal de clientes)
-      # + localhost para poder seguir probando contra la API de produccion desde
-      # un frontend corrido local durante desarrollo (pedido explicito).
-      # www.taxproffice.com sirve el mismo landing que taxproffice.com (sin redirect
-      # de canonicalizacion) pero es un origin distinto para CORS -> sin esta entrada,
-      # cualquier POST/PUT JSON (preflight) desde www. fallaba con
-      # "no Access-Control-Allow-Origin header" (bug real, register/onboarding roto
-      # en vivo para visitantes de www.).
-      Cors__Origins__0: https://taxproffice.com
-      Cors__Origins__1: https://www.taxproffice.com
-      Cors__Origins__2: https://app.taxproffice.com
-      Cors__Origins__3: https://client.taxproffice.com
-      Cors__Origins__4: http://localhost:5173
-      Cors__Origins__5: http://localhost:4200
-      Cors__Origins__6: http://localhost:4201
-      Cors__Origins__7: http://localhost:4300
-      Cors__Origins__8: http://localhost:8101
-      Cors__Origins__9: http://localhost
-      Cors__Origins__10: capacitor://localhost
-      Cors__Origins__11: ionic://localhost
-      Cors__Origins__12: https://localhost
+      # CORS: los orígenes de las apps de la plataforma (apex, www, app, client) salen del dominio de
+      # PlatformSettings en cada preflight; los extra (localhost y apps móviles) están en appsettings.json.
       # GW-08 — las claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son
@@ -2498,8 +2496,8 @@ services:
     environment:
       # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
       # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
-      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxproffice.com}
-      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxoffix.io}
+      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
       # wildcard. Token distinto (y con permisos mas chicos) que el que usa
       # Auth para provisionar custom hostnames (ver CloudflareOptions en

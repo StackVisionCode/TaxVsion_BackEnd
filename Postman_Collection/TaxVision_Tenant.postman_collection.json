@@ -611,6 +611,143 @@
       ]
     },
     {
+      "name": "Platform GetSettings (brand + domain)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/platform/settings",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "platform",
+            "settings"
+          ]
+        },
+        "description": "Marca y dominio de la PLATAFORMA (PlatformSettings, agregado singleton en Tenant): brandName, legalName, baseDomain, apiHost, supportEmail, billingEmail + version. Es la fuente unica de la que leen todos los servicios (y los fronts) para componer links, asuntos, PDFs y CORS. Solo PlatformAdmin + platform.branding.manage. 404 si todavia no se sembro."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+              "pm.collectionVariables.set(\"platformSettingsVersion\", pm.response.json().version);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Platform UpdateSettings (brand + domain)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/platform/settings",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "platform",
+            "settings"
+          ]
+        },
+        "description": "Cambia la marca y/o el dominio de la plataforma. Si algo cambio sube la version y publica PlatformSettingsChangedIntegrationEvent con la foto completa: cada servicio la aplica al vuelo (ademas la refresca cada 5 min desde /platform/settings/public). Un PUT identico no publica nada. Solo PlatformAdmin + platform.branding.manage.\n\nANTES de cambiar baseDomain/apiHost: DNS, certificado (Caddy con TAXVISION_BASE_DOMAIN/TAXVISION_DOMAIN), secrets del deploy y URLs registradas en Google/Microsoft/Stripe/proveedor de correo deben apuntar ya al dominio nuevo; si no, los links salen a un host que no responde. Corte duro: el dominio anterior deja de resolverse como oficina.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"brandName\": \"TaxOffix\",\n  \"legalName\": \"TaxOffix LLC\",\n  \"baseDomain\": \"taxoffix.io\",\n  \"apiHost\": \"api.taxoffix.io\",\n  \"supportEmail\": \"support@taxoffix.io\",\n  \"billingEmail\": \"billing@taxoffix.io\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+              "pm.test(\"version subio o se mantuvo\", () => pm.expect(pm.response.json().version).to.be.at.least(Number(pm.collectionVariables.get(\"platformSettingsVersion\") || 0)));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Platform UploadSystemAsset (Crm/Logo)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/platform/branding/Crm/assets/Logo",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "platform",
+            "branding",
+            "Crm",
+            "assets",
+            "Logo"
+          ]
+        },
+        "description": "Sube/reemplaza el logo (o favicon) de la marca del SISTEMA para una superficie. multipart form-data campo file. Usar PNG/JPEG: PdfSharp no decodifica SVG, y el logo del sistema sale en los certificados de Signature. 202: escaneo asincrono. Solo PlatformAdmin + platform.branding.manage.",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": []
+            }
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "Public GetBrandBySlug (anon)",
       "request": {
         "method": "GET",
@@ -683,6 +820,38 @@
         "description": "ANONIMO. Marca de la plataforma para una superficie (login central del CRM y del portal sin subdominio). RateLimitExempt."
       },
       "response": []
+    },
+    {
+      "name": "Public GetPlatformSettings (anon)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{UrlBase}}/platform/settings/public",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "platform",
+            "settings",
+            "public"
+          ]
+        },
+        "description": "ANONIMO. Misma foto que GET /platform/settings (incluye appHost, clientHost y website derivados). La leen los servicios .NET y Communication al arrancar y cada 5 min por la red interna, y el CRM al iniciar (marca en runtime). No expone nada privado. RateLimitExempt."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+              "pm.test(\"trae marca y dominio\", () => { const b = pm.response.json(); pm.expect(b.brandName).to.be.a(\"string\").and.not.empty; pm.expect(b.baseDomain).to.be.a(\"string\").and.not.empty; });"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "NEG CustomerPortal rejected — UpdateBrandColors (403)",
@@ -773,6 +942,62 @@
           }
         }
       ]
+    },
+    {
+      "name": "NEG TenantAdmin rejected — UpdatePlatformSettings (403)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/platform/settings",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "platform",
+            "settings"
+          ]
+        },
+        "description": "Un TenantAdmin NO puede cambiar la marca ni el dominio de la plataforma (PlatformAdmin + platform.branding.manage). Espera 403 y que no se publique nada.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"brandName\": \"TaxOffix\",\n  \"legalName\": \"TaxOffix LLC\",\n  \"baseDomain\": \"taxoffix.io\",\n  \"apiHost\": \"api.taxoffix.io\",\n  \"supportEmail\": \"support@taxoffix.io\",\n  \"billingEmail\": \"billing@taxoffix.io\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 403\", () => pm.response.code === 403 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "platformSettingsVersion",
+      "value": ""
     }
   ]
 }

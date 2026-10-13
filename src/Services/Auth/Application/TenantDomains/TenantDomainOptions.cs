@@ -1,14 +1,15 @@
+using BuildingBlocks.Platform;
+
 namespace TaxVision.Auth.Application.TenantDomains;
 
 /// <summary>
-/// Dominio base de la plataforma para componer subdominios de oficina (ej. "taxproffice.com"
-/// en oficina1.taxproffice.com). Ver Auth_y_CloudStorage_Plan_Completitud_v2.md §9-10.
+/// Comportamiento de la resolución de oficinas por Host. El dominio de la plataforma NO vive acá:
+/// sale de <see cref="IPlatformSettings"/> (Tenant), así que cambiarlo no exige tocar esta config.
+/// Ver Auth_y_CloudStorage_Plan_Completitud_v2.md §9-10.
 /// </summary>
 public sealed class TenantDomainOptions
 {
     public const string SectionName = "TenantDomains";
-
-    public string BaseDomain { get; set; } = "taxproffice.com";
 
     /// <summary>
     /// Si es true, TenantHostResolutionMiddleware responde 404 cuando el Host de la request
@@ -24,23 +25,29 @@ public sealed class TenantDomainOptions
     public int SubdomainReservationTtlMinutes { get; set; } = 15;
 
     /// <summary>
-    /// Hosts de la plataforma que no son de ninguna oficina (apex, www, app, client): ahí no se busca TenantDomain ni
-    /// se audita, y el tenant de una request autenticada sale del JWT. Vacío = se derivan de BaseDomain.
-    /// <c>api.*</c> no va acá: está sembrado como dominio del tenant Platform (login del PlatformAdmin).
+    /// Hosts extra que no son de ninguna oficina (en dev: localhost). Se suman a los de la plataforma.
     /// </summary>
     public string[] SystemHosts { get; set; } = [];
 
-    public bool IsSystemHost(string? host)
+    /// <summary>
+    /// Hosts donde no se busca oficina ni se audita, y el tenant de una request autenticada sale del
+    /// JWT: el apex, www, app, client, admin y los <see cref="SystemHosts"/>. El host de la API no va
+    /// acá: es el del tenant Platform (login del PlatformAdmin) y se resuelve.
+    /// </summary>
+    public bool IsSystemHost(string? host, PlatformSettingsSnapshot platform)
     {
         if (string.IsNullOrWhiteSpace(host))
             return false;
 
-        var hosts =
-            SystemHosts.Length > 0
-                ? SystemHosts
-                : [BaseDomain, $"www.{BaseDomain}", $"app.{BaseDomain}", $"client.{BaseDomain}"];
-        return hosts.Any(systemHost =>
-            string.Equals(systemHost.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase)
-        );
+        if (
+            SystemHosts.Any(systemHost =>
+                string.Equals(systemHost.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase)
+            )
+        )
+            return true;
+
+        var normalized = PlatformSettingsSnapshot.NormalizeHost(host);
+        return platform.IsSharedHost(normalized)
+            && normalized != PlatformSettingsSnapshot.NormalizeHost(platform.ApiHost);
     }
 }

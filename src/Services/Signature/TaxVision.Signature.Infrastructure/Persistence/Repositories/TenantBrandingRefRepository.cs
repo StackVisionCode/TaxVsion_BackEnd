@@ -13,4 +13,7 @@ internal sealed class TenantBrandingRefRepository(SignatureDbContext db) : ITena
 
     public async Task AddAsync(TenantBrandingRef branding, CancellationToken ct = default) =>
         await db.TenantBrandingRefs.AddAsync(branding, ct);
+
+    public async Task<IReadOnlyList<TenantBrandingRef>> ListAllAsync(CancellationToken ct = default) =>
+        await db.TenantBrandingRefs.IgnoreQueryFilters().ToListAsync(ct);
 }

@@ -1,3 +1,4 @@
+﻿using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
@@ -9,7 +10,7 @@ public sealed record GetTenantPrimaryHostQuery(Guid TenantId);
 public sealed record TenantPrimaryHostResponse(string Host);
 
 /// <summary>
-/// Host primario (subdominio de plataforma) de un tenant, ej. "manfer.taxproffice.com" — pull M2M
+/// Host primario (subdominio de plataforma) de un tenant, ej. "manfer.taxoffix.io" — pull M2M
 /// que llama Notification para armar los links per-tenant de los correos (staff en {host}, cliente
 /// en {host}/portal). Auth es la autoridad del dominio; el subdominio no viaja en los eventos de
 /// Tasks, así que se resuelve acá. Mismo patrón interno que
@@ -20,12 +21,16 @@ public sealed record TenantPrimaryHostResponse(string Host);
 /// el portal del cliente vive bajo el subdominio de plataforma (donde está el ruteo /portal), no en
 /// el dominio propio de la oficina.
 /// </para>
+///
+/// <para>El host se arma con el slug y el dominio vigente de la plataforma, no con el que quedó guardado:
+/// así los links de los correos siguen el dominio actual aunque la fila no se haya re-apuntado todavía.</para>
 /// </summary>
 public static class GetTenantPrimaryHostHandler
 {
     public static async Task<Result<TenantPrimaryHostResponse>> Handle(
         GetTenantPrimaryHostQuery query,
         ITenantDomainRepository domains,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -39,10 +44,10 @@ public static class GetTenantPrimaryHostHandler
                 d.DomainType == TenantDomainType.Subdomain && d.Status == TenantDomainStatus.Active
             );
 
-        return primary is null
+        return primary?.SubdomainSlug is null
             ? Result.Failure<TenantPrimaryHostResponse>(
                 new Error("TenantDomain.NoPrimaryHost", "The tenant has no active platform subdomain.")
             )
-            : Result.Success(new TenantPrimaryHostResponse(primary.Host));
+            : Result.Success(new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug)));
     }
 }

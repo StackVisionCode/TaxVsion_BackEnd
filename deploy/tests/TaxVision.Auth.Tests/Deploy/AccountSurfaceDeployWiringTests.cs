@@ -10,19 +10,46 @@ public sealed class AccountSurfaceDeployWiringTests
         Assert.DoesNotContain("TenantDomains__EnforceHostResolution", compose);
     }
 
+    /// <summary>
+    /// Los orígenes del landing salen del dominio de PlatformSettings: una lista fija en el compose es justo
+    /// lo que se quedaba con el dominio viejo al cambiarlo.
+    /// </summary>
     [Fact]
-    public void Production_declares_the_landing_origins_for_the_account_cookie()
+    public void Production_does_not_pin_the_landing_origins_for_the_account_cookie()
     {
         var compose = File.ReadAllText(Path.Combine(RepoRoot(), "deploy", "docker", "docker-compose.yml"));
 
+        Assert.DoesNotContain("AccountSession__AllowedOrigins", compose);
+    }
+
+    /// <summary>
+    /// El localhost del landing local es solo de desarrollo. Antes el compose pisaba ese índice del array
+    /// con el dominio real; al sacar la lista del compose, si quedara en appsettings.json producción aceptaría
+    /// <c>http://localhost:4201</c> en el chequeo anti-CSRF del Account.
+    /// </summary>
+    [Fact]
+    public void The_local_landing_origin_is_only_allowed_in_development()
+    {
+        var api = Path.Combine(RepoRoot(), "src", "Services", "Auth", "Api");
+
+        Assert.Equal([], AccountSessionOrigins(Path.Combine(api, "appsettings.json")));
         Assert.Contains(
-            "AccountSession__AllowedOrigins__0: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}",
-            compose
+            "http://localhost:4201",
+            AccountSessionOrigins(Path.Combine(api, "appsettings.Development.json"))
         );
-        Assert.Contains(
-            "AccountSession__AllowedOrigins__1: https://www.${TAXVISION_BASE_DOMAIN:-taxproffice.com}",
-            compose
-        );
+    }
+
+    private static string[] AccountSessionOrigins(string appsettingsPath)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(appsettingsPath));
+        return
+        [
+            .. json
+                .RootElement.GetProperty("AccountSession")
+                .GetProperty("AllowedOrigins")
+                .EnumerateArray()
+                .Select(e => e.GetString()!),
+        ];
     }
 
     [Fact]

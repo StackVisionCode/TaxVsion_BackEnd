@@ -60,7 +60,6 @@ public static class TaskWaitingOnClientConsumer
                         ["client_due_at_utc"] = evt.ClientDueAtUtc,
                         ["tax_year"] = evt.TaxYear,
                         ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

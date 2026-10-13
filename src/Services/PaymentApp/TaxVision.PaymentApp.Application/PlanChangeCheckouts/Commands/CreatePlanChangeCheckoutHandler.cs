@@ -1,9 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -18,8 +20,6 @@ namespace TaxVision.PaymentApp.Application.PlanChangeCheckouts.Commands;
 /// </summary>
 public static class CreatePlanChangeCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION PLAN";
-
     public static async Task<Result<PlanChangeCheckoutResponse>> Handle(
         CreatePlanChangeCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -29,6 +29,7 @@ public static class CreatePlanChangeCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -43,7 +44,7 @@ public static class CreatePlanChangeCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command),
+            PolicyFor(command, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -66,13 +67,16 @@ public static class CreatePlanChangeCheckoutHandler
             );
     }
 
-    private static HostedCheckoutPolicy PolicyFor(CreatePlanChangeCheckoutCommand command) =>
+    private static HostedCheckoutPolicy PolicyFor(
+        CreatePlanChangeCheckoutCommand command,
+        PlatformSettingsSnapshot platform
+    ) =>
         new()
         {
             PaymentType = SaaSPaymentType.PlanChangeCheckout,
             Subject = "Plan change checkout",
             ReferenceId = command.PlanChangeRequestId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "PLAN"),
             // Subscription ya resolvió el precio COMPLETO del plan destino; acá no se prorratea nada.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>

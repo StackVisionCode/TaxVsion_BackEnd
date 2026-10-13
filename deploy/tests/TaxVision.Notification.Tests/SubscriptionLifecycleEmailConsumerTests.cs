@@ -15,7 +15,7 @@ namespace TaxVision.Notification.Tests;
 /// </summary>
 public sealed class SubscriptionLifecycleEmailConsumerTests
 {
-    private static readonly PortalOptions Portal = new() { ProductName = "TaxProffice" };
+    private static readonly PortalOptions Portal = new();
 
     [Fact]
     public async Task A_scheduled_cancellation_sends_its_own_template_with_the_end_date()

@@ -49,6 +49,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -82,6 +83,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -121,6 +123,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -180,6 +183,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 

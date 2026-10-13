@@ -79,6 +79,7 @@ public sealed class SubdomainSlugTests
     [InlineData("www")]
     [InlineData("api")]
     [InlineData("admin")]
+    [InlineData("client")]
     [InlineData("billing")]
     [InlineData("staging")]
     [InlineData("turn")]

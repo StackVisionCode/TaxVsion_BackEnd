@@ -111,7 +111,6 @@ public static class ReminderDueConsumer
                     ["category"] = evt.Category,
                     ["snooze_count"] = evt.SnoozeCount,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                    ["product_name"] = portal.Value.ProductName,
                 },
                 ct
             )

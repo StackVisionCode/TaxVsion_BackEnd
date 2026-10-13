@@ -14,7 +14,7 @@ namespace TaxVision.Notification.Tests;
 /// OnboardingReceiptReadyConsumerTests.</summary>
 public sealed class OnboardingPaymentFailedNotificationConsumerTests
 {
-    private static readonly PortalOptions Portal = new() { ProductName = "TaxProffice" };
+    private static readonly PortalOptions Portal = new();
 
     [Fact]
     public async Task Renders_and_queues_the_payment_failed_email()

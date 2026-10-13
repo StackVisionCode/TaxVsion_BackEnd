@@ -19,7 +19,7 @@ public sealed record TenantDomainCreatedResponse(
 
 /// <summary>
 /// Fase A5 — alta de un dominio propio (custom hostname) para el tenant. Los
-/// subdominios *.taxproffice.com nunca pasan por aquí (wildcard, alta automática en
+/// subdominios *.taxoffix.io nunca pasan por aquí (wildcard, alta automática en
 /// TenantCreatedConsumer, Fase A3) — este comando es solo para el dominio propio
 /// futuro del tenant.
 /// </summary>

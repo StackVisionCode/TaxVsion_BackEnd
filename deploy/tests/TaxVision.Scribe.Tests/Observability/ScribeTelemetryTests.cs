@@ -114,6 +114,7 @@ public sealed class ScribeTelemetryTests
             cloudStorage,
             new FakeLogoResolver(logo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

@@ -1043,7 +1043,7 @@
                 }
               }
             },
-            "description": "Siempre responde 202 (anti-enumeracion). La oficina sale del Host, nunca del body: desde el subdominio de una oficina (p.ej. coretaxpro.taxproffice.com) solo se resetea esa oficina; desde la entrada general (api.*, app.*, localhost) se envía un link por cada oficina del email. accountKind (opcional): Staff o Portal; sin indicarlo, ambas cuentas. Cada correo dice de qué cuenta y oficina es."
+            "description": "Siempre responde 202 (anti-enumeracion). La oficina sale del Host, nunca del body: desde el subdominio de una oficina (p.ej. coretaxpro.taxoffix.io) solo se resetea esa oficina; desde la entrada general (api.*, app.*, localhost) se envía un link por cada oficina del email. accountKind (opcional): Staff o Portal; sin indicarlo, ambas cuentas. Cada correo dice de qué cuenta y oficina es."
           },
           "response": []
         },
@@ -2270,7 +2270,7 @@
                 "tenant-domains"
               ]
             },
-            "description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxproffice.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
+            "description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.<dominio de PlatformSettings> se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
           },
           "response": [],
           "event": [
@@ -2398,7 +2398,7 @@
                 "subdomain"
               ]
             },
-            "description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxproffice.com -> oficina2.taxproffice.com). No aplica a custom hostnames."
+            "description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxoffix.io -> oficina2.taxoffix.io). No aplica a custom hostnames. El renombre se replica por evento (TenantSubdomainChanged con OldSlug/NewSlug) a Tenant, Signature, Scribe, Postmaster, PaymentApp y PaymentClient, e invalida las caches de host de Auth, Notification y Communication."
           },
           "response": []
         }

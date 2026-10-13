@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantSubdomainReservationRepository, TenantSubdomainReservationRepository>();
         services.AddScoped<ITenantResolutionCache, TenantResolutionCache>();
         services.AddScoped<ITenantResolver, TenantResolver>();
+        services.AddScoped<ITenantDomainRebaser, TenantDomainRebaser>();
         services.AddScoped<ITenantTermsAcceptanceRepository, TenantTermsAcceptanceRepository>();
         services.AddScoped<IEmailVerificationChallengeRepository, EmailVerificationChallengeRepository>();
         services.AddScoped<ITermsVersionRepository, TermsVersionRepository>();

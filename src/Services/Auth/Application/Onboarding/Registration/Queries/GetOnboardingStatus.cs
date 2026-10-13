@@ -1,5 +1,5 @@
+﻿using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
@@ -29,7 +29,7 @@ public static class GetOnboardingStatusHandler
         GetOnboardingStatusQuery query,
         ITenantOnboardingRepository onboardings,
         ISecureTokenService tokens,
-        IOptions<OnboardingOptions> onboardingOptions,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -50,7 +50,7 @@ public static class GetOnboardingStatusHandler
             onboarding.Status == TenantOnboardingStatus.Completed
             && !string.IsNullOrWhiteSpace(onboarding.RequestedSubdomain)
         )
-            redirectUrl = $"https://{onboarding.RequestedSubdomain}.{onboardingOptions.Value.TenantBaseDomain}";
+            redirectUrl = $"https://{platform.Current.TenantHost(onboarding.RequestedSubdomain)}";
 
         var exposeFailure =
             onboarding.Status is TenantOnboardingStatus.ProvisioningFailed or TenantOnboardingStatus.ManualReview;

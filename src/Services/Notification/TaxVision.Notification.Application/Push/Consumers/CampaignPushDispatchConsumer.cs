@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
+using BuildingBlocks.Platform;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Preferences;
 using Wolverine;
@@ -21,6 +22,7 @@ public static class CampaignPushDispatchConsumer
     public static async Task<CampaignDispatchResultIntegrationEvent?> Handle(
         CampaignDispatchRequestedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -33,7 +35,7 @@ public static class CampaignPushDispatchConsumer
 
         // Personalización por destinatario: {{first_name}}/{{full_name}}/… → datos del cliente.
         var renderedTitle = CampaignPersonalization.Render(evt.Subject, evt.RecipientName, evt.Email, evt.PhoneE164);
-        var title = string.IsNullOrWhiteSpace(renderedTitle) ? "TaxProffice" : renderedTitle!;
+        var title = string.IsNullOrWhiteSpace(renderedTitle) ? platform.Current.BrandName : renderedTitle!;
         var body =
             CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
 

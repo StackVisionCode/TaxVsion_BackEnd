@@ -329,13 +329,13 @@ public sealed class OnboardingRegistrationHandlersTests
         Assert.True(onboarding.MarkCompleted(now).IsSuccess);
 
         var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
-        var options = Options.Create(new OnboardingOptions { TenantBaseDomain = "taxproffice.com" });
+        var platform = TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxproffice.com");
 
         var result = await GetOnboardingStatusHandler.Handle(
             new GetOnboardingStatusQuery(rawToken),
             onboardings,
             Tokens,
-            options,
+            platform,
             CancellationToken.None
         );
 
@@ -348,13 +348,13 @@ public sealed class OnboardingRegistrationHandlersTests
     public async Task Status_fails_for_an_unknown_token()
     {
         var onboardings = new FakeTenantOnboardingRepository();
-        var options = Options.Create(new OnboardingOptions());
+        var platform = TaxVision.Auth.Tests.Application.FixedPlatformSettings.For("taxoffix.io");
 
         var result = await GetOnboardingStatusHandler.Handle(
             new GetOnboardingStatusQuery("not-a-real-token"),
             onboardings,
             Tokens,
-            options,
+            platform,
             CancellationToken.None
         );
 

@@ -25,6 +25,8 @@ public sealed class DisableTenantDomainHandlerTests
             command,
             domains,
             cloudflare,
+            new RecordingResolutionCache(),
+            FixedPlatformSettings.For("taxproffice.com"),
             unitOfWork,
             CancellationToken.None
         );

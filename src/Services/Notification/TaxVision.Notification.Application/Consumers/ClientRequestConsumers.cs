@@ -51,7 +51,6 @@ public static class ClientRequestCreatedConsumer
                         ["request_details"] = evt.Details,
                         ["due_at_utc"] = evt.DueAtUtc,
                         ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -199,7 +198,6 @@ public static class ClientRequestDocumentRejectedConsumer
                     ["request_title"] = evt.DisplayName,
                     ["client_message"] = evt.ClientMessage,
                     ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
-                    ["product_name"] = portal.Value.ProductName,
                 },
                 ct
             )

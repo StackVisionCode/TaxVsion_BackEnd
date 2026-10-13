@@ -219,4 +219,65 @@ public sealed class TenantSubdomainReservationTests
         Assert.True(result.IsFailure);
         Assert.Equal("TenantDomain.ReservationExpired", result.Error.Code);
     }
+
+    [Fact]
+    public void RebaseOnPlatformDomain_keeps_the_slug_and_moves_the_host_without_a_rename_event()
+    {
+        var domain = TenantDomain
+            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+        domain.ClearDomainEvents();
+
+        var changed = domain.RebaseOnPlatformDomain(" TaxOffix.io ");
+
+        Assert.True(changed);
+        Assert.Equal("oficina1.taxoffix.io", domain.Host);
+        Assert.Equal("oficina1", domain.SubdomainSlug);
+        Assert.Empty(domain.DomainEvents);
+    }
+
+    [Fact]
+    public void RebaseOnPlatformDomain_is_a_no_op_when_the_host_already_matches()
+    {
+        var domain = TenantDomain
+            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxoffix.io", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+
+        Assert.False(domain.RebaseOnPlatformDomain("taxoffix.io"));
+        Assert.Equal("oficina1.taxoffix.io", domain.Host);
+    }
+
+    [Fact]
+    public void RebaseOnPlatformDomain_never_touches_a_custom_hostname()
+    {
+        var domain = TenantDomain
+            .CreateCustomHostname(Guid.NewGuid(), "archivos.suoficina.com", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+
+        Assert.False(domain.RebaseOnPlatformDomain("taxoffix.io"));
+        Assert.Equal("archivos.suoficina.com", domain.Host);
+    }
+
+    [Fact]
+    public void RebasePlatformHost_moves_a_host_that_is_not_provisioned_in_cloudflare()
+    {
+        var domain = TenantDomain
+            .CreateCustomHostname(Guid.NewGuid(), "api.taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+
+        Assert.True(domain.RebasePlatformHost("API.taxoffix.io"));
+        Assert.Equal("api.taxoffix.io", domain.Host);
+    }
+
+    [Fact]
+    public void RebasePlatformHost_leaves_an_office_hostname_provisioned_in_cloudflare_alone()
+    {
+        var domain = TenantDomain
+            .CreateCustomHostname(Guid.NewGuid(), "archivos.suoficina.com", Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+        domain.MarkProvisioning("cf-123", "http");
+
+        Assert.False(domain.RebasePlatformHost("api.taxoffix.io"));
+        Assert.Equal("archivos.suoficina.com", domain.Host);
+    }
 }

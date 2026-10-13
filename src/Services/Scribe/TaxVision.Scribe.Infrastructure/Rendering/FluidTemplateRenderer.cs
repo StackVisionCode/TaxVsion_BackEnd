@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Fluid;
@@ -39,6 +40,7 @@ public sealed partial class FluidTemplateRenderer(
     ICloudStorageClient cloudStorageClient,
     ILogoResolver logoResolver,
     ITenantProfileRefRepository tenantProfiles,
+    IPlatformSettings platform,
     IMemoryCache l1Cache,
     ITemplateSourceCache l2Cache,
     ILogger<FluidTemplateRenderer> logger
@@ -304,7 +306,7 @@ public sealed partial class FluidTemplateRenderer(
     )
     {
         var tenantIdForToken = tenantId ?? PlatformTenant.Id;
-        variables = await WithOfficeNameAsync(variables, logoScope, logoTenantId, ct);
+        variables = WithPlatformVariables(await WithOfficeNameAsync(variables, logoScope, logoTenantId, ct));
 
         if (!Parser.TryParse(version.Subject, out var subjectTemplate, out var subjectParseError))
             return Result.Failure<RenderedContent>(new Error("EmailRenderer.Parse", subjectParseError));
@@ -426,6 +428,23 @@ public sealed partial class FluidTemplateRenderer(
         return new Dictionary<string, object?>(variables, StringComparer.OrdinalIgnoreCase)
         {
             ["tenant_name"] = profile.Name,
+        };
+    }
+
+    /// <summary>
+    /// La marca de la plataforma la pone el renderer desde PlatformSettings (Tenant) y PISA lo que mande
+    /// el caller: es la misma para todos los correos, y si cada servicio la mandara por su cuenta un
+    /// cambio de marca dejaría correos con el nombre viejo. Llega al asunto, al cuerpo y al layout.
+    /// </summary>
+    private IReadOnlyDictionary<string, object?> WithPlatformVariables(IReadOnlyDictionary<string, object?> variables)
+    {
+        var settings = platform.Current;
+        return new Dictionary<string, object?>(variables, StringComparer.OrdinalIgnoreCase)
+        {
+            ["product_name"] = settings.BrandName,
+            ["platform_legal_name"] = settings.LegalName,
+            ["platform_website"] = settings.Website,
+            ["platform_support_email"] = settings.SupportEmail,
         };
     }
 

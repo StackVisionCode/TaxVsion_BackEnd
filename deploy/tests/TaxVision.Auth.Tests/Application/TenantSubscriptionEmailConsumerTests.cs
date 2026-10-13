@@ -208,8 +208,7 @@ public sealed class TenantSubscriptionEmailConsumerTests
     private static FakeTenantRegistry TenantRegistry(Guid tenantId, string subDomain) =>
         new(Tenant.Register(tenantId, "Office", subDomain, TenantKind.Customer, "Etc/UTC").Value);
 
-    private static IOptions<TenantDomainOptions> Domain(string baseDomain) =>
-        Options.Create(new TenantDomainOptions { BaseDomain = baseDomain });
+    private static FixedPlatformSettings Domain(string baseDomain) => FixedPlatformSettings.For(baseDomain);
 
     private sealed class FakeUserRepository(User? admin) : IUserRepository
     {

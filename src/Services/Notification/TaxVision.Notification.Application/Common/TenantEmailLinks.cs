@@ -2,7 +2,7 @@ namespace TaxVision.Notification.Application.Common;
 
 /// <summary>
 /// Base de los links de los correos, per-tenant. Cada oficina vive en su subdominio de plataforma
-/// (ej. manfer.taxproffice.com): el CRM (staff) se sirve en la raíz y el portal del cliente bajo
+/// (ej. manfer.taxoffix.io): el CRM (staff) se sirve en la raíz y el portal del cliente bajo
 /// <c>ClientPathPrefix</c> (ej. /portal). Si no se pudo resolver el host del tenant se cae al base
 /// fijo configurado en <c>PortalOptions</c> — degradado, pero el correo igual sale.
 /// </summary>

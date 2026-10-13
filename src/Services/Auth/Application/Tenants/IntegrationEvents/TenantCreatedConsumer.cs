@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,7 +25,7 @@ public static class TenantCreatedConsumer
         IMfaRepository mfa,
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
-        IOptions<TenantDomainOptions> domainOptions,
+        IPlatformSettings platform,
         ITokenReferenceStore tokenReferences,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -52,7 +53,7 @@ public static class TenantCreatedConsumer
                     await mfa.AddPolicyAsync(Domain.Mfa.TenantMfaPolicy.CreateDefault(evt.NewTenantId), ct);
                 }
 
-                await EnsurePrimaryDomainAsync(evt, domains, reservations, domainOptions.Value, logger, ct);
+                await EnsurePrimaryDomainAsync(evt, domains, reservations, platform.Current.BaseDomain, logger, ct);
 
                 // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero ya tiene su
                 // TenantAdmin creado directo por la Saga (internal/tenants/{id}/owners, Fase 16),
@@ -102,7 +103,7 @@ public static class TenantCreatedConsumer
                                     ExpiresAtUtc = expiresAtUtc,
                                     TenantName = evt.Name,
                                     TenantSubdomain = evt.SubDomain,
-                                    InviterName = "TaxProffice",
+                                    InviterName = platform.Current.BrandName,
                                     CorrelationId = correlationId,
                                 }
                             );
@@ -127,7 +128,7 @@ public static class TenantCreatedConsumer
         TenantCreatedIntegrationEvent evt,
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
-        TenantDomainOptions options,
+        string baseDomain,
         ILogger logger,
         CancellationToken ct
     )
@@ -149,7 +150,7 @@ public static class TenantCreatedConsumer
             return;
         }
 
-        if (await domains.HostExistsAsync($"{slugResult.Value.Value}.{options.BaseDomain}", ct))
+        if (await domains.HostExistsAsync($"{slugResult.Value.Value}.{baseDomain}", ct))
         {
             logger.LogWarning(
                 "Host for tenant {TenantId} subdomain {SubDomain} already claimed by another TenantDomain row; "
@@ -163,7 +164,7 @@ public static class TenantCreatedConsumer
         var domainResult = TenantDomain.CreateSubdomain(
             evt.NewTenantId,
             slugResult.Value,
-            options.BaseDomain,
+            baseDomain,
             createdByUserId: Guid.Empty,
             DateTime.UtcNow
         );

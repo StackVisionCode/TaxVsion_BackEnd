@@ -13,6 +13,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -49,6 +50,9 @@ builder.Services.AddDocumentsInfrastructure(builder.Configuration);
 // ICacheService, así que registrar aquí CachedTenantPlanCodeReader o HttpPlanRateLimitReader
 // reventaba en runtime. Reutiliza la misma ConnectionStrings:Redis que ya exige el rate limiting.
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 
 // H-02 — el reader de la denylist necesita el ICacheService de la línea de arriba.
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -120,6 +124,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
+    options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Documents.Application"));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 

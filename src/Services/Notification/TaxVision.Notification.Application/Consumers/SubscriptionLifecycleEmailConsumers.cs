@@ -44,7 +44,6 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["access_ends_date"] = FormatDate(evt.AccessEndsAtUtc),
                         ["days_until_end"] = DaysUntil(evt.AccessEndsAtUtc),
                         ["failure_reason"] = evt.FailureCode ?? string.Empty,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

@@ -125,11 +125,13 @@ public sealed class IncrementalSignatureAppender(PadesOptions options)
             return (objOffset, byteRangeOffset, byteRangeLength, contentsOffset, contentsLength);
         }
 
+        // Nombre del campo de firma (lo muestra el panel de firmas del lector). Neutro: no lleva la marca,
+        // que cambia, y queda dentro del byte range firmado de cada documento ya sellado.
         public int WriteFieldObject(int objectNumber, int sigObj)
         {
             var offset = Position;
             WriteAscii(
-                $"{objectNumber} 0 obj\n<<\n/Type /Annot\n/Subtype /Widget\n/FT /Sig\n/T (TaxProffice.Signature)\n/F 132\n/Rect [0 0 0 0]\n/V {sigObj} 0 R\n>>\nendobj\n"
+                $"{objectNumber} 0 obj\n<<\n/Type /Annot\n/Subtype /Widget\n/FT /Sig\n/T (DigitalSeal)\n/F 132\n/Rect [0 0 0 0]\n/V {sigObj} 0 R\n>>\nendobj\n"
             );
             return offset;
         }

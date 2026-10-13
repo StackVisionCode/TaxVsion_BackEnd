@@ -1,3 +1,4 @@
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
@@ -21,8 +22,11 @@ namespace TaxVision.PaymentClient.Api.Public;
 [Route("payments-client/invoices/{reference}")]
 [AllowAnonymous]
 [EnableRateLimiting("public")]
-public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentClientPublicOptions> options)
-    : ControllerBase
+public sealed class PayableResolverController(
+    IMessageBus bus,
+    IOptions<PaymentClientPublicOptions> options,
+    IPlatformSettings platform
+) : ControllerBase
 {
     [HttpGet]
     [RateLimitExempt(
@@ -49,6 +53,7 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
             return Redirect(
                 PayablePublicUrls.UnavailableCheckoutUrl(
                     options.Value,
+                    platform.Current,
                     Request.Host.Value,
                     reference,
                     result.Error.Code
@@ -61,6 +66,7 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
         // que la firma) cuando está disponible; si no, cae a la base por path (dev = ng serve).
         var redirectUrl = PayablePublicUrls.CheckoutPageUrl(
             options.Value,
+            platform.Current,
             result.Value.SubDomain,
             result.Value.CheckoutToken
         );

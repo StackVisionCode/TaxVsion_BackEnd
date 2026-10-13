@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -71,6 +72,34 @@ public static class TenantBrandingProjectionConsumer
 
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation("TenantBrandingRef logo upserted for tenant {TenantId}.", evt.TenantId);
+        }
+    }
+
+    /// <summary>
+    /// La oficina renombró su subdominio primario: la proyección guarda el slug que se le devuelve a la
+    /// página pública de firma. Sin fila todavía no hay nada que renombrar (la crea TenantCreated).
+    /// </summary>
+    public static async Task Handle(
+        TenantSubdomainChangedIntegrationEvent evt,
+        ITenantBrandingRefRepository repository,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<TenantBrandingRef> logger,
+        CancellationToken ct
+    )
+    {
+        if (!evt.IsPrimary)
+            return;
+
+        using (correlation.Push(ResolveCorrelationId(evt.CorrelationId, evt.EventId)))
+        {
+            var existing = await repository.GetByTenantIdAsync(evt.TenantId, ct);
+            if (existing is null || existing.SubDomain == evt.NewSlug)
+                return;
+
+            existing.SetSubDomain(evt.NewSlug, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation("TenantBrandingRef subdomain renamed for tenant {TenantId}.", evt.TenantId);
         }
     }
 

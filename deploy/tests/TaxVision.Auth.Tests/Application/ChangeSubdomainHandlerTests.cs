@@ -28,6 +28,9 @@ public sealed class ChangeSubdomainHandlerTests
         public Task<TenantDomain?> GetByHostAsync(string host, CancellationToken ct = default) =>
             Task.FromResult<TenantDomain?>(null);
 
+        public Task<TenantDomain?> GetSubdomainBySlugAsync(string slug, CancellationToken ct = default) =>
+            Task.FromResult<TenantDomain?>(null);
+
         public Task<IReadOnlyList<TenantDomain>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<TenantDomain>>([]);
 
@@ -58,8 +61,7 @@ public sealed class ChangeSubdomainHandlerTests
             Task.CompletedTask;
     }
 
-    private static IOptions<TenantDomainOptions> DefaultOptions() =>
-        Microsoft.Extensions.Options.Options.Create(new TenantDomainOptions { BaseDomain = "taxproffice.com" });
+    private static FixedPlatformSettings Platform() => FixedPlatformSettings.For("taxproffice.com");
 
     private static TenantDomain PrimarySubdomain(Guid tenantId) =>
         TenantDomain
@@ -84,7 +86,8 @@ public sealed class ChangeSubdomainHandlerTests
             new ChangeSubdomainCommand(Guid.NewGuid(), domain.Id, "oficina2", Guid.NewGuid()),
             domains,
             new FakeReservationRepository(),
-            DefaultOptions(),
+            Platform(),
+            new RecordingResolutionCache(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -105,7 +108,8 @@ public sealed class ChangeSubdomainHandlerTests
             new ChangeSubdomainCommand(tenantId, domain.Id, "ab", Guid.NewGuid()),
             domains,
             new FakeReservationRepository(),
-            DefaultOptions(),
+            Platform(),
+            new RecordingResolutionCache(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -126,7 +130,8 @@ public sealed class ChangeSubdomainHandlerTests
             new ChangeSubdomainCommand(tenantId, domain.Id, "oficina2", Guid.NewGuid()),
             domains,
             new FakeReservationRepository(),
-            DefaultOptions(),
+            Platform(),
+            new RecordingResolutionCache(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -149,7 +154,8 @@ public sealed class ChangeSubdomainHandlerTests
             new ChangeSubdomainCommand(tenantId, domain.Id, "oficina1", Guid.NewGuid()),
             domains,
             new FakeReservationRepository(),
-            DefaultOptions(),
+            Platform(),
+            new RecordingResolutionCache(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -179,7 +185,8 @@ public sealed class ChangeSubdomainHandlerTests
             new ChangeSubdomainCommand(tenantId, domain.Id, "oficina2", Guid.NewGuid()),
             domains,
             reservations,
-            DefaultOptions(),
+            Platform(),
+            new RecordingResolutionCache(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -196,13 +203,15 @@ public sealed class ChangeSubdomainHandlerTests
         var domains = new FakeTenantDomainRepository();
         domains.Seed(domain);
         var unitOfWork = new FakeUnitOfWork();
+        var resolutionCache = new RecordingResolutionCache();
         var actingUserId = Guid.NewGuid();
 
         var result = await ChangeSubdomainHandler.Handle(
             new ChangeSubdomainCommand(tenantId, domain.Id, "Oficina2", actingUserId),
             domains,
             new FakeReservationRepository(),
-            DefaultOptions(),
+            Platform(),
+            resolutionCache,
             unitOfWork,
             CancellationToken.None
         );
@@ -213,6 +222,11 @@ public sealed class ChangeSubdomainHandlerTests
         Assert.Equal("oficina1.taxproffice.com", evt.OldHost);
         Assert.Equal("oficina2.taxproffice.com", evt.NewHost);
         Assert.Equal(actingUserId, evt.ActingUserId);
+        Assert.Equal("oficina1", evt.OldSlug);
+        Assert.Equal("oficina2", evt.NewSlug);
+        Assert.True(evt.IsPrimary);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        // El slug viejo deja de resolver ya, no cuando vence la cache.
+        Assert.Equal(["oficina1.taxproffice.com"], resolutionCache.Invalidated);
     }
 }

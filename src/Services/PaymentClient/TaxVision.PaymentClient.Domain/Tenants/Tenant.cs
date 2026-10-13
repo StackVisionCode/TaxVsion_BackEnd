@@ -62,6 +62,16 @@ public sealed class Tenant : BaseEntity
         );
     }
 
+    /// <summary>La oficina renombró su subdominio primario (Auth es el dueño del dominio).</summary>
+    public void ChangeSubDomain(string subDomain, DateTime nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(subDomain))
+            return;
+
+        SubDomain = subDomain.Trim().ToLowerInvariant();
+        UpdatedAtUtc = nowUtc;
+    }
+
     public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc)
     {
         Status = status;

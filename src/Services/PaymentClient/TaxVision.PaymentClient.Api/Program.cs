@@ -12,6 +12,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -61,6 +62,9 @@ builder.Services.AddTaxVisionOpenTelemetry(
     PaymentClientMetrics.MeterName
 );
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 
 // Rate limiting tiered por tenant/usuario (Fase 4.14 del plan). IConnectionMultiplexer ya está
 // registrado desde Infrastructure/DependencyInjection.cs (RedisDistributedLockFactory) — a
@@ -182,6 +186,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(CreateTenantPaymentConfigCommand).Assembly);
+    options.ListenForPlatformSettings();
     // Registro explícito del consumer de "factura anulada" (revoca el payable/link). La discovery por
     // assembly a veces omite consumers de clase estática (bug real visto en otros servicios).
     options.Discovery.IncludeType(

@@ -1,8 +1,8 @@
 # Unico punto de entrada publico del stack. TLS WILDCARD automatico (Let's
 # Encrypt via desafio DNS-01 en Cloudflare) — Caddy emite y renueva un unico
-# certificado que cubre TANTO el apex (taxproffice.com, usado hoy por
-# TAXVISION_DOMAIN=api.taxproffice.com) COMO cualquier subdominio de tenant
-# (oficina1.taxproffice.com, oficina2.taxproffice.com, ...) sin tener que volver
+# certificado que cubre TANTO el apex (taxoffix.io, usado hoy por
+# TAXVISION_DOMAIN=api.taxoffix.io) COMO cualquier subdominio de tenant
+# (oficina1.taxoffix.io, oficina2.taxoffix.io, ...) sin tener que volver
 # a tocar este archivo cuando se de de alta una oficina nueva — el DNS ya
 # resuelve por el wildcard `CNAME *` (o A) que apunta a este mismo server;
 # Caddy no necesita saber los subdominios de antemano porque DNS-01 no
@@ -26,7 +26,7 @@
 # reenvia el Host real por defecto en reverse_proxy, sin configuracion extra.
 #
 # SPA + API en el mismo host de tenant. Un subdominio de oficina
-# (manfer.taxproffice.com) tiene que servir DOS cosas en el mismo Host: la SPA
+# (manfer.taxoffix.io) tiene que servir DOS cosas en el mismo Host: la SPA
 # de Angular (paginas y estaticos) Y la API del tenant (que Auth resuelve por
 # Host). El Gateway solo tiene API, asi que solo (taxvision_api) devolvia 404 en
 # `/` y `/login`. Por eso los hosts de tenant usan (taxvision_tenant), que separa
@@ -35,13 +35,14 @@
 #   - navegacion del navegador (Accept: text/html; cubre recargas y deep-links
 #     de rutas Angular como /login, /billing, /documents) -> SPA (index.html)
 #   - el resto (XHR/fetch JSON: /auth/*, etc.) -> Gateway (API del tenant)
-# La SPA se sirve desde app.taxproffice.com (misma build; se autoconfigura
+# La SPA se sirve desde app.<dominio> (misma build; se autoconfigura
 # leyendo el slug del Host en runtime). Se usa app.* como upstream porque el
 # contenedor del CRM esta atado a 127.0.0.1 en la VM del frontend y no es
 # alcanzable por red interna desde este backend. `header_up Host` reescribe el
-# Host a app.taxproffice.com para que Cloudflare lo enrute al frontend y NO
+# Host a app.<dominio> para que Cloudflare lo enrute al frontend y NO
 # vuelva a entrar a este bloque de tenant (evita el loop). El host de sistema
-# (api.*) y el apex siguen siendo solo-API, sin cambios.
+# (api.*) y el apex siguen siendo solo-API, sin cambios. Todo host sale de
+# TAXVISION_BASE_DOMAIN / TAXVISION_DOMAIN: este archivo no lleva dominios literales.
 
 # Upstreams del host de SISTEMA (api.*) y el apex: todo al Gateway, sin SPA.
 (taxvision_api) {
@@ -55,7 +56,7 @@
 	}
 }
 
-# Upstreams de hosts de TENANT: co-alojan la SPA (app.taxproffice.com) + la API
+# Upstreams de hosts de TENANT: co-alojan la SPA (app.<dominio>) + la API
 # del tenant (Gateway). El orden de los handle importa: MinIO primero (los
 # objetos de bucket pueden terminar en .png/.pdf y no deben caer en la SPA),
 # luego estaticos, luego navegacion, y el resto al Gateway.
@@ -92,15 +93,15 @@
 
 	@spa_assets path *.js *.css *.map *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp *.woff *.woff2 *.ttf *.eot /assets/*
 	handle @spa_assets {
-		reverse_proxy https://app.taxproffice.com {
-			header_up Host app.taxproffice.com
+		reverse_proxy https://app.{$TAXVISION_BASE_DOMAIN:taxoffix.io} {
+			header_up Host app.{$TAXVISION_BASE_DOMAIN:taxoffix.io}
 		}
 	}
 
 	@spa_nav header Accept *text/html*
 	handle @spa_nav {
-		reverse_proxy https://app.taxproffice.com {
-			header_up Host app.taxproffice.com
+		reverse_proxy https://app.{$TAXVISION_BASE_DOMAIN:taxoffix.io} {
+			header_up Host app.{$TAXVISION_BASE_DOMAIN:taxoffix.io}
 		}
 	}
 
@@ -112,23 +113,23 @@
 # Origen HTTP usado por las rutas publicadas del Cloudflare Tunnel. El host de
 # sistema (api.*) queda explicito para no caer en la redireccion HTTP->HTTPS y
 # para que sea solo-API; los subdominios de tenant llevan el split SPA+API.
-http://{$TAXVISION_DOMAIN:api.taxproffice.com} {
+http://{$TAXVISION_DOMAIN:api.taxoffix.io} {
 	import taxvision_api
 }
-http://*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
+http://*.{$TAXVISION_BASE_DOMAIN:taxoffix.io} {
 	import taxvision_tenant
 }
 
 # Entrada TLS directa (DNS-01 wildcard). El apex y api.* son solo-API (el landing
 # lo sirve el frontend); los subdominios de tenant llevan el split SPA+API.
-{$TAXVISION_BASE_DOMAIN:taxproffice.com}, {$TAXVISION_DOMAIN:api.taxproffice.com} {
+{$TAXVISION_BASE_DOMAIN:taxoffix.io}, {$TAXVISION_DOMAIN:api.taxoffix.io} {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 
 	import taxvision_api
 }
-*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
+*.{$TAXVISION_BASE_DOMAIN:taxoffix.io} {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}

@@ -11,6 +11,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
@@ -59,6 +60,9 @@ builder
 // ConnectionStrings:Redis para IRateCounter (línea abajo); AddRedisCache reutiliza esa misma
 // conexión para el ICacheService compartido, mismo patrón que Tenant/Customer.
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Marca y dominio de la plataforma (Tenant). Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 
 // H-02/H-01 — revocar una sesión ahora también corta el acceso a Billing, no solo al resto.
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -120,6 +124,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
+    options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Billing.Application"));
 
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el

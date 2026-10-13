@@ -1,5 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -24,6 +25,7 @@ public static class SignatureReadyForDownloadConsumer
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -57,7 +59,7 @@ public static class SignatureReadyForDownloadConsumer
                 // si no, el correo de siempre. Sin link (share-token vacío) no tiene sentido el SMS → email.
                 if (PrefersSms(signer) && downloads.Count > 0)
                 {
-                    var smsBody = BuildReadySms(signer, downloads, portal.Value);
+                    var smsBody = BuildReadySms(signer, downloads, platform.Current.BrandName);
                     await smsSender.SendAsync(signer.PhoneE164!, smsBody, ct);
                     continue;
                 }
@@ -105,10 +107,9 @@ public static class SignatureReadyForDownloadConsumer
     private static string BuildReadySms(
         SignerContactSnapshot signer,
         IReadOnlyList<DownloadItem> downloads,
-        PortalOptions portal
+        string product
     )
     {
-        var product = portal.ProductName;
         var links = string.Join(" ", downloads.Select(download => $"{download.Title}: {download.Link}"));
         return signer.Language == "Es"
             ? $"{product}: {signer.FullName}, tus documentos firmados están listos. {links}"

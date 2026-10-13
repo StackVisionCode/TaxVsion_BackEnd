@@ -43,6 +43,7 @@ public sealed class CreateAddOnCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 
@@ -81,6 +82,7 @@ public sealed class CreateAddOnCheckoutHandlerTests
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
             CancellationToken.None
         );
 

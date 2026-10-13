@@ -118,6 +118,7 @@ public sealed class ScribeRenderFailureTests
                 scribeClient,
                 new NoOpSmsSender(),
                 Options.Create(new PortalOptions()),
+                TestPlatform.Settings,
                 new FakeTenantHostResolver(),
                 new NoOpCorrelationContext(),
                 NullLogger<SignerInvitedIntegrationEvent>.Instance,

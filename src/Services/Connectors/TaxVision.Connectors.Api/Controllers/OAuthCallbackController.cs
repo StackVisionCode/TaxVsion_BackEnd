@@ -1,3 +1,4 @@
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
@@ -25,6 +26,7 @@ public sealed class OAuthCallbackController(
     IMessageBus bus,
     IOAuthConnectStateStore stateStore,
     IOptions<ConnectorsPortalOptions> portalOptions,
+    IPlatformSettings platform,
     ILogger<OAuthCallbackController> logger
 ) : ControllerBase
 {
@@ -90,7 +92,11 @@ public sealed class OAuthCallbackController(
 
         // El navegador vuelve al subdominio del tenant donde el usuario inició (y sigue logueado), no
         // a un BaseUrl fijo — validado contra el dominio permitido para no ser un open redirect.
-        var redirectBase = OAuthReturnRedirectPolicy.Resolve(connectState.ReturnOrigin, portalOptions.Value.BaseUrl);
+        var redirectBase = OAuthReturnRedirectPolicy.Resolve(
+            connectState.ReturnOrigin,
+            portalOptions.Value.BaseUrl,
+            platform.Current.BaseDomain
+        );
 
         var result = await bus.InvokeAsync<Result<CompleteOAuthConnectResult>>(
             new CompleteOAuthConnectCommand(

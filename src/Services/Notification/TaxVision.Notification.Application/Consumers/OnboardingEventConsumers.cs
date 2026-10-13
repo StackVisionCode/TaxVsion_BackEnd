@@ -49,7 +49,6 @@ public static class OnboardingOtpRequestedConsumer
                         ["otp_code"] = evt.OtpCode,
                         ["first_name"] = firstName,
                         ["expires_in_minutes"] = expiresInMinutes,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -124,7 +123,6 @@ public static class OnboardingRegistrationReadyConsumer
                         ["paid_at"] = evt.PaidAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["registration_url"] = urlResult.Value,
                         ["receipt_download_url"] = receiptLookup?.ReceiptDownloadUrl,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -193,7 +191,6 @@ public static class OnboardingReceiptReadyConsumer
                     {
                         ["first_name"] = evt.FirstName,
                         ["receipt_download_url"] = evt.ReceiptDownloadUrl,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -240,7 +237,6 @@ public static class OnboardingPaymentFailedNotificationConsumer
                         ["plan_name"] = evt.PlanName ?? "tu plan",
                         ["failure_reason"] = evt.FailureReason,
                         ["retry_url"] = evt.RetryUrl,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

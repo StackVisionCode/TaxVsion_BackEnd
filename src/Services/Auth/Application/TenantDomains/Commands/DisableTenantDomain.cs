@@ -1,4 +1,5 @@
-using BuildingBlocks.Persistence;
+﻿using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
@@ -19,6 +20,8 @@ public static class DisableTenantDomainHandler
         DisableTenantDomainCommand command,
         ITenantDomainRepository domains,
         ICloudflareProvisioningClient cloudflare,
+        ITenantResolutionCache resolutionCache,
+        IPlatformSettings platform,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -45,6 +48,13 @@ public static class DisableTenantDomainHandler
             return disableResult;
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        // Deshabilitado = deja de resolver ya, no cuando venza la cache.
+        var resolvedHost =
+            domain.DomainType == TenantDomainType.Subdomain && domain.SubdomainSlug is not null
+                ? platform.Current.TenantHost(domain.SubdomainSlug)
+                : domain.Host;
+        await resolutionCache.InvalidateAsync(resolvedHost, ct);
         return Result.Success();
     }
 

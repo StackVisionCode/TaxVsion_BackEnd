@@ -101,6 +101,7 @@ public sealed class FluidTemplateRendererPreviewTests
             cloudStorage,
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance
@@ -146,6 +147,7 @@ public sealed class FluidTemplateRendererPreviewTests
             new FakeCloudStorageClient(),
             new FakeLogoResolver(SystemLogo),
             new FakeTenantProfileRefRepository(),
+            TestPlatform.Settings,
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeTemplateSourceCache(),
             NullLogger<FluidTemplateRenderer>.Instance

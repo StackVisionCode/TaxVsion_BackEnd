@@ -93,6 +93,7 @@ public sealed class TemplateWarmupServiceTests
         services.AddSingleton<TaxVision.Scribe.Application.Abstractions.ITenantProfileRefRepository>(
             new Rendering.FakeTenantProfileRefRepository()
         );
+        services.AddSingleton(TestPlatform.Settings);
         services.AddSingleton<IMemoryCache>(l1Cache);
         services.AddSingleton<ITemplateSourceCache, FakeTemplateSourceCache>();
         services.AddSingleton<EventTemplateResolver>(sp => new EventTemplateResolver(

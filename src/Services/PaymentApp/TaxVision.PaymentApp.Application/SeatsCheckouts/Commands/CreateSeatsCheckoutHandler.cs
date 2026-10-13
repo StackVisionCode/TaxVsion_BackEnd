@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -18,8 +20,6 @@ namespace TaxVision.PaymentApp.Application.SeatsCheckouts.Commands;
 /// </summary>
 public static class CreateSeatsCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION SEATS";
-
     public static async Task<Result<SeatsCheckoutResponse>> Handle(
         CreateSeatsCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -29,6 +29,7 @@ public static class CreateSeatsCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -43,7 +44,7 @@ public static class CreateSeatsCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command),
+            PolicyFor(command, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -66,13 +67,16 @@ public static class CreateSeatsCheckoutHandler
             );
     }
 
-    private static HostedCheckoutPolicy PolicyFor(CreateSeatsCheckoutCommand command) =>
+    private static HostedCheckoutPolicy PolicyFor(
+        CreateSeatsCheckoutCommand command,
+        PlatformSettingsSnapshot platform
+    ) =>
         new()
         {
             PaymentType = SaaSPaymentType.SeatsPurchaseCharge,
             Subject = "Seats checkout",
             ReferenceId = command.SeatPurchaseIntentId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "SEATS"),
             // Subscription (dueño del precio de asiento) ya resolvió el total prorrateado.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>

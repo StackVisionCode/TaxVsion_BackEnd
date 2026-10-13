@@ -1,7 +1,7 @@
 import type { MeetingInviteeKind } from '../../domain/meetings/meeting-invitation.js';
 
 export interface BuildMeetingJoinUrlInput {
-  /** Host primario del tenant (ej. "manfer.taxproffice.com") o null si no se pudo resolver. */
+  /** Host primario del tenant (ej. "manfer.taxoffix.io") o null si no se pudo resolver. */
   readonly host: string | null;
   readonly inviteeKind: MeetingInviteeKind;
   readonly meetingId: string;
@@ -13,7 +13,7 @@ export interface BuildMeetingJoinUrlInput {
 }
 
 /**
- * Arma el link de invitación por-tenant y por-tipo de invitado (bug prod: salía app./client.taxproffice.com
+ * Arma el link de invitación por-tenant y por-tipo de invitado (bug prod: salía app./client.taxoffix.io
  * en vez del subdominio de la oficina):
  *  - Employee → CRM en la raíz del subdominio: `https://{host}/meetings`. El CRM no tiene ruta de
  *    join-by-token; el empleado ve el meeting en su lista (aparece por la invitación) y entra desde ahí.

@@ -28,6 +28,7 @@ import { ConsumerRuntime } from './infrastructure/rabbit/consumer-runtime.js';
 import { bindSignatureConsumers } from './application/event-handlers/signature-consumers.js';
 import { bindCustomerConsumers } from './application/event-handlers/customer-consumers.js';
 import { bindAuthConsumers } from './application/event-handlers/auth-consumers.js';
+import { bindTenantHostConsumers } from './application/event-handlers/tenant-host-consumers.js';
 import { bindOffboardingConsumers } from './application/event-handlers/offboarding-consumers.js';
 import { bindCloudStorageConsumers } from './application/event-handlers/cloudstorage-consumers.js';
 import { bindCloudStorageNotificationConsumers } from './application/event-handlers/cloudstorage-notification-consumers.js';
@@ -49,6 +50,7 @@ import { startSessionDenylistWatcher } from './infrastructure/redis/session-deny
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
 import { redisSub } from './infrastructure/redis/redis-client.js';
 import { seedDefaultNotificationActionMappings } from './infrastructure/seed/seed-notification-action-mappings.js';
+import { platformSettings } from './infrastructure/platform/platform-settings-source.js';
 
 /**
  * Red de seguridad del proceso: un error async no capturado en un handler de socket (p.ej. un deadlock
@@ -173,6 +175,10 @@ async function main(): Promise<void> {
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
   });
+  bindTenantHostConsumers(consumers.register.bind(consumers), {
+    hostCache: container.tenantHostCache,
+    platformSettings,
+  });
   // Offboarding (retiro terminal): baja las proyecciones + reasigna/cancela reuniones del host retirado.
   bindOffboardingConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
@@ -274,6 +280,8 @@ async function main(): Promise<void> {
     publisher: container.publisher,
     emitter,
   });
+  // Orígenes del CORS: dominio vigente de la plataforma (Tenant), refrescado cada 5 min.
+  platformSettings.start();
   await consumers.start();
   // Re-suscribir el consumer en cada reconexión de Rabbit: el canal nuevo necesita su propio
   // channel.consume. Sin esto, tras el primer corte del broker el servicio queda conectado pero
@@ -347,6 +355,7 @@ async function shutdown(
     // SHUTDOWN_DRAIN_MS a que los handlers ya en curso (dispatch()) terminen
     // de ackear/nackear antes de seguir — ver docblock de ConsumerRuntime.stop.
     await consumers.stop(SHUTDOWN_DRAIN_MS);
+    platformSettings.stop();
 
     // Deja de aceptar sockets NUEVOS (middleware `io.use` en build-io.ts
     // rechaza con 'Server.ShuttingDown') y espera a que los ya conectados se

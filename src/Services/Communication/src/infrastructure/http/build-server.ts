@@ -20,6 +20,7 @@ import { registerSettingsRoutes } from '../../api/http/routes/settings.route.js'
 import { registerNotificationActionMappingRoutes } from '../../api/http/routes/notification-action-mappings.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
 import type { AppContainer } from '../container.js';
+import { isAllowedOrigin } from './cors-origins.js';
 
 /**
  * Fastify sin batteries incluidas mas alla de lo estrictamente necesario para
@@ -45,15 +46,9 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await app.register(sensible);
   await app.register(helmet, { global: true });
   await app.register(cors, {
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      // `config.cors.origins` vacio solo es alcanzable en development/test —
-      // config.ts (Fase Backend 11) revienta al boot si NODE_ENV=production y
-      // COMMUNICATION_CORS_ORIGINS esta vacio, asi que este allow-all nunca
-      // corre en produccion.
-      if (config.cors.origins.length === 0) return cb(null, true);
-      cb(null, config.cors.origins.includes(origin));
-    },
+    // Orígenes de la plataforma (PlatformSettings) + los extra de config. El allow-all sin ninguno de
+    // los dos solo es alcanzable en development/test: config.ts revienta al boot en producción.
+    origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
     credentials: true,
   });
   // RateLimit Fase 7 — reemplaza @fastify/rate-limit (in-memory, contado

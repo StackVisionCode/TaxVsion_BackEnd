@@ -1,9 +1,11 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -18,8 +20,6 @@ namespace TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 /// </summary>
 public static class CreateOnboardingCheckoutHandler
 {
-    private const string DefaultStatementDescriptor = "TAXVISION SAAS";
-
     public static async Task<Result<OnboardingCheckoutResponse>> Handle(
         CreateOnboardingCheckoutCommand command,
         ISaaSPaymentRepository payments,
@@ -31,6 +31,7 @@ public static class CreateOnboardingCheckoutHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -45,7 +46,7 @@ public static class CreateOnboardingCheckoutHandler
 
         var result = await HostedCheckoutPipeline.RunAsync(
             request,
-            PolicyFor(command, paymentMethodCatalog, planPricing),
+            PolicyFor(command, paymentMethodCatalog, planPricing, platform.Current),
             payments,
             providerFactory,
             audit,
@@ -71,14 +72,15 @@ public static class CreateOnboardingCheckoutHandler
     private static HostedCheckoutPolicy PolicyFor(
         CreateOnboardingCheckoutCommand command,
         IOnboardingPaymentMethodCatalog paymentMethodCatalog,
-        ISubscriptionPlanPricingClient planPricing
+        ISubscriptionPlanPricingClient planPricing,
+        PlatformSettingsSnapshot platform
     ) =>
         new()
         {
             PaymentType = SaaSPaymentType.OnboardingInitial,
             Subject = "Onboarding checkout",
             ReferenceId = command.OnboardingId,
-            StatementDescriptor = DefaultStatementDescriptor,
+            StatementDescriptor = PlatformStatementDescriptors.For(platform, "SAAS"),
             PreCheck = ct => EnsureCheckoutMethodEnabledAsync(command, paymentMethodCatalog, ct),
             ResolveAmount = ct => ResolveAmountAsync(command, planPricing, ct),
             CreatePayment = (key, amount, descriptor, nowUtc) =>

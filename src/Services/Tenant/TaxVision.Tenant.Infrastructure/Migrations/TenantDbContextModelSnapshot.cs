@@ -211,6 +211,56 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Platform.PlatformSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ApiHost")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<string>("BaseDomain")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<string>("BillingEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<string>("BrandName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("LegalName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("SupportEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PlatformSettings", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -293,7 +343,7 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                             CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
                             DefaultTimeZoneId = "Etc/UTC",
                             Kind = "Platform",
-                            Name = "TaxVision Platform",
+                            Name = "Platform",
                             Status = "Active",
                             SubDomain = "platform-internal"
                         });

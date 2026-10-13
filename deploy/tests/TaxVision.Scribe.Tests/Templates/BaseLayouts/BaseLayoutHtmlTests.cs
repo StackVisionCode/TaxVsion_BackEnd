@@ -22,13 +22,18 @@ public sealed class BaseLayoutHtmlTests
         var context = new TemplateContext();
         context.SetValue("body", "<p>Hola</p>");
         context.SetValue("current_year", 2026);
+        context.SetValue("product_name", "TaxOffix");
+        context.SetValue("platform_legal_name", "TaxOffix LLC");
 
         var html = await template!.RenderAsync(context, HtmlEncoder.Default);
 
         Assert.Contains("<p>Hola</p>", html);
         Assert.Contains("2026", html);
-        // El system-base ya no lleva logo por imagen: el header es el wordmark de texto TaxProffice.
-        Assert.Contains("TaxProffice", html);
+        // La marca sale de las variables de plataforma (las pone el renderer), nunca escrita en el layout.
+        Assert.Contains("TaxOffix", html);
+        Assert.Contains("TaxOffix LLC", html);
+        Assert.DoesNotContain("TaxProffice", BaseLayoutHtml.SystemBaseV1);
+        Assert.DoesNotContain("TaxProffice", BaseLayoutHtml.TenantBaseV1);
     }
 
     /// <summary>

@@ -10,7 +10,7 @@ using Wolverine;
 namespace TaxVision.Auth.Api.Controllers;
 
 /// <summary>
-/// Login central multi-tenant (app.taxproffice.com). A diferencia de <see cref="AuthController"/>, es
+/// Login central multi-tenant (app.taxoffix.io). A diferencia de <see cref="AuthController"/>, es
 /// cross-tenant a propósito: no resuelve un tenant del Host — autentica el email contra TODAS sus
 /// oficinas. Flujo: discover-login (password) → [selector/MFA → handoff] → el frontend redirige al
 /// subdominio y canjea el vale con from-ticket.

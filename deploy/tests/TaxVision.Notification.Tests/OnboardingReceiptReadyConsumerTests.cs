@@ -19,7 +19,7 @@ namespace TaxVision.Notification.Tests;
 /// AuthzPermissionsProjectionConsumersTests.cs.</summary>
 public sealed class OnboardingReceiptReadyConsumerTests
 {
-    private static readonly PortalOptions Portal = new() { ProductName = "TaxVision" };
+    private static readonly PortalOptions Portal = new();
 
     [Fact]
     public async Task Persists_the_lookup_and_queues_the_follow_up_email_when_none_exists()

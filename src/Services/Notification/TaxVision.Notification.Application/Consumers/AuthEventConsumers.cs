@@ -1,5 +1,6 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -29,16 +30,17 @@ public static class InvitationCreatedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var office = string.IsNullOrWhiteSpace(evt.TenantName) ? portal.Value.ProductName : evt.TenantName!;
+            var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName!;
             var tenantPortalUrl = string.IsNullOrWhiteSpace(evt.TenantSubdomain)
                 ? portal.Value.BaseUrl.TrimEnd('/')
-                : $"https://{evt.TenantSubdomain.Trim().ToLowerInvariant()}.{portal.Value.BaseDomain.Trim().Trim('.')}";
+                : $"https://{platform.Current.TenantHost(evt.TenantSubdomain.Trim().ToLowerInvariant())}";
             var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
 
             var render = (
@@ -53,7 +55,6 @@ public static class InvitationCreatedConsumer
                         ["invite_link"] = inviteLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["is_resend"] = evt.IsResend,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -80,6 +81,7 @@ public static class PasswordResetRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -104,10 +106,9 @@ public static class PasswordResetRequestedConsumer
                     {
                         ["reset_link"] = resetLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                        ["product_name"] = portal.Value.ProductName,
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["office"] = string.IsNullOrWhiteSpace(evt.TenantName)
-                            ? portal.Value.ProductName
+                            ? platform.Current.BrandName
                             : evt.TenantName,
                     },
                     ct
@@ -153,11 +154,7 @@ public static class TenantRecoveryRequestedConsumer
                 await scribeClient.RenderAsync(
                     "auth.tenant_recovery_requested.v1",
                     evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["offices"] = offices,
-                        ["product_name"] = portal.Value.ProductName,
-                    },
+                    new Dictionary<string, object?> { ["offices"] = offices },
                     ct
                 )
             ).EnsureRendered("auth.tenant_recovery_requested.v1");
@@ -184,6 +181,7 @@ public static class MfaChallengeRequestedConsumer
         IScribeRenderClient scribeClient,
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -193,7 +191,7 @@ public static class MfaChallengeRequestedConsumer
             if (string.Equals(evt.Channel, "Sms", StringComparison.OrdinalIgnoreCase))
             {
                 var text =
-                    $"{portal.Value.ProductName}: tu código es {evt.Code}. "
+                    $"{platform.Current.BrandName}: tu código es {evt.Code}. "
                     + "Expira en pocos minutos. No lo compartas.";
                 // SMS sigue via NotificationDispatcher — Scribe/el gateway son exclusivos de email.
                 await dispatcher.SendSmsAsync(
@@ -221,12 +219,7 @@ public static class MfaChallengeRequestedConsumer
                 await scribeClient.RenderAsync(
                     "auth.mfa_otp_requested.v1",
                     evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["code"] = evt.Code,
-                        ["reason"] = reason,
-                        ["product_name"] = portal.Value.ProductName,
-                    },
+                    new Dictionary<string, object?> { ["code"] = evt.Code, ["reason"] = reason },
                     ct
                 )
             ).EnsureRendered("auth.mfa_otp_requested.v1");
@@ -252,6 +245,7 @@ public static class EmailChangeRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -265,7 +259,7 @@ public static class EmailChangeRequestedConsumer
             var confirmLink = AuthAccountCopy.IsPortal(evt.ActorType)
                 ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
                 : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={confirmToken}";
-            var office = string.IsNullOrWhiteSpace(evt.TenantName) ? portal.Value.ProductName : evt.TenantName;
+            var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName;
 
             // Nota Fase 7: antes, si este primer render fallaba, el bloque se saltaba en silencio y
             // el consumer seguía directo a la alerta de seguridad — el email de confirmación se
@@ -279,7 +273,6 @@ public static class EmailChangeRequestedConsumer
                     {
                         ["confirm_link"] = confirmLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                        ["product_name"] = portal.Value.ProductName,
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["office"] = office,
                     },
@@ -309,7 +302,6 @@ public static class EmailChangeRequestedConsumer
                             ? $"Someone asked to change the email of your client portal account at {office} to {evt.NewEmail}."
                             : $"Someone asked to change the email of your {office} workspace account to {evt.NewEmail}.",
                         ["ip_address"] = null,
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )
@@ -337,6 +329,7 @@ public static class SecurityAlertConsumer
         SecurityAlertIntegrationEvent evt,
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
+        IPlatformSettings platform,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -346,7 +339,7 @@ public static class SecurityAlertConsumer
             // El evento no transporta el email del usuario (dato de Auth); se
             // registra como notificación in-app dirigida al usuario. Cuando exista
             // la proyección de usuarios en Notification se enviará también por correo.
-            var subject = $"Alerta de seguridad en tu cuenta de {portal.Value.ProductName}";
+            var subject = $"Alerta de seguridad en tu cuenta de {platform.Current.BrandName}";
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
                 $"user:{evt.UserId:N}",
@@ -393,7 +386,6 @@ public static class UserRegisteredConsumer
                             evt.ActorType == "CustomerPortal"
                                 ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
                                 : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

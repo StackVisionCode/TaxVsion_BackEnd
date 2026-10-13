@@ -67,7 +67,6 @@ public static class AppointmentAttendeeAddedConsumer
                         ["is_recurring"] = evt.IsRecurring,
                         ["is_virtual"] = evt.IsVirtual,
                         ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                        ["product_name"] = portal.Value.ProductName,
                     },
                     ct
                 )

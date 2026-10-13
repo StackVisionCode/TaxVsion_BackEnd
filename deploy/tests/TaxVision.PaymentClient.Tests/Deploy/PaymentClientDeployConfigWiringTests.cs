@@ -4,16 +4,19 @@ namespace TaxVision.PaymentClient.Tests.Deploy;
 
 public sealed class PaymentClientDeployConfigWiringTests
 {
+    /// <summary>
+    /// Producción compone la URL de la factura en el host de la oficina; el dominio sale de
+    /// PlatformSettings, así que no hay un secret propio con el dominio que se quede atrás.
+    /// </summary>
     [Fact]
-    public void Tenant_base_domain_is_wired_in_compose_and_deploy_workflow()
+    public void Tenant_hosts_are_on_in_compose_without_a_domain_secret_of_its_own()
     {
-        const string varName = "PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN";
-
         var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
-        Assert.Contains($"PaymentClient__Public__TenantBaseDomain: ${{{varName}-}}", compose);
+        Assert.Contains("PaymentClient__Public__UseTenantHosts: \"true\"", compose);
+        Assert.DoesNotContain("PaymentClient__Public__TenantBaseDomain", compose);
 
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");
-        Assert.Contains($"{varName}=${{{{ secrets.{varName} }}}}", workflow);
+        Assert.DoesNotContain("PAYMENTCLIENT_PUBLIC_TENANT_BASE_DOMAIN", workflow);
     }
 
     private static string ReadRepoFile(string relativePath)

@@ -1,5 +1,6 @@
 using System.Globalization;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ public sealed class OnboardingSuccessCompleter(
     ITokenReferenceStore tokenReferences,
     IOptions<OnboardingOptions> onboardingOptions,
     IMessageBus bus,
+    IPlatformSettings platform,
     ILogger<OnboardingSuccessCompleter> logger
 )
 {
@@ -135,7 +137,7 @@ public sealed class OnboardingSuccessCompleter(
             ))
             .ToList();
 
-        var planLabel = string.IsNullOrWhiteSpace(planName) ? "Suscripción TaxProffice" : planName!;
+        var planLabel = string.IsNullOrWhiteSpace(planName) ? $"Suscripción {platform.Current.BrandName}" : planName!;
         var receiptCurrency = onboarding.Currency ?? currency;
 
         await bus.PublishAsync(
