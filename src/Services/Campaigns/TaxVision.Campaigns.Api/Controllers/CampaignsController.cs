@@ -19,6 +19,7 @@ using TaxVision.Campaigns.Application.Scheduling;
 using TaxVision.Campaigns.Application.Scheduling.Commands;
 using TaxVision.Campaigns.Application.Scheduling.Queries;
 using TaxVision.Campaigns.Domain.Campaigns;
+using TaxVision.Campaigns.Domain.Scheduling;
 using Wolverine;
 
 namespace TaxVision.Campaigns.Api.Controllers;
@@ -245,7 +246,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 manual,
                 IncludeCustomers: request.IncludeCustomers,
                 CanViewAllCustomers: canViewAllCustomers,
-                CallerBearerToken: ExtractBearerToken()
+                CallerBearerToken: ExtractBearerToken(),
+                CustomerIds: request.CustomerIds
             ),
             ct
         );
@@ -279,7 +281,8 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 manual,
                 request.IncludeCustomers,
                 canViewAllCustomers,
-                userId
+                userId,
+                request.CustomerIds
             ),
             ct
         );
@@ -300,6 +303,11 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         // esto, con la visibilidad abierta. Mismo permiso que la ruta interactiva de arriba.
         var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
 
+        // Frecuencia: texto libre tolerante (case-insensitive); default Custom (usa IntervalMinutes).
+        var frequency = Enum.TryParse<RecurrenceFrequency>(request.Frequency, ignoreCase: true, out var f)
+            ? f
+            : RecurrenceFrequency.Custom;
+
         var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
             new ScheduleCampaignCommand(
                 tenantId,
@@ -310,7 +318,11 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
                 request.ContactListIds ?? [],
                 request.IncludeCustomers,
                 userId,
-                canViewAllCustomers
+                canViewAllCustomers,
+                request.CustomerIds,
+                frequency,
+                request.EndsAtUtc,
+                request.MaxOccurrences
             ),
             ct
         );

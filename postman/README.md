@@ -11,6 +11,7 @@ orquestador **Campaigns** (campañas multicanal: contactos/listas, remitentes, e
 |---|---|
 | `TaxVision-NewServices.postman_collection.json` | Colección v2.1: carpetas Auth / SMS / Catalog / Inventory / Billing. |
 | `TaxVision-Campaigns.postman_collection.json` | Colección v2.1 de **Campaigns**: Auth / Sender Profiles / Contacts / Contact Lists / Campaigns / Schedules (34 requests). |
+| `TaxVision-Wallet.postman_collection.json` | Colección v2.1 del **Wallet** (monedero prepago): Auth + Wallet (saldo, transacciones, tarifas, estimación, recarga por checkout hosteado, pricing/publish). |
 | `TaxVision-Local.postman_environment.json` | Environment con `gateway`, `tenantId` y los secretos (vacíos, se llenan a mano). |
 
 ## Campaigns (colección aparte)
@@ -31,6 +32,23 @@ sin auth). Flujo sugerido:
 `includeCustomers: true` hace que el envío/agendado sume los clientes activos del directorio de
 **Customer** por M2M (el servicio adquiere su propio token; `serviceClientId=campaigns-worker`). Todas
 las rutas viven bajo el gateway: `/campaigns`, `/contacts`, `/contact-lists`, `/sender-profiles`.
+
+## Wallet (colección aparte)
+
+`TaxVision-Wallet.postman_collection.json` prueba el monedero prepago por el gateway. **Requiere token
+de usuario con `wallet.view`** (lectura) o **`wallet.manage`** (recarga); `pricing/publish` es solo
+**PlatformAdmin**. Lleva `Authorization: Bearer {{userToken}}` a nivel colección. Flujo:
+
+1. **Auth → Login** → puebla `{{userToken}}`.
+2. **Wallet → Get wallet** (saldo en micros: $1 = 1,000,000) · **Get transactions** (ledger) · **Get rates**.
+3. **Wallet → Estimate cost** (`{email,sms,push,whatsApp}`) → `costMicros`/`sufficient`/`deficitMicros` sin efectos.
+4. **Wallet → Create top-up** (`amountCents`, `provider` Stripe|PayPal, `method` Card|Wallet) → guarda
+   `{{topUpId}}`+`{{checkoutUrl}}`; abrí la URL, pagá, y **Get top-up** para ver `Credited`.
+5. **Wallet → Publish pricing** (solo PlatformAdmin; precios en micros).
+
+Los endpoints internos del PEP (`/internal/wallet/reservations[/settle]`) **no están en la colección**:
+son service-to-service (los llaman SMS/Campaigns por M2M dentro de la red Docker) y el gateway no los
+expone. Para ejercerlos manualmente hay que pegarle directo a `wallet-api` en la red de Docker.
 
 ## Importar
 

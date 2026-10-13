@@ -187,7 +187,19 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
     public async Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
         await db.SignatureRequests.AddAsync(request, ct);
 
-    public void Remove(SignatureRequest request) => db.SignatureRequests.Remove(request);
+    public void Remove(SignatureRequest request)
+    {
+        // SignatureField y PreparerField tienen FK REQUERIDA a RequestDocument con OnDelete(NoAction)
+        // (a propósito: con Cascade habría múltiples caminos de cascada Signer→Field y Document→Field
+        // que SQL Server rechaza). Al borrar la request EF cascada Request→Documents y, al severar esa
+        // relación requerida, lanza "severed required relationship" ANTES de que la cascada Signer→Fields
+        // borre los fields. Los marcamos como borrados primero: así, cuando se borran los Documents, ya
+        // no hay fields colgando de ellos. El resto (signers, challenges, values, views, completions,
+        // documents) sí cascada solo. Requiere que GetByIdAsync haya cargado estas colecciones.
+        db.RemoveRange(request.Signers.SelectMany(signer => signer.Fields));
+        db.RemoveRange(request.PreparerFields);
+        db.SignatureRequests.Remove(request);
+    }
 
     // F3: Scheduled cuya hora ya llegó. Include(Signers) porque Send() los itera para rotar tokens.
     public async Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(

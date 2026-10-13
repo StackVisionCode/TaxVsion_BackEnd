@@ -80,16 +80,30 @@ public sealed class InfobipSmsProvider(
         var config = Config;
         var http = httpClientFactory.CreateClient(nameof(InfobipSmsProvider));
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config))
+        // Un HttpRequestMessage (y su HttpContent) solo se puede ENVIAR una vez: reusar la misma instancia
+        // entre reintentos del pipeline lanza "The request message was already sent". Por eso se construye
+        // FRESCO en cada intento, dentro del callback de resiliencia.
+        HttpRequestMessage BuildHttpRequest()
         {
-            Content = BuildBody(config, request.To, request.Body, NotifyUrl()),
-        };
-        ApplyInfobipAuth(httpRequest, config.Auth.Credential);
+            var req = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config))
+            {
+                Content = BuildBody(config, request.To, request.Body, NotifyUrl()),
+            };
+            ApplyInfobipAuth(req, config.Auth.Credential);
+            return req;
+        }
 
         try
         {
             var breaker = resilience.GetOrCreate(nameof(InfobipSmsProvider));
-            using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+            using var response = await breaker.ExecuteAsync(
+                async token =>
+                {
+                    using var httpRequest = BuildHttpRequest();
+                    return await http.SendAsync(httpRequest, token);
+                },
+                ct
+            );
             var payload = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
@@ -201,13 +215,25 @@ public sealed class InfobipSmsProvider(
         var url = config.BaseUrl.TrimEnd('/') + LogsPath + "?limit=" + ids.Count + "&" + query;
         var http = httpClientFactory.CreateClient(nameof(InfobipSmsProvider));
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
-        ApplyInfobipAuth(httpRequest, config.Auth.Credential);
+        HttpRequestMessage BuildHttpRequest()
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            ApplyInfobipAuth(req, config.Auth.Credential);
+            return req;
+        }
 
         try
         {
             var breaker = resilience.GetOrCreate(nameof(InfobipSmsProvider));
-            using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+            // Request fresco por intento: un HttpRequestMessage no se puede reenviar (vale también para GET).
+            using var response = await breaker.ExecuteAsync(
+                async token =>
+                {
+                    using var httpRequest = BuildHttpRequest();
+                    return await http.SendAsync(httpRequest, token);
+                },
+                ct
+            );
             var payload = await response.Content.ReadAsStringAsync(ct);
             if (!response.IsSuccessStatusCode)
             {

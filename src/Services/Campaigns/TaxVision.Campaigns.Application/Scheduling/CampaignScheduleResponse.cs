@@ -16,7 +16,11 @@ public sealed record CampaignScheduleResponse(
     DateTime? LastFiredAtUtc,
     Guid? ActiveRunId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc
+    DateTime UpdatedAtUtc,
+    string? Frequency,
+    DateTime? EndsAtUtc,
+    int? MaxOccurrences,
+    int OccurrenceCount
 )
 {
     public static CampaignScheduleResponse From(CampaignSchedule s) =>
@@ -33,6 +37,10 @@ public sealed record CampaignScheduleResponse(
             s.LastFiredAtUtc,
             s.ActiveRunId,
             s.CreatedAtUtc,
-            s.UpdatedAtUtc
+            s.UpdatedAtUtc,
+            s.Frequency?.ToString(),
+            s.EndsAtUtc,
+            s.MaxOccurrences,
+            s.OccurrenceCount
         );
 }

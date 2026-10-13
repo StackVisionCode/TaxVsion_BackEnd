@@ -25,7 +25,15 @@ public sealed record ScheduleCampaignCommand(
     // A1 — quién agenda y qué clientes ve. El disparo (actor de sistema) hereda esto en vez de correr con
     // la visibilidad abierta. Ver CampaignSchedule.CreatorCanViewAllCustomers.
     Guid? CreatedByUserId = null,
-    bool CreatorCanViewAllCustomers = true
+    bool CreatorCanViewAllCustomers = true,
+    // Clientes seleccionados (snapshot al agendar). No vacío ⇒ solo esos en cada disparo.
+    IReadOnlyList<Guid>? CustomerIds = null,
+    // Recurrencia: frecuencia nombrada (Hourly/Daily/Weekly/Monthly) o Custom (usa IntervalMinutes).
+    // Default Custom para compatibilidad con llamadas que solo mandan IntervalMinutes.
+    RecurrenceFrequency Frequency = RecurrenceFrequency.Custom,
+    // Fin opcional por lo que ocurra primero: fecha o cantidad de disparos.
+    DateTime? EndsAtUtc = null,
+    int? MaxOccurrences = null
 );
 
 public static class ScheduleCampaignHandler
@@ -50,11 +58,15 @@ public static class ScheduleCampaignHandler
                 command.TenantId,
                 command.CampaignId,
                 command.RunAtUtc,
-                command.IntervalMinutes ?? 0,
+                command.Frequency,
+                command.IntervalMinutes,
                 lists,
                 command.IncludeCustomers,
                 command.CreatedByUserId,
-                command.CreatorCanViewAllCustomers
+                command.CreatorCanViewAllCustomers,
+                command.CustomerIds,
+                command.EndsAtUtc,
+                command.MaxOccurrences
             )
             : CampaignSchedule.CreateOneTime(
                 command.TenantId,
@@ -63,7 +75,8 @@ public static class ScheduleCampaignHandler
                 lists,
                 command.IncludeCustomers,
                 command.CreatedByUserId,
-                command.CreatorCanViewAllCustomers
+                command.CreatorCanViewAllCustomers,
+                command.CustomerIds
             );
         if (result.IsFailure)
             return Result.Failure<CampaignScheduleResponse>(result.Error);

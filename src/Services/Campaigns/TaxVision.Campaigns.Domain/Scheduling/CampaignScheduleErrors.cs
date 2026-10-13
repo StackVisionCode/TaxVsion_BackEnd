@@ -12,6 +12,14 @@ public static class CampaignScheduleErrors
         "CampaignSchedule.Interval",
         "A recurring schedule needs a positive interval in minutes."
     );
+    public static readonly Error EndBeforeStart = new(
+        "CampaignSchedule.EndBeforeStart",
+        "The end date must be after the first run."
+    );
+    public static readonly Error MaxOccurrencesInvalid = new(
+        "CampaignSchedule.MaxOccurrences",
+        "Max occurrences must be a positive number."
+    );
     public static readonly Error NotActive = new("CampaignSchedule.NotActive", "The schedule is not active.");
     public static readonly Error NotPaused = new("CampaignSchedule.NotPaused", "The schedule is not paused.");
     public static readonly Error InvalidTransition = new(

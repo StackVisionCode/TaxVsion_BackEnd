@@ -60,16 +60,29 @@ public sealed class GenericHttpSmsProvider(
         var config = Config;
         var http = httpClientFactory.CreateClient(nameof(GenericHttpSmsProvider));
 
-        using var httpRequest = new HttpRequestMessage(new HttpMethod(config.HttpMethod), BuildUrl(config))
+        // Request fresco por intento: un HttpRequestMessage (y su HttpContent) solo se envía una vez;
+        // reusarlo entre reintentos lanza "The request message was already sent".
+        HttpRequestMessage BuildHttpRequest()
         {
-            Content = BuildContent(config, request),
-        };
-        ApplyAuth(httpRequest, config.Auth);
+            var req = new HttpRequestMessage(new HttpMethod(config.HttpMethod), BuildUrl(config))
+            {
+                Content = BuildContent(config, request),
+            };
+            ApplyAuth(req, config.Auth);
+            return req;
+        }
 
         try
         {
             var breaker = resilience.GetOrCreate(nameof(GenericHttpSmsProvider));
-            using var response = await breaker.ExecuteAsync(token => http.SendAsync(httpRequest, token), ct);
+            using var response = await breaker.ExecuteAsync(
+                async token =>
+                {
+                    using var httpRequest = BuildHttpRequest();
+                    return await http.SendAsync(httpRequest, token);
+                },
+                ct
+            );
             var payload = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)

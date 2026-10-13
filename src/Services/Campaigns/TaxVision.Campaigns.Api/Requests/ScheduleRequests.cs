@@ -10,5 +10,11 @@ public sealed record ScheduleCampaignRequest(
     DateTime RunAtUtc,
     int? IntervalMinutes,
     IReadOnlyList<Guid>? ContactListIds,
-    bool IncludeCustomers = false
+    bool IncludeCustomers = false,
+    IReadOnlyList<Guid>? CustomerIds = null,
+    // Recurrencia: "Hourly" | "Daily" | "Weekly" | "Monthly" | "Custom" (default). Custom usa IntervalMinutes.
+    string? Frequency = null,
+    // Fin opcional (lo que ocurra primero): fecha UTC o número de disparos.
+    DateTime? EndsAtUtc = null,
+    int? MaxOccurrences = null
 );

@@ -2249,7 +2249,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"allowedVerificationChannels\": [\"Email\", \"Sms\"],\r\n  \"defaultVerificationChannel\": \"Email\",\r\n  \"defaultTokenExpirationHours\": 168,\r\n  \"remindersEnabledByDefault\": true,\r\n  \"generateCertificateByDefault\": true,\r\n  \"documentLimits\": {\r\n    \"maxPdfBytes\": 26214400,\r\n    \"maxImageBytes\": 10485760,\r\n    \"maxPagesPerDocument\": 100\r\n  },\r\n  \"retentionPolicy\": {\r\n    \"retentionYears\": 7,\r\n    \"allowPurge\": false\r\n  },\r\n  \"sendPartialCopyDefault\": false,\r\n  \"partialCopyDefaultAudienceKind\": \"All\",\r\n  \"sendSealedDocumentDefault\": false,\r\n  \"expirationEnabledByDefault\": true\r\n}",
+              "raw": "{\r\n  \"allowedVerificationChannels\": [\"Email\", \"Sms\"],\r\n  \"defaultVerificationChannel\": \"Email\",\r\n  \"defaultTokenExpirationHours\": 168,\r\n  \"remindersEnabledByDefault\": true,\r\n  \"generateCertificateByDefault\": true,\r\n  \"documentLimits\": {\r\n    \"maxPdfBytes\": 26214400,\r\n    \"maxImageBytes\": 10485760,\r\n    \"maxPagesPerDocument\": 100\r\n  },\r\n  \"retentionPolicy\": {\r\n    \"retentionYears\": 7,\r\n    \"allowPurge\": false\r\n  },\r\n  \"sendPartialCopyDefault\": false,\r\n  \"partialCopyDefaultAudienceKind\": \"All\",\r\n  \"sendSealedDocumentDefault\": false,\r\n  \"expirationEnabledByDefault\": true,\r\n  \"sendCertificateToSignersDefault\": false,\r\n  \"requiresConsentByDefault\": true\r\n}",
               "options": {
                 "raw": {
                   "language": "json"

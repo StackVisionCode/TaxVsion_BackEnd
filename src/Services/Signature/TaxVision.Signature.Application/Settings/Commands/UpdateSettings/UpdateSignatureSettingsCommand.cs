@@ -22,5 +22,7 @@ public sealed record UpdateSignatureSettingsCommand(
     bool? SendPartialCopyDefault = null,
     PartialCopyAudienceKind? PartialCopyDefaultAudienceKind = null,
     bool? SendSealedDocumentDefault = null,
-    bool? ExpirationEnabledByDefault = null
+    bool? ExpirationEnabledByDefault = null,
+    bool? SendCertificateToSignersDefault = null,
+    bool? RequiresConsentByDefault = null
 );

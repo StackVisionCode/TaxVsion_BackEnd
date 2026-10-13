@@ -34,6 +34,9 @@ public sealed class TenantSignatureSettingsConfiguration : IEntityTypeConfigurat
             .IsRequired();
         // Default true en BD: tenants existentes mantienen el comportamiento histórico (sealed = ON).
         builder.Property(settings => settings.SendSealedDocumentDefault).HasDefaultValue(true).IsRequired();
+        builder.Property(settings => settings.SendCertificateToSignersDefault).HasDefaultValue(false).IsRequired();
+        // Consentimiento ESIGN/UETA: tenants existentes se backfillean en ON (política legal por default).
+        builder.Property(settings => settings.RequiresConsentByDefault).HasDefaultValue(true).IsRequired();
         builder.Property(settings => settings.ExpirationEnabledByDefault).HasDefaultValue(true).IsRequired();
 
         builder.Property(settings => settings.AuditSecretEncrypted).HasMaxLength(512).IsRequired();

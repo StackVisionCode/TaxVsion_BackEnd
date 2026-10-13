@@ -32,7 +32,9 @@ public sealed record TenantSignatureSettingsResponse(
     bool SendPartialCopyDefault,
     string PartialCopyDefaultAudienceKind,
     bool SendSealedDocumentDefault,
-    bool ExpirationEnabledByDefault
+    bool ExpirationEnabledByDefault,
+    bool SendCertificateToSignersDefault,
+    bool RequiresConsentByDefault
 )
 {
     public static TenantSignatureSettingsResponse From(TenantSignatureSettings settings) =>
@@ -57,7 +59,9 @@ public sealed record TenantSignatureSettingsResponse(
             settings.SendPartialCopyDefault,
             settings.PartialCopyDefaultAudienceKind.ToString(),
             settings.SendSealedDocumentDefault,
-            settings.ExpirationEnabledByDefault
+            settings.ExpirationEnabledByDefault,
+            settings.SendCertificateToSignersDefault,
+            settings.RequiresConsentByDefault
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

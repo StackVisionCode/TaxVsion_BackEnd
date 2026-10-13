@@ -45,6 +45,23 @@ public sealed class CampaignSchedule : TenantEntity
     /// <summary>Si true, cada disparo suma también los clientes activos del directorio de Customer (M2M).</summary>
     public bool IncludeCustomers { get; private set; }
 
+    /// <summary>Clientes SELECCIONADOS a incluir en cada disparo (ids de Customer, CSV). No vacío ⇒ solo esos;
+    /// vacío ⇒ según <see cref="IncludeCustomers"/>. La selección se congela al agendar.</summary>
+    public string CustomerIdsCsv { get; private set; } = string.Empty;
+
+    /// <summary>Frecuencia del recurrente (null en OneTime). Define cómo se calcula el próximo disparo.</summary>
+    public RecurrenceFrequency? Frequency { get; private set; }
+
+    /// <summary>Fin por fecha: cuando el próximo disparo caería después de este instante, el schedule se
+    /// completa. Null = sin fecha de fin.</summary>
+    public DateTime? EndsAtUtc { get; private set; }
+
+    /// <summary>Fin por cantidad: tras <see cref="MaxOccurrences"/> disparos, se completa. Null = sin tope.</summary>
+    public int? MaxOccurrences { get; private set; }
+
+    /// <summary>Disparos ya realizados (para el tope por cantidad).</summary>
+    public int OccurrenceCount { get; private set; }
+
     public DateTime? LastFiredAtUtc { get; private set; }
 
     /// <summary>Run en vuelo del último disparo (guard de solape). Se limpia al consumir <c>run.completed</c>.</summary>
@@ -83,7 +100,8 @@ public sealed class CampaignSchedule : TenantEntity
         IReadOnlyCollection<Guid> contactListIds,
         bool includeCustomers = false,
         Guid? createdByUserId = null,
-        bool creatorCanViewAllCustomers = true
+        bool creatorCanViewAllCustomers = true,
+        IReadOnlyCollection<Guid>? customerIds = null
     )
     {
         var guard = BaseGuards(tenantId, campaignId);
@@ -102,20 +120,31 @@ public sealed class CampaignSchedule : TenantEntity
                 contactListIds,
                 includeCustomers,
                 createdByUserId,
-                creatorCanViewAllCustomers
+                creatorCanViewAllCustomers,
+                customerIds
             )
         );
     }
 
+    /// <summary>
+    /// Crea un schedule recurrente con frecuencia nombrada (Hourly/Daily/Weekly/Monthly) o
+    /// <see cref="RecurrenceFrequency.Custom"/> (que usa <paramref name="intervalMinutes"/>). El fin es
+    /// opcional y por lo que ocurra primero: fecha (<paramref name="endsAtUtc"/>) o cantidad
+    /// (<paramref name="maxOccurrences"/>).
+    /// </summary>
     public static Result<CampaignSchedule> CreateRecurring(
         Guid tenantId,
         Guid campaignId,
         DateTime firstRunAtUtc,
-        int intervalMinutes,
+        RecurrenceFrequency frequency,
+        int? intervalMinutes,
         IReadOnlyCollection<Guid> contactListIds,
         bool includeCustomers = false,
         Guid? createdByUserId = null,
-        bool creatorCanViewAllCustomers = true
+        bool creatorCanViewAllCustomers = true,
+        IReadOnlyCollection<Guid>? customerIds = null,
+        DateTime? endsAtUtc = null,
+        int? maxOccurrences = null
     )
     {
         var guard = BaseGuards(tenantId, campaignId);
@@ -123,8 +152,16 @@ public sealed class CampaignSchedule : TenantEntity
             return Result.Failure<CampaignSchedule>(guard.Error);
         if (firstRunAtUtc == default)
             return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.RunAtRequired);
-        if (intervalMinutes <= 0)
+        // Custom necesita un intervalo en minutos explícito; los presets nombrados lo ignoran.
+        if (frequency == RecurrenceFrequency.Custom && (intervalMinutes is null || intervalMinutes <= 0))
             return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.IntervalInvalid);
+        if (endsAtUtc is { } ends && ends <= firstRunAtUtc)
+            return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.EndBeforeStart);
+        if (maxOccurrences is { } max && max <= 0)
+            return Result.Failure<CampaignSchedule>(CampaignScheduleErrors.MaxOccurrencesInvalid);
+
+        // Para presets nombrados no persistimos IntervalMinutes (el cálculo es por calendario).
+        var persistedInterval = frequency == RecurrenceFrequency.Custom ? intervalMinutes : null;
 
         return Result.Success(
             New(
@@ -132,11 +169,15 @@ public sealed class CampaignSchedule : TenantEntity
                 campaignId,
                 ScheduleKind.Recurring,
                 firstRunAtUtc,
-                intervalMinutes,
+                persistedInterval,
                 contactListIds,
                 includeCustomers,
                 createdByUserId,
-                creatorCanViewAllCustomers
+                creatorCanViewAllCustomers,
+                customerIds,
+                frequency,
+                endsAtUtc,
+                maxOccurrences
             )
         );
     }
@@ -182,14 +223,32 @@ public sealed class CampaignSchedule : TenantEntity
         if (runId != Guid.Empty)
             ActiveRunId = runId;
 
+        OccurrenceCount++;
+
         if (Kind == ScheduleKind.OneTime)
         {
             Status = ScheduleStatus.Completed;
             NextFireAtUtc = null;
         }
+        else if (MaxOccurrences is { } max && OccurrenceCount >= max)
+        {
+            // Tope por cantidad alcanzado.
+            Status = ScheduleStatus.Completed;
+            NextFireAtUtc = null;
+        }
         else
         {
-            NextFireAtUtc = ComputeNextFuture(NextFireAtUtc ?? nowUtc, nowUtc, IntervalMinutes!.Value);
+            var next = ComputeNextFuture(NextFireAtUtc ?? nowUtc, nowUtc);
+            // Fin por fecha: si el próximo slot cae después del fin, no quedan más disparos.
+            if (EndsAtUtc is { } ends && next > ends)
+            {
+                Status = ScheduleStatus.Completed;
+                NextFireAtUtc = null;
+            }
+            else
+            {
+                NextFireAtUtc = next;
+            }
         }
 
         ClearLease();
@@ -214,11 +273,14 @@ public sealed class CampaignSchedule : TenantEntity
         && ActiveRunId is null
         && (LeasedUntilUtc is null || LeasedUntilUtc < nowUtc);
 
-    public IReadOnlyList<Guid> ContactListIds() =>
-        string.IsNullOrWhiteSpace(ContactListIdsCsv)
+    public IReadOnlyList<Guid> ContactListIds() => ParseCsvGuids(ContactListIdsCsv);
+
+    public IReadOnlyList<Guid> CustomerIds() => ParseCsvGuids(CustomerIdsCsv);
+
+    private static IReadOnlyList<Guid> ParseCsvGuids(string csv) =>
+        string.IsNullOrWhiteSpace(csv)
             ? []
-            : ContactListIdsCsv
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
                 .Where(g => g != Guid.Empty)
                 .ToList();
@@ -229,14 +291,27 @@ public sealed class CampaignSchedule : TenantEntity
         LeasedUntilUtc = null;
     }
 
-    private static DateTime ComputeNextFuture(DateTime from, DateTime nowUtc, int intervalMinutes)
+    private DateTime ComputeNextFuture(DateTime from, DateTime nowUtc)
     {
-        var next = from.AddMinutes(intervalMinutes);
+        var next = Advance(from);
         // Coalesce: si se perdieron varios slots (servicio caído), no dispares uno por cada uno — salta al próximo futuro.
         while (next <= nowUtc)
-            next = next.AddMinutes(intervalMinutes);
+            next = Advance(next);
         return next;
     }
+
+    /// <summary>Avanza un instante al siguiente slot según la frecuencia. Monthly usa calendario
+    /// (mismo día del mes siguiente, con clamp de fin de mes); Custom/legacy usan IntervalMinutes.</summary>
+    private DateTime Advance(DateTime from) =>
+        Frequency switch
+        {
+            RecurrenceFrequency.Hourly => from.AddHours(1),
+            RecurrenceFrequency.Daily => from.AddDays(1),
+            RecurrenceFrequency.Weekly => from.AddDays(7),
+            RecurrenceFrequency.Monthly => from.AddMonths(1),
+            // Custom, o schedules legacy sin Frequency: por intervalo en minutos.
+            _ => from.AddMinutes(IntervalMinutes ?? 0),
+        };
 
     private static Result BaseGuards(Guid tenantId, Guid campaignId)
     {
@@ -256,7 +331,11 @@ public sealed class CampaignSchedule : TenantEntity
         IReadOnlyCollection<Guid> contactListIds,
         bool includeCustomers,
         Guid? createdByUserId,
-        bool creatorCanViewAllCustomers
+        bool creatorCanViewAllCustomers,
+        IReadOnlyCollection<Guid>? customerIds,
+        RecurrenceFrequency? frequency = null,
+        DateTime? endsAtUtc = null,
+        int? maxOccurrences = null
     )
     {
         var now = DateTime.UtcNow;
@@ -268,8 +347,13 @@ public sealed class CampaignSchedule : TenantEntity
             Status = ScheduleStatus.Active,
             NextFireAtUtc = nextFireAtUtc,
             IntervalMinutes = intervalMinutes,
+            Frequency = frequency,
+            EndsAtUtc = endsAtUtc,
+            MaxOccurrences = maxOccurrences,
+            OccurrenceCount = 0,
             ContactListIdsCsv = string.Join(",", contactListIds.Where(g => g != Guid.Empty).Distinct()),
             IncludeCustomers = includeCustomers,
+            CustomerIdsCsv = string.Join(",", (customerIds ?? []).Where(g => g != Guid.Empty).Distinct()),
             CreatedByUserId = createdByUserId,
             CreatorCanViewAllCustomers = creatorCanViewAllCustomers,
             CreatedAtUtc = now,

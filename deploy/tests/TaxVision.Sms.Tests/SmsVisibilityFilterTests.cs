@@ -62,7 +62,7 @@ public sealed class SmsVisibilityFilterTests
         );
 
         Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastSearchAssignee);
-        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastConversationAssignee);
+        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastConversationsAssignee);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public sealed class SmsVisibilityFilterTests
     private sealed class CapturingReader : ISmsReadService
     {
         public Guid? LastSearchAssignee { get; private set; }
-        public Guid? LastConversationAssignee { get; private set; }
+        public Guid? LastConversationsAssignee { get; private set; }
         public Guid? LastDetailAssignee { get; private set; }
         public Guid? LastStatsAssignee { get; private set; }
         public Guid? LastOptOutAssignee { get; private set; }
@@ -124,17 +124,6 @@ public sealed class SmsVisibilityFilterTests
             return Task.FromResult(new PagedResult<SmsMessageSummaryResponse>([], page, size, 0));
         }
 
-        public Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
-            Guid tenantId,
-            Guid messageId,
-            Guid? assignedToUserId = null,
-            CancellationToken ct = default
-        )
-        {
-            LastDetailAssignee = assignedToUserId;
-            return Task.FromResult<SmsMessageDetailResponse?>(null);
-        }
-
         public Task<PagedResult<SmsConversationSummaryResponse>> SearchConversationsAsync(
             Guid tenantId,
             string? term,
@@ -145,8 +134,19 @@ public sealed class SmsVisibilityFilterTests
             CancellationToken ct = default
         )
         {
-            LastConversationAssignee = assignedToUserId;
+            LastConversationsAssignee = assignedToUserId;
             return Task.FromResult(new PagedResult<SmsConversationSummaryResponse>([], page, size, 0));
+        }
+
+        public Task<SmsMessageDetailResponse?> GetMessageByIdAsync(
+            Guid tenantId,
+            Guid messageId,
+            Guid? assignedToUserId = null,
+            CancellationToken ct = default
+        )
+        {
+            LastDetailAssignee = assignedToUserId;
+            return Task.FromResult<SmsMessageDetailResponse?>(null);
         }
 
         public Task<SmsStatsResponse> GetStatsAsync(

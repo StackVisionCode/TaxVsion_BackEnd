@@ -556,6 +556,19 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.Property<bool>("CreatorCanViewAllCustomers")
                         .HasColumnType("bit");
 
+                    b.Property<string>("CustomerIdsCsv")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasDefaultValue("");
+
+                    b.Property<DateTime?>("EndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("Frequency")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IncludeCustomers")
                         .HasColumnType("bit");
 
@@ -574,8 +587,16 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LeasedUntilUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int?>("MaxOccurrences")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("NextFireAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("OccurrenceCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<int>("Status")
                         .HasColumnType("int");

@@ -91,7 +91,8 @@ public sealed class CampaignSchedulerService(IServiceProvider services, ILogger<
                     [],
                     TriggerKind: "Scheduled",
                     IncludeCustomers: schedule.IncludeCustomers,
-                    CanViewAllCustomers: schedule.CreatorCanViewAllCustomers
+                    CanViewAllCustomers: schedule.CreatorCanViewAllCustomers,
+                    CustomerIds: schedule.CustomerIds()
                 ),
                 ct
             );

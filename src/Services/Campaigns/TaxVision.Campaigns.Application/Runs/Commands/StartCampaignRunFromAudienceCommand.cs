@@ -26,6 +26,9 @@ public sealed record StartCampaignRunFromAudienceCommand(
     IReadOnlyList<ManualAudienceEntry> Manual,
     string TriggerKind = "Manual",
     bool IncludeCustomers = false,
+    // Selección explícita de clientes (fuente "Clients" acotada): si viene no vacía, se envían SOLO esos
+    // clientes (además de listas/manual). Vacío/null + IncludeCustomers=true ⇒ todos.
+    IReadOnlyList<Guid>? CustomerIds = null,
     // Visibilidad por asignación (P2): default true = sin restricción. La ruta interactiva del controller
     // pasa el valor real (customers.view_all); los runs agendados (actor de sistema) quedan en true.
     bool CanViewAllCustomers = true,
@@ -59,18 +62,18 @@ public static class StartCampaignRunFromAudienceHandler
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<CampaignRunResponse>(CampaignErrors.Archived);
 
-        // Visibilidad por asignación (P2): con audiencia "Clients" + flag ON + actor que NO ve todo, acota
-        // los clientes al set asignado al que dispara el run. null = sin restricción.
-        IReadOnlySet<Guid>? restrictCustomerIds = null;
-        if (command.IncludeCustomers && visibility.Value.Enabled && !command.CanViewAllCustomers)
-        {
-            var assigned = await assignmentReader.GetAssignedCustomerIdsAsync(
-                command.TenantId,
-                command.TriggeredByUserId,
-                ct
-            );
-            restrictCustomerIds = assigned.ToHashSet();
-        }
+        // Alcance de la fuente "Clients": selección explícita (CustomerIds) y/o "todos", acotado por la
+        // visibilidad por asignación (P2) cuando el actor no ve todo. Ver AudienceResolver.ResolveCustomerScopeAsync.
+        var (includeCustomers, restrictCustomerIds) = await AudienceResolver.ResolveCustomerScopeAsync(
+            command.TenantId,
+            command.TriggeredByUserId,
+            command.IncludeCustomers,
+            command.CustomerIds,
+            command.CanViewAllCustomers,
+            visibility.Value.Enabled,
+            assignmentReader,
+            ct
+        );
 
         var units = await AudienceResolver.ResolveAsync(
             command.TenantId,
@@ -79,7 +82,7 @@ public static class StartCampaignRunFromAudienceHandler
             command.Manual ?? [],
             contacts,
             lists,
-            command.IncludeCustomers,
+            includeCustomers,
             customerClient,
             restrictCustomerIds,
             ct

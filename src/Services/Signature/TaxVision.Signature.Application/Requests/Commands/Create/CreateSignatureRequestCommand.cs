@@ -6,7 +6,8 @@ namespace TaxVision.Signature.Application.Requests.Commands.Create;
 /// <summary>
 /// Crea una solicitud de firma en estado <c>Draft</c>. No transiciona a <c>Ready</c>:
 /// eso lo hace el consumer de <c>FileAvailable</c> cuando el archivo pasa el scan.
-/// Null en los flags → se resuelve con el default del tenant.
+/// Null en los flags (incluidos TokenExpirationHours y GenerateCertificate) → se resuelve
+/// con el default del tenant y, si no hay settings, con el hard-default.
 /// </summary>
 public sealed record CreateSignatureRequestCommand(
     Guid TenantId,
@@ -15,12 +16,12 @@ public sealed record CreateSignatureRequestCommand(
     string? Description,
     string Category,
     IReadOnlyList<CreateSignatureRequestDocumentDto> Documents,
-    int TokenExpirationHours,
+    int? TokenExpirationHours,
     bool RequiresSequentialSigning,
-    bool RequiresConsent,
-    bool GenerateCertificate,
+    bool? RequiresConsent,
+    bool? GenerateCertificate,
     bool? SendSealedDocumentToSigners = null,
-    bool SendCertificateToSigners = false,
+    bool? SendCertificateToSigners = null,
     // null = usar el default del tenant (TenantSignatureSettings). Con valor = override del preparador.
     bool? AutoRemindersEnabled = null,
     int? ReminderIntervalHours = null,

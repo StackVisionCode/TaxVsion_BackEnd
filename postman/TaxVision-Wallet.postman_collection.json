@@ -1,0 +1,170 @@
+{
+  "info": {
+    "_postman_id": "00000000-0000-0000-0000-0000000wa11e7",
+    "name": "TaxVision — Wallet",
+    "description": "Monedero prepago por tenant (servicio TaxVision.Wallet) a través del Gateway (http://localhost:5047). Cubre saldo, historial, tarifas, estimación de costo y recargas por checkout hosteado (nunca viaja una tarjeta: el cliente paga en Stripe/PayPal por redirect y el saldo sube al confirmarse el pago). Todo bajo /wallet.\n\nRequiere token de USUARIO (actor TenantEmployee/TenantAdmin/PlatformAdmin) con el permiso wallet.view (lectura) o wallet.manage (recarga). pricing/publish es solo PlatformAdmin. Usá Auth → Login para poblar {{userToken}}; la colección lleva Authorization: Bearer {{userToken}} a nivel colección (Auth va sin auth).\n\nLos endpoints internos del PEP (/internal/wallet/reservations[/settle]) NO están acá: son service-to-service (los llaman SMS/Campaigns por M2M dentro de la red Docker) y no se exponen por el Gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{userToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth (token)",
+      "item": [
+        {
+          "name": "Login (usuario)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{gateway}}/auth/login", "host": ["{{gateway}}"], "path": ["auth", "login"] },
+            "description": "Login humano. Si hay MFA, seguir con /auth/mfa/verify. Guarda {{userToken}}. El usuario debe tener wallet.view/wallet.manage.",
+            "auth": { "type": "noauth" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && (j.accessToken || (j.tokens && j.tokens.accessToken)) != null) pm.collectionVariables.set('userToken', j.accessToken || (j.tokens && j.tokens.accessToken));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get wallet (balance)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{gateway}}/wallet", "host": ["{{gateway}}"], "path": ["wallet"] },
+            "description": "Saldo del monedero del tenant: postedMicros, heldMicros, availableMicros (= posted − held), currency, status. Montos en MICROS (millonésimas de USD; $1 = 1,000,000). Requiere wallet.view."
+          },
+          "response": []
+        },
+        {
+          "name": "Get transactions (ledger)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/wallet/transactions?page=1&size=10",
+              "host": ["{{gateway}}"],
+              "path": ["wallet", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "10" }
+              ]
+            },
+            "description": "Historial del ledger paginado: TopUp / Reserve / Consume / Release / UsageRefund / Adjustment, con deltas en micros. Requiere wallet.view."
+          },
+          "response": []
+        },
+        {
+          "name": "Get rates (pricebook)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{gateway}}/wallet/rates", "host": ["{{gateway}}"], "path": ["wallet", "rates"] },
+            "description": "Tarifas vigentes por canal (Email/Sms/Push/WhatsApp) en micros + versión del catálogo. Requiere wallet.view."
+          },
+          "response": []
+        },
+        {
+          "name": "Estimate cost",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{gateway}}/wallet/estimate", "host": ["{{gateway}}"], "path": ["wallet", "estimate"] },
+            "description": "Costo estimado (unidades × tarifa) vs saldo — SIN efectos. Devuelve costMicros, availableMicros, sufficient, deficitMicros y el desglose por canal. Es lo que usa el preview del front y el PEP. Requiere wallet.view.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": 0,\n  \"sms\": 4,\n  \"push\": 0,\n  \"whatsApp\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create top-up (hosted checkout)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{gateway}}/wallet/top-ups", "host": ["{{gateway}}"], "path": ["wallet", "top-ups"] },
+            "description": "Inicia una recarga por checkout hosteado: crea la orden y devuelve checkoutUrl (Stripe/PayPal) para redirigir. NO acredita: el saldo sube al confirmarse el pago (webhook). amountCents en centavos. provider = Stripe|PayPal; method = Card (Stripe) | Wallet (PayPal). Guarda {{topUpId}} y {{checkoutUrl}}. Requiere wallet.manage.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountCents\": 5000,\n  \"currency\": \"USD\",\n  \"payerEmail\": \"{{userEmail}}\",\n  \"successUrl\": \"http://localhost:4200/wallet?topup=success\",\n  \"cancelUrl\": \"http://localhost:4200/wallet?topup=cancel\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && j.topUp && j.topUp.id) pm.collectionVariables.set('topUpId', j.topUp.id);",
+                  "if (j && j.checkoutUrl) pm.collectionVariables.set('checkoutUrl', j.checkoutUrl);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get top-up (status)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/wallet/top-ups/{{topUpId}}",
+              "host": ["{{gateway}}"],
+              "path": ["wallet", "top-ups", "{{topUpId}}"]
+            },
+            "description": "Estado de una recarga (Pending → Credited/Failed). Pollear acá tras volver del checkout. Requiere wallet.view."
+          },
+          "response": []
+        },
+        {
+          "name": "Publish pricing (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{gateway}}/wallet/pricing/publish",
+              "host": ["{{gateway}}"],
+              "path": ["wallet", "pricing", "publish"]
+            },
+            "description": "Publica una versión nueva del catálogo de precios (inmutable, crea otra versión). Precios por canal en MICROS. SOLO PlatformAdmin — un token de tenant normal da 403. Ejemplo: Email $0.05, SMS $0.25, Push $0.01, WhatsApp $0.25.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": 50000,\n  \"sms\": 250000,\n  \"push\": 10000,\n  \"whatsApp\": 250000\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "topUpId", "value": "" },
+    { "key": "checkoutUrl", "value": "" }
+  ]
+}

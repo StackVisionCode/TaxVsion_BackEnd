@@ -126,4 +126,67 @@ public class PdfSharpCertificateRendererTests
 
         Assert.NotEmpty(result.CertificatePdfBytes);
     }
+
+    [Fact]
+    public void Renders_the_seal_panel_and_signer_verification_without_throwing()
+    {
+        var renderer = new PdfSharpCertificateRenderer();
+
+        var signer = new CertificateSignerEntry(
+            SignerId: Guid.NewGuid(),
+            FullName: "Minato F. Kenyimura",
+            Email: "minato@example.com",
+            Order: 1,
+            Status: SignerStatus.Signed,
+            FirstViewedAtUtc: DateTime.UtcNow.AddMinutes(-10),
+            ConsentAcceptedAtUtc: DateTime.UtcNow.AddMinutes(-9),
+            SignedAtUtc: DateTime.UtcNow.AddMinutes(-1),
+            ClientIp: "198.51.100.24",
+            UserAgent: "Mozilla/5.0",
+            VerificationMethod: "Email OTP",
+            CaptureMethod: "Typed signature"
+        );
+
+        var model = new CertificateOfCompletionModel(
+            SignatureRequestId: Guid.NewGuid(),
+            Title: "2024 Form 8879 e-file Authorization",
+            Category: "Fiscal",
+            CreatedAtUtc: DateTime.UtcNow.AddHours(-1),
+            CompletedAtUtc: DateTime.UtcNow,
+            SignersGlobal: [signer],
+            Documents:
+            [
+                new CertificateDocumentEntry(
+                    Guid.NewGuid(),
+                    1,
+                    "Form_8879_2024.pdf",
+                    new string('a', 64),
+                    new string('b', 64),
+                    DateTime.UtcNow,
+                    [
+                        new CertificateDocumentSignerEntry(
+                            signer.SignerId,
+                            signer.FullName,
+                            DateTime.UtcNow,
+                            signer.ClientIp,
+                            signer.UserAgent
+                        ),
+                    ]
+                ),
+            ],
+            IssuerName: "Reyes Tax & Accounting, LLC",
+            Seal: new CertificateSealInfo(
+                "CN=TaxProffice Signature Service, O=TaxProffice, C=US",
+                "CN=TaxProffice Signature Service, O=TaxProffice, C=US",
+                "0098272DF02BB7964D",
+                "sha256RSA (3072-bit)",
+                DateTime.UtcNow.AddYears(5)
+            )
+        );
+
+        var result = renderer.Render(model);
+
+        Assert.NotEmpty(result.CertificatePdfBytes);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(result.CertificatePdfBytes, 0, 4));
+    }
 }

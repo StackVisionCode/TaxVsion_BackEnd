@@ -7,14 +7,17 @@ public sealed record CreateSignatureRequestBody(
     string? Description,
     string Category,
     IReadOnlyList<CreateSignatureRequestDocumentBody> Documents,
-    int TokenExpirationHours,
     bool RequiresSequentialSigning,
-    bool RequiresConsent,
-    bool GenerateCertificate,
+    // null = default del tenant: duración del link (DefaultTokenExpirationHoursValue), generar el
+    // certificado (GenerateCertificateByDefault) y exigir el consentimiento ESIGN/UETA
+    // (RequiresConsentByDefault, política legal del despacho). Con valor = override del preparador.
+    int? TokenExpirationHours = null,
+    bool? GenerateCertificate = null,
+    bool? RequiresConsent = null,
     // null = default del tenant. El gate de permiso vive en el controller: sin signature.document.send
     // estos quedan forzados a false.
     bool? SendSealedDocumentToSigners = null,
-    bool SendCertificateToSigners = false,
+    bool? SendCertificateToSigners = null,
     // Recordatorios automáticos: null = usar el default del tenant; con valor = override.
     bool? AutoRemindersEnabled = null,
     int? ReminderIntervalHours = null,

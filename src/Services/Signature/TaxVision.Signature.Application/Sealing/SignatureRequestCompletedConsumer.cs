@@ -493,6 +493,7 @@ public static class SignatureRequestCompletedConsumer
         var certificateArtifactsResult = await GenerateCertificateArtifactsAsync(
             request,
             certificateRenderer,
+            sealer,
             storage,
             brandingRepository,
             logger,
@@ -710,6 +711,7 @@ public static class SignatureRequestCompletedConsumer
     private static async Task<Result<IReadOnlyList<CertificateRenderArtifact>>> GenerateCertificateArtifactsAsync(
         SignatureRequest request,
         ICertificateOfCompletionRenderer renderer,
+        IDocumentSealingEngine sealer,
         ISignatureCloudStorageClient storage,
         ITenantBrandingRefRepository brandingRepository,
         ILogger logger,
@@ -718,6 +720,9 @@ public static class SignatureRequestCompletedConsumer
     {
         if (!request.GenerateCertificate)
             return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([]);
+
+        // Cert con que se sellan los documentos (null si el sellado está degradado) → panel "Digital seal".
+        var seal = sealer.DescribeSealCertificate();
 
         // Logo de la OFICINA: la marca del tenant dueño del request (TenantBrandingRef). Al lado, el logo
         // del SISTEMA: la marca del tenant plataforma (jturbi), misma fuente. Si la oficina no tiene logo
@@ -748,7 +753,7 @@ public static class SignatureRequestCompletedConsumer
             if (request.CertificateFileId is not null)
                 return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([]);
 
-            var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, documentId: null);
+            var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, seal, documentId: null);
             var rendered = renderer.Render(model);
             return Result.Success<IReadOnlyList<CertificateRenderArtifact>>([
                 new CertificateRenderArtifact(null, request.Title, rendered.CertificatePdfBytes),
@@ -760,7 +765,7 @@ public static class SignatureRequestCompletedConsumer
             .OrderBy(document => document.Order)
             .Select(document =>
             {
-                var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, document.Id);
+                var model = BuildCertificateModel(request, issuerName, platformLogo, officeLogo, seal, document.Id);
                 return new CertificateRenderArtifact(
                     document.Id,
                     document.Title,
@@ -858,6 +863,7 @@ public static class SignatureRequestCompletedConsumer
         string? issuerName,
         byte[]? platformLogo,
         byte[]? tenantLogo,
+        CertificateSealInfo? seal,
         Guid? documentId
     )
     {
@@ -890,7 +896,9 @@ public static class SignatureRequestCompletedConsumer
                     s.ConsentAcceptedAtUtc,
                     s.SignedAtUtc,
                     s.ClientIp,
-                    s.UserAgent
+                    s.UserAgent,
+                    FormatVerification(s.RequiredVerificationMethod),
+                    FormatCapture(s.CaptureMethod)
                 ))
                 .ToList(),
             Documents: documents
@@ -922,9 +930,32 @@ public static class SignatureRequestCompletedConsumer
             PlatformLogo: platformLogo,
             TenantLogo: tenantLogo,
             // Referencia del preparador (ERO): solo si firmó internamente. Identificador enmascarado, sin imagen.
-            Preparer: BuildPreparerEntry(request)
+            Preparer: BuildPreparerEntry(request),
+            Seal: seal
         );
     }
+
+    /// <summary>Método de verificación de identidad del firmante, en texto corto para el acta (null = ninguno).</summary>
+    private static string? FormatVerification(SignerVerificationMethod? method) =>
+        method switch
+        {
+            SignerVerificationMethod.EmailOtp => "Email OTP",
+            SignerVerificationMethod.SmsOtp => "SMS OTP",
+            SignerVerificationMethod.WhatsAppOtp => "WhatsApp OTP",
+            SignerVerificationMethod.PractitionerPin => "Practitioner PIN",
+            SignerVerificationMethod.KbaQuiz => "Knowledge-based (KBA)",
+            _ => null,
+        };
+
+    /// <summary>Cómo se capturó la firma, en texto corto para el acta (null = desconocido).</summary>
+    private static string? FormatCapture(SignatureCaptureMethod? method) =>
+        method switch
+        {
+            SignatureCaptureMethod.Typed => "Typed signature",
+            SignatureCaptureMethod.Drawn => "Drawn signature",
+            SignatureCaptureMethod.Uploaded => "Uploaded image",
+            _ => null,
+        };
 
     private static CertificatePreparerEntry? BuildPreparerEntry(SignatureRequest request)
     {

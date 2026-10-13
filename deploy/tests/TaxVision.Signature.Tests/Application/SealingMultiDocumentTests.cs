@@ -418,6 +418,8 @@ public sealed class SealingMultiDocumentTests
             _sequence++;
             return new SealingResult([1, 2, (byte)_sequence], new string((char)('c' + _sequence), 64));
         }
+
+        public CertificateSealInfo? DescribeSealCertificate() => null;
     }
 
     private sealed class DeterministicCertificateRenderer : ICertificateOfCompletionRenderer

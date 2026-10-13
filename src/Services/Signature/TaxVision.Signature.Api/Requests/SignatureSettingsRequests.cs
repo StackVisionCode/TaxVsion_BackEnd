@@ -22,7 +22,11 @@ public sealed record UpdateSignatureSettingsBody(
     // "All" o "Specific". Specific sin lista es inválido como default; lo rechaza el dominio.
     string? PartialCopyDefaultAudienceKind = null,
     bool? SendSealedDocumentDefault = null,
-    bool? ExpirationEnabledByDefault = null
+    bool? ExpirationEnabledByDefault = null,
+    // null = no tocar. Emailar el certificado a los firmantes (solo surte efecto si además se genera) y
+    // exigir el consentimiento ESIGN/UETA por default (política legal del despacho).
+    bool? SendCertificateToSignersDefault = null,
+    bool? RequiresConsentByDefault = null
 );
 
 public sealed record DocumentLimitsBody(long MaxPdfBytes, long MaxImageBytes, int MaxPagesPerDocument);

@@ -135,6 +135,24 @@ public sealed class ContactListsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Agrega clientes seleccionados (del directorio de Customer) como miembros de la lista
+    /// (contactos FromCustomer, dedupe por destino). Para construir una lista a partir de tus clientes.</summary>
+    [HttpPost("{id:guid}/customers")]
+    [HasPermission(CampaignsPermissions.Manage)]
+    [RateLimit("campaigns.g.create")]
+    [ProducesResponseType<AddCustomersToListResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> AddCustomers(Guid id, AddCustomersToListRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<AddCustomersToListResponse>>(
+            new AddCustomersToListCommand(tenantId, id, request.CustomerIds ?? []),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpDelete("{id:guid}/members/{contactId:guid}")]
     [HasPermission(CampaignsPermissions.Manage)]
     [RateLimit("campaigns.g.create")]

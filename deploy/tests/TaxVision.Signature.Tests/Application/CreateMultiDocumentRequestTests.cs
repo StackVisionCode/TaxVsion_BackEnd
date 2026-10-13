@@ -74,6 +74,123 @@ public sealed class CreateMultiDocumentRequestTests
         Assert.Equal([firstFileId, secondFileId], created.OriginalFileIds);
     }
 
+    [Fact]
+    public async Task Create_seeds_token_expiration_and_certificate_from_tenant_defaults_when_omitted()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repository = new CapturingRequestRepository();
+
+        // Tenant con defaults distintos del hard-default para demostrar que se usan los del tenant.
+        var settings = TenantSignatureSettings.CreateForNewTenant(tenantId, "audit-secret").Value;
+        settings.ChangeDefaultTokenExpiration(240);
+        settings.DisableCertificateOfCompletion();
+        settings.SetRequiresConsentByDefault(false);
+
+        var command = CommandOmittingFirmDefaults(tenantId, fileId);
+
+        var result = await CreateSignatureRequestHandler.Handle(
+            command,
+            repository,
+            new AvailableFiles(tenantId, (fileId, new string('a', 64))),
+            new ConfiguredSettings(settings),
+            new CountingUnitOfWork(),
+            new CapturingMessageBus(),
+            new FixedCorrelationContext("seed-from-tenant"),
+            new NoOpCache(),
+            new PassingCategoryResolver(),
+            new UnexpectedStorage(),
+            NullLogger<CreateSignatureRequestCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var persisted = Assert.IsType<SignatureRequest>(repository.Added);
+        Assert.Equal(240, persisted.TokenExpirationHours);
+        Assert.False(persisted.GenerateCertificate);
+        Assert.False(persisted.RequiresConsent);
+        // Con el certificado apagado no puede emailarse aunque el default del tenant lo pidiera.
+        Assert.False(persisted.SendCertificateToSigners);
+    }
+
+    [Fact]
+    public async Task Create_falls_back_to_hard_defaults_when_tenant_has_no_settings()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repository = new CapturingRequestRepository();
+
+        var command = CommandOmittingFirmDefaults(tenantId, fileId);
+
+        var result = await CreateSignatureRequestHandler.Handle(
+            command,
+            repository,
+            new AvailableFiles(tenantId, (fileId, new string('b', 64))),
+            new EmptySettings(),
+            new CountingUnitOfWork(),
+            new CapturingMessageBus(),
+            new FixedCorrelationContext("seed-hard-default"),
+            new NoOpCache(),
+            new PassingCategoryResolver(),
+            new UnexpectedStorage(),
+            NullLogger<CreateSignatureRequestCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var persisted = Assert.IsType<SignatureRequest>(repository.Added);
+        Assert.Equal(TenantSignatureSettings.DefaultTokenExpirationHours, persisted.TokenExpirationHours);
+        Assert.True(persisted.GenerateCertificate);
+        Assert.True(persisted.RequiresConsent);
+        Assert.False(persisted.SendCertificateToSigners);
+    }
+
+    [Fact]
+    public async Task Create_seeds_send_certificate_to_signers_from_tenant_default_when_generation_on()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repository = new CapturingRequestRepository();
+
+        // Certificado generado (default true) + emailarlo a firmantes por default del tenant.
+        var settings = TenantSignatureSettings.CreateForNewTenant(tenantId, "audit-secret").Value;
+        settings.SetSendCertificateToSignersDefault(true);
+
+        var result = await CreateSignatureRequestHandler.Handle(
+            CommandOmittingFirmDefaults(tenantId, fileId),
+            repository,
+            new AvailableFiles(tenantId, (fileId, new string('c', 64))),
+            new ConfiguredSettings(settings),
+            new CountingUnitOfWork(),
+            new CapturingMessageBus(),
+            new FixedCorrelationContext("seed-send-certificate"),
+            new NoOpCache(),
+            new PassingCategoryResolver(),
+            new UnexpectedStorage(),
+            NullLogger<CreateSignatureRequestCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var persisted = Assert.IsType<SignatureRequest>(repository.Added);
+        Assert.True(persisted.GenerateCertificate);
+        Assert.True(persisted.SendCertificateToSigners);
+    }
+
+    private static CreateSignatureRequestCommand CommandOmittingFirmDefaults(Guid tenantId, Guid fileId) =>
+        new(
+            tenantId,
+            Guid.NewGuid(),
+            "Seeded request",
+            null,
+            "Fiscal",
+            [new CreateSignatureRequestDocumentDto(fileId, "Return", null)],
+            TokenExpirationHours: null,
+            RequiresSequentialSigning: false,
+            RequiresConsent: null,
+            GenerateCertificate: null
+        );
+
     private sealed class CapturingRequestRepository : ISignatureRequestRepository
     {
         public SignatureRequest? Added { get; private set; }
@@ -176,6 +293,14 @@ public sealed class CreateMultiDocumentRequestTests
             Task.FromResult<TenantSignatureSettings?>(null);
 
         public Task AddAsync(TenantSignatureSettings settings, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class ConfiguredSettings(TenantSignatureSettings settings) : ITenantSignatureSettingsRepository
+    {
+        public Task<TenantSignatureSettings?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<TenantSignatureSettings?>(settings);
+
+        public Task AddAsync(TenantSignatureSettings toAdd, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class CountingUnitOfWork : IUnitOfWork

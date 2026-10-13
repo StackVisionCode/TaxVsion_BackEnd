@@ -12,5 +12,7 @@ public sealed record CertificateOfCompletionModel(
     string? IssuerName = null,
     byte[]? PlatformLogo = null,
     byte[]? TenantLogo = null,
-    CertificatePreparerEntry? Preparer = null
+    CertificatePreparerEntry? Preparer = null,
+    // Cert que selló los documentos (null si el sellado CMS está degradado): alimenta el panel "Digital seal".
+    CertificateSealInfo? Seal = null
 );

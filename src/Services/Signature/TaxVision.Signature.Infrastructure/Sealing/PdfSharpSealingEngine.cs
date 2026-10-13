@@ -50,6 +50,9 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
         return new SealingResult(finalBytes, ComputeSha256(finalBytes));
     }
 
+    // null si no hay signer CMS (sellado degradado): el certificado de completion omite el panel de sello.
+    public CertificateSealInfo? DescribeSealCertificate() => cmsSigner?.DescribeCertificate();
+
     // ------------------------------------------------------------------
     // Métodos privados: una responsabilidad por método
     // ------------------------------------------------------------------
