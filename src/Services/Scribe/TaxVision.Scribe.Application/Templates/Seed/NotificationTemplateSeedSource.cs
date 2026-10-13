@@ -27,7 +27,9 @@ public sealed record NotificationTemplateSeed(
     // v11: F7 — nueva plantilla sig.partial_copy.v1 (copia inmediata al firmar).
     // v12: F7 — adapta copy del partial_copy cuando total_signers == 1 + robustez del download_link.
     // v13: F7 — no promete el PDF sellado cuando el preparador no lo va a enviar.
-    int ContentVersion = 13,
+    // v14: sig.invitation.v1 — si la request no tiene expiración (expires_at vacío) dice "no vence"
+    //      en vez de "The link expires on  UTC" con la fecha en blanco.
+    int ContentVersion = 14,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -476,14 +478,14 @@ public static class NotificationTemplateSeedSource
                   <!--<![endif]-->
                 </td>
               </tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}El enlace vence el {{ expires_at }} UTC.{% else %}The link expires on {{ expires_at }} UTC.{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if expires_at %}{% if language == 'Es' %}El enlace vence el {{ expires_at }} UTC.{% else %}The link expires on {{ expires_at }} UTC.{% endif %}{% else %}{% if language == 'Es' %}Este enlace no vence.{% else %}This link does not expire.{% endif %}{% endif %}</td></tr>
             </table>
             """,
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("invite_link", VariableType.Url, true, null, "URL pública de firma."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                ("expires_at", VariableType.String, false, null, "Fecha de expiración ya formateada (UTC); vacío si la request no expira."),
                 ("requires_consent", VariableType.Bool, true, "false", "true si requiere aceptar consent antes."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ]
