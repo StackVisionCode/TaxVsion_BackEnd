@@ -44,16 +44,41 @@ public sealed class GatewayCorsPolicyTests
         );
     }
 
-    [Theory]
-    [InlineData("http://localhost")]
-    [InlineData("https://localhost")]
-    [InlineData("capacitor://localhost")]
-    [InlineData("ionic://localhost")]
-    public void GatewayCors_IncluyeOriginsMovilesEnAppsettings(string origin)
-    {
-        var appsettings = RepoFile("src/Gateway/TaxVision.Gateway/appsettings.json");
+    /// <summary>
+    /// Orígenes extra (además de los de la plataforma, que salen de PlatformSettings) que aceptan el Gateway y
+    /// Communication en todos los ambientes: los fronts locales para probar contra producción (CRM 4200, landing
+    /// 4201/4202, portal 4300/4301, Ionic serve 8100/8101) y las apps móviles empaquetadas. Las dos listas
+    /// tienen que coincidir: si una acepta un front y la otra no, la app carga pero el chat o las llamadas fallan.
+    /// </summary>
+    public static TheoryData<string> ExtraOrigins =>
+        [
+            "http://localhost:4200",
+            "http://localhost:4201",
+            "http://localhost:4202",
+            "http://localhost:4300",
+            "http://localhost:4301",
+            "http://localhost:8100",
+            "http://localhost:8101",
+            "http://localhost",
+            "https://localhost",
+            "capacitor://localhost",
+            "ionic://localhost",
+        ];
 
-        Assert.Contains(origin, appsettings);
+    [Theory]
+    [MemberData(nameof(ExtraOrigins))]
+    public void GatewayCors_IncluyeLosOriginsExtraEnAppsettings(string origin)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(
+            RepoFile("src/Gateway/TaxVision.Gateway/appsettings.json")
+        );
+        var origins = json
+            .RootElement.GetProperty("Cors")
+            .GetProperty("Origins")
+            .EnumerateArray()
+            .Select(e => e.GetString());
+
+        Assert.Contains(origin, origins);
     }
 
     /// <summary>
@@ -70,14 +95,13 @@ public sealed class GatewayCorsPolicyTests
     }
 
     [Theory]
-    [InlineData("https://localhost")]
-    [InlineData("capacitor://localhost")]
-    [InlineData("ionic://localhost")]
-    public void CommunicationCors_IncluyeOriginsMovilesEnCompose(string origin)
+    [MemberData(nameof(ExtraOrigins))]
+    public void CommunicationCors_IncluyeOriginsExtraEnCompose(string origin)
     {
-        var compose = RepoFile("deploy/docker/docker-compose.yml");
+        var line = RepoFile("deploy/docker/docker-compose.yml")
+            .Split('\n')
+            .Single(l => l.TrimStart().StartsWith("COMMUNICATION_CORS_ORIGINS:", StringComparison.Ordinal));
 
-        Assert.Contains("COMMUNICATION_CORS_ORIGINS", compose);
-        Assert.Contains(origin, compose);
+        Assert.Contains(origin, line.Split(':', 2)[1].Split(',').Select(o => o.Trim()));
     }
 }
