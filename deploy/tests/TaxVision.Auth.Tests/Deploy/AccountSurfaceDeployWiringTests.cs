@@ -22,6 +22,36 @@ public sealed class AccountSurfaceDeployWiringTests
         Assert.DoesNotContain("AccountSession__AllowedOrigins", compose);
     }
 
+    /// <summary>
+    /// El localhost del landing local es solo de desarrollo. Antes el compose pisaba ese índice del array
+    /// con el dominio real; al sacar la lista del compose, si quedara en appsettings.json producción aceptaría
+    /// <c>http://localhost:4201</c> en el chequeo anti-CSRF del Account.
+    /// </summary>
+    [Fact]
+    public void The_local_landing_origin_is_only_allowed_in_development()
+    {
+        var api = Path.Combine(RepoRoot(), "src", "Services", "Auth", "Api");
+
+        Assert.Equal([], AccountSessionOrigins(Path.Combine(api, "appsettings.json")));
+        Assert.Contains(
+            "http://localhost:4201",
+            AccountSessionOrigins(Path.Combine(api, "appsettings.Development.json"))
+        );
+    }
+
+    private static string[] AccountSessionOrigins(string appsettingsPath)
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(appsettingsPath));
+        return
+        [
+            .. json
+                .RootElement.GetProperty("AccountSession")
+                .GetProperty("AllowedOrigins")
+                .EnumerateArray()
+                .Select(e => e.GetString()!),
+        ];
+    }
+
     [Fact]
     public void Only_the_services_the_account_uses_accept_its_audience()
     {
