@@ -117,7 +117,14 @@ public sealed class SignatureRequestsController(
             isAdmin || await permissionsSource.HasPermissionAsync(User, SignaturePermissions.DocumentSend, ct);
         // Sin permiso de delivery: fuerza false (no ignores el default del tenant que podría permitirlo).
         bool? sendSealed = canDeliver ? body.SendSealedDocumentToSigners : false;
-        var sendCertificate = canDeliver && body.SendCertificateToSigners;
+        // Igual que sendSealed: con permiso, null pasa al handler para que resuelva el default del tenant;
+        // sin permiso se fuerza false (el preparador controla lo que envía el empleado).
+        bool? sendCertificate = canDeliver ? body.SendCertificateToSigners : false;
+        // Política legal del despacho (certificado + consentimiento ESIGN): solo un admin puede override
+        // por request. Un no-admin siempre hereda el default del tenant — forzamos null para que el
+        // handler lo resuelva. Defensa en profundidad: el front además oculta estos toggles (B5).
+        bool? generateCertificate = isAdmin ? body.GenerateCertificate : null;
+        bool? requiresConsent = isAdmin ? body.RequiresConsent : null;
 
         var audienceResult = MapAudience(body.PartialCopyAudience);
         if (audienceResult.IsFailure)
@@ -137,8 +144,8 @@ public sealed class SignatureRequestsController(
                 .ToList(),
             body.TokenExpirationHours,
             body.RequiresSequentialSigning,
-            body.RequiresConsent,
-            body.GenerateCertificate,
+            requiresConsent,
+            generateCertificate,
             sendSealed,
             sendCertificate,
             body.AutoRemindersEnabled,

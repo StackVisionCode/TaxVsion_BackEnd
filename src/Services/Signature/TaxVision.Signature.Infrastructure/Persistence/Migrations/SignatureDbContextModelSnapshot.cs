@@ -1114,6 +1114,16 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<bool>("RemindersEnabledByDefault")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RequiresConsentByDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("SendCertificateToSignersDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("SendPartialCopyDefault")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")

@@ -21,4 +21,7 @@ public sealed record CmsSignedPdfResult(
 public interface ICmsPdfSigner
 {
     CmsSignedPdfResult Sign(byte[] visuallySealedPdfBytes);
+
+    /// <summary>Metadatos públicos del certificado de sellado, para el panel del Certificate of Completion.</summary>
+    CertificateSealInfo DescribeCertificate();
 }

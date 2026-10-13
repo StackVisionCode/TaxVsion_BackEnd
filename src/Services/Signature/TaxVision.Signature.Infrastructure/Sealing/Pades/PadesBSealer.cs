@@ -84,4 +84,6 @@ public sealed class PadesBSealer(
             SignatureSha256: cmsHash
         );
     }
+
+    public CertificateSealInfo DescribeCertificate() => cmsSigner.DescribeCertificate();
 }

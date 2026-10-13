@@ -9,4 +9,10 @@ namespace TaxVision.Signature.Application.Abstractions.Sealing;
 public interface IDocumentSealingEngine
 {
     SealingResult Seal(SealingRequest request);
+
+    /// <summary>
+    /// Metadatos públicos del certificado con que se sella, o null si el sellado CMS está degradado
+    /// (sin certificado). Alimenta el panel "Digital seal" del Certificate of Completion.
+    /// </summary>
+    CertificateSealInfo? DescribeSealCertificate();
 }

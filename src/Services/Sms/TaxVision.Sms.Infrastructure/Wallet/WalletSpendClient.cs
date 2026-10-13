@@ -51,7 +51,14 @@ public sealed class WalletSpendClient(
             return WalletReserveResult.Unreachable();
         }
 
-        var payload = new ReservePayload(referenceType, referenceId, units.Email, units.Sms, units.Push, units.WhatsApp);
+        var payload = new ReservePayload(
+            referenceType,
+            referenceId,
+            units.Email,
+            units.Sms,
+            units.Push,
+            units.WhatsApp
+        );
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "internal/wallet/reservations")
@@ -148,7 +155,14 @@ public sealed class WalletSpendClient(
         );
     }
 
-    private sealed record ReservePayload(string ReferenceType, Guid ReferenceId, long Email, long Sms, long Push, long WhatsApp);
+    private sealed record ReservePayload(
+        string ReferenceType,
+        Guid ReferenceId,
+        long Email,
+        long Sms,
+        long Push,
+        long WhatsApp
+    );
 
     private sealed record SettlePayload(string ReferenceType, Guid ReferenceId, int ConsumedUnits);
 

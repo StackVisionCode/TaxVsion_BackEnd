@@ -21,5 +21,14 @@ public sealed class SignatureTemplateRepository(SignatureDbContext db) : ISignat
     public async Task AddAsync(SignatureTemplate template, CancellationToken ct = default) =>
         await db.SignatureTemplates.AddAsync(template, ct);
 
-    public void Remove(SignatureTemplate template) => db.SignatureTemplates.Remove(template);
+    public void Remove(SignatureTemplate template)
+    {
+        // Mismo caso que SignatureRequestRepository.Remove: TemplateField/TemplatePreparerField tienen
+        // FK requerida a TemplateDocument con OnDelete(NoAction), así que al cascada-borrar los Documents
+        // EF severa una relación requerida y lanza. Borramos esos fields primero. (Hoy las plantillas se
+        // archivan, no se hard-borran, así que esto es defensivo para no dejar el footgun armado.)
+        db.RemoveRange(template.Fields);
+        db.RemoveRange(template.PreparerFields);
+        db.SignatureTemplates.Remove(template);
+    }
 }

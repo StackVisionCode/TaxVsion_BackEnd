@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Notification.Application.Abstractions;
@@ -25,6 +26,9 @@ public sealed class CampaignEmailWebhookController(
 ) : ControllerBase
 {
     [HttpPost("smtp2go")]
+    [RateLimitExempt(
+        "Anónimo — webhook del proveedor SMTP2GO sin JWT que particionar; el abuso lo contiene el secreto compartido y la validación del Message-Id."
+    )]
     public async Task<IActionResult> Smtp2Go(CancellationToken ct)
     {
         var expectedSecret = configuration["CampaignEmail:WebhookSecret"];
@@ -39,7 +43,15 @@ public sealed class CampaignEmailWebhookController(
             return Ok();
         }
 
-        if (!CampaignEmailCorrelation.TryParse(messageId, out var tenantId, out var campaignId, out var runId, out var dispatchId))
+        if (
+            !CampaignEmailCorrelation.TryParse(
+                messageId,
+                out var tenantId,
+                out var campaignId,
+                out var runId,
+                out var dispatchId
+            )
+        )
         {
             // Un Message-Id que no es de campaña (otro tráfico por la misma cuenta SMTP2GO) — no es nuestro.
             logger.LogDebug("SMTP2GO webhook: message-id '{MessageId}' is not a campaign send; ignoring.", messageId);
@@ -81,8 +93,10 @@ public sealed class CampaignEmailWebhookController(
     {
         var auth = Request.Headers.Authorization.ToString();
         const string bearer = "Bearer ";
-        if (auth.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(auth[bearer.Length..].Trim(), expected, StringComparison.Ordinal))
+        if (
+            auth.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(auth[bearer.Length..].Trim(), expected, StringComparison.Ordinal)
+        )
             return true;
 
         if (string.Equals(Request.Headers["X-Webhook-Secret"].ToString().Trim(), expected, StringComparison.Ordinal))

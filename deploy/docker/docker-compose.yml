@@ -324,8 +324,6 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      # Dev override (ver comentario del servicio): acepta login por TenantId del body sin Host de tenant.
-      TenantDomains__EnforceHostResolution: ${AUTH_ENFORCE_HOST_RESOLUTION:-false}
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}

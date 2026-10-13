@@ -158,6 +158,10 @@ public static class UpdateSignatureSettingsHandler
             settings.SetSendSealedDocumentDefault(sealedDefault);
         if (cmd.ExpirationEnabledByDefault is { } expDefault)
             settings.SetExpirationEnabledByDefault(expDefault);
+        if (cmd.SendCertificateToSignersDefault is { } sendCertDefault)
+            settings.SetSendCertificateToSignersDefault(sendCertDefault);
+        if (cmd.RequiresConsentByDefault is { } consentDefault)
+            settings.SetRequiresConsentByDefault(consentDefault);
 
         var pdfResult = DocumentLimits.Default().WithMaxPdfBytes(cmd.MaxPdfBytes);
         if (pdfResult.IsFailure)

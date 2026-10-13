@@ -166,30 +166,25 @@ public static class DependencyInjection
         services.AddHttpClient<Email.Campaign.Smtp2GoApiCampaignEmailProvider>(
             (sp, http) =>
             {
-                var opt = sp.GetRequiredService<
-                    Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>
-                >().Value.Api;
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>>().Value.Api;
                 var baseUrl = string.IsNullOrWhiteSpace(opt.BaseUrl) ? "https://api.smtp2go.com/v3/" : opt.BaseUrl;
                 http.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
-        services.AddScoped<
-            TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider
-        >(sp =>
+        services.AddScoped<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider>(sp =>
         {
-            var opts = sp.GetRequiredService<
-                Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>
-            >();
+            var opts =
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Email.Campaign.CampaignEmailOptions>>();
             var provider = opts.Value.Provider?.Trim().ToLowerInvariant();
             return provider switch
             {
                 // API HTTP de SMTP2GO (recomendado para volumen).
                 "smtp2go-api" or "api" => sp.GetRequiredService<Email.Campaign.Smtp2GoApiCampaignEmailProvider>(),
                 // SMTP2GO (y cualquier relay SMTP) comparten el mismo adapter SMTP.
-                "smtp2go" or "smtp" or "" or null => ActivatorUtilities.CreateInstance<
-                    Email.Campaign.SmtpCampaignEmailProvider
-                >(sp),
+                "smtp2go" or "smtp" or "" or null =>
+                    ActivatorUtilities.CreateInstance<Email.Campaign.SmtpCampaignEmailProvider>(sp),
                 _ => throw new InvalidOperationException(
                     $"CampaignEmail:Provider '{opts.Value.Provider}' no tiene adapter registrado."
                 ),

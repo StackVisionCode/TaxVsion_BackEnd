@@ -127,7 +127,9 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
             body.SendPartialCopyDefault,
             audienceKind,
             body.SendSealedDocumentDefault,
-            body.ExpirationEnabledByDefault
+            body.ExpirationEnabledByDefault,
+            body.SendCertificateToSignersDefault,
+            body.RequiresConsentByDefault
         );
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);

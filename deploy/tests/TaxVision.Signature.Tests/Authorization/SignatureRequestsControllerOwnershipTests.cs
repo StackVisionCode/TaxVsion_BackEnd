@@ -8,7 +8,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaxVision.Signature.Api.Controllers;
+using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Requests;
+using TaxVision.Signature.Application.Requests.Commands.Create;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 using Wolverine.Runtime;
@@ -102,12 +105,17 @@ public sealed class SignatureRequestsControllerOwnershipTests
     private sealed class ControllableMessageBus : IMessageBus
     {
         public object? NextResult { get; set; }
+        public object? LastInvoked { get; private set; }
 
         public Task<T> InvokeAsync<T>(
             object message,
             CancellationToken cancellation = default,
             TimeSpan? timeout = null
-        ) => Task.FromResult((T)NextResult!);
+        )
+        {
+            LastInvoked = message;
+            return Task.FromResult((T)NextResult!);
+        }
 
         public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null) => ValueTask.CompletedTask;
 
@@ -270,6 +278,78 @@ public sealed class SignatureRequestsControllerOwnershipTests
                 generateCertificate: false
             )
             .Value;
+
+    // ----- A4: política legal del despacho (certificado + consentimiento) en POST /signature/requests -----
+
+    private static SignatureRequestsController BuildCreateController(bool asAdmin, out ControllableMessageBus bus)
+    {
+        bus = new ControllableMessageBus
+        {
+            NextResult = Result.Failure<SignatureRequestResponse>(new Error("test.skip", "handler not run")),
+        };
+        var claims = new List<Claim>
+        {
+            new("tenant_id", Guid.NewGuid().ToString()),
+            new("sub", Guid.NewGuid().ToString()),
+        };
+        if (asAdmin)
+            claims.Add(new Claim("actor_type", "PlatformAdmin"));
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+
+        return new SignatureRequestsController(
+            bus,
+            new FakeSignatureRequestRepository(),
+            new RealAuthorizationService(
+                new IsOwnerOrHasManageHandler<SignatureRequest>(
+                    SignaturePermissions.RequestManage,
+                    new JwtEmbeddedPermissionsSource(),
+                    new AuthorizationMetrics()
+                )
+            ),
+            new JwtEmbeddedPermissionsSource(),
+            new FakeOwnershipOptionsMonitor(false)
+        )
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },
+        };
+    }
+
+    // Body que intenta debilitar ambas políticas (generar certificado OFF, consentimiento OFF).
+    private static CreateSignatureRequestBody WeakeningPolicyBody() =>
+        new(
+            Title: "Guard test",
+            Description: null,
+            Category: "Other",
+            Documents: [new CreateSignatureRequestDocumentBody(Guid.NewGuid(), "Doc", null)],
+            RequiresSequentialSigning: false,
+            GenerateCertificate: false,
+            RequiresConsent: false
+        );
+
+    [Fact]
+    public async Task Create_forces_a_non_admin_to_inherit_the_firm_certificate_and_consent_policy()
+    {
+        var controller = BuildCreateController(asAdmin: false, out var bus);
+
+        await controller.Create(WeakeningPolicyBody(), CancellationToken.None);
+
+        var cmd = Assert.IsType<CreateSignatureRequestCommand>(bus.LastInvoked);
+        // null = ignora lo que mandó el no-admin y hereda el default del tenant.
+        Assert.Null(cmd.GenerateCertificate);
+        Assert.Null(cmd.RequiresConsent);
+    }
+
+    [Fact]
+    public async Task Create_lets_an_admin_override_the_firm_certificate_and_consent_policy()
+    {
+        var controller = BuildCreateController(asAdmin: true, out var bus);
+
+        await controller.Create(WeakeningPolicyBody(), CancellationToken.None);
+
+        var cmd = Assert.IsType<CreateSignatureRequestCommand>(bus.LastInvoked);
+        Assert.False(cmd.GenerateCertificate);
+        Assert.False(cmd.RequiresConsent);
+    }
 
     [Fact]
     public async Task Send_bypasses_ownership_check_when_flag_is_disabled()

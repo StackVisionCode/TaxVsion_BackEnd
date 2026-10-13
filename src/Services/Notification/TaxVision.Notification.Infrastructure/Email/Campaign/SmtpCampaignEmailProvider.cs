@@ -40,7 +40,12 @@ public sealed class SmtpCampaignEmailProvider(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "CampaignEmail: invalid message for {To} (dispatch {DispatchId}).", message.To, message.DispatchId);
+            logger.LogWarning(
+                ex,
+                "CampaignEmail: invalid message for {To} (dispatch {DispatchId}).",
+                message.To,
+                message.DispatchId
+            );
             return CampaignEmailSendResult.Fail("email.invalidMessage");
         }
 
@@ -63,7 +68,13 @@ public sealed class SmtpCampaignEmailProvider(
         }
         catch (SmtpCommandException ex)
         {
-            logger.LogWarning(ex, "CampaignEmail SMTP rejected {To} ({Status}) via {Provider}.", message.To, ex.StatusCode, Code);
+            logger.LogWarning(
+                ex,
+                "CampaignEmail SMTP rejected {To} ({Status}) via {Provider}.",
+                message.To,
+                ex.StatusCode,
+                Code
+            );
             return CampaignEmailSendResult.Fail("email.rejected");
         }
         catch (Exception ex)

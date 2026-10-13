@@ -304,10 +304,9 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         var canViewAllCustomers = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
 
         // Frecuencia: texto libre tolerante (case-insensitive); default Custom (usa IntervalMinutes).
-        var frequency =
-            Enum.TryParse<RecurrenceFrequency>(request.Frequency, ignoreCase: true, out var f)
-                ? f
-                : RecurrenceFrequency.Custom;
+        var frequency = Enum.TryParse<RecurrenceFrequency>(request.Frequency, ignoreCase: true, out var f)
+            ? f
+            : RecurrenceFrequency.Custom;
 
         var result = await bus.InvokeAsync<Result<CampaignScheduleResponse>>(
             new ScheduleCampaignCommand(

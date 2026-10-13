@@ -13,5 +13,8 @@ public sealed record CertificateSignerEntry(
     DateTime? ConsentAcceptedAtUtc,
     DateTime? SignedAtUtc,
     string? ClientIp,
-    string? UserAgent
+    string? UserAgent,
+    // Evidencia de identidad y captura (opcionales: una request vieja o sin método no los trae).
+    string? VerificationMethod = null,
+    string? CaptureMethod = null
 );

@@ -73,6 +73,22 @@ public sealed class PadesCmsSigner
         return string.IsNullOrEmpty(cn) ? subject : cn[3..];
     }
 
+    /// <summary>Metadatos públicos del certificado para el panel "Digital seal" del Certificate of Completion.</summary>
+    public Application.Abstractions.Sealing.CertificateSealInfo DescribeCertificate()
+    {
+        using var pub = _certificate.GetRSAPublicKey();
+        var bits = pub?.KeySize ?? 0;
+        var friendly = _certificate.SignatureAlgorithm.FriendlyName ?? _certificate.SignatureAlgorithm.Value ?? "RSA";
+        var algorithm = bits > 0 ? $"{friendly} ({bits}-bit)" : friendly;
+        return new Application.Abstractions.Sealing.CertificateSealInfo(
+            Subject: _certificate.Subject,
+            Issuer: _certificate.Issuer,
+            SerialNumber: _certificate.SerialNumber,
+            SignatureAlgorithm: algorithm,
+            NotAfterUtc: _certificate.NotAfter.ToUniversalTime()
+        );
+    }
+
     // ------------------------------------------------------------------
 
     private CmsSignedDataGenerator BuildGenerator()

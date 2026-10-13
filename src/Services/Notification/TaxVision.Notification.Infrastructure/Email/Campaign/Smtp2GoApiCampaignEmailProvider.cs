@@ -66,16 +66,23 @@ public sealed class Smtp2GoApiCampaignEmailProvider(
 
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("SMTP2GO API {Status} para {To}: {Body}", (int)response.StatusCode, message.To, Trunc(body));
+                logger.LogWarning(
+                    "SMTP2GO API {Status} para {To}: {Body}",
+                    (int)response.StatusCode,
+                    message.To,
+                    Trunc(body)
+                );
                 return CampaignEmailSendResult.Fail("email.providerUnavailable");
             }
 
             // { "data": { "succeeded": 1, "failed": 0, "email_id": "...", "failures": [...] } }
             using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("data", out var data)
+            if (
+                doc.RootElement.TryGetProperty("data", out var data)
                 && data.TryGetProperty("succeeded", out var ok)
                 && ok.TryGetInt32(out var succeeded)
-                && succeeded >= 1)
+                && succeeded >= 1
+            )
             {
                 return CampaignEmailSendResult.Ok(messageId);
             }

@@ -76,6 +76,18 @@ public sealed class TenantSignatureSettings : BaseEntity
     /// <summary>F7 — default por tenant: enviar el PDF sellado final al completarse.</summary>
     public bool SendSealedDocumentDefault { get; private set; }
 
+    /// <summary>
+    /// Default por tenant: emailar el Certificate of Completion a los firmantes al completarse.
+    /// Solo surte efecto si además se genera el certificado; apagado en tenants nuevos.
+    /// </summary>
+    public bool SendCertificateToSignersDefault { get; private set; }
+
+    /// <summary>
+    /// Política legal del despacho: las solicitudes nuevas exigen el consentimiento de firma electrónica
+    /// (ESIGN/UETA) por default. ON en tenants nuevos — apagarlo debilita la exigibilidad de la firma.
+    /// </summary>
+    public bool RequiresConsentByDefault { get; private set; }
+
     /// <summary>F7 — default por tenant: las requests nuevas expiran (ON) o viven indefinido (OFF).</summary>
     public bool ExpirationEnabledByDefault { get; private set; }
 
@@ -142,6 +154,9 @@ public sealed class TenantSignatureSettings : BaseEntity
                 SendPartialCopyDefault = false,
                 PartialCopyDefaultAudienceKind = PartialCopyAudienceKind.All,
                 SendSealedDocumentDefault = false,
+                SendCertificateToSignersDefault = false,
+                // Consentimiento ESIGN/UETA: política legal del despacho, ON por default.
+                RequiresConsentByDefault = true,
                 ExpirationEnabledByDefault = true,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
@@ -310,6 +325,24 @@ public sealed class TenantSignatureSettings : BaseEntity
             return;
 
         GenerateCertificateByDefault = false;
+        Touch();
+    }
+
+    public void SetSendCertificateToSignersDefault(bool enabled)
+    {
+        if (SendCertificateToSignersDefault == enabled)
+            return;
+
+        SendCertificateToSignersDefault = enabled;
+        Touch();
+    }
+
+    public void SetRequiresConsentByDefault(bool required)
+    {
+        if (RequiresConsentByDefault == required)
+            return;
+
+        RequiresConsentByDefault = required;
         Touch();
     }
 

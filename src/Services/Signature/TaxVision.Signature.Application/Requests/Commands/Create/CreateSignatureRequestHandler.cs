@@ -59,10 +59,22 @@ public static class CreateSignatureRequestHandler
         var sendSealed = cmd.SendSealedDocumentToSigners ?? settings?.SendSealedDocumentDefault ?? false;
         var sendPartial = cmd.SendPartialCopyOnEachSignature ?? settings?.SendPartialCopyDefault ?? false;
         var expirationEnabled = cmd.ExpirationEnabled ?? settings?.ExpirationEnabledByDefault ?? true;
+        var tokenExpirationHours =
+            cmd.TokenExpirationHours
+            ?? settings?.DefaultTokenExpirationHoursValue
+            ?? TenantSignatureSettings.DefaultTokenExpirationHours;
+        var generateCertificate = cmd.GenerateCertificate ?? settings?.GenerateCertificateByDefault ?? true;
+        var sendCertificate = cmd.SendCertificateToSigners ?? settings?.SendCertificateToSignersDefault ?? false;
+        // Consentimiento ESIGN/UETA: política legal del despacho, ON si no hay settings.
+        var requiresConsent = cmd.RequiresConsent ?? settings?.RequiresConsentByDefault ?? true;
 
         var draftResult = CreateDraft(
             cmd,
             category.Value,
+            tokenExpirationHours,
+            requiresConsent,
+            generateCertificate,
+            sendCertificate,
             remindersEnabled,
             reminderInterval,
             sendSealed,
@@ -94,6 +106,10 @@ public static class CreateSignatureRequestHandler
     private static Result<SignatureRequest> CreateDraft(
         CreateSignatureRequestCommand cmd,
         string category,
+        int tokenExpirationHours,
+        bool requiresConsent,
+        bool generateCertificate,
+        bool sendCertificate,
         bool autoRemindersEnabled,
         int reminderIntervalHours,
         bool sendSealed,
@@ -106,12 +122,12 @@ public static class CreateSignatureRequestHandler
             title: cmd.Title,
             description: cmd.Description,
             category: category,
-            tokenExpirationHours: cmd.TokenExpirationHours,
+            tokenExpirationHours: tokenExpirationHours,
             requiresSequentialSigning: cmd.RequiresSequentialSigning,
-            requiresConsent: cmd.RequiresConsent,
-            generateCertificate: cmd.GenerateCertificate,
+            requiresConsent: requiresConsent,
+            generateCertificate: generateCertificate,
             sendSealedDocumentToSigners: sendSealed,
-            sendCertificateToSigners: cmd.SendCertificateToSigners,
+            sendCertificateToSigners: sendCertificate,
             autoRemindersEnabled: autoRemindersEnabled,
             reminderIntervalHours: reminderIntervalHours,
             expirationEnabled: expirationEnabled,

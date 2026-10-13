@@ -16,15 +16,14 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                 type: "nvarchar(4000)",
                 maxLength: 4000,
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CustomerIdsCsv",
-                table: "CampaignSchedules");
+            migrationBuilder.DropColumn(name: "CustomerIdsCsv", table: "CampaignSchedules");
         }
     }
 }

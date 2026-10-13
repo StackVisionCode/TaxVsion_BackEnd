@@ -71,32 +71,34 @@ public static class AddCustomersToListHandler
 
             // Dedupe por EMAIL (un cliente siempre tiene email único). NO por teléfono: dos personas
             // distintas pueden compartir/placeholderear el número y reusaríamos el contacto equivocado.
-            Contact? contact =
-                normalized.Email is not null
-                    ? await contacts.FindByDestinationAsync(command.TenantId, normalized.Email, null, ct)
-                    : await contacts.FindByDestinationAsync(command.TenantId, null, normalized.PhoneE164, ct);
+            Contact? contact = normalized.Email is not null
+                ? await contacts.FindByDestinationAsync(command.TenantId, normalized.Email, null, ct)
+                : await contacts.FindByDestinationAsync(command.TenantId, null, normalized.PhoneE164, ct);
 
             if (contact is null)
             {
                 // El teléfono tiene unique por tenant: si ya pertenece a OTRO contacto, se crea sin teléfono
                 // (se conserva el email) en vez de romper con un 409. El email sí identifica al cliente.
                 var phone = normalized.PhoneE164;
-                if (phone is not null && await contacts.FindByDestinationAsync(command.TenantId, null, phone, ct) is not null)
+                if (
+                    phone is not null
+                    && await contacts.FindByDestinationAsync(command.TenantId, null, phone, ct) is not null
+                )
                     phone = null;
 
                 var toCreate =
-                    phone == normalized.PhoneE164
-                        ? normalized
-                        : Contact.Create(
-                            command.TenantId,
-                            member.DisplayName,
-                            normalized.Email,
-                            phone,
-                            ContactSource.FromCustomer,
-                            customerRef: member.CustomerId
-                        ) is { IsSuccess: true } rebuilt
-                            ? rebuilt.Value
-                            : null;
+                    phone == normalized.PhoneE164 ? normalized
+                    : Contact.Create(
+                        command.TenantId,
+                        member.DisplayName,
+                        normalized.Email,
+                        phone,
+                        ContactSource.FromCustomer,
+                        customerRef: member.CustomerId
+                    )
+                        is { IsSuccess: true } rebuilt
+                        ? rebuilt.Value
+                    : null;
 
                 if (toCreate is null)
                 {

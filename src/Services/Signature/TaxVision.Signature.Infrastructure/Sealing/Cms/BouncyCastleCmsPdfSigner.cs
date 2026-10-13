@@ -71,6 +71,21 @@ public sealed class BouncyCastleCmsPdfSigner : ICmsPdfSigner
         );
     }
 
+    public CertificateSealInfo DescribeCertificate()
+    {
+        using var pub = _certificate.GetRSAPublicKey();
+        var bits = pub?.KeySize ?? 0;
+        var friendly = _certificate.SignatureAlgorithm.FriendlyName ?? _certificate.SignatureAlgorithm.Value ?? "RSA";
+        var algorithm = bits > 0 ? $"{friendly} ({bits}-bit)" : friendly;
+        return new CertificateSealInfo(
+            Subject: _certificate.Subject,
+            Issuer: _certificate.Issuer,
+            SerialNumber: _certificate.SerialNumber,
+            SignatureAlgorithm: algorithm,
+            NotAfterUtc: _certificate.NotAfter.ToUniversalTime()
+        );
+    }
+
     // ------------------------------------------------------------------
     // Métodos privados: cada uno una única responsabilidad
     // ------------------------------------------------------------------

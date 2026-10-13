@@ -208,7 +208,15 @@ public sealed class CampaignScheduleTests
         var start = DateTime.UtcNow.AddMinutes(1);
         // Fin justo antes del 2do slot (start + ~1 día): tras el 1er disparo no quedan más.
         var schedule = CampaignSchedule
-            .CreateRecurring(Tenant, Campaign, start, RecurrenceFrequency.Daily, null, [], endsAtUtc: start.AddHours(12))
+            .CreateRecurring(
+                Tenant,
+                Campaign,
+                start,
+                RecurrenceFrequency.Daily,
+                null,
+                [],
+                endsAtUtc: start.AddHours(12)
+            )
             .Value;
 
         schedule.MarkFired(Guid.NewGuid(), start);
