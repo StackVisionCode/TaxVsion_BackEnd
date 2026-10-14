@@ -1,4 +1,5 @@
 using Amazon.S3;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -17,6 +18,7 @@ using TaxVision.CloudStorage.Infrastructure.Permissions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
 using TaxVision.CloudStorage.Infrastructure.RateLimiting;
+using TaxVision.CloudStorage.Infrastructure.Reconciliation;
 using TaxVision.CloudStorage.Infrastructure.Security;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 using TaxVision.CloudStorage.Infrastructure.Time;
@@ -43,6 +45,14 @@ public static class DependencyInjection
         services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();
         services.AddScoped<IShareLinkRepository, ShareLinkRepository>();
         services.AddScoped<IDmcaNoticeRepository, DmcaNoticeRepository>();
+        services.AddScoped<
+            TaxVision.CloudStorage.Application.CustomerAccess.ICustomerAccessRuleRepository,
+            CustomerAccessRuleRepository
+        >();
+        services.AddScoped<
+            TaxVision.CloudStorage.Application.CustomerAccess.ICustomerAccessRuleAuditRepository,
+            CustomerAccessRuleAuditRepository
+        >();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
@@ -167,6 +177,19 @@ public static class DependencyInjection
 
         AddRateLimitTierQuotas(services, configuration);
         AddPermissionsPullRecovery(services);
+
+        // Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): store de la proyección
+        // sobre CloudStorageDbContext + reconciliación (siembra desde Customer con el token M2M de la
+        // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
+        services.AddCustomerVisibilityProjection<CloudStorageDbContext>();
+        services.AddCustomerVisibilityReconciliation<CloudStoragePlatformTokenProvider>(configuration);
+        services
+            .AddOptions<CloudStorageVisibilityOptions>()
+            .Bind(configuration.GetSection(CloudStorageVisibilityOptions.SectionName));
+        // Flag per-item (Fase 4) — portal precarga reglas deny del cliente y las aplica en runtime.
+        services
+            .AddOptions<CloudStoragePerItemAccessOptions>()
+            .Bind(configuration.GetSection(CloudStoragePerItemAccessOptions.SectionName));
         return services;
     }
 

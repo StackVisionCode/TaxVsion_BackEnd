@@ -26,7 +26,11 @@ builder.Services.AddBuildingBlocks();
 // todo con margen. El límite fino por ruta va en ReverseProxy:Routes:*:MaxRequestBodySize.
 // CORS explícito para la SPA: los orígenes de las apps de la plataforma salen del dominio vigente en
 // PlatformSettings (se leen en cada preflight, así que siguen a un cambio de dominio sin redeploy); los
-// de Cors:Origins son los extra (localhost y apps móviles).
+// de Cors:Origins son los extra (localhost y apps móviles). WebOrigins solo lista los hosts fijos (apex,
+// www, app, client), por eso además dejamos pasar bajo HTTPS cualquier subdominio de oficina válido
+// ({slug}.{BaseDomain} que no sea reservado) y cualquier host compartido reconocido (admin, api…) con la
+// MISMA regla que usa TenantHostGuardMiddleware para resolver el host — así CORS y host-guard no pueden
+// discrepar sobre qué host es de quién.
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors();
 builder
@@ -40,6 +44,7 @@ builder
                         .SetIsOriginAllowed(origin =>
                             PlatformSettingsSnapshot.IsOriginIn(origin, corsOrigins)
                             || PlatformSettingsSnapshot.IsOriginIn(origin, platform.Current.WebOrigins)
+                            || platform.Current.IsPlatformHttpsOrigin(origin)
                         )
                         .AllowAnyHeader()
                         .AllowAnyMethod()

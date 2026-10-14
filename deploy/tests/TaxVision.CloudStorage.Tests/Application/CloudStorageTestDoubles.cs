@@ -33,6 +33,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     public Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         int skip,
@@ -50,6 +51,12 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                     )
                     && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
                     && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
+                    && (
+                        restrictedCustomerId != null
+                        || assignedCustomerIds == null
+                        || file.OwnerType != OwnerType.Customer
+                        || (file.OwnerId.HasValue && assignedCustomerIds.Contains(file.OwnerId.Value))
+                    )
                 )
                 .OrderByDescending(file => file.CreatedAtUtc)
                 .Skip(skip)
@@ -157,6 +164,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     private IEnumerable<FileObject> FilesInFolder(
         Guid tenantId,
         Guid? folderId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter
@@ -168,6 +176,11 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
             && file.Status != FileStatus.SoftDeleted
             && (ownerType == null || file.OwnerType == ownerType)
             && (ownerId == null || file.OwnerId == ownerId)
+            && (
+                assignedCustomerIds == null
+                || file.OwnerType != OwnerType.Customer
+                || (file.OwnerId.HasValue && assignedCustomerIds.Contains(file.OwnerId.Value))
+            )
         );
         if (filter.FolderTypes is { Count: > 0 } fts)
             query = query.Where(f => fts.Contains(f.FolderType));
@@ -200,6 +213,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -208,7 +222,10 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         CancellationToken ct
     )
     {
-        var ordered = OrderFiles(FilesInFolder(tenantId, folderId, ownerType, ownerId, filter), filter);
+        var ordered = OrderFiles(
+            FilesInFolder(tenantId, folderId, assignedCustomerIds, ownerType, ownerId, filter),
+            filter
+        );
         if (take is not null)
             ordered = ordered.Skip(skip ?? 0).Take(take.Value);
         return Task.FromResult<IReadOnlyList<FileObject>>(ordered.ToList());
@@ -218,16 +235,18 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
         CancellationToken ct
-    ) => Task.FromResult(FilesInFolder(tenantId, folderId, ownerType, ownerId, filter).Count());
+    ) => Task.FromResult(FilesInFolder(tenantId, folderId, assignedCustomerIds, ownerType, ownerId, filter).Count());
 
     public Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> folderIds,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<FileObject>>(
@@ -237,6 +256,11 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                     && file.FolderId is { } folderId
                     && folderIds.Contains(folderId)
                     && file.Status != FileStatus.SoftDeleted
+                    && (
+                        assignedCustomerIds == null
+                        || file.OwnerType != OwnerType.Customer
+                        || (file.OwnerId.HasValue && assignedCustomerIds.Contains(file.OwnerId.Value))
+                    )
                 )
                 .ToList()
         );
@@ -284,19 +308,31 @@ internal sealed class FakeFolderRepository : IFolderRepository
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(folderId, out var folder) && folder.TenantId == tenantId ? folder : null);
 
-    private IEnumerable<Folder> Subfolders(Guid tenantId, Guid? parentFolderId, OwnerType? ownerType, Guid? ownerId) =>
+    private IEnumerable<Folder> Subfolders(
+        Guid tenantId,
+        Guid? parentFolderId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
+        OwnerType? ownerType,
+        Guid? ownerId
+    ) =>
         _byId.Values.Where(f =>
             f.TenantId == tenantId
             && f.ParentFolderId == parentFolderId
             && !f.IsDeleted
             && (ownerType == null || f.OwnerType == ownerType)
             && (ownerId == null || f.OwnerId == ownerId)
+            && (
+                assignedCustomerIds == null
+                || f.OwnerType != OwnerType.Customer
+                || (f.OwnerId.HasValue && assignedCustomerIds.Contains(f.OwnerId.Value))
+            )
         );
 
     public Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -305,7 +341,7 @@ internal sealed class FakeFolderRepository : IFolderRepository
         CancellationToken ct
     )
     {
-        var folders = Subfolders(tenantId, parentFolderId, ownerType, ownerId);
+        var folders = Subfolders(tenantId, parentFolderId, assignedCustomerIds, ownerType, ownerId);
         Func<Folder, IComparable> key = filter.SortKey == FileSortKey.Modified ? f => f.CreatedAtUtc : f => f.Name;
         var ordered = (
             filter.SortDescending
@@ -321,10 +357,11 @@ internal sealed class FakeFolderRepository : IFolderRepository
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         CancellationToken ct
-    ) => Task.FromResult(Subfolders(tenantId, parentFolderId, ownerType, ownerId).Count());
+    ) => Task.FromResult(Subfolders(tenantId, parentFolderId, assignedCustomerIds, ownerType, ownerId).Count());
 
     public Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(
         Guid tenantId,
@@ -377,6 +414,7 @@ internal sealed class FakeFolderRepository : IFolderRepository
         Guid tenantId,
         OwnerType? ownerType,
         Guid? ownerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<Folder>>(
@@ -386,6 +424,11 @@ internal sealed class FakeFolderRepository : IFolderRepository
                     && !f.IsDeleted
                     && (ownerType == null || f.OwnerType == ownerType)
                     && (ownerId == null || f.OwnerId == ownerId)
+                    && (
+                        assignedCustomerIds == null
+                        || f.OwnerType != OwnerType.Customer
+                        || (f.OwnerId.HasValue && assignedCustomerIds.Contains(f.OwnerId.Value))
+                    )
                 )
                 .ToList()
         );

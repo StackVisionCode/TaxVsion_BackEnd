@@ -1,3 +1,5 @@
+using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 
 namespace TaxVision.CloudStorage.Application.Files;
@@ -37,7 +39,10 @@ public sealed record FileResponse(
     DateTime? ScannedAtUtc,
     // true si el archivo tiene un link de compartir vigente (indicador del listado). Lo setea solo el
     // listado de carpeta; el resto de mapeos lo dejan en false.
-    bool IsShared = false
+    bool IsShared = false,
+    // Capabilities efectivas del portal (allow-all para staff); DenyReason != null solo si hay deny.
+    EffectiveCapabilities? EffectiveCapabilities = null,
+    string? DenyReason = null
 );
 
 public sealed record DownloadUrlResponse(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
@@ -94,6 +99,14 @@ internal static class FileResponseMapper
             file.CreatedAtUtc,
             file.ScannedAtUtc
         );
+
+    /// <summary>Mapea aplicando capabilities del scope — para portal con flag on, computa deny per-item.</summary>
+    public static FileResponse Map(FileObject file, StorageActorScope scope) =>
+        Map(file) with
+        {
+            EffectiveCapabilities = EffectiveCapabilities.ForFile(scope, file.Id),
+            DenyReason = EffectiveCapabilities.ReasonForFile(scope, file.Id),
+        };
 }
 
 internal static class FileTypeCompatibility

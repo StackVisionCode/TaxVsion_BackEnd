@@ -260,6 +260,9 @@ public static class ErrorHttpMapping
             or "IncomingEmailAttachment.Blocked"
             or "File.Forbidden"
             or "Folder.Forbidden"
+            // Carpetas de sistema (prefijo sys.*): el aggregate y los handlers rechazan fail-closed
+            // Rename/Move/Delete sobre ellas. 403, no 400: es denegacion por regla de dominio.
+            or "Folder.SystemProtected"
             // A1 — borrar una carpeta con contenido exige el permiso de borrar archivos.
             or "Folder.FileDeletePermissionRequired"
             or "EmailConfiguration.Forbidden"
@@ -291,7 +294,9 @@ public static class ErrorHttpMapping
             or "Signature.Profile.Forbidden"
             or "Signature.Profile.NotVisible"
             or "Signature.Profile.OwnSignatureDisabled"
-            or "Signature.Document.VerificationRequired" => StatusCodes.Status403Forbidden,
+            or "Signature.Document.VerificationRequired"
+            // Portal del cliente: regla deny per-item (Fase 4). El code es estable para que el UI lo mapee.
+            or "cloudstorage.customer_access.denied" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"

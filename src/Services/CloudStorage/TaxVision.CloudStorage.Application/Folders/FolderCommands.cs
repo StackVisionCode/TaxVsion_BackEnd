@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -225,12 +227,14 @@ public static class RenameFolderHandler
         )
             return Result.Failure<FolderResponse>(FolderErrors.NameAlreadyExists);
 
-        await ApplyRenameAndCascade(command.TenantId, folder, nameResult.Value, folders, ct);
+        var applied = await ApplyRenameAndCascade(command.TenantId, folder, nameResult.Value, folders, ct);
+        if (applied.IsFailure)
+            return Result.Failure<FolderResponse>(applied.Error);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(FolderResponseMapper.Map(folder));
     }
 
-    private static async Task ApplyRenameAndCascade(
+    private static async Task<Result> ApplyRenameAndCascade(
         Guid tenantId,
         Folder folder,
         FolderName newName,
@@ -240,8 +244,11 @@ public static class RenameFolderHandler
     {
         var oldPath = folder.RelativePath;
         var parentPath = ParentPathOf(oldPath);
-        folder.Rename(newName, parentPath);
+        var renamed = folder.Rename(newName, parentPath);
+        if (renamed.IsFailure)
+            return renamed;
         await FolderPathCascader.CascadeAsync(tenantId, oldPath, folder.RelativePath, folders, ct);
+        return Result.Success();
     }
 
     internal static async Task<Result<Folder>> LoadOwnedFolder(
@@ -313,7 +320,7 @@ public static class MoveFolderHandler
         )
             return Result.Failure<FolderResponse>(FolderErrors.NameAlreadyExists);
 
-        await ApplyMoveAndCascade(
+        var applied = await ApplyMoveAndCascade(
             command.TenantId,
             folder,
             command.NewParentFolderId,
@@ -321,6 +328,8 @@ public static class MoveFolderHandler
             folders,
             ct
         );
+        if (applied.IsFailure)
+            return Result.Failure<FolderResponse>(applied.Error);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(FolderResponseMapper.Map(folder));
     }
@@ -356,7 +365,7 @@ public static class MoveFolderHandler
         return Result.Success<string?>(newParent.RelativePath);
     }
 
-    private static async Task ApplyMoveAndCascade(
+    private static async Task<Result> ApplyMoveAndCascade(
         Guid tenantId,
         Folder folder,
         Guid? newParentFolderId,
@@ -366,8 +375,11 @@ public static class MoveFolderHandler
     )
     {
         var oldPath = folder.RelativePath;
-        folder.Reparent(newParentFolderId, newParentPath);
+        var moved = folder.Reparent(newParentFolderId, newParentPath);
+        if (moved.IsFailure)
+            return moved;
         await FolderPathCascader.CascadeAsync(tenantId, oldPath, folder.RelativePath, folders, ct);
+        return Result.Success();
     }
 }
 
@@ -409,6 +421,13 @@ public static class MoveFileToFolderHandler
                 return Result.Failure(FolderErrors.NotFound);
             if (folder.OwnerType != file.OwnerType || folder.OwnerId != file.OwnerId)
                 return Result.Failure(FolderErrors.OwnerMismatch);
+            // Portal con Upload deny en la carpeta destino: 403 con reason.
+            if (command.Scope.IsDeniedForPortal(AccessResourceType.Folder, folder.Id, AccessCapability.Upload))
+                return Result.Failure(
+                    CustomerAccessDenied.With(
+                        command.Scope.DenyReasonFor(AccessResourceType.Folder, folder.Id, AccessCapability.Upload)
+                    )
+                );
         }
 
         file.MoveToFolder(command.FolderId, clock.UtcNow);

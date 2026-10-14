@@ -1660,6 +1660,34 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000189"),
+                            AllowedActorTypes = "TenantAdmin,TenantEmployee",
+                            Code = "cloudstorage.customer_access.manage_assigned",
+                            Description = "Manage document access rules for customers assigned to the user",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000190"),
+                            AllowedActorTypes = "TenantAdmin,PlatformAdmin",
+                            Code = "cloudstorage.customer_access.manage_any",
+                            Description = "Manage document access rules for any customer in the tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000072"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.read",

@@ -4,7 +4,9 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using Wolverine;
@@ -84,6 +86,13 @@ public static class PrepareZipDownloadHandler
             var file = await files.GetAsync(query.TenantId, fileId, ct);
             if (file is null || !query.Scope.CanAccess(file))
                 return Result.Failure<ZipDownloadPlan>(FileErrors.NotFound);
+            // Portal con Download deny: aborta el ZIP (semántica estricta de FileIds).
+            if (query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Download))
+                return Result.Failure<ZipDownloadPlan>(
+                    CustomerAccessDenied.With(
+                        query.Scope.DenyReasonFor(AccessResourceType.File, file.Id, AccessCapability.Download)
+                    )
+                );
             if (file.Status != FileStatus.Available)
                 return Result.Failure<ZipDownloadPlan>(FileErrors.NotAvailable);
             explicitFiles.Add(file);
@@ -117,15 +126,28 @@ public static class PrepareZipDownloadHandler
         }
 
         var restrictedCustomerId = query.Scope.IsCustomerPortal ? query.Scope.CustomerId ?? Guid.Empty : (Guid?)null;
+        // ABAC: con flag on y staff sin view_all, el repo filtra los archivos no-asignados antes de contarlos.
+        var assignedCustomerIds = query.Scope.BypassAssignmentFilter ? null : query.Scope.AssignedCustomerIds;
         var folderFiles =
             allFolderIds.Count > 0
-                ? await files.ListInFoldersAsync(query.TenantId, allFolderIds, restrictedCustomerId, ct)
+                ? await files.ListInFoldersAsync(
+                    query.TenantId,
+                    allFolderIds,
+                    restrictedCustomerId,
+                    assignedCustomerIds,
+                    ct
+                )
                 : [];
 
-        // Tolerante: descarta silenciosamente lo que no esta Available y lo que
-        // ya vino por FileIds explicitos (evita una entry duplicada en el ZIP).
+        // Tolerante: descarta silenciosamente lo que no esta Available, lo que
+        // ya vino por FileIds explicitos (evita una entry duplicada en el ZIP), y los que el portal tiene denegados.
         var resolvedFolderFiles = folderFiles
-            .Where(file => file.Status == FileStatus.Available && !explicitFileIds.Contains(file.Id))
+            .Where(file =>
+                file.Status == FileStatus.Available
+                && !explicitFileIds.Contains(file.Id)
+                && !query.Scope.IsHiddenForPortal(AccessResourceType.File, file.Id)
+                && !query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Download)
+            )
             .ToList();
 
         var combined = new List<(FileObject File, string? FolderPrefix)>(

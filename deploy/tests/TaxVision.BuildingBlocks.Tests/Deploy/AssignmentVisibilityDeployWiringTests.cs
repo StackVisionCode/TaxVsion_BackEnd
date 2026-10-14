@@ -14,7 +14,7 @@ namespace TaxVision.BuildingBlocks.Tests.Deploy;
 /// </summary>
 public sealed class AssignmentVisibilityDeployWiringTests
 {
-    // Un flag por consumidor: 7 .NET (Billing, Signature, Sms, Calendar, Notes, Campaigns, Tasks) + Communication (Node).
+    // Un flag por consumidor: 8 .NET (Billing, Signature, Sms, Calendar, Notes, Campaigns, Tasks, CloudStorage) + Communication (Node).
     private static readonly string[] AssignmentVisibilityEnvVars =
     [
         "BILLING_ASSIGNMENT_VISIBILITY_ENABLED",
@@ -25,6 +25,9 @@ public sealed class AssignmentVisibilityDeployWiringTests
         "CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED",
         "TASKS_ASSIGNMENT_VISIBILITY_ENABLED",
         "COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED",
+        "CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED",
+        // Portal per-item deny (Fase 4) — mismo contrato de rollout: default false, encender tras verificar.
+        "CLOUDSTORAGE_PERITEM_ACCESS_ENABLED",
     ];
 
     [Theory]

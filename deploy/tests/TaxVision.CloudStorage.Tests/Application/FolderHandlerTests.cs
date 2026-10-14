@@ -777,6 +777,7 @@ public sealed class FolderHandlerTests
                 null,
                 null,
                 null,
+                null,
                 FolderContentsFilter.None,
                 null,
                 null,

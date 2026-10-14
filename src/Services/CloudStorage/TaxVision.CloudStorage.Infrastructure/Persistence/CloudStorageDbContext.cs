@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -7,6 +8,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
@@ -32,6 +34,8 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
     public DbSet<DmcaNotice> DmcaNotices => Set<DmcaNotice>();
+    public DbSet<CustomerDocumentAccessRule> CustomerDocumentAccessRules => Set<CustomerDocumentAccessRule>();
+    public DbSet<CustomerAccessRuleAudit> CustomerAccessRuleAudits => Set<CustomerAccessRuleAudit>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
@@ -39,9 +43,14 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     // TenantPlanCodeProjectionConsumer.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
+    // Proyección compartida de asignaciones cliente→staff (kit BuildingBlocks.CustomerVisibility),
+    // mantenida por el consumer compartido + la reconciliación. Alimenta el filtro ABAC de visibilidad.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

@@ -31,6 +31,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
     public async Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         int skip,
@@ -51,6 +52,13 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 // restrictedCustomerId, asi que ahi estos se ignoran (mismo criterio que ListInFolderAsync).
                 && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
                 && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
+                // ABAC por asignación (staff sin view_all, flag on): set vacío ⇒ solo recursos no-Customer.
+                && (
+                    restrictedCustomerId != null
+                    || assignedCustomerIds == null
+                    || file.OwnerType != OwnerType.Customer
+                    || (file.OwnerId != null && assignedCustomerIds.Contains(file.OwnerId.Value))
+                )
             )
             .OrderByDescending(file => file.CreatedAtUtc)
             .Skip(skip)
@@ -165,6 +173,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter
@@ -185,6 +194,13 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 // ya acoto el alcance arriba, portal de cliente siempre gana.
                 && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
                 && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
+                // ABAC por asignación: staff sin view_all con el flag on; set vacío ⇒ solo no-Customer.
+                && (
+                    restrictedCustomerId != null
+                    || assignedCustomerIds == null
+                    || file.OwnerType != OwnerType.Customer
+                    || (file.OwnerId != null && assignedCustomerIds.Contains(file.OwnerId.Value))
+                )
             );
 
         if (filter.FolderTypes is { Count: > 0 } folderTypes)
@@ -236,6 +252,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -245,7 +262,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
     )
     {
         var query = OrderFiles(
-            FilesInFolder(tenantId, folderId, restrictedCustomerId, ownerType, ownerId, filter),
+            FilesInFolder(tenantId, folderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId, filter),
             filter
         );
         return take is null
@@ -257,16 +274,20 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
         CancellationToken ct
-    ) => FilesInFolder(tenantId, folderId, restrictedCustomerId, ownerType, ownerId, filter).CountAsync(ct);
+    ) =>
+        FilesInFolder(tenantId, folderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId, filter)
+            .CountAsync(ct);
 
     public async Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> folderIds,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     ) =>
         await db
@@ -280,6 +301,12 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 && (
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
+                )
+                && (
+                    restrictedCustomerId != null
+                    || assignedCustomerIds == null
+                    || file.OwnerType != OwnerType.Customer
+                    || (file.OwnerId != null && assignedCustomerIds.Contains(file.OwnerId.Value))
                 )
             )
             .ToListAsync(ct);
@@ -350,6 +377,7 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId
     ) =>
@@ -366,12 +394,20 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                 )
                 && (restrictedCustomerId != null || ownerType == null || folder.OwnerType == ownerType)
                 && (restrictedCustomerId != null || ownerId == null || folder.OwnerId == ownerId)
+                // ABAC por asignación: staff sin view_all con el flag on; set vacío ⇒ solo no-Customer.
+                && (
+                    restrictedCustomerId != null
+                    || assignedCustomerIds == null
+                    || folder.OwnerType != OwnerType.Customer
+                    || (folder.OwnerId != null && assignedCustomerIds.Contains(folder.OwnerId.Value))
+                )
             );
 
     public async Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -380,7 +416,7 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         CancellationToken ct
     )
     {
-        var query = Subfolders(tenantId, parentFolderId, restrictedCustomerId, ownerType, ownerId);
+        var query = Subfolders(tenantId, parentFolderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId);
         var desc = filter.SortDescending;
         // Las carpetas no tienen tamaño: "Size" cae a Name. "Modified" ordena por CreatedAtUtc.
         var ordered =
@@ -397,10 +433,13 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         CancellationToken ct
-    ) => Subfolders(tenantId, parentFolderId, restrictedCustomerId, ownerType, ownerId).CountAsync(ct);
+    ) =>
+        Subfolders(tenantId, parentFolderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId)
+            .CountAsync(ct);
 
     public async Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(
         Guid tenantId,
@@ -465,6 +504,7 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid tenantId,
         OwnerType? ownerType,
         Guid? ownerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     ) =>
         await db
@@ -475,6 +515,12 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                 && folder.SoftDeletedAtUtc == null
                 && (ownerType == null || folder.OwnerType == ownerType)
                 && (ownerId == null || folder.OwnerId == ownerId)
+                // ABAC por asignación: solo lo aplican los callers que pasan set no-null (staff con flag on).
+                && (
+                    assignedCustomerIds == null
+                    || folder.OwnerType != OwnerType.Customer
+                    || (folder.OwnerId != null && assignedCustomerIds.Contains(folder.OwnerId.Value))
+                )
             )
             .ToListAsync(ct);
 

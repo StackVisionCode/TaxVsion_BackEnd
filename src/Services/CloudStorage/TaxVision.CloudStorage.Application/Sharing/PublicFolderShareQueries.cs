@@ -83,11 +83,12 @@ public static class ResolvePublicFolderContentsHandler
         if (folder is null)
             return PublicFolderContentsResult.Denied();
 
-        var subfolders = link.IsRecursive
-            ? (
+        var subfolders = link.IsRecursive ? (
+                // Share público: no se aplica filtro ABAC (el token ES la autorización).
                 await folders.ListSubfoldersAsync(
                     link.TenantId,
                     targetFolderId,
+                    null,
                     null,
                     null,
                     null,
@@ -96,14 +97,12 @@ public static class ResolvePublicFolderContentsHandler
                     null,
                     ct
                 )
-            )
-                .Select(f => new PublicFolderSubfolder(f.Id, f.Name))
-                .ToList()
-            : [];
+            ).Select(f => new PublicFolderSubfolder(f.Id, f.Name)).ToList() : [];
 
         var folderFiles = await files.ListInFolderAsync(
             link.TenantId,
             targetFolderId,
+            null,
             null,
             null,
             null,
@@ -242,7 +241,8 @@ public static class PreparePublicFolderZipHandler
         if (allFolderIds.Count > config.MaxZipFolders)
             return PublicZipResult.TooLarge();
 
-        var folderFiles = await files.ListInFoldersAsync(link.TenantId, allFolderIds, null, ct);
+        // Share público: no se aplica filtro ABAC.
+        var folderFiles = await files.ListInFoldersAsync(link.TenantId, allFolderIds, null, null, ct);
         var combined = folderFiles
             .Where(f => f.Status == FileStatus.Available && FolderShareCoverage.IncludesFileByTime(link, f))
             .Select(f => (File: f, FolderPrefix: (string?)folderEntryPrefixes[f.FolderId!.Value]))

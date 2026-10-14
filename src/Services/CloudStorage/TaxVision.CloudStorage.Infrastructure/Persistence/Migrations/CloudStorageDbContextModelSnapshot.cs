@@ -22,6 +22,34 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Audit.StorageAccessLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -76,6 +104,94 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "FileId", "OccurredAtUtc");
 
                     b.ToTable("StorageAccessLogs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.CustomerAccess.CustomerAccessRuleAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Capability")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ResourceType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_CustomerAccessRuleAudits_Tenant_OccurredAt");
+
+                    b.HasIndex("TenantId", "CustomerId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_CustomerAccessRuleAudits_Tenant_Customer_OccurredAt");
+
+                    b.ToTable("CustomerAccessRuleAudits", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.CustomerAccess.CustomerDocumentAccessRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Capability")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ResourceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SetAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SetByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId")
+                        .HasDatabaseName("IX_CustomerDocumentAccessRules_Tenant_Customer");
+
+                    b.HasIndex("TenantId", "CustomerId", "ResourceType", "ResourceId", "Capability")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CustomerDocumentAccessRules_Customer_Resource_Capability");
+
+                    b.ToTable("CustomerDocumentAccessRules", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Files.FileObject", b =>

@@ -50,6 +50,13 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddCloudStorageInfrastructure(builder.Configuration);
+
+// Resolver async del scope para las queries de listado (visibilidad por asignación). Vive en Api porque
+// consume ClaimsPrincipal + IUserPermissionsSource; cada controller lo llama antes de bus.InvokeAsync.
+builder.Services.AddScoped<
+    TaxVision.CloudStorage.Api.Common.IStorageActorScopeResolver,
+    TaxVision.CloudStorage.Api.Common.StorageActorScopeResolver
+>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -184,6 +191,8 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
+    // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConnection =
