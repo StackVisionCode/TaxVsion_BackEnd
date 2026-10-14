@@ -13,6 +13,11 @@ public sealed class BaseLayoutHtmlTests
 {
     private static readonly FluidParser Parser = new();
 
+    /// <summary>Texto visible al humano: sin tags HTML y con las variables de layout fuera. Con esto, un wordmark
+    /// partido en <c>Tax&lt;span&gt;Proffice&lt;/span&gt;</c> aparece como "TaxProffice" (el mismo string que ve el navegador).</summary>
+    private static string StripTags(string html) =>
+        System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>|\\{%[^%]*%\\}|\\{\\{[^}]*\\}\\}", string.Empty);
+
     [Fact]
     public async Task SystemBaseV1_parses_and_renders_body_and_current_year()
     {
@@ -32,8 +37,32 @@ public sealed class BaseLayoutHtmlTests
         // La marca sale de las variables de plataforma (las pone el renderer), nunca escrita en el layout.
         Assert.Contains("TaxOffix", html);
         Assert.Contains("TaxOffix LLC", html);
-        Assert.DoesNotContain("TaxProffice", BaseLayoutHtml.SystemBaseV1);
-        Assert.DoesNotContain("TaxProffice", BaseLayoutHtml.TenantBaseV1);
+        // Comprobar el string pelado no basta: el bug era un wordmark partido en `Tax<span>Proffice</span>`
+        // que el navegador juntaba y el `Contains` no. El layout se evalúa sin tags.
+        Assert.DoesNotContain(
+            "TaxProffice",
+            StripTags(BaseLayoutHtml.SystemBaseV1),
+            StringComparison.OrdinalIgnoreCase
+        );
+        Assert.DoesNotContain(
+            "TaxProffice",
+            StripTags(BaseLayoutHtml.TenantBaseV1),
+            StringComparison.OrdinalIgnoreCase
+        );
+
+        // v14: el logo del sistema (deploy.png) ya trae la marca dibujada, así que la cabecera solo tiene
+        // que mostrar el <img>. Antes había un segundo `product_name` como wordmark al lado, que se
+        // renderizaba junto al logo y duplicaba el nombre. En el header del template `product_name` debe
+        // aparecer UNA sola vez: como `alt=` del logo (fallback accesible si el cliente no baja imágenes).
+        // Mide solo lo visible del correo: desde `<body` hasta `{{ body | raw }}`. En el `<head>` también
+        // va `{{ product_name }}` dentro del `<title>` (eso lo lee el navegador, no se ve en el correo).
+        var raw = BaseLayoutHtml.SystemBaseV1;
+        var bodyStart = raw.IndexOf("<body", StringComparison.Ordinal);
+        var contentStart = raw.IndexOf("{{ body | raw }}", StringComparison.Ordinal);
+        var header = raw.Substring(bodyStart, contentStart - bodyStart);
+        var usesInHeader = System.Text.RegularExpressions.Regex.Matches(header, @"\{\{\s*product_name\s*\}\}").Count;
+        Assert.Equal(1, usesInHeader);
+        Assert.Matches(@"<img[^>]+cid:logo-header[^>]+alt=""\{\{\s*product_name\s*\}\}""", header);
     }
 
     /// <summary>
