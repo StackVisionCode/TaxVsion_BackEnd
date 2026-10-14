@@ -77,6 +77,7 @@ builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 builder.Services.AddHostedService<TaxVision.Subscription.Api.Bootstrap.SubscriptionCatalogReconciler>();
 builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
+builder.Services.AddHostedService<CheckoutIntentExpirationJob>();
 
 // A6 — anti-entropía del corte por facturación: re-anuncia el estado ACTUAL para que Auth converja
 // tras un evento perdido. Su primer tick es inmediato, así que también reconcilia al arrancar.
@@ -181,6 +182,17 @@ builder.Host.UseWolverine(options =>
     // esta ruta Wolverine lo entregaría solo in-process y Auth nunca se enteraría — el bloqueo y los
     // emails quedarían muertos en silencio en producción.
     options.PublishMessage<TenantSubscriptionStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Cancelación y expiración de intents hosted-checkout. Sin esta ruta los consumidores (notificación,
+    // audit, reconcile cross-service) nunca se enteran y las compras canceladas quedan huérfanas.
+    options.PublishMessage<SeatCheckoutCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatCheckoutExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnCheckoutCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnCheckoutExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalCheckoutCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalCheckoutExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PlanChangeUpgradeCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PlanChangeUpgradeExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options

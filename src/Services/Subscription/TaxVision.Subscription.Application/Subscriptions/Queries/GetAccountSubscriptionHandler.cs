@@ -35,6 +35,7 @@ public static class GetAccountSubscriptionHandler
         IAddOnDefinitionRepository addOnDefinitions,
         ITenantAddOnRepository tenantAddOns,
         ISeatPurchaseIntentRepository seatIntents,
+        IAddOnPurchaseIntentRepository addOnIntents,
         CancellationToken ct
     )
     {
@@ -99,8 +100,9 @@ public static class GetAccountSubscriptionHandler
             !DeadSeatStatuses.Contains(seat.Status)
         );
 
+        var definitions = await addOnDefinitions.GetPublishedAsync(ct);
         var addOns = BuildAddOns(
-            await addOnDefinitions.GetPublishedAsync(ct),
+            definitions,
             await tenantAddOns.GetByTenantIdAsync(query.TenantId, ct),
             enabledModules,
             subscription.BillingCycle
@@ -108,6 +110,11 @@ public static class GetAccountSubscriptionHandler
 
         var nowUtc = DateTime.UtcNow;
         var openCheckout = await seatIntents.GetOpenByTenantAsync(query.TenantId, nowUtc, ct);
+        var openAddOnCheckouts = BuildOpenAddOnCheckouts(
+            await addOnIntents.ListOpenByTenantAsync(query.TenantId, nowUtc, ct),
+            definitions,
+            nowUtc
+        );
 
         return Result.Success(
             new AccountSubscriptionResponse(
@@ -126,9 +133,53 @@ public static class GetAccountSubscriptionHandler
                         openCheckout.Currency,
                         openCheckout.CheckoutUrl!,
                         openCheckout.CheckoutExpiresAtUtc!.Value
-                    )
+                    ),
+                openAddOnCheckouts
             )
         );
+    }
+
+    /// <summary>
+    /// Mapea cada intención abierta a su tarjeta en el Account. El display name sale del catálogo publicado
+    /// — es el mismo campo que la lista de add-ons usa como respaldo cuando el módulo no tiene etiqueta.
+    /// </summary>
+    private static IReadOnlyList<AccountOpenAddOnCheckoutView> BuildOpenAddOnCheckouts(
+        IReadOnlyList<AddOnPurchaseIntent> intents,
+        IReadOnlyList<AddOnDefinition> definitions,
+        DateTime nowUtc
+    )
+    {
+        if (intents.Count == 0)
+            return [];
+
+        var displayByCode = definitions.ToDictionary(
+            definition => definition.Code.Value,
+            definition => definition.Name,
+            StringComparer.OrdinalIgnoreCase
+        );
+
+        var views = new List<AccountOpenAddOnCheckoutView>(intents.Count);
+        foreach (var intent in intents)
+        {
+            // Segunda guardia: el repo ya filtra, pero reusar `IsOpen` evita emitir una tarjeta sin URL.
+            if (!intent.IsOpen(nowUtc))
+                continue;
+
+            views.Add(
+                new AccountOpenAddOnCheckoutView(
+                    intent.Id,
+                    intent.AddOnCode,
+                    displayByCode.GetValueOrDefault(intent.AddOnCode, intent.AddOnCode),
+                    intent.Quantity,
+                    intent.ProratedTotalCents,
+                    intent.Currency,
+                    intent.CheckoutUrl!,
+                    intent.CheckoutExpiresAtUtc!.Value
+                )
+            );
+        }
+
+        return views;
     }
 
     private static List<AccountAddOnView> BuildAddOns(

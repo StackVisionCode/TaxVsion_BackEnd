@@ -668,6 +668,9 @@ public sealed class TenantOnboarding : BaseEntity
 
     public Result MarkExpired()
     {
+        if (Status == TenantOnboardingStatus.Expired)
+            return Result.Success(); // idempotente: el sweeper puede llegar dos veces.
+
         if (
             Status
             is not (

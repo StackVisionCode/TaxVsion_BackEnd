@@ -8,9 +8,12 @@ using BuildingBlocks.Web.Results;
 using BuildingBlocks.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Activate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Cancel;
 using TaxVision.Subscription.Application.Subscriptions.Commands.CancelPendingPlanChange;
+using TaxVision.Subscription.Application.Subscriptions.Commands.CancelRenewalCheckout;
+using TaxVision.Subscription.Application.Subscriptions.Commands.CancelUpgradePlanChange;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Reactivate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
@@ -259,6 +262,59 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
                 request.Method ?? "Card",
                 userId
             ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record CancelRenewalCheckoutRequestBody(string? Reason);
+
+    /// <summary>Cancela una renovación Pending antes de pagar: el owner cerró la pasarela y queremos que el UI
+    /// deje de mostrar "Finish payment" en el banner de ciclo de vida.</summary>
+    [HttpPost("me/renew-checkout/{intentId:guid}/cancel")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<CancelCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelRenewCheckout(
+        Guid intentId,
+        [FromBody] CancelRenewalCheckoutRequestBody? body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CancelCheckoutResponse>>(
+            new CancelRenewalCheckoutCommand(tenantId, intentId, userId, body?.Reason),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record CancelUpgradeRequestBody(string? Reason);
+
+    /// <summary>Cancela el upgrade AwaitingPayment del tenant (único por tenant). Idempotente: si no hay upgrade
+    /// pendiente, devuelve <c>alreadyCancelled: true</c>.</summary>
+    [HttpPost("plan-change/upgrade/cancel")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<CancelCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelPendingUpgrade(
+        [FromBody] CancelUpgradeRequestBody? body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CancelCheckoutResponse>>(
+            new CancelUpgradePlanChangeCommand(tenantId, userId, body?.Reason),
             ct
         );
 

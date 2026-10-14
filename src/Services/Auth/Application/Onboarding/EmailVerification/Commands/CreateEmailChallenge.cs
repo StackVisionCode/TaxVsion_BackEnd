@@ -42,6 +42,12 @@ public static class CreateEmailChallengeHandler
             return Result.Failure<Guid>(challengeResult.Error);
 
         var challenge = challengeResult.Value;
+
+        // El reenvío crea challenge nuevo; invalidamos los anteriores para que el OTP viejo deje de valer.
+        var previous = await challenges.ListActiveByEmailAsync(challenge.Email, now, ct);
+        foreach (var prev in previous)
+            prev.Supersede(now);
+
         await challenges.AddAsync(challenge, ct);
 
         await bus.PublishAsync(

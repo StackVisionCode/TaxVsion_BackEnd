@@ -17,6 +17,12 @@ public enum AddOnPurchaseIntentStatus
 
     /// <summary>El pago falló o la sesión expiró sin pagar.</summary>
     Failed,
+
+    /// <summary>El usuario (o un admin) canceló la intención antes de pagar — libera el guard de doble cobro.</summary>
+    Cancelled,
+
+    /// <summary>Sweeper barrió una Pending vencida (CheckoutExpiresAtUtc &lt; now) sin resolución del proveedor.</summary>
+    Expired,
 }
 
 /// <summary>
@@ -51,6 +57,10 @@ public sealed class AddOnPurchaseIntent : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
+    public DateTime? CancelledAtUtc { get; private set; }
+    public DateTime? ExpiredAtUtc { get; private set; }
+    public Guid? CancelledByUserId { get; private set; }
+    public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }
 
     private AddOnPurchaseIntent() { }
@@ -177,6 +187,56 @@ public sealed class AddOnPurchaseIntent : TenantEntity
         FailureReason = reason;
         Touch(nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Cancelación interactiva del usuario antes de pagar. Idempotente; nunca revierte un pago capturado.</summary>
+    public Result Cancel(Guid actorUserId, DateTime nowUtc, string? reason = null)
+    {
+        if (Status is AddOnPurchaseIntentStatus.Paid or AddOnPurchaseIntentStatus.Provisioned)
+            return Result.Failure(
+                new Error("AddOnPurchaseIntent.AlreadyPaid", "Cannot cancel a payment that was already captured.")
+            );
+
+        if (
+            Status
+            is AddOnPurchaseIntentStatus.Cancelled
+                or AddOnPurchaseIntentStatus.Expired
+                or AddOnPurchaseIntentStatus.Failed
+        )
+            return Result.Success();
+
+        Status = AddOnPurchaseIntentStatus.Cancelled;
+        CancelledAtUtc = nowUtc;
+        CancelledByUserId = actorUserId;
+        CancelReason = SanitizeReason(reason);
+        Touch(nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Sweeper: cierra una intención vencida sin cobro. Idempotente; respeta sesiones aún pagables.</summary>
+    public Result Expire(DateTime nowUtc)
+    {
+        if (Status != AddOnPurchaseIntentStatus.Pending)
+            return Result.Success();
+
+        if (IsOpen(nowUtc))
+            return Result.Success();
+
+        if (CheckoutExpiresAtUtc is null || CheckoutExpiresAtUtc > nowUtc)
+            return Result.Success();
+
+        Status = AddOnPurchaseIntentStatus.Expired;
+        ExpiredAtUtc = nowUtc;
+        Touch(nowUtc);
+        return Result.Success();
+    }
+
+    private static string? SanitizeReason(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var trimmed = reason.Trim();
+        return trimmed.Length > 500 ? trimmed[..500] : trimmed;
     }
 
     private void Touch(DateTime nowUtc) => UpdatedAtUtc = nowUtc;

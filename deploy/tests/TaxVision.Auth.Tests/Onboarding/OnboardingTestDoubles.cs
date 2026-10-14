@@ -56,12 +56,37 @@ internal sealed class FakePlanCatalogClient(string? planName = null) : IPlanCata
 internal sealed class FakeEmailVerificationChallengeRepository : IEmailVerificationChallengeRepository
 {
     public EmailVerificationChallenge? Challenge { get; set; }
+    public List<EmailVerificationChallenge> Store { get; } = new();
+    public List<EmailVerificationChallenge> Added { get; } = new();
 
-    public Task<EmailVerificationChallenge?> GetByIdAsync(Guid challengeId, CancellationToken ct = default) =>
-        Task.FromResult(Challenge);
+    public Task<EmailVerificationChallenge?> GetByIdAsync(Guid challengeId, CancellationToken ct = default)
+    {
+        if (Challenge is not null && Challenge.Id == challengeId)
+            return Task.FromResult<EmailVerificationChallenge?>(Challenge);
+        return Task.FromResult(Store.FirstOrDefault(c => c.Id == challengeId));
+    }
 
-    public Task AddAsync(EmailVerificationChallenge challenge, CancellationToken ct = default) =>
-        throw new NotImplementedException();
+    public Task<IReadOnlyCollection<EmailVerificationChallenge>> ListActiveByEmailAsync(
+        string email,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = email?.Trim().ToLowerInvariant() ?? string.Empty;
+        IReadOnlyCollection<EmailVerificationChallenge> result = Store
+            .Where(c =>
+                c.Email == normalized && c.SupersededAtUtc == null && c.VerifiedAtUtc == null && c.ExpiresAtUtc > nowUtc
+            )
+            .ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task AddAsync(EmailVerificationChallenge challenge, CancellationToken ct = default)
+    {
+        Added.Add(challenge);
+        Store.Add(challenge);
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingRepository
@@ -98,6 +123,19 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
         int batchSize,
         CancellationToken ct = default
     ) => Task.FromResult(RemindersDue);
+
+    public IReadOnlyList<TenantOnboarding> ExpiredPending { get; set; } = [];
+    public DateTime? LastExpiredPendingCutoffUtc { get; private set; }
+
+    public Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
+    {
+        LastExpiredPendingCutoffUtc = createdBeforeUtc;
+        return Task.FromResult(ExpiredPending);
+    }
 
     public Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
         TenantOnboardingStatus? status,

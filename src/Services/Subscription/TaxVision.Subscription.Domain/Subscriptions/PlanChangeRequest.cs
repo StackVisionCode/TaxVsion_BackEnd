@@ -48,6 +48,10 @@ public sealed class PlanChangeRequest : BaseEntity
     /// Mientras la sesión no caduque, el usuario puede retomar ese pago en vez de abrir otro.</summary>
     public string? CheckoutUrl { get; private set; }
     public DateTime? CheckoutExpiresAtUtc { get; private set; }
+    public DateTime? CancelledAtUtc { get; private set; }
+    public DateTime? ExpiredAtUtc { get; private set; }
+    public Guid? CancelledByUserId { get; private set; }
+    public string? CancelReason { get; private set; }
 
     private PlanChangeRequest() { }
 
@@ -165,5 +169,53 @@ public sealed class PlanChangeRequest : BaseEntity
         FailedAtUtc = nowUtc;
         SaaSPaymentId = saaSPaymentId;
         return Result.Success();
+    }
+
+    /// <summary>Cancelación interactiva del upgrade antes de pagar. Idempotente; no revierte un Applied.</summary>
+    public Result Cancel(Guid actorUserId, DateTime nowUtc, string? reason = null)
+    {
+        if (Status == PlanChangeRequestStatus.Applied)
+            return Result.Failure(
+                new Error("PlanChangeRequest.AlreadyPaid", "Cannot cancel a plan change that was already applied.")
+            );
+
+        if (
+            Status
+            is PlanChangeRequestStatus.Cancelled
+                or PlanChangeRequestStatus.Expired
+                or PlanChangeRequestStatus.PaymentFailed
+        )
+            return Result.Success();
+
+        Status = PlanChangeRequestStatus.Cancelled;
+        CancelledAtUtc = nowUtc;
+        CancelledByUserId = actorUserId;
+        CancelReason = SanitizeReason(reason);
+        return Result.Success();
+    }
+
+    /// <summary>Sweeper: cierra un upgrade vencido sin cobro. Idempotente; respeta sesiones aún pagables.</summary>
+    public Result Expire(DateTime nowUtc)
+    {
+        if (Status != PlanChangeRequestStatus.AwaitingPayment)
+            return Result.Success();
+
+        if (HasOpenCheckout(nowUtc))
+            return Result.Success();
+
+        if (CheckoutExpiresAtUtc is null || CheckoutExpiresAtUtc > nowUtc)
+            return Result.Success();
+
+        Status = PlanChangeRequestStatus.Expired;
+        ExpiredAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    private static string? SanitizeReason(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var trimmed = reason.Trim();
+        return trimmed.Length > 500 ? trimmed[..500] : trimmed;
     }
 }

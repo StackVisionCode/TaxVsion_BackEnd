@@ -57,14 +57,18 @@ public sealed class AccountSubscriptionEndpointTests
         Assert.Equal(
             new[]
             {
+                "AddOnsController.CancelCheckout",
                 "AddOnsController.GetCheckoutStatus",
                 "AddOnsController.StartCheckout",
+                "SeatsController.CancelCheckout",
                 "SeatsController.GetCheckoutStatus",
                 "SeatsController.GetQuote",
                 "SeatsController.GetSeats",
                 "SeatsController.StartCheckout",
                 "SubscriptionsController.Cancel",
                 "SubscriptionsController.CancelPendingPlanChange",
+                "SubscriptionsController.CancelPendingUpgrade",
+                "SubscriptionsController.CancelRenewCheckout",
                 "SubscriptionsController.ChangePlan",
                 "SubscriptionsController.GetAccountSubscription",
                 "SubscriptionsController.GetRenewCheckoutStatus",

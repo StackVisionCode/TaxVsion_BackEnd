@@ -518,6 +518,30 @@ public sealed class TenantSubscription : TenantEntity
         return null;
     }
 
+    /// <summary>Cancela el upgrade AwaitingPayment, si existe. Idempotente: si no hay, es Success — nada que cancelar.</summary>
+    public Result<PlanChangeRequest?> CancelPendingUpgrade(Guid actorUserId, DateTime nowUtc, string? reason)
+    {
+        PlanChangeRequest? awaiting = null;
+        foreach (var request in _planChangeRequests)
+        {
+            if (request.Status == PlanChangeRequestStatus.AwaitingPayment)
+            {
+                awaiting = request;
+                break;
+            }
+        }
+
+        if (awaiting is null)
+            return Result.Success<PlanChangeRequest?>(null);
+
+        var cancelled = awaiting.Cancel(actorUserId, nowUtc, reason);
+        if (cancelled.IsFailure)
+            return Result.Failure<PlanChangeRequest?>(cancelled.Error);
+
+        Touch(actorUserId, nowUtc);
+        return Result.Success<PlanChangeRequest?>(awaiting);
+    }
+
     public Result MarkPastDueBecauseRenewalFailed(string failureCode, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SubscriptionStatus.Active)

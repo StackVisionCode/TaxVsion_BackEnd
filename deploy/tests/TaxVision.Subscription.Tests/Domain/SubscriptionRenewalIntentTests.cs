@@ -76,4 +76,59 @@ public sealed class SubscriptionRenewalIntentTests
         Assert.True(result.IsFailure);
         Assert.Equal("SubscriptionRenewalIntent.AlreadyProvisioned", result.Error.Code);
     }
+
+    [Fact]
+    public void Cancel_moves_pending_to_cancelled()
+    {
+        var intent = Pending();
+        var actor = Guid.NewGuid();
+
+        var result = intent.Cancel(actor, DateTime.UtcNow, "owner closed the window");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SubscriptionRenewalIntentStatus.Cancelled, intent.Status);
+        Assert.Equal(actor, intent.CancelledByUserId);
+    }
+
+    [Fact]
+    public void Cancel_rejects_a_paid_intent()
+    {
+        var intent = Pending();
+        intent.MarkPaid(DateTime.UtcNow);
+
+        var result = intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SubscriptionRenewalIntent.AlreadyPaid", result.Error.Code);
+    }
+
+    [Fact]
+    public void Cancel_is_idempotent()
+    {
+        var intent = Pending();
+        intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, null);
+        Assert.True(intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, null).IsSuccess);
+    }
+
+    [Fact]
+    public void Expire_closes_a_pending_whose_session_already_expired()
+    {
+        var intent = Pending();
+        intent.AttachCheckout(Guid.NewGuid(), "https://pay", DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow);
+
+        intent.Expire(DateTime.UtcNow);
+
+        Assert.Equal(SubscriptionRenewalIntentStatus.Expired, intent.Status);
+    }
+
+    [Fact]
+    public void Expire_leaves_an_open_session_untouched()
+    {
+        var intent = Pending();
+        intent.AttachCheckout(Guid.NewGuid(), "https://pay", DateTime.UtcNow.AddHours(1), DateTime.UtcNow);
+
+        intent.Expire(DateTime.UtcNow);
+
+        Assert.Equal(SubscriptionRenewalIntentStatus.Pending, intent.Status);
+    }
 }

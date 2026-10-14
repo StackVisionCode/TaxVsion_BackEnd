@@ -148,6 +148,18 @@ public static class DependencyInjection
             }
         );
 
+        // Best-effort cancel contra PaymentApp cuando el usuario cierra la pasarela. Fail-open hacia la red
+        // interna: si PaymentApp no responde, el guard local ya marcó Cancelled y la sesión hosted expira
+        // sola. El NoOp se queda disponible como clase (tests), pero el registro productivo es el HTTP.
+        services.AddHttpClient<IHostedCheckoutCancellationClient, PaymentApp.HostedCheckoutCancellationClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(5);
+            }
+        );
+
         AddPermissionsPullRecovery(services);
 
         AddRateLimitTierQuotas(services);

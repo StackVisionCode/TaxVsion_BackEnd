@@ -23,6 +23,10 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.CreatedAtUtc).IsRequired();
         builder.Property(intent => intent.UpdatedAtUtc).IsRequired();
         builder.Property(intent => intent.PaidAtUtc);
+        builder.Property(intent => intent.CancelledAtUtc);
+        builder.Property(intent => intent.ExpiredAtUtc);
+        builder.Property(intent => intent.CancelledByUserId);
+        builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
 
         builder.HasIndex(intent => intent.TenantId);

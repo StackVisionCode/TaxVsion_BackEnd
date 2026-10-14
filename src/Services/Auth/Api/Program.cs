@@ -117,6 +117,10 @@ builder.Services.AddHostedService<AuthMaintenanceService>();
 builder.Services.AddHostedService<ExpiredPermissionDeniesService>();
 builder.Services.AddHostedService<OnboardingRetryScheduler>();
 builder.Services.AddHostedService<OnboardingRegistrationReminderScheduler>();
+builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingExpirationOptions>(
+    builder.Configuration.GetSection(TaxVision.Auth.Application.Onboarding.OnboardingExpirationOptions.SectionName)
+);
+builder.Services.AddHostedService<OnboardingExpirationJob>();
 
 // Contexto de request (IP/user-agent) para auditoría y sesiones.
 builder.Services.AddHttpContextAccessor();

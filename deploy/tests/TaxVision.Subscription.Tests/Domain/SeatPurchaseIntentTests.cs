@@ -109,4 +109,86 @@ public sealed class SeatPurchaseIntentTests
         Assert.Equal("SeatPurchaseIntent.AlreadyProvisioned", result.Error.Code);
         Assert.Equal(SeatPurchaseIntentStatus.Provisioned, intent.Status);
     }
+
+    [Fact]
+    public void Cancel_moves_pending_to_cancelled_with_actor_and_reason()
+    {
+        var intent = CreatePending();
+        var actor = Guid.NewGuid();
+
+        var result = intent.Cancel(actor, DateTime.UtcNow, "user closed the window");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SeatPurchaseIntentStatus.Cancelled, intent.Status);
+        Assert.Equal(actor, intent.CancelledByUserId);
+        Assert.Equal("user closed the window", intent.CancelReason);
+        Assert.NotNull(intent.CancelledAtUtc);
+    }
+
+    [Fact]
+    public void Cancel_rejects_a_paid_intent_as_already_paid()
+    {
+        var intent = CreatePending();
+        intent.MarkPaid(DateTime.UtcNow);
+
+        var result = intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SeatPurchaseIntent.AlreadyPaid", result.Error.Code);
+        Assert.Equal(SeatPurchaseIntentStatus.Paid, intent.Status);
+    }
+
+    [Fact]
+    public void Cancel_from_cancelled_or_failed_is_idempotent_success()
+    {
+        var intent = CreatePending();
+        intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, "first");
+
+        var again = intent.Cancel(Guid.NewGuid(), DateTime.UtcNow, "second");
+
+        Assert.True(again.IsSuccess);
+        Assert.Equal(SeatPurchaseIntentStatus.Cancelled, intent.Status);
+
+        var failed = CreatePending();
+        failed.MarkFailed("provider error", DateTime.UtcNow);
+        Assert.True(failed.Cancel(Guid.NewGuid(), DateTime.UtcNow, null).IsSuccess);
+        Assert.Equal(SeatPurchaseIntentStatus.Failed, failed.Status);
+    }
+
+    [Fact]
+    public void Expire_leaves_an_open_checkout_untouched()
+    {
+        var intent = CreatePending();
+        intent.AttachCheckout(Guid.NewGuid(), "https://x", DateTime.UtcNow.AddHours(1), DateTime.UtcNow);
+
+        intent.Expire(DateTime.UtcNow);
+
+        Assert.Equal(SeatPurchaseIntentStatus.Pending, intent.Status);
+        Assert.Null(intent.ExpiredAtUtc);
+    }
+
+    [Fact]
+    public void Expire_closes_a_pending_intent_whose_session_already_expired()
+    {
+        var intent = CreatePending();
+        intent.AttachCheckout(Guid.NewGuid(), "https://x", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow);
+
+        var now = DateTime.UtcNow;
+        intent.Expire(now);
+
+        Assert.Equal(SeatPurchaseIntentStatus.Expired, intent.Status);
+        Assert.Equal(now, intent.ExpiredAtUtc);
+    }
+
+    [Fact]
+    public void Expire_is_idempotent_against_non_pending_statuses()
+    {
+        var intent = CreatePending();
+        intent.MarkPaid(DateTime.UtcNow);
+
+        var result = intent.Expire(DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SeatPurchaseIntentStatus.Paid, intent.Status);
+    }
 }

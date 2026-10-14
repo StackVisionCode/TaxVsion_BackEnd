@@ -62,6 +62,26 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        // Sweeper fuera de scope HTTP: IgnoreQueryFilters por si el aggregate se vuelve tenant-filtered.
+        await db
+            .TenantOnboardings.IgnoreQueryFilters()
+            .Where(onboarding =>
+                (
+                    onboarding.Status == TenantOnboardingStatus.PendingPayment
+                    || onboarding.Status == TenantOnboardingStatus.PaymentProcessing
+                    || onboarding.Status == TenantOnboardingStatus.RegistrationPending
+                )
+                && onboarding.CreatedAtUtc < createdBeforeUtc
+            )
+            .OrderBy(onboarding => onboarding.CreatedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
         TenantOnboardingStatus? status,
         int page,

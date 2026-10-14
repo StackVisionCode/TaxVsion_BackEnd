@@ -17,7 +17,17 @@ public sealed class EmailVerificationChallengeConfiguration : IEntityTypeConfigu
         builder.Property(challenge => challenge.Attempts).IsRequired();
         builder.Property(challenge => challenge.ResendCount).IsRequired();
         builder.Property(challenge => challenge.CreatedAtUtc).IsRequired();
+        builder.Property(challenge => challenge.SupersededAtUtc);
 
         builder.HasIndex(challenge => new { challenge.Email, challenge.CreatedAtUtc });
+
+        // Sirve la query de "activos del mismo email" para invalidar los previos al reenviar.
+        builder.HasIndex(challenge => new
+        {
+            challenge.Email,
+            challenge.SupersededAtUtc,
+            challenge.VerifiedAtUtc,
+            challenge.ExpiresAtUtc,
+        });
     }
 }

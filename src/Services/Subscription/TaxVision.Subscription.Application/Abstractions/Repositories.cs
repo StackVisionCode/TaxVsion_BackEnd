@@ -191,6 +191,14 @@ public interface IAddOnPurchaseIntentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Todas las intenciones abiertas del tenant (una por add-on distinto). Lo pide el read model
+    /// del Account para que el usuario pueda retomar o cancelar aunque pierda el sessionStorage.</summary>
+    Task<IReadOnlyList<AddOnPurchaseIntent>> ListOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
+
     /// <summary>Cross-tenant para el consumer del webhook: ignora el filtro fail-closed; el caller valida el
     /// tenant del evento antes de mutar.</summary>
     Task<AddOnPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default);

@@ -36,6 +36,18 @@ public sealed class FakeAddOnPurchaseIntentRepository : IAddOnPurchaseIntentRepo
                 .FirstOrDefault()
         );
 
+    public Task<IReadOnlyList<AddOnPurchaseIntent>> ListOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<AddOnPurchaseIntent>>(
+            Added
+                .Where(intent => intent.TenantId == tenantId && intent.IsOpen(nowUtc))
+                .OrderBy(intent => intent.CreatedAtUtc)
+                .ToList()
+        );
+
     public Task<AddOnPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default) =>
         Task.FromResult(Added.FirstOrDefault(intent => intent.Id == intentId));
 

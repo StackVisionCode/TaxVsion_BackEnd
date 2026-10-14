@@ -218,6 +218,7 @@ public static class DependencyInjection
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingSuccessCompleter>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingReservationCanceller>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingRegistrationReminderProcessor>();
+        services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingExpirationProcessor>();
         services.AddScoped<OnboardingRetryProcessor>();
 
         // Gift/Referral en onboarding — cliente M2M Auth→Growth (codes + referrals).

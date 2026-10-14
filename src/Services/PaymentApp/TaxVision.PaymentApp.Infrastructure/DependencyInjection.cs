@@ -65,6 +65,13 @@ public static class DependencyInjection
             }
         );
         services.AddPaymentProviders();
+
+        // Cancel hosted-checkout: dispatcher + cancelers por provider. Separado de IPaymentProvider porque no
+        // todos los providers soportan cancel real (PayPal, Manual).
+        services.AddScoped<StripeHostedCheckoutCanceller>();
+        services.AddScoped<PayPalHostedCheckoutCanceller>();
+        services.AddScoped<IHostedCheckoutSessionCanceller, DefaultHostedCheckoutSessionCanceller>();
+
         services.AddScoped<IOnboardingPaymentMethodCatalog, ConfiguredOnboardingPaymentMethodCatalog>();
         services.AddScoped<IProviderWebhookSecrets, ProviderWebhookSecrets>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);

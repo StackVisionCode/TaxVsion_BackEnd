@@ -8,9 +8,11 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOn;
+using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOnCheckout;
 using TaxVision.Subscription.Application.AddOns.Commands.PurchaseAddOn;
 using TaxVision.Subscription.Application.AddOns.Commands.StartAddOnCheckout;
 using TaxVision.Subscription.Application.AddOns.Queries;
+using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
@@ -119,6 +121,32 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
                 string.IsNullOrWhiteSpace(request.Method) ? "Card" : request.Method,
                 userId
             ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record CancelAddOnCheckoutRequest(string? Reason);
+
+    /// <summary>Cierra una intención Pending antes de pagar: libera el guard por add-on y el UI deja de pollear.</summary>
+    [HttpPost("checkout/{intentId:guid}/cancel")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.addon_manage")]
+    [ProducesResponseType<CancelCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelCheckout(
+        Guid intentId,
+        [FromBody] CancelAddOnCheckoutRequest? request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CancelCheckoutResponse>>(
+            new CancelAddOnCheckoutCommand(tenantId, intentId, userId, request?.Reason),
             ct
         );
 

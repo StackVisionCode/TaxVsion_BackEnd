@@ -10,7 +10,8 @@ public sealed record AccountSubscriptionResponse(
     PendingPlanChangeResponse? PendingPlanChange,
     AccountSeatsView Seats,
     IReadOnlyList<AccountAddOnView> AddOns,
-    AccountOpenSeatCheckoutView? OpenSeatCheckout
+    AccountOpenSeatCheckoutView? OpenSeatCheckout,
+    IReadOnlyList<AccountOpenAddOnCheckoutView> OpenAddOnCheckouts
 );
 
 /// <summary>
@@ -47,6 +48,23 @@ public sealed record AccountPeriodView(
 public sealed record AccountOpenSeatCheckoutView(
     Guid IntentId,
     string SeatType,
+    int Quantity,
+    long TotalCents,
+    string Currency,
+    string CheckoutUrl,
+    DateTime ExpiresAtUtc
+);
+
+/// <summary>
+/// Compra de un add-on que quedó a medias y todavía se puede pagar. A diferencia de los asientos puede
+/// haber varias a la vez (una por <c>AddOnCode</c>), así que la vista las entrega como lista: la pantalla
+/// pinta una tarjeta por cada una para que el usuario pueda retomar o cancelar aunque el navegador haya
+/// perdido la referencia a la intención.
+/// </summary>
+public sealed record AccountOpenAddOnCheckoutView(
+    Guid IntentId,
+    string AddOnCode,
+    string AddOnDisplayName,
     int Quantity,
     long TotalCents,
     string Currency,
