@@ -2164,7 +2164,7 @@ services:
       # CORS: los orígenes de las apps de la plataforma (apex, www, app, client) salen del dominio de
       # PlatformSettings (Tenant, refrescado cada 5 min y por evento); acá solo van los extra: localhost
       # para probar contra producción desde un front local y las apps móviles.
-      COMMUNICATION_CORS_ORIGINS: http://localhost:5173,http://localhost:4200,http://localhost,https://localhost,capacitor://localhost,ionic://localhost
+      COMMUNICATION_CORS_ORIGINS: http://localhost:5173,http://localhost:4200,http://localhost:4201,http://localhost:4202,http://localhost:4300,http://localhost:4301,http://localhost:8100,http://localhost:8101,http://localhost,https://localhost,capacitor://localhost,ionic://localhost
       COMMUNICATION_TENANT_BASE_URL: http://tenant-api:8080
       COMMUNICATION_PLATFORM_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
