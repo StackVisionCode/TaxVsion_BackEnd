@@ -177,6 +177,8 @@ public sealed class SetDenyOverrideHandlerTests
         var rule = Assert.Single(fx.rules.All());
         Assert.Equal(AccessCapability.Download, rule.Capability);
         Assert.Equal("sensitive", rule.Reason);
+        // El view devuelto trae el nombre del file ya cargado por ValidateResource.
+        Assert.Equal(file.OriginalName, result.Value.Rule.ResourceName);
         Assert.Single(fx.audit.Entries);
         Assert.Equal(AccessRuleAction.Created, fx.audit.Entries[0].Action);
         Assert.Equal(1, fx.uow.SaveChangesCallCount);
@@ -345,6 +347,8 @@ public sealed class SetDenyOverrideHandlerTests
         Assert.Equal(AccessResourceType.TenantScope, rule.ResourceType);
         Assert.Equal(Tenant, rule.ResourceId);
         Assert.Equal(AccessCapability.Download, rule.Capability);
+        // TenantScope no tiene recurso real ⇒ ResourceName siempre null.
+        Assert.Null(result.Value.Rule.ResourceName);
     }
 
     [Fact]

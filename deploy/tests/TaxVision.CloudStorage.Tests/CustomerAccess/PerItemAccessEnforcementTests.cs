@@ -92,7 +92,8 @@ public sealed class PerItemAccessEnforcementTests
             .GroupBy(r => (r.ResourceType, r.ResourceId))
             .ToDictionary(
                 g => g.Key,
-                g => (IReadOnlyCollection<CustomerAccessRuleView>)g.Select(CustomerAccessRuleMapper.Map).ToList()
+                g =>
+                    (IReadOnlyCollection<CustomerAccessRuleView>)g.Select(r => CustomerAccessRuleMapper.Map(r)).ToList()
             );
         return new StorageActorScope(IsCustomerPortal: true, CustomerId: Customer)
         {

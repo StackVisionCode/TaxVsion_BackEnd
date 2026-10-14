@@ -143,6 +143,18 @@ public interface IFileObjectRepository
 
     /// <summary>Cuántos archivos hay en un batch (para el conteo que muestra la papelera).</summary>
     Task<int> CountByDeletedBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct);
+
+    /// <summary>
+    /// Batch read de (Id → OriginalName) para hidratar listas que referencian files sin cargarlos
+    /// enteros — usado por el admin de CustomerAccess para mostrar el nombre junto a cada regla
+    /// deny. Ignora query filters: los callers que lo usan corren fuera de scope de tenant (bus/jobs)
+    /// y <paramref name="tenantId"/> es el límite real. Set vacío ⇒ diccionario vacío sin tocar BD.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    );
 }
 
 /// <summary>Fase C2 — carpetas navegables (arbol logico, ver Domain/Folders/Folder.cs).</summary>
@@ -247,6 +259,17 @@ public interface IFolderRepository
 
     /// <summary>Raíces borradas cuya retención venció (cross-tenant, job de purga). TRACKED.</summary>
     Task<IReadOnlyList<Folder>> ListPurgeableRootsPastRetentionAsync(DateTime nowUtc, int take, CancellationToken ct);
+
+    /// <summary>
+    /// Batch read de (Id → Name) para hidratar listas que referencian folders sin cargarlos enteros —
+    /// usado por el admin de CustomerAccess para mostrar el nombre junto a cada regla deny. Ignora
+    /// query filters por la misma razón que el resto del repo. Set vacío ⇒ diccionario vacío sin tocar BD.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    );
 }
 
 public interface IStorageLimitRepository

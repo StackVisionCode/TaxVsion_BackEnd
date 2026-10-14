@@ -360,6 +360,25 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Files.IgnoreQueryFilters()
             .AsNoTracking()
             .CountAsync(file => file.TenantId == tenantId && file.DeletedBatchId == batchId, ct);
+
+    // Mismo patron que el resto del repo: tenantId explicito ES el limite, IgnoreQueryFilters()
+    // intencional (callers corren fuera de scope de tenant). Set vacio evita round-trip inutil.
+    public async Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    )
+    {
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+        var rows = await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file => file.TenantId == tenantId && ids.Contains(file.Id))
+            .Select(file => new { file.Id, file.OriginalName })
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.Id, r => r.OriginalName);
+    }
 }
 
 public sealed class FolderRepository(CloudStorageDbContext db) : IFolderRepository
@@ -567,6 +586,24 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
             .OrderBy(folder => folder.SoftDeleteExpiresAtUtc)
             .Take(take)
             .ToListAsync(ct);
+
+    // Mismo patron que el resto del repo. Set vacio evita round-trip inutil.
+    public async Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    )
+    {
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+        var rows = await db
+            .Folders.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(folder => folder.TenantId == tenantId && ids.Contains(folder.Id))
+            .Select(folder => new { folder.Id, folder.Name })
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.Id, r => r.Name);
+    }
 }
 
 public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageLimitRepository

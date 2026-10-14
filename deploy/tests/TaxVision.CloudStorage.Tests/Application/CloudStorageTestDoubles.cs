@@ -280,6 +280,17 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 )
                 .ToList()
         );
+
+    public Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, string>>(
+            _byId
+                .Values.Where(f => f.TenantId == tenantId && ids.Contains(f.Id))
+                .ToDictionary(f => f.Id, f => f.OriginalName)
+        );
 }
 
 internal sealed class FakeFolderRepository : IFolderRepository
@@ -463,6 +474,15 @@ internal sealed class FakeFolderRepository : IFolderRepository
                 .Values.Where(f => f.IsDeleted && f.DeletedBatchId == f.Id && f.SoftDeleteExpiresAtUtc <= nowUtc)
                 .Take(take)
                 .ToList()
+        );
+
+    public Task<IReadOnlyDictionary<Guid, string>> ListNamesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, string>>(
+            _byId.Values.Where(f => f.TenantId == tenantId && ids.Contains(f.Id)).ToDictionary(f => f.Id, f => f.Name)
         );
 }
 
