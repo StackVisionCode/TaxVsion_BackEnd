@@ -26,11 +26,13 @@ public static class SetDenyOverrideHandler
         if (auth.IsFailure)
             return Result.Failure<SetDenyOverrideResponse>(auth.Error);
 
+        // Validamos y capturamos el nombre del recurso en el mismo paso: ya cargamos el folder/file,
+        // asi la respuesta vuelve con ResourceName sin un segundo round-trip. TenantScope ⇒ null.
         var validation = await ValidateResource(command, folders, files, ct);
         if (validation.IsFailure)
             return Result.Failure<SetDenyOverrideResponse>(validation.Error);
 
-        var result = await UpsertAndAudit(command, rules, audit, clock, ct);
+        var result = await UpsertAndAudit(command, rules, audit, clock, validation.Value, ct);
         if (result.IsFailure)
             return Result.Failure<SetDenyOverrideResponse>(result.Error);
 
@@ -58,7 +60,7 @@ public static class SetDenyOverrideHandler
         return assigned ? Result.Success() : Result.Failure(CustomerAccessErrors.Forbidden);
     }
 
-    private static async Task<Result> ValidateResource(
+    private static async Task<Result<string?>> ValidateResource(
         SetDenyOverrideCommand command,
         IFolderRepository folders,
         IFileObjectRepository files,
@@ -69,20 +71,20 @@ public static class SetDenyOverrideHandler
         {
             var folder = await folders.GetAsync(command.TenantId, command.ResourceId, ct);
             if (folder is null)
-                return Result.Failure(CustomerAccessErrors.ResourceNotFound);
+                return Result.Failure<string?>(CustomerAccessErrors.ResourceNotFound);
             if (folder.OwnerType != OwnerType.Customer || folder.OwnerId != command.CustomerId)
-                return Result.Failure(CustomerAccessErrors.ResourceNotOwnedByCustomer);
-            return Result.Success();
+                return Result.Failure<string?>(CustomerAccessErrors.ResourceNotOwnedByCustomer);
+            return Result.Success<string?>(folder.Name);
         }
 
         if (command.ResourceType == AccessResourceType.File)
         {
             var file = await files.GetAsync(command.TenantId, command.ResourceId, ct);
             if (file is null)
-                return Result.Failure(CustomerAccessErrors.ResourceNotFound);
+                return Result.Failure<string?>(CustomerAccessErrors.ResourceNotFound);
             if (file.OwnerType != OwnerType.Customer || file.OwnerId != command.CustomerId)
-                return Result.Failure(CustomerAccessErrors.ResourceNotOwnedByCustomer);
-            return Result.Success();
+                return Result.Failure<string?>(CustomerAccessErrors.ResourceNotOwnedByCustomer);
+            return Result.Success<string?>(file.OriginalName);
         }
 
         // Preset tenant-scope: no hay folder/file que validar; el ResourceId debe ser el TenantId
@@ -90,11 +92,11 @@ public static class SetDenyOverrideHandler
         if (command.ResourceType == AccessResourceType.TenantScope)
         {
             return command.ResourceId == command.TenantId
-                ? Result.Success()
-                : Result.Failure(CustomerAccessErrors.ResourceNotOwnedByCustomer);
+                ? Result.Success<string?>(null)
+                : Result.Failure<string?>(CustomerAccessErrors.ResourceNotOwnedByCustomer);
         }
 
-        return Result.Failure(CustomerAccessErrors.ResourceTypeNotSupported);
+        return Result.Failure<string?>(CustomerAccessErrors.ResourceTypeNotSupported);
     }
 
     private static async Task<Result<SetDenyOverrideResponse>> UpsertAndAudit(
@@ -102,6 +104,7 @@ public static class SetDenyOverrideHandler
         ICustomerAccessRuleRepository rules,
         ICustomerAccessRuleAuditRepository audit,
         ISystemClock clock,
+        string? resourceName,
         CancellationToken ct
     )
     {
@@ -157,6 +160,6 @@ public static class SetDenyOverrideHandler
                 rule.Reason
             )
         );
-        return Result.Success(new SetDenyOverrideResponse(CustomerAccessRuleMapper.Map(rule), created));
+        return Result.Success(new SetDenyOverrideResponse(CustomerAccessRuleMapper.Map(rule, resourceName), created));
     }
 }
