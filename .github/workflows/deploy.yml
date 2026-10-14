@@ -453,6 +453,13 @@ jobs:
           CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED }}
           TASKS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.TASKS_ASSIGNMENT_VISIBILITY_ENABLED }}
           COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED }}
+          CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED }}
+
+          # ---------- Portal per-item deny (Fase 4) — solo CloudStorage ----------
+          # Espejo de CloudStorage__PerItemAccess__Enabled en docker-compose.yml. Default false (secret
+          # vacío o ausente = false). Al encender, el portal del cliente precarga sus reglas deny y las
+          # aplica en runtime (lista oculta items denegados, acciones devuelven 403 con reason).
+          CLOUDSTORAGE_PERITEM_ACCESS_ENABLED=${{ secrets.CLOUDSTORAGE_PERITEM_ACCESS_ENABLED }}
 
           # ---------- A6: gate de módulo (Entitlements en runtime) — flags por servicio ----------
           # Espejo de Authorization__ModuleGate__Enforce (y COMMUNICATION_MODULE_GATE_ENFORCE) en

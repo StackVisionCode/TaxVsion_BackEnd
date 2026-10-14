@@ -24,6 +24,7 @@ public static class InitiateMultipartUploadHandler
     public static async Task<Result<InitiatedMultipartUploadResponse>> Handle(
         InitiateMultipartUploadCommand command,
         IFileObjectRepository files,
+        IFolderRepository folders,
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectKeyBuilder keyBuilder,
@@ -37,6 +38,20 @@ public static class InitiateMultipartUploadHandler
     {
         var request = command.Request;
         var config = options.Value;
+
+        // Mismo gate que el single-shot: sin esto, un cliente con Upload deny en la carpeta
+        // destino podia subir por multipart (bypass real del per-item access).
+        var denied = await PortalUploadDenyGuard.EnsurePortalUploadAllowedAsync(
+            command.Scope,
+            command.TenantId,
+            request.OwnerType,
+            request.OwnerId,
+            request.FolderType,
+            folders,
+            ct
+        );
+        if (denied is not null)
+            return Result.Failure<InitiatedMultipartUploadResponse>(denied);
 
         var registered = await UploadRegistration.ReserveAndRegisterAsync(
             command.TenantId,

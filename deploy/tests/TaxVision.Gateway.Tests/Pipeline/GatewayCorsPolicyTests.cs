@@ -94,6 +94,21 @@ public sealed class GatewayCorsPolicyTests
         Assert.Contains("platform.Current.WebOrigins", source);
     }
 
+    /// <summary>
+    /// <see cref="PlatformSettingsSnapshot.WebOrigins"/> solo contempla los hosts fijos (apex/www/app/
+    /// client). Para que CORS acepte un subdominio de oficina (<c>manfer.taxoffix.io</c>) o el panel de
+    /// plataforma (<c>admin.taxoffix.io</c>) sin tocar código, el predicado delega en
+    /// <c>IsPlatformHttpsOrigin</c> — la misma regla con la que <c>TenantHostGuardMiddleware</c>
+    /// resuelve el host. Un olvido aquí vuelve a bloquear la SPA del tenant en cuanto se añade uno nuevo.
+    /// </summary>
+    [Fact]
+    public void LaPoliticaSpa_AceptaSubdominiosDeOficinaYAdmin()
+    {
+        var source = ProgramSource();
+
+        Assert.Contains("platform.Current.IsPlatformHttpsOrigin(", source);
+    }
+
     [Theory]
     [MemberData(nameof(ExtraOrigins))]
     public void CommunicationCors_IncluyeOriginsExtraEnCompose(string origin)

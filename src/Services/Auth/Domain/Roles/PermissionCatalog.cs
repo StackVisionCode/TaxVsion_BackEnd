@@ -69,6 +69,8 @@ public static class PermissionCatalog
     public const string CloudStorageLegalManage = CloudStoragePermissions.LegalManage;
     public const string CloudStorageDmcaManage = CloudStoragePermissions.DmcaManage;
     public const string CloudStorageDmcaCounterNotice = CloudStoragePermissions.DmcaCounterNotice;
+    public const string CloudStorageCustomerAccessManageAssigned = CloudStoragePermissions.CustomerAccessManageAssigned;
+    public const string CloudStorageCustomerAccessManageAny = CloudStoragePermissions.CustomerAccessManageAny;
 
     // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
     public const string SignatureRequestCreate = SignaturePermissions.RequestCreate;
@@ -809,6 +811,30 @@ public static class PermissionCatalog
             "cloudstorage",
             "File a DMCA counter-notice for one of this office's files",
             false
+        ),
+        new(
+            // Delegable al preparador: edita reglas de acceso del propio bundle de clientes (los que
+            // tiene asignados), nunca los de otro preparador. El scope por asignación lo aplica el
+            // handler en fase 3; este permiso solo abre la superficie. AllowedActorTypes explícito
+            // para excluir PlatformAdmin y CustomerPortal — mismo criterio que NotesViewAll.
+            new Guid("a1000000-0000-0000-0000-000000000189"),
+            CloudStorageCustomerAccessManageAssigned,
+            "cloudstorage",
+            "Manage document access rules for customers assigned to the user",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.TenantEmployee]
+        ),
+        new(
+            // Admin-only, no delegable (mismo patrón que cloudstorage.share.manage): un rol custom
+            // no puede incluirlo, solo llega al rol de sistema Tenant Admin vía SystemRoleDefaults.
+            // PlatformAdmin se incluye para soporte sobre un tenant — mismo criterio que NotesViewAll.
+            new Guid("a1000000-0000-0000-0000-000000000190"),
+            CloudStorageCustomerAccessManageAny,
+            "cloudstorage",
+            "Manage document access rules for any customer in the tenant",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000072"),

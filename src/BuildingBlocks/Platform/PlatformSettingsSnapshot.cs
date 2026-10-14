@@ -104,6 +104,21 @@ public sealed record PlatformSettingsSnapshot(
         return allowed.Any(o => string.Equals(o.Trim().TrimEnd('/'), candidate, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Si el origen es HTTPS y el host es uno de la plataforma: apex, subdominio reservado (api, app,
+    /// www, admin, client) o subdominio de oficina (<c>{slug}.{BaseDomain}</c>). Es la misma regla que
+    /// usa <c>TenantHostGuardMiddleware</c>, aplicada al predicado de CORS para que el gateway acepte
+    /// cualquier subdominio nuevo sin tocar <see cref="WebOrigins"/>.
+    /// </summary>
+    public bool IsPlatformHttpsOrigin(string? origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            return false;
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+        return TryGetTenantSlug(uri.Host, out _) || IsSharedHost(uri.Host);
+    }
+
     /// <summary>Minúsculas, sin espacios, sin puerto y sin el punto final.</summary>
     public static string NormalizeHost(string? host)
     {

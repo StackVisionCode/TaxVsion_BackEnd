@@ -30,7 +30,8 @@ public sealed class FilesController(
     IMessageBus bus,
     ICorrelationContext correlation,
     IObjectStorage storage,
-    IOptions<CloudStorageOptions> storageOptions
+    IOptions<CloudStorageOptions> storageOptions,
+    IStorageActorScopeResolver scopeResolver
 ) : ControllerBase
 {
     [HttpPost("uploads")]
@@ -189,9 +190,10 @@ public sealed class FilesController(
         CancellationToken ct = default
     )
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<IReadOnlyList<FileResponse>>(
             new ListFilesQuery(tenantId, scope, ownerType, ownerId, skip, take),
             ct
@@ -252,6 +254,7 @@ public sealed class FilesController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var plan = await bus.InvokeAsync<Result<ZipDownloadPlan>>(
             new PrepareZipDownloadQuery(
                 tenantId,

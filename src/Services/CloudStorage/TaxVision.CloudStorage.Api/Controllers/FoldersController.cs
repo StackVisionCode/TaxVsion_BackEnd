@@ -26,7 +26,8 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 public sealed class FoldersController(
     IMessageBus bus,
     ICorrelationContext correlation,
-    IUserPermissionsSource permissions
+    IUserPermissionsSource permissions,
+    IStorageActorScopeResolver scopeResolver
 ) : ControllerBase
 {
     /// <summary>Tope de página del listado de carpeta (guardrail anti-abuso).</summary>
@@ -64,8 +65,10 @@ public sealed class FoldersController(
         CancellationToken ct = default
     )
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
+
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
 
         // Guardrail: take null = sin paginar (compat); si se pide, se acota a [1, MaxFolderPageSize]
         // para que un cliente no pueda pedir una página gigante. skip nunca negativo.
@@ -119,9 +122,10 @@ public sealed class FoldersController(
         CancellationToken ct
     )
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<FolderTreeNode>>>(
             new GetFolderTreeQuery(tenantId, scope, ownerType, ownerId),
             ct

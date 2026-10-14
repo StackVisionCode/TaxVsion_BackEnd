@@ -4,7 +4,9 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
 
@@ -23,7 +25,7 @@ public static class GetFileHandler
         var file = await files.GetAsync(query.TenantId, query.FileId, ct);
         return file is null || !query.Scope.CanAccess(file)
             ? Result.Failure<FileResponse>(FileErrors.NotFound)
-            : Result.Success(FileResponseMapper.Map(file));
+            : Result.Success(FileResponseMapper.Map(file, query.Scope));
     }
 }
 
@@ -42,20 +44,29 @@ public static class ListFilesHandler
         ListFilesQuery query,
         IFileObjectRepository files,
         CancellationToken ct
-    ) =>
-        (
-            await files.ListAsync(
-                query.TenantId,
-                query.Scope.IsCustomerPortal ? query.Scope.CustomerId ?? Guid.Empty : null,
-                query.OwnerType,
-                query.OwnerId,
-                Math.Max(0, query.Skip),
-                Math.Clamp(query.Take, 1, 100),
-                ct
+    )
+    {
+        var raw = await files.ListAsync(
+            query.TenantId,
+            query.Scope.IsCustomerPortal ? query.Scope.CustomerId ?? Guid.Empty : null,
+            query.Scope.BypassAssignmentFilter ? null : query.Scope.AssignedCustomerIds,
+            query.OwnerType,
+            query.OwnerId,
+            Math.Max(0, query.Skip),
+            Math.Clamp(query.Take, 1, 100),
+            ct
+        );
+        // Portal: oculta items con deny Visible/Preview (Fase 4). Staff/flag off = sin filtro.
+        var filtered = query.Scope.HasAnyPortalDenyRules
+            ? raw.Where(f =>
+                !query.Scope.IsHiddenForPortal(
+                    TaxVision.CloudStorage.Domain.CustomerAccess.AccessResourceType.File,
+                    f.Id
+                )
             )
-        )
-            .Select(FileResponseMapper.Map)
-            .ToArray();
+            : raw;
+        return filtered.Select(f => FileResponseMapper.Map(f, query.Scope)).ToArray();
+    }
 }
 
 public sealed record IssueDownloadUrlQuery(
@@ -85,6 +96,13 @@ public static class IssueDownloadUrlHandler
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotFound);
         if (!query.Scope.CanAccess(file))
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotFound);
+        // Portal con Download deny: 403 explícito con reason (el UI del portal muestra el copy).
+        if (query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Download))
+            return Result.Failure<DownloadUrlResponse>(
+                CustomerAccessDenied.With(
+                    query.Scope.DenyReasonFor(AccessResourceType.File, file.Id, AccessCapability.Download)
+                )
+            );
         if (file.Status != FileStatus.Available)
             return Result.Failure<DownloadUrlResponse>(FileErrors.NotAvailable);
 

@@ -38,6 +38,14 @@ public sealed class Folder : TenantEntity
     public bool IsDeleted => SoftDeletedAtUtc is not null;
 
     /// <summary>
+    /// Carpetas de sistema (prefijo <c>sys.</c> en Category): las materializa el provisioner,
+    /// nunca un usuario. El aggregate rechaza fail-closed Rename/Reparent/SoftDelete sobre ellas
+    /// como defensa en profundidad del guard de UI y del check por catalogo en los handlers —
+    /// una llamada API directa de un TenantAdmin malicioso o un bug no debe poder tocarlas.
+    /// </summary>
+    public bool IsSystemFolder => Category is not null && Category.StartsWith("sys.", StringComparison.Ordinal);
+
+    /// <summary>
     /// Ver <see cref="FolderCategory"/> — inmutable desde la creacion a proposito: identifica
     /// PARA QUE modulo esta carpeta es la ancla de un dueno, y reclasificarla despues rompería
     /// esa garantia de get-or-create. Si un modulo necesita otra categoria, crea otra carpeta.
@@ -76,16 +84,22 @@ public sealed class Folder : TenantEntity
         return Result.Success(folder);
     }
 
-    public void Rename(FolderName newName, string? parentRelativePath)
+    public Result Rename(FolderName newName, string? parentRelativePath)
     {
+        if (IsSystemFolder)
+            return Result.Failure(FolderErrors.SystemFolderProtected);
         Name = newName.Value;
         RelativePath = ComposePath(parentRelativePath, Name);
+        return Result.Success();
     }
 
-    public void Reparent(Guid? newParentFolderId, string? newParentRelativePath)
+    public Result Reparent(Guid? newParentFolderId, string? newParentRelativePath)
     {
+        if (IsSystemFolder)
+            return Result.Failure(FolderErrors.SystemFolderProtected);
         ParentFolderId = newParentFolderId;
         RelativePath = ComposePath(newParentRelativePath, Name);
+        return Result.Success();
     }
 
     /// <summary>
@@ -100,6 +114,8 @@ public sealed class Folder : TenantEntity
     /// <summary>Manda la carpeta a la papelera dentro de un batch (la raíz usa batchId == su propio Id).</summary>
     public Result SoftDelete(Guid batchId, DateTime nowUtc, TimeSpan retention)
     {
+        if (IsSystemFolder)
+            return Result.Failure(FolderErrors.SystemFolderProtected);
         if (IsDeleted)
             return Result.Failure(FolderErrors.AlreadyDeleted);
         SoftDeletedAtUtc = nowUtc;

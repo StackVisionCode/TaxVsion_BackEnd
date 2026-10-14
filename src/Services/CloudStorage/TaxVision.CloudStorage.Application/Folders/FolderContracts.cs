@@ -1,3 +1,5 @@
+using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Application.Files;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
@@ -44,7 +46,10 @@ public sealed record FolderResponse(
     DateTime CreatedAtUtc,
     // true si la carpeta tiene un link de compartir vigente (indicador del listado). Lo setea solo el
     // listado de carpeta; el resto de mapeos lo dejan en false.
-    bool IsShared = false
+    bool IsShared = false,
+    // Capabilities efectivas del portal (allow-all para staff); DenyReason != null solo si hay deny.
+    EffectiveCapabilities? EffectiveCapabilities = null,
+    string? DenyReason = null
 );
 
 /// <summary>
@@ -60,7 +65,15 @@ public sealed record FolderContentsResponse(
     int TotalCount,
     int Skip,
     int? Take
-);
+)
+{
+    /// <summary>
+    /// Baseline agregado del preset tenant-scope del cliente — el portal lo usa como gate global en
+    /// la vista raíz (sin folder activo) donde el gate per-folder no aplica. Null para staff o para
+    /// portal sin reglas tenant-scope — ausencia = allow baseline (compat).
+    /// </summary>
+    public EffectiveCapabilities? CustomerBaselineCapabilities { get; init; }
+}
 
 internal static class FolderResponseMapper
 {
@@ -75,4 +88,12 @@ internal static class FolderResponseMapper
             folder.Category,
             folder.CreatedAtUtc
         );
+
+    /// <summary>Mapea aplicando capabilities del scope — para portal con flag on, computa deny per-item.</summary>
+    public static FolderResponse Map(Folder folder, StorageActorScope scope) =>
+        Map(folder) with
+        {
+            EffectiveCapabilities = EffectiveCapabilities.ForFolder(scope, folder.Id),
+            DenyReason = EffectiveCapabilities.ReasonForFolder(scope, folder.Id),
+        };
 }

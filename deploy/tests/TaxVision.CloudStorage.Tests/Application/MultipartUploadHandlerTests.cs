@@ -44,6 +44,7 @@ public sealed class MultipartUploadHandlerTests
                 Audit()
             ),
             files,
+            new FakeFolderRepository(),
             limits,
             audit,
             new DefaultObjectKeyBuilder(),
@@ -91,6 +92,7 @@ public sealed class MultipartUploadHandlerTests
                 Audit()
             ),
             new FakeFileObjectRepository(),
+            new FakeFolderRepository(),
             new FakeStorageLimitRepository(), // sin seed
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
@@ -134,6 +136,7 @@ public sealed class MultipartUploadHandlerTests
                 Audit()
             ),
             new FakeFileObjectRepository(),
+            new FakeFolderRepository(),
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
@@ -168,6 +171,7 @@ public sealed class MultipartUploadHandlerTests
                 Audit()
             ),
             new FakeFileObjectRepository(),
+            new FakeFolderRepository(),
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),

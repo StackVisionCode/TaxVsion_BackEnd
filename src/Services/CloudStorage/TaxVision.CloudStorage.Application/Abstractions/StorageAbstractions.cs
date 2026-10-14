@@ -1,5 +1,7 @@
+using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
@@ -23,9 +25,11 @@ public interface IFileObjectRepository
     /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es
     /// portal de cliente estos se ignoran, ya que restrictedCustomerId ya fuerza el alcance real.
     /// </summary>
+    /// <summary><paramref name="assignedCustomerIds"/> null = sin filtro ABAC (portal/view_all/flag off); set (aun vacío) acota recursos Customer a su contenido.</summary>
     Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         int skip,
@@ -80,11 +84,12 @@ public interface IFileObjectRepository
     /// solo para staff interno — cuando el caller es portal de cliente estos se ignoran, ya
     /// que restrictedCustomerId ya fuerza el alcance real.
     /// </summary>
-    /// <summary>skip/take opcionales (null = sin paginar). filter aplica tipos/año/extensión/estado y orden.</summary>
+    /// <summary>skip/take opcionales (null = sin paginar). filter aplica tipos/año/extensión/estado y orden. assignedCustomerIds: ver <see cref="ListAsync"/>.</summary>
     Task<IReadOnlyList<FileObject>> ListInFolderAsync(
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -98,6 +103,7 @@ public interface IFileObjectRepository
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -114,6 +120,7 @@ public interface IFileObjectRepository
         Guid tenantId,
         IReadOnlyCollection<Guid> folderIds,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     );
 
@@ -152,11 +159,12 @@ public interface IFolderRepository
     /// ownerType/ownerId en <see cref="IFileObjectRepository.ListInFolderAsync"/> — mismo
     /// criterio de seguridad exactamente igual acá.
     /// </summary>
-    /// <summary>skip/take opcionales (null = sin paginar). Orden por filter.SortKey/SortDescending (Size cae a Name), estable por Id.</summary>
+    /// <summary>skip/take opcionales (null = sin paginar). Orden por filter.SortKey/SortDescending (Size cae a Name), estable por Id. assignedCustomerIds: ver <see cref="IFileObjectRepository.ListAsync"/>.</summary>
     Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
@@ -170,6 +178,7 @@ public interface IFolderRepository
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
         CancellationToken ct
@@ -224,6 +233,7 @@ public interface IFolderRepository
         Guid tenantId,
         OwnerType? ownerType,
         Guid? ownerId,
+        IReadOnlyCollection<Guid>? assignedCustomerIds,
         CancellationToken ct
     );
 
@@ -514,13 +524,106 @@ public interface ISystemClock
 
 public sealed record RequestAuditContext(string? IpAddress, string? UserAgent, string CorrelationId);
 
+/// <summary>
+/// Scope del actor para los handlers. Los dos primeros (portal + customerId) salen directos del JWT y
+/// definen el aislamiento del portal; <see cref="AssignedCustomerIds"/> y <see cref="BypassAssignmentFilter"/>
+/// los puebla el resolver async en el controller (consulta a la proyección de asignaciones + permiso
+/// <c>customers.view_all</c>) solo para las queries de staff que listan recursos — las construcciones
+/// existentes dejan Bypass=true, manteniendo el comportamiento anterior intacto.
+/// </summary>
 public sealed record StorageActorScope(bool IsCustomerPortal, Guid? CustomerId)
 {
+    /// <summary>TenantId del portal — necesario para resolver reglas tenant-scope (key = <c>(TenantScope, TenantId)</c>).</summary>
+    public Guid TenantId { get; init; } = Guid.Empty;
+
+    /// <summary>Clientes visibles cuando <see cref="BypassAssignmentFilter"/>=false; set vacío ⇒ solo recursos no-Customer.</summary>
+    public IReadOnlyCollection<Guid> AssignedCustomerIds { get; init; } = [];
+
+    /// <summary>Default true = sin filtro de asignación (flag off, view_all, o portal); false solo cuando el resolver cargó <see cref="AssignedCustomerIds"/>.</summary>
+    public bool BypassAssignmentFilter { get; init; } = true;
+
+    /// <summary>Reglas deny precargadas solo para portal cuando el flag per-item está on; staff siempre vacío. Deny gana a allow.</summary>
+    public IReadOnlyDictionary<
+        (AccessResourceType ResourceType, Guid ResourceId),
+        IReadOnlyCollection<CustomerAccessRuleView>
+    > DenyRules { get; init; } =
+        new Dictionary<(AccessResourceType, Guid), IReadOnlyCollection<CustomerAccessRuleView>>();
+
     public bool CanCreate(OwnerType ownerType, Guid? ownerId) =>
         !IsCustomerPortal || (CustomerId.HasValue && ownerType == OwnerType.Customer && ownerId == CustomerId);
 
-    public bool CanAccess(FileObject file) => CanCreate(file.OwnerType, file.OwnerId);
+    public bool CanAccess(FileObject file) =>
+        CanCreate(file.OwnerType, file.OwnerId)
+        && IsAllowedByAssignment(file.OwnerType, file.OwnerId)
+        && !IsHiddenForPortal(AccessResourceType.File, file.Id);
 
     /// <summary>Fase C2 — misma regla de aislamiento que los archivos, aplicada a carpetas.</summary>
-    public bool CanAccess(Folder folder) => CanCreate(folder.OwnerType, folder.OwnerId);
+    public bool CanAccess(Folder folder) =>
+        CanCreate(folder.OwnerType, folder.OwnerId)
+        && IsAllowedByAssignment(folder.OwnerType, folder.OwnerId)
+        && !IsHiddenForPortal(AccessResourceType.Folder, folder.Id);
+
+    /// <summary>
+    /// Deny (solo portal): true si hay una regla deny para esa (tipo, id, capability) O si hay una
+    /// regla tenant-scope ((TenantScope, TenantId)) para esa capability — preset del cliente que
+    /// aplica a todos sus recursos. Los dos niveles suman (deny gana a allow).
+    /// </summary>
+    public bool IsDeniedForPortal(AccessResourceType resourceType, Guid resourceId, AccessCapability capability)
+    {
+        if (!IsCustomerPortal)
+            return false;
+        if (DenyRules.TryGetValue((resourceType, resourceId), out var set) && set.Any(r => r.Capability == capability))
+            return true;
+        // Preset tenant-scope: aplica a cualquier (File/Folder) del portal. Se omite si la lookup YA es tenant-scope.
+        return resourceType != AccessResourceType.TenantScope
+            && DenyRules.TryGetValue((AccessResourceType.TenantScope, TenantId), out var tsSet)
+            && tsSet.Any(r => r.Capability == capability);
+    }
+
+    /// <summary>Reason preferida: primer per-item con reason no-null; si no, primer tenant-scope con reason no-null; null si ninguno.</summary>
+    public string? DenyReasonFor(AccessResourceType resourceType, Guid resourceId, AccessCapability capability)
+    {
+        if (!IsCustomerPortal)
+            return null;
+        if (DenyRules.TryGetValue((resourceType, resourceId), out var set))
+        {
+            var reason = set.Where(r => r.Capability == capability)
+                .OrderBy(r => r.SetAtUtc)
+                .Select(r => r.Reason)
+                .FirstOrDefault(r => r != null);
+            if (reason is not null)
+                return reason;
+        }
+        if (
+            resourceType != AccessResourceType.TenantScope
+            && DenyRules.TryGetValue((AccessResourceType.TenantScope, TenantId), out var tsSet)
+        )
+        {
+            return tsSet
+                .Where(r => r.Capability == capability)
+                .OrderBy(r => r.SetAtUtc)
+                .Select(r => r.Reason)
+                .FirstOrDefault(r => r != null);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Visible/Preview deny en portal ⇒ "no existe": lista oculta el item y GetById devuelve NotFound.
+    /// Para TenantScope esto se vuelve "preset oculta todo" — <see cref="IsDeniedForPortal"/> ya lo
+    /// propaga a cada item.
+    /// </summary>
+    public bool IsHiddenForPortal(AccessResourceType resourceType, Guid resourceId) =>
+        IsDeniedForPortal(resourceType, resourceId, AccessCapability.Visible)
+        || IsDeniedForPortal(resourceType, resourceId, AccessCapability.Preview);
+
+    /// <summary>True si el portal tiene al menos una regla deny cargada — permite al handler saltar el filtro cuando no aplica.</summary>
+    public bool HasAnyPortalDenyRules => IsCustomerPortal && DenyRules.Count > 0;
+
+    /// <summary>Filtro ABAC: solo aplica a staff cuando el resolver cargó el set (BypassAssignmentFilter=false).</summary>
+    private bool IsAllowedByAssignment(OwnerType ownerType, Guid? ownerId) =>
+        IsCustomerPortal
+        || BypassAssignmentFilter
+        || ownerType != OwnerType.Customer
+        || (ownerId.HasValue && AssignedCustomerIds.Contains(ownerId.Value));
 }

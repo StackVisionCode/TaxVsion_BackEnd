@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 
@@ -38,12 +39,20 @@ public static class GetFolderTreeHandler
         if (scopeResult.IsFailure)
             return Result.Failure<IReadOnlyList<FolderTreeNode>>(scopeResult.Error);
 
+        // ABAC: el portal ya aisla por su propio CustomerId; staff sin view_all con flag on recibe el set
+        // de asignados cargado por el resolver (null = bypass).
+        var assignedCustomerIds =
+            query.Scope.IsCustomerPortal || query.Scope.BypassAssignmentFilter ? null : query.Scope.AssignedCustomerIds;
         var flat = await folders.ListAllForOwnerScopeAsync(
             query.TenantId,
             scopeResult.Value.OwnerType,
             scopeResult.Value.OwnerId,
+            assignedCustomerIds,
             ct
         );
+        // Portal con deny Visible/Preview en carpetas: oculta tanto la carpeta como su subárbol.
+        if (query.Scope.HasAnyPortalDenyRules)
+            flat = flat.Where(f => !query.Scope.IsHiddenForPortal(AccessResourceType.Folder, f.Id)).ToList();
         return Result.Success(BuildTree(flat, parentId: null));
     }
 

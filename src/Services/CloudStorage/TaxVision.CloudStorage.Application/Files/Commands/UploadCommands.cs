@@ -5,11 +5,49 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.CustomerAccess;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
+using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
+
+/// <summary>
+/// Gate de Upload deny per-folder compartido entre single-shot (InitiateUploadHandler) y multipart
+/// (InitiateMultipartUploadHandler): resuelve la carpeta de sistema destino via el catalogo (misma
+/// identidad por categoria que usa el provisioner tras completar la subida) y devuelve el error
+/// cloudstorage.customer_access.denied con el reason si el portal tiene Upload deny ahi. Fail-closed:
+/// staff y portals sin reglas quedan afuera (HasAnyPortalDenyRules es false si el flag per-item esta
+/// off o no hay reglas), por lo que no se golpea la BD de Folders en el camino caliente.
+/// </summary>
+internal static class PortalUploadDenyGuard
+{
+    public static async Task<Error?> EnsurePortalUploadAllowedAsync(
+        StorageActorScope scope,
+        Guid tenantId,
+        OwnerType ownerType,
+        Guid? ownerId,
+        FolderType folderType,
+        IFolderRepository folders,
+        CancellationToken ct
+    )
+    {
+        if (!scope.IsCustomerPortal || !scope.HasAnyPortalDenyRules)
+            return null;
+        if (!SystemFolderCatalog.TryGet(folderType, out var spec))
+            return null;
+        var destination = await folders.GetByOwnerAndCategoryAsync(tenantId, ownerType, ownerId, spec.Category, ct);
+        if (destination is null)
+            return null;
+        if (!scope.IsDeniedForPortal(AccessResourceType.Folder, destination.Id, AccessCapability.Upload))
+            return null;
+        return CustomerAccessDenied.With(
+            scope.DenyReasonFor(AccessResourceType.Folder, destination.Id, AccessCapability.Upload)
+        );
+    }
+}
 
 public sealed record InitiateUploadCommand(
     Guid TenantId,
@@ -24,6 +62,7 @@ public static class InitiateUploadHandler
     public static async Task<Result<InitiatedUploadResponse>> Handle(
         InitiateUploadCommand command,
         IFileObjectRepository files,
+        IFolderRepository folders,
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectKeyBuilder keyBuilder,
@@ -37,6 +76,18 @@ public static class InitiateUploadHandler
     {
         var request = command.Request;
         var config = options.Value;
+
+        var denied = await PortalUploadDenyGuard.EnsurePortalUploadAllowedAsync(
+            command.Scope,
+            command.TenantId,
+            request.OwnerType,
+            request.OwnerId,
+            request.FolderType,
+            folders,
+            ct
+        );
+        if (denied is not null)
+            return Result.Failure<InitiatedUploadResponse>(denied);
 
         var registered = await UploadRegistration.ReserveAndRegisterAsync(
             command.TenantId,
@@ -536,6 +587,13 @@ public static class DeleteFileHandler
             return Result.Failure(FileErrors.NotFound);
         if (!command.Scope.CanAccess(file))
             return Result.Failure(FileErrors.NotFound);
+        // Portal con Delete deny (defensa en profundidad — el portal no borra, pero si llegara, 403 explícito).
+        if (command.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Delete))
+            return Result.Failure(
+                CustomerAccessDenied.With(
+                    command.Scope.DenyReasonFor(AccessResourceType.File, file.Id, AccessCapability.Delete)
+                )
+            );
 
         var retentionDays = options.Value.RecycleBinRetentionDays;
         var result = file.SoftDelete(clock.UtcNow, TimeSpan.FromDays(retentionDays));

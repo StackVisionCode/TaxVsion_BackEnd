@@ -1713,6 +1713,13 @@ services:
       # escalón completo en silencio. Así el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${CLOUDSTORAGE_MODULE_GATE_ENFORCE:-false}
       Authorization__ModuleGate__EnforcedModules__0: documents
+      # Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
+      # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      # Interruptor de la feature (OFF por defecto): "true" activa el filtro ABAC tras sembrar.
+      CloudStorage__AssignmentVisibility__Enabled: ${CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED:-false}
+      # Flag per-item (deny-only) para el portal del cliente: "true" precarga sus reglas y las aplica en runtime.
+      CloudStorage__PerItemAccess__Enabled: ${CLOUDSTORAGE_PERITEM_ACCESS_ENABLED:-false}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

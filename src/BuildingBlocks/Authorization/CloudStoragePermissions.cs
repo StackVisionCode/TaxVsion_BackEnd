@@ -24,4 +24,10 @@ public static class CloudStoragePermissions
 
     /// <summary>Fase L1.3 — presentar contranotificacion DMCA sobre un archivo propio. Tenant-side (asignable normalmente), a diferencia de LegalManage.</summary>
     public const string DmcaCounterNotice = "cloudstorage.file.dmca_counternotice";
+
+    /// <summary>Delegar: editar reglas de acceso a documentos solo sobre los clientes asignados al propio usuario, sin tocar los demas.</summary>
+    public const string CustomerAccessManageAssigned = "cloudstorage.customer_access.manage_assigned";
+
+    /// <summary>Admin: editar reglas de acceso a documentos sobre cualquier cliente del tenant, no solo los asignados.</summary>
+    public const string CustomerAccessManageAny = "cloudstorage.customer_access.manage_any";
 }

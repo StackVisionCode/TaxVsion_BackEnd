@@ -77,4 +77,50 @@ public sealed class PlatformHostRulesTests
         Assert.False(moved.TryGetTenantSlug("manfer.taxoffix.io", out _));
         Assert.Equal("manfer.taxoffix.com", moved.TenantHost("manfer"));
     }
+
+    /// <summary>
+    /// El predicado que usa el CORS del Gateway: HTTPS + host de la plataforma (oficina o compartido).
+    /// Sin esto, un subdominio de oficina nuevo (<c>manfer.taxoffix.io</c>) hacía fetch a api.* y el
+    /// navegador lo bloqueaba porque la lista fija <see cref="PlatformSettingsSnapshot.WebOrigins"/>
+    /// solo contempla apex/www/app/client, no los tenants.
+    /// </summary>
+    [Theory]
+    [InlineData("https://taxoffix.io")]
+    [InlineData("https://www.taxoffix.io")]
+    [InlineData("https://app.taxoffix.io")]
+    [InlineData("https://client.taxoffix.io")]
+    [InlineData("https://admin.taxoffix.io")]
+    [InlineData("https://api.taxoffix.io")]
+    [InlineData("https://manfer.taxoffix.io")]
+    [InlineData("https://MANFER.TaxOffix.io")]
+    public void A_platform_https_origin_is_accepted(string origin)
+    {
+        Assert.True(Platform.IsPlatformHttpsOrigin(origin));
+    }
+
+    [Theory]
+    [InlineData("http://manfer.taxoffix.io")] // HTTP plano no cuenta: la plataforma vive sobre TLS.
+    [InlineData("http://taxoffix.io")]
+    [InlineData("https://a.b.taxoffix.io")] // Dos labels: no es ni oficina ni shared.
+    [InlineData("https://eviltaxoffix.io")] // Dominio ajeno que contiene el nombre.
+    [InlineData("https://manfer.taxproffice.com")] // Dominio viejo tras el cambio de marca.
+    [InlineData("https://localhost")]
+    [InlineData("capacitor://localhost")]
+    [InlineData("not-a-url")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_non_platform_or_non_https_origin_is_rejected(string? origin)
+    {
+        Assert.False(Platform.IsPlatformHttpsOrigin(origin));
+    }
+
+    [Fact]
+    public void The_platform_https_rule_follows_the_current_domain()
+    {
+        var moved = Platform with { BaseDomain = "taxoffix.com", ApiHost = "api.taxoffix.com" };
+
+        Assert.True(moved.IsPlatformHttpsOrigin("https://manfer.taxoffix.com"));
+        Assert.True(moved.IsPlatformHttpsOrigin("https://admin.taxoffix.com"));
+        Assert.False(moved.IsPlatformHttpsOrigin("https://manfer.taxoffix.io"));
+    }
 }

@@ -724,4 +724,68 @@ public sealed class PermissionCatalogTests
         Assert.Contains(SignaturePermissions.PreparerManage, employee);
         Assert.Contains(SignaturePermissions.RequestExpire, employee);
     }
+
+    // CloudStorage per-item access management (Fase 2) — dos permisos nuevos: manage_assigned
+    // (delegable al preparador, acotado a sus clientes asignados) y manage_any (admin-only, no
+    // delegable, mismo patrón que cloudstorage.share.manage).
+
+    [Fact]
+    public void Customer_access_manage_assigned_is_delegable_to_the_employee_but_not_in_the_default_bundle()
+    {
+        var definition = PermissionCatalog.All.Single(d =>
+            d.Code == PermissionCatalog.CloudStorageCustomerAccessManageAssigned
+        );
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        var portalDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);
+
+        Assert.Equal("cloudstorage", definition.Module);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.False(definition.IsDangerous);
+        Assert.False(definition.PlatformOnly);
+        Assert.False(definition.IsReserved);
+        Assert.False(definition.IsCustomerPortal);
+        Assert.Equal(new[] { UserActorType.TenantAdmin, UserActorType.TenantEmployee }, definition.AllowedActorTypes);
+        // El admin raíz lo recibe por el bundle automático; el empleado se lo da el admin con un rol
+        // custom cuando corresponde (no viene por defecto, mismo criterio que CustomersImport o
+        // CorrespondenceManage).
+        Assert.Contains(PermissionCatalog.CloudStorageCustomerAccessManageAssigned, tenantAdminDefaults);
+        Assert.DoesNotContain(PermissionCatalog.CloudStorageCustomerAccessManageAssigned, employeeDefaults);
+        Assert.DoesNotContain(PermissionCatalog.CloudStorageCustomerAccessManageAssigned, portalDefaults);
+    }
+
+    [Fact]
+    public void Customer_access_manage_any_is_tenant_admin_only_and_never_delegable()
+    {
+        var definition = PermissionCatalog.All.Single(d =>
+            d.Code == PermissionCatalog.CloudStorageCustomerAccessManageAny
+        );
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        var portalDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);
+
+        Assert.Equal("cloudstorage", definition.Module);
+        // Mismo patrón que CloudStorageShareManage: no delegable a un rol custom; solo llega al rol
+        // de sistema Tenant Admin por SystemRoleDefaults.
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.False(definition.IsDangerous);
+        Assert.False(definition.PlatformOnly);
+        Assert.False(definition.IsReserved);
+        // PlatformAdmin se incluye para soporte sobre un tenant (mismo criterio que NotesViewAll).
+        Assert.Equal(new[] { UserActorType.TenantAdmin, UserActorType.PlatformAdmin }, definition.AllowedActorTypes);
+        Assert.Contains(PermissionCatalog.CloudStorageCustomerAccessManageAny, tenantAdminDefaults);
+        Assert.DoesNotContain(PermissionCatalog.CloudStorageCustomerAccessManageAny, employeeDefaults);
+        Assert.DoesNotContain(PermissionCatalog.CloudStorageCustomerAccessManageAny, portalDefaults);
+    }
+
+    [Theory]
+    [InlineData(PermissionCatalog.CloudStorageCustomerAccessManageAssigned)]
+    [InlineData(PermissionCatalog.CloudStorageCustomerAccessManageAny)]
+    public void Customer_access_permissions_are_gated_by_the_documents_module(string code)
+    {
+        // Guardarraíl del gate: todos los cloudstorage.* caen bajo el módulo "documents" (ver
+        // PermissionModuleMap). Si el prefijo cambia por error, el gate pararía de aplicarles el techo.
+        Assert.Equal("documents", PermissionModuleMap.ModuleFor(code));
+        Assert.True(PermissionModuleMap.IsModuleGated(code));
+    }
 }

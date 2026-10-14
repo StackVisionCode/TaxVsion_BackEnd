@@ -37,7 +37,7 @@ internal static class StorageIdentity
         Guid? customerId = Guid.TryParse(user.FindFirst("customer_id")?.Value, out var parsedCustomerId)
             ? parsedCustomerId
             : null;
-        scope = new StorageActorScope(isCustomerPortal, customerId);
+        scope = new StorageActorScope(isCustomerPortal, customerId) { TenantId = tenantId };
         return true;
     }
 }

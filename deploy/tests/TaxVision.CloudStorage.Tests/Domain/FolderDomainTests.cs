@@ -84,8 +84,9 @@ public sealed class FolderDomainTests
             )
             .Value;
 
-        folder.Rename(ValidName("Nuevo"), null);
+        var result = folder.Rename(ValidName("Nuevo"), null);
 
+        Assert.True(result.IsSuccess);
         Assert.Equal("Nuevo", folder.Name);
         Assert.Equal("/Nuevo", folder.RelativePath);
     }
@@ -108,8 +109,9 @@ public sealed class FolderDomainTests
             .Value;
         var newParentId = Guid.NewGuid();
 
-        folder.Reparent(newParentId, "/Clientes/Oficina A");
+        var result = folder.Reparent(newParentId, "/Clientes/Oficina A");
 
+        Assert.True(result.IsSuccess);
         Assert.Equal(newParentId, folder.ParentFolderId);
         Assert.Equal("/Clientes/Oficina A/Recibos", folder.RelativePath);
     }
@@ -157,5 +159,125 @@ public sealed class FolderDomainTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Recibos", result.Value.Value);
+    }
+
+    private static Folder CreateSystemFolder(string category = "sys.signatures", string name = "Signed Documents") =>
+        Folder
+            .Create(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                OwnerType.Customer,
+                Guid.NewGuid(),
+                null,
+                ValidName(name),
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                FolderCategory.Create(category).Value
+            )
+            .Value;
+
+    private static Folder CreateUserFolder(string name = "Tax Year 2025") =>
+        Folder
+            .Create(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                OwnerType.Customer,
+                Guid.NewGuid(),
+                null,
+                ValidName(name),
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+
+    [Theory]
+    [InlineData("sys.signatures")]
+    [InlineData("sys.email")]
+    [InlineData("sys.documents")]
+    public void IsSystemFolder_is_true_when_category_starts_with_sys(string category)
+    {
+        var folder = CreateSystemFolder(category);
+
+        Assert.True(folder.IsSystemFolder);
+    }
+
+    [Fact]
+    public void IsSystemFolder_is_false_for_folders_without_category()
+    {
+        var folder = CreateUserFolder();
+
+        Assert.False(folder.IsSystemFolder);
+    }
+
+    [Fact]
+    public void Rename_rejects_a_system_folder()
+    {
+        var folder = CreateSystemFolder();
+
+        var result = folder.Rename(ValidName("Hijacked"), null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+        Assert.Equal("Signed Documents", folder.Name); // sin cambios
+    }
+
+    [Fact]
+    public void Reparent_rejects_a_system_folder()
+    {
+        var folder = CreateSystemFolder();
+        var originalPath = folder.RelativePath;
+
+        var result = folder.Reparent(Guid.NewGuid(), "/Attacker");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+        Assert.Equal(originalPath, folder.RelativePath);
+    }
+
+    [Fact]
+    public void SoftDelete_rejects_a_system_folder()
+    {
+        var folder = CreateSystemFolder();
+
+        var result = folder.SoftDelete(Guid.NewGuid(), DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+        Assert.False(folder.IsDeleted);
+    }
+
+    [Fact]
+    public void Rename_allows_a_user_folder()
+    {
+        var folder = CreateUserFolder();
+
+        var result = folder.Rename(ValidName("Tax Year 2026"), null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Tax Year 2026", folder.Name);
+    }
+
+    [Fact]
+    public void Reparent_allows_a_user_folder()
+    {
+        var folder = CreateUserFolder();
+
+        var result = folder.Reparent(Guid.NewGuid(), "/Clientes/Oficina A");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("/Clientes/Oficina A/Tax Year 2025", folder.RelativePath);
+    }
+
+    [Fact]
+    public void SoftDelete_allows_a_user_folder()
+    {
+        var folder = CreateUserFolder();
+
+        var result = folder.SoftDelete(folder.Id, DateTime.UtcNow, TimeSpan.FromDays(30));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(folder.IsDeleted);
     }
 }
