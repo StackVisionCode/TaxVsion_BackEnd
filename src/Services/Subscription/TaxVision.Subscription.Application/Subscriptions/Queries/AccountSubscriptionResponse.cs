@@ -35,7 +35,6 @@ public sealed record AccountPeriodView(
     DateTime CurrentPeriodEndUtc,
     DateTime? NextRenewalAtUtc,
     DateTime? TrialEndsAtUtc,
-    DateTime? GracePeriodEndsAtUtc,
     /// <summary>Cancelación programada: el acceso llega hasta <c>CurrentPeriodEndUtc</c> y se puede deshacer.</summary>
     bool CancelAtPeriodEnd,
     DateTime? CancelledAtUtc

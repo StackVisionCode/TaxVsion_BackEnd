@@ -23,7 +23,6 @@ public sealed class SubscriptionSeat : TenantEntity
     public DateTime? CurrentPeriodStartUtc { get; private set; }
     public DateTime? CurrentPeriodEndUtc { get; private set; }
     public DateTime? NextRenewalAtUtc { get; private set; }
-    public DateTime? GracePeriodEndsAtUtc { get; private set; }
     public bool AutoRenew { get; private set; }
     public BillingCycle BillingCycle { get; private set; }
     public Money UnitPrice { get; private set; } = null!;
@@ -168,7 +167,7 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public Result Activate(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.PastDue, SeatStatus.GracePeriod))
+        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.PastDue))
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot activate from {Status}."));
 
         if (periodEndUtc <= periodStartUtc)
@@ -178,7 +177,6 @@ public sealed class SubscriptionSeat : TenantEntity
         CurrentPeriodStartUtc = periodStartUtc;
         CurrentPeriodEndUtc = periodEndUtc;
         NextRenewalAtUtc = periodEndUtc;
-        GracePeriodEndsAtUtc = null;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -206,55 +204,22 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
-    public Result EnterGracePeriodAfterRetriesExhausted(DateTime graceEndsAtUtc, Guid actorUserId, DateTime nowUtc)
+    /// <summary>Al agotarse los reintentos de cobro (PastDue), se suspende de una.</summary>
+    public Result SuspendAfterRetriesExhausted(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SeatStatus.PastDue)
-            return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot enter grace period from {Status}."));
-
-        if (graceEndsAtUtc <= nowUtc)
-            return Result.Failure(new Error("Seat.InvalidGracePeriod", "GraceEndsAtUtc must be in the future."));
-
-        Status = SeatStatus.GracePeriod;
-        GracePeriodEndsAtUtc = graceEndsAtUtc;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    public Result RecoverFromGracePeriod(Guid actorUserId, DateTime nowUtc)
-    {
-        if (Status != SeatStatus.GracePeriod)
-            return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot recover from {Status}."));
-
-        Status = SeatStatus.Active;
-        GracePeriodEndsAtUtc = null;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    public Result SuspendBecauseGraceExpired(Guid actorUserId, DateTime nowUtc)
-    {
-        if (Status != SeatStatus.GracePeriod)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot suspend from {Status}."));
 
         Status = SeatStatus.Suspended;
         SuspendedAtUtc = nowUtc;
-        SuspensionReason = "GraceExpired";
+        SuspensionReason = "RenewalFailed";
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (
-            !IsOneOf(
-                Status,
-                SeatStatus.Available,
-                SeatStatus.Assigned,
-                SeatStatus.Active,
-                SeatStatus.PastDue,
-                SeatStatus.GracePeriod
-            )
-        )
+        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.Active, SeatStatus.PastDue))
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot suspend from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -318,7 +283,7 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public Result CancelActive(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Active, SeatStatus.PastDue, SeatStatus.GracePeriod))
+        if (!IsOneOf(Status, SeatStatus.Active, SeatStatus.PastDue))
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot cancel from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))

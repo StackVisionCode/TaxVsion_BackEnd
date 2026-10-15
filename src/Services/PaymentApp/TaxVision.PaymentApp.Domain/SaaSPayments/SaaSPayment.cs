@@ -432,6 +432,41 @@ public sealed class SaaSPayment : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Cancelación propagada desde Subscription: el comprador cerró el checkout voluntariamente
+    /// (o el sweeper venció un intent que nunca se pagó). A diferencia de <see cref="CancelByAdmin"/>, no
+    /// la dispara un admin — refleja el estado del intent dueño del cobro — así que es idempotente ante
+    /// redeliveries y gana a un posterior <c>checkout.session.expired</c> del provider: el adapter traduce
+    /// esa expiración a <see cref="PaymentStatus.Failed"/>, pero una vez acá en Cancelled el webhook se
+    /// descarta como stale y el historial muestra "Cancelled" en lugar de "Failed".</summary>
+    public Result MarkCancelled(string reason, DateTime cancelledAtUtc)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("SaaSPayment.InvalidReason", "Reason is required."));
+
+        // Idempotente ante redeliveries del event bus: ya está en Cancelled, no hay nada que hacer.
+        if (Status == PaymentStatus.Cancelled)
+            return Result.Success();
+
+        // Terminales no-Cancelled (Succeeded / Refunded / PartiallyRefunded / ChargedBack) ganan: un pago
+        // que ya cobró no se re-escribe como Cancelled porque llegó tarde un event de cancelación.
+        if (
+            Status
+            is PaymentStatus.Succeeded
+                or PaymentStatus.Refunded
+                or PaymentStatus.PartiallyRefunded
+                or PaymentStatus.ChargedBack
+        )
+            return Result.Failure(new Error("SaaSPayment.InvalidTransition", $"Cannot mark cancelled from {Status}."));
+
+        Status = PaymentStatus.Cancelled;
+        FailureReason = reason;
+        NextActionType = null;
+        NextActionUrl = null;
+        NextRetryAtUtc = null;
+        Touch(Guid.Empty, cancelledAtUtc);
+        return Result.Success();
+    }
+
     public Result CancelByAdmin(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (IsLegalHeld)

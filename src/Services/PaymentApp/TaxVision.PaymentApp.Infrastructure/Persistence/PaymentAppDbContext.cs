@@ -7,6 +7,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentApp.Domain.Audit;
+using TaxVision.PaymentApp.Domain.Billing;
 using TaxVision.PaymentApp.Domain.PaymentMethods;
 using TaxVision.PaymentApp.Domain.Permissions;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
@@ -38,6 +39,8 @@ public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> op
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+    public DbSet<TenantBillingPreferenceProjection> TenantBillingPreferenceProjections =>
+        Set<TenantBillingPreferenceProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

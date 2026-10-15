@@ -139,8 +139,7 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
             )
             .Value;
         subscription.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, now);
-        subscription.EnterGracePeriodAfterRetriesExhausted(now.AddDays(7), Guid.Empty, now);
-        subscription.SuspendBecauseGraceExpired(Guid.Empty, now.AddDays(8));
+        subscription.SuspendAfterRetriesExhausted(Guid.Empty, now.AddDays(8));
         subscription.ExpireAfterSuspensionTimeout(Guid.Empty, now.AddDays(40));
         tenantId = subscription.TenantId;
         return subscription;

@@ -33,12 +33,6 @@ public sealed class CapturingSeatRepo : ISubscriptionSeatRepository
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<SubscriptionSeat>> GetPastGracePeriodAsync(
-        DateTime n,
-        int b,
-        CancellationToken ct = default
-    ) => throw new NotSupportedException();
-
     public Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(
         DateTime c,
         int b,

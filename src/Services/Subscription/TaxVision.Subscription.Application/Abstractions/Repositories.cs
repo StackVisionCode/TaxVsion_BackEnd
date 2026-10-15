@@ -1,4 +1,5 @@
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Billing;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.RateLimiting;
@@ -34,11 +35,6 @@ public interface ISubscriptionRepository
         CancellationToken ct = default
     );
     Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    );
-    Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
         DateTime nowUtc,
         int batchSize,
         CancellationToken ct = default
@@ -111,11 +107,6 @@ public interface ISubscriptionSeatRepository
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>
     Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    );
-    Task<IReadOnlyList<SubscriptionSeat>> GetPastGracePeriodAsync(
         DateTime nowUtc,
         int batchSize,
         CancellationToken ct = default
@@ -283,11 +274,6 @@ public interface ITenantAddOnRepository
         int batchSize,
         CancellationToken ct = default
     );
-    Task<IReadOnlyList<TenantAddOn>> GetPastGracePeriodAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    );
     Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(
         DateTime cutoffUtc,
         int batchSize,
@@ -312,4 +298,12 @@ public interface ITenantEntitlementSnapshotRepository
 public interface IPlanRateLimitRepository
 {
     Task<IReadOnlyList<PlanRateLimit>> GetAllAsync(CancellationToken ct = default);
+}
+
+/// <summary>Preferencia de cobro por tenant (Automatic/Manual) junto con los mandates que la
+/// respaldan — evidencia legal del consent para cobros recurrentes off-session.</summary>
+public interface ITenantBillingPreferenceRepository
+{
+    Task<TenantBillingPreference?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+    Task AddAsync(TenantBillingPreference preference, CancellationToken ct = default);
 }

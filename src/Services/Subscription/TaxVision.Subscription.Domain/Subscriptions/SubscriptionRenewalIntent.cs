@@ -27,7 +27,7 @@ public enum SubscriptionRenewalIntentStatus
 
 /// <summary>
 /// Intención de renovación/reactivación de la suscripción base por HOSTED-CHECKOUT (redirect), para el tenant
-/// cuya suscripción cayó en lapso (PastDue/GracePeriod/Suspended/Expired) y no tiene método de pago en archivo.
+/// cuya suscripción cayó en lapso (PastDue/Suspended/Expired) y no tiene método de pago en archivo.
 /// Espejo de <see cref="Seats.SeatPurchaseIntent"/>: Subscription guarda acá el contexto del pago (monto y
 /// ciclo) mientras PaymentApp solo lo correlaciona por <c>SaaSPayment.TargetAggregateId</c>. Al confirmarse el
 /// pago, un consumer reactiva la suscripción (nuevo período) sin volver a cobrar.

@@ -29,7 +29,6 @@ public sealed class TenantSubscription : TenantEntity
     public DateTime CurrentPeriodEndUtc { get; private set; }
     public DateTime? NextRenewalAtUtc { get; private set; }
     public DateTime? TrialEndsAtUtc { get; private set; }
-    public DateTime? GracePeriodEndsAtUtc { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
     public DateTime? SuspendedAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
@@ -225,6 +224,9 @@ public sealed class TenantSubscription : TenantEntity
         if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id && !cycleChanged)
             return Result.Success();
 
+        // Cambiar de plan implica que el usuario se queda: deshace una cancelación agendada antes.
+        ClearScheduledCancellation();
+
         PlanId = newPlan.Id;
         PlanVersionId = newPlanVersion.Id;
         PlanCode = newPlan.Code.Value;
@@ -232,6 +234,15 @@ public sealed class TenantSubscription : TenantEntity
             BillingCycle = newBillingCycle.Value;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    private void ClearScheduledCancellation()
+    {
+        if (!CancelAtPeriodEnd)
+            return;
+        CancelAtPeriodEnd = false;
+        CancellationScheduledAtUtc = null;
+        CancellationReason = null;
     }
 
     /// <summary>
@@ -278,6 +289,9 @@ public sealed class TenantSubscription : TenantEntity
         var cancelDowngradeResult = CancelScheduledDowngradeIfAny(nowUtc);
         if (cancelDowngradeResult.IsFailure)
             return cancelDowngradeResult;
+
+        // Pedir upgrade implica que el usuario se queda: deshace una cancelación agendada antes.
+        ClearScheduledCancellation();
 
         var requestResult = PlanChangeRequest.Create(
             Id,
@@ -565,58 +579,22 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
-    public Result EnterGracePeriodAfterRetriesExhausted(DateTime graceEndsAtUtc, Guid actorUserId, DateTime nowUtc)
+    /// <summary>Al agotarse los reintentos de cobro (PastDue), se suspende de una.</summary>
+    public Result SuspendAfterRetriesExhausted(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SubscriptionStatus.PastDue)
-            return Result.Failure(
-                new Error("Subscription.InvalidTransition", $"Cannot enter grace period from {Status}.")
-            );
-
-        if (graceEndsAtUtc <= nowUtc)
-            return Result.Failure(
-                new Error("Subscription.InvalidGracePeriod", "GraceEndsAtUtc must be in the future.")
-            );
-
-        Status = SubscriptionStatus.GracePeriod;
-        GracePeriodEndsAtUtc = graceEndsAtUtc;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    public Result RecoverFromGracePeriod(Guid actorUserId, DateTime nowUtc)
-    {
-        if (Status != SubscriptionStatus.GracePeriod)
-            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot recover from {Status}."));
-
-        Status = SubscriptionStatus.Active;
-        GracePeriodEndsAtUtc = null;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    public Result SuspendBecauseGraceExpired(Guid actorUserId, DateTime nowUtc)
-    {
-        if (Status != SubscriptionStatus.GracePeriod)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot suspend from {Status}."));
 
         Status = SubscriptionStatus.Suspended;
         SuspendedAtUtc = nowUtc;
-        SuspensionReason = "GraceExpired";
+        SuspensionReason = "RenewalFailed";
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (
-            !IsOneOf(
-                Status,
-                SubscriptionStatus.Trialing,
-                SubscriptionStatus.Active,
-                SubscriptionStatus.PastDue,
-                SubscriptionStatus.GracePeriod
-            )
-        )
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.PastDue))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot suspend from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -653,7 +631,7 @@ public sealed class TenantSubscription : TenantEntity
     }
 
     /// <summary>Renovación/reactivación self-service tras un pago confirmado por el dueño (Expiración/
-    /// Dunning, Fase 4). Válida desde los estados de lapso — PastDue/GracePeriod/Suspended/Expired — y
+    /// Dunning, Fase 4). Válida desde los estados de lapso — PastDue/Suspended/Expired — y
     /// deja la suscripción Active con período nuevo, limpiando las marcas del lapso. A diferencia de
     /// <see cref="ReactivateAfterAdminReview"/> (solo Suspended, acción de PlatformAdmin), esta la dispara
     /// el propio tenant pagando; saca a Expired de ser terminal de forma controlada.</summary>
@@ -664,15 +642,7 @@ public sealed class TenantSubscription : TenantEntity
         DateTime nowUtc
     )
     {
-        if (
-            !IsOneOf(
-                Status,
-                SubscriptionStatus.PastDue,
-                SubscriptionStatus.GracePeriod,
-                SubscriptionStatus.Suspended,
-                SubscriptionStatus.Expired
-            )
-        )
+        if (!IsOneOf(Status, SubscriptionStatus.PastDue, SubscriptionStatus.Suspended, SubscriptionStatus.Expired))
             return Result.Failure(
                 new Error("Subscription.InvalidTransition", $"Cannot self-service renew from {Status}.")
             );
@@ -684,7 +654,6 @@ public sealed class TenantSubscription : TenantEntity
         SuspendedAtUtc = null;
         SuspensionReason = null;
         ExpiredAtUtc = null;
-        GracePeriodEndsAtUtc = null;
         CurrentPeriodStartUtc = periodStartUtc;
         CurrentPeriodEndUtc = periodEndUtc;
         NextRenewalAtUtc = periodEndUtc;
@@ -963,6 +932,11 @@ public sealed class TenantSubscription : TenantEntity
 
         return renewal.MarkFailed(failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
     }
+
+    /// <summary>Busca una renovación por su idempotency key — útil para el flujo de prepago, donde el caller
+    /// necesita el renewal recién creado por <see cref="BeginRenewal"/> para completarlo en la misma unidad.</summary>
+    public TenantSubscriptionRenewal? FindRenewalByIdempotencyKey(string idempotencyKey) =>
+        FindRenewalByKey(idempotencyKey);
 
     private TenantSubscriptionRenewal? FindRenewalByKey(string idempotencyKey)
     {

@@ -12,8 +12,6 @@ public enum SubscriptionChangeReason
     TrialEnded,
     RenewalPaymentFailed,
     PaymentRecovered,
-    GraceEntered,
-    GraceExpired,
     SuspensionTimeout,
     CancellationRequested,
 
@@ -26,6 +24,10 @@ public enum SubscriptionChangeReason
     /// <summary>Recordatorio: se acerca el fin del acceso de una cancelación programada. No es una
     /// transición — viaja por el mismo canal para reusar la resolución de destinatario y el envío.</summary>
     AccessEnding,
+
+    /// <summary>Recordatorio pre-vencimiento (7 o 1 día). No es una transición — viaja por el canal
+    /// de emails para reusar la resolución de destinatario; la suscripción sigue Active.</summary>
+    RenewalUpcoming,
     CancellationEnded,
     AdminSuspended,
     AdminReactivated,
@@ -42,6 +44,22 @@ public enum SubscriptionChangeReason
     /// derivan estado (el corte de acceso) sí deben procesarlo: es justo para ellos.
     /// </summary>
     Reconciliation,
+
+    /// <summary>Cobro recurrente off-session exitoso. No es una transición: la suscripción
+    /// sigue Active. Viaja por este canal para reusar la resolución de destinatario y el envío.</summary>
+    RecurringChargeSucceeded,
+
+    /// <summary>Cobro recurrente off-session fallido. No es una transición por sí mismo:
+    /// la transición a PastDue/Suspended la publica el flujo de dunning después.</summary>
+    RecurringChargeFailed,
+
+    /// <summary>El user cambió su modo de facturación (Auto↔Manual). No es una transición
+    /// del estado de la suscripción.</summary>
+    BillingModeChanged,
+
+    /// <summary>El user eligió Automatic por primera vez y guardó un método; se emitió un
+    /// mandate. Acompaña a BillingModeChanged cuando el cambio es Manual→Automatic.</summary>
+    MandateCreated,
 }
 
 /// <summary>
@@ -56,7 +74,7 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 {
     public required Guid TenantSubscriptionId { get; init; }
 
-    /// <summary>Estado nuevo (<c>SubscriptionStatus.ToString()</c>): Active/PastDue/GracePeriod/Suspended/Expired/…</summary>
+    /// <summary>Estado nuevo (<c>SubscriptionStatus.ToString()</c>): Active/PastDue/Suspended/Expired/…</summary>
     public required string Status { get; init; }
 
     /// <summary>Estado inmediatamente anterior a la transición.</summary>
@@ -64,9 +82,6 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 
     /// <summary>Motivo (<see cref="SubscriptionChangeReason"/> stringificado).</summary>
     public required string Reason { get; init; }
-
-    /// <summary>Fin de la ventana de gracia, cuando el estado nuevo es <c>GracePeriod</c>.</summary>
-    public DateTime? GracePeriodEndsAtUtc { get; init; }
 
     /// <summary>Hasta cuándo llega el acceso ya pagado. Lo llena la cancelación programada, para que el
     /// correo pueda decir la fecha exacta en la que se termina.</summary>
@@ -77,4 +92,28 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 
     /// <summary>Usuario que originó la transición (admin/self-service); <c>null</c> si la disparó un job.</summary>
     public Guid? ActorUserId { get; init; }
+
+    /// <summary>Importe cobrado/intentado ya formateado (recurring_charge*/mandate_created).</summary>
+    public string? Amount { get; init; }
+
+    /// <summary>Últimos 4 del método guardado.</summary>
+    public string? CardLast4 { get; init; }
+
+    /// <summary>Marca del método guardado.</summary>
+    public string? CardBrand { get; init; }
+
+    /// <summary>URL del recibo del proveedor (recurring_charge_succeeded).</summary>
+    public string? ReceiptUrl { get; init; }
+
+    /// <summary>Modo nuevo cuando cambió la preferencia (Automatic/Manual).</summary>
+    public string? NewMode { get; init; }
+
+    /// <summary>Cadencia del mandate (month/year).</summary>
+    public string? Cadence { get; init; }
+
+    /// <summary>Fecha formateada del cobro.</summary>
+    public string? DateCharged { get; init; }
+
+    /// <summary>Fecha formateada del próximo cobro.</summary>
+    public string? NextChargeDate { get; init; }
 }

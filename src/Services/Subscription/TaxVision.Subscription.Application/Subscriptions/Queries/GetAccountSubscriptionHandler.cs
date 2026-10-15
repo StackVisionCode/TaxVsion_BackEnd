@@ -90,7 +90,6 @@ public static class GetAccountSubscriptionHandler
             subscription.CurrentPeriodEndUtc,
             subscription.NextRenewalAtUtc,
             subscription.TrialEndsAtUtc,
-            subscription.GracePeriodEndsAtUtc,
             subscription.CancelAtPeriodEnd,
             subscription.CancelledAtUtc
         );

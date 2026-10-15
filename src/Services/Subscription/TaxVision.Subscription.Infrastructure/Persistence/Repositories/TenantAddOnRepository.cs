@@ -50,22 +50,6 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantAddOn>> GetPastGracePeriodAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    ) =>
-        await db
-            .TenantAddOns.IgnoreQueryFilters()
-            .Where(addOn =>
-                addOn.Status == AddOnStatus.GracePeriod
-                && addOn.GracePeriodEndsAtUtc != null
-                && addOn.GracePeriodEndsAtUtc <= nowUtc
-            )
-            .OrderBy(addOn => addOn.GracePeriodEndsAtUtc)
-            .Take(batchSize)
-            .ToListAsync(ct);
-
     public async Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(
         DateTime cutoffUtc,
         int batchSize,

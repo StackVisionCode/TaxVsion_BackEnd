@@ -97,6 +97,58 @@ public sealed class TenantProviderCustomer : TenantEntity
         return Result.Success(method.Id);
     }
 
+    /// <summary>Reemplaza el método default por uno nuevo: marca el default actual como detached y
+    /// adjunta el nuevo como default. Para el flujo "Update card" setup-only: la tarjeta vieja no
+    /// debe quedar activa, el reemplazo es completo. Idempotente: si el ref nuevo ya es el default
+    /// activo actual, no-op (reentrega de webhook).</summary>
+    public Result<Guid> ReplaceDefaultPaymentMethod(
+        string methodReference,
+        string brand,
+        string last4,
+        int expMonth,
+        int expYear,
+        DateTime nowUtc
+    )
+    {
+        if (string.IsNullOrWhiteSpace(methodReference))
+            return Result.Failure<Guid>(
+                new Error("TenantProviderCustomer.InvalidMethodReference", "MethodReference is required.")
+            );
+
+        var currentDefault = GetDefaultMethod();
+        if (currentDefault is not null && currentDefault.MethodReference == methodReference)
+            return Result.Success(currentDefault.Id);
+
+        var existing = FindActiveByReference(methodReference);
+        if (existing is not null)
+        {
+            if (currentDefault is not null && currentDefault.Id != existing.Id)
+                currentDefault.MarkDetached(nowUtc);
+            ClearDefault();
+            existing.SetDefault(true);
+            Touch(nowUtc);
+            return Result.Success(existing.Id);
+        }
+
+        currentDefault?.MarkDetached(nowUtc);
+        ClearDefault();
+
+        var method = TenantSavedPaymentMethod.Create(
+            Id,
+            TenantId,
+            methodReference,
+            brand,
+            last4,
+            expMonth,
+            expYear,
+            isDefault: true,
+            nowUtc
+        );
+        _savedMethods.Add(method);
+        Touch(nowUtc);
+        return Result.Success(method.Id);
+    }
+
     public Result DetachPaymentMethod(Guid methodId, DateTime nowUtc)
     {
         var method = FindActiveById(methodId);

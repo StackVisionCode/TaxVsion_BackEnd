@@ -40,10 +40,21 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["first_name"] = evt.FirstName,
                         ["plan_name"] = evt.PlanName ?? "tu plan",
                         ["renew_url"] = evt.RenewUrl,
-                        ["grace_end_date"] = FormatDate(evt.GracePeriodEndsAtUtc),
+                        ["manage_url"] = evt.ManageUrl ?? evt.RenewUrl,
                         ["access_ends_date"] = FormatDate(evt.AccessEndsAtUtc),
                         ["days_until_end"] = DaysUntil(evt.AccessEndsAtUtc),
+                        ["days_until_renewal"] = evt.DaysUntilRenewal?.ToString(CultureInfo.InvariantCulture) ?? "",
+                        ["renewal_date"] = FormatDate(evt.NextRenewalAtUtc),
                         ["failure_reason"] = evt.FailureCode ?? string.Empty,
+                        // Variables para cobro recurrente, mandate y cambio de preferencia.
+                        ["amount"] = evt.Amount ?? string.Empty,
+                        ["card_brand"] = evt.CardBrand ?? "card",
+                        ["card_last4"] = evt.CardLast4 ?? "----",
+                        ["receipt_url"] = evt.ReceiptUrl ?? string.Empty,
+                        ["new_mode"] = evt.NewMode ?? string.Empty,
+                        ["cadence"] = evt.Cadence ?? "month",
+                        ["date_charged"] = evt.DateCharged ?? string.Empty,
+                        ["next_charge_date"] = evt.NextChargeDate ?? string.Empty,
                     },
                     ct
                 )
@@ -60,10 +71,14 @@ public static class SubscriptionLifecycleEmailConsumer
                 {
                     // El recordatorio lo publica un job: cada pasada trae un EventId nuevo, así que la
                     // deduplicación por evento no sirve. La clave se ancla al tenant y a la fecha de fin.
-                    IdempotencyKey =
-                        templateKey == "subscription.access_ending"
-                            ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}"
-                            : null,
+                    IdempotencyKey = templateKey switch
+                    {
+                        "subscription.access_ending" =>
+                            $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
+                        "subscription.renewal_upcoming" =>
+                            $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
+                        _ => null,
+                    },
                 },
                 ct
             );
@@ -88,9 +103,23 @@ public static class SubscriptionLifecycleEmailConsumer
         )
             return ("subscription.access_ending.v1", "subscription.access_ending");
 
+        // Recordatorio pre-vencimiento (7 o 1 día). Lo publica RenewalNotificationJob y Auth lo re-emite.
+        if (string.Equals(reason, "RenewalUpcoming", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.renewal_upcoming.v1", "subscription.renewal_upcoming");
+
+        // Cobros recurrentes y cambios de preferencia no son transiciones de estado:
+        // viajan por el mismo canal para reusar la resolución de destinatario y el envío.
+        if (string.Equals(reason, "RecurringChargeSucceeded", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.recurring_charge.v1", "subscription.recurring_charge");
+        if (string.Equals(reason, "RecurringChargeFailed", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.recurring_charge_failed.v1", "subscription.recurring_charge_failed");
+        if (string.Equals(reason, "BillingModeChanged", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.billing_mode_changed.v1", "subscription.billing_mode_changed");
+        if (string.Equals(reason, "MandateCreated", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.mandate_created.v1", "subscription.mandate_created");
+
         return status.ToLowerInvariant() switch
         {
-            "graceperiod" => ("subscription.payment_failed.v1", "subscription.payment_failed"),
             "suspended" => ("subscription.suspended.v1", "subscription.suspended"),
             "expired" => ("subscription.expired.v1", "subscription.expired"),
             "active" => ("subscription.reactivated.v1", "subscription.reactivated"),

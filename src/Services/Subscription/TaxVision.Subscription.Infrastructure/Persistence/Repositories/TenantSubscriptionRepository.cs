@@ -49,22 +49,6 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    ) =>
-        await db
-            .Subscriptions.IgnoreQueryFilters()
-            .Where(s =>
-                s.Status == SubscriptionStatus.GracePeriod
-                && s.GracePeriodEndsAtUtc != null
-                && s.GracePeriodEndsAtUtc <= nowUtc
-            )
-            .OrderBy(s => s.GracePeriodEndsAtUtc)
-            .Take(batchSize)
-            .ToListAsync(ct);
-
     public async Task<IReadOnlyList<TenantSubscription>> GetByStatusesAsync(
         IReadOnlyCollection<SubscriptionStatus> statuses,
         Guid afterTenantId,

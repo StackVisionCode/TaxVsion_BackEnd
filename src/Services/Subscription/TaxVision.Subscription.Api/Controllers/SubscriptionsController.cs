@@ -8,6 +8,9 @@ using BuildingBlocks.Web.Results;
 using BuildingBlocks.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.Billing.Commands.SetBillingPreference;
+using TaxVision.Subscription.Application.Billing.Commands.StartPaymentMethodSetup;
+using TaxVision.Subscription.Application.Billing.Queries;
 using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Activate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Cancel;
@@ -229,7 +232,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     }
 
     /// <summary>Renovación/reactivación self-service por HOSTED-CHECKOUT (Expiración/Dunning, Fase 4): para el
-    /// owner cuya suscripción cayó en lapso (PastDue/GracePeriod/Suspended/Expired) y no tiene método en archivo.
+    /// owner cuya suscripción cayó en lapso (PastDue/Suspended/Expired) y no tiene método en archivo.
     /// Crea la sesión de checkout y devuelve la URL de redirect; al confirmarse el pago (webhook) la suscripción
     /// vuelve a Active. Solo TenantAdmin/PlatformAdmin — que no quedan bloqueados por billing y pueden entrar a
     /// pagar aunque la oficina esté cortada.</summary>
@@ -451,6 +454,116 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         var result = await bus.InvokeAsync<Result>(new ReactivateSubscriptionCommand(tenantId, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record SetBillingPreferenceRequest(
+        string Mode,
+        string? ProviderCode,
+        string? ConsentText,
+        string? ConsentTextVersion
+    );
+
+    /// <summary>Devuelve la preferencia de cobro vigente del tenant (Automatic/Manual)
+    /// con la metadata del mandate activo cuando aplica. Default Manual si el tenant nunca eligió.</summary>
+    [HttpGet("me/billing-preference")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<BillingPreferenceResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetBillingPreference(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<BillingPreferenceResponse>>(
+            new GetBillingPreferenceQuery(tenantId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Fija la preferencia (Automatic requiere step-up: autoriza cobros
+    /// futuros sin interacción del usuario). Captura IP+UA de la request para el mandate.</summary>
+    [HttpPost("me/billing-preference")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RequireRecentAuthentication]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<BillingPreferenceResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetBillingPreference(SetBillingPreferenceRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var userAgent = Request.Headers.UserAgent.ToString();
+
+        var result = await bus.InvokeAsync<Result<BillingPreferenceResponse>>(
+            new SetBillingPreferenceCommand(
+                TenantId: tenantId,
+                ActorUserId: userId,
+                Mode: request.Mode,
+                ProviderCode: request.ProviderCode,
+                ConsentText: request.ConsentText,
+                ConsentTextVersion: request.ConsentTextVersion,
+                ConsentIpAddress: ip,
+                ConsentUserAgent: string.IsNullOrWhiteSpace(userAgent) ? null : userAgent
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record StartPaymentMethodSetupRequest(
+        string? PayerEmail = null,
+        string? SuccessUrl = null,
+        string? CancelUrl = null
+    );
+
+    /// <summary>Abre un hosted-checkout en modo "setup" (NO cobra) para que el tenant reemplace la tarjeta
+    /// default guardada off-session. Solo tiene sentido en modo Automatic — el handler rechaza Manual.
+    /// Requiere step-up porque alterar el método de cobro es side-effectful.</summary>
+    [HttpPost("me/payment-method/setup-session")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RequireRecentAuthentication]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<StartPaymentMethodSetupResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> StartPaymentMethodSetup(
+        [FromBody] StartPaymentMethodSetupRequest? body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        // Preferimos lo que manda el frontend (siempre viene del store del usuario autenticado); caemos al
+        // claim del JWT como salvavidas. El token de step-up a veces llega sin claim "email".
+        var email = !string.IsNullOrWhiteSpace(body?.PayerEmail)
+            ? body!.PayerEmail
+            : User.FindFirst("email")?.Value ?? User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(email))
+            return StatusCode(
+                StatusCodes.Status400BadRequest,
+                new Error("PaymentMethodSetup.MissingEmail", "A payer email is required.")
+            );
+
+        var successUrl = string.IsNullOrWhiteSpace(body?.SuccessUrl)
+            ? $"{Request.Scheme}://{Request.Host}/account/plan?checkout=success"
+            : body!.SuccessUrl;
+        var cancelUrl = string.IsNullOrWhiteSpace(body?.CancelUrl)
+            ? $"{Request.Scheme}://{Request.Host}/account/plan?checkout=cancelled"
+            : body!.CancelUrl;
+
+        var result = await bus.InvokeAsync<Result<StartPaymentMethodSetupResponse>>(
+            new StartPaymentMethodSetupCommand(tenantId, email, successUrl, cancelUrl, userId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Renovación manual (mientras no exista Billing). Solo plataforma.</summary>

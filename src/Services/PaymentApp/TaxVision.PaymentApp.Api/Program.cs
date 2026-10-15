@@ -5,6 +5,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentIntegrationEvents;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -165,6 +166,10 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeType(
         typeof(TaxVision.PaymentApp.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
     );
+    // Proyección local de TenantBillingPreference, mismo motivo del include explícito.
+    options.Discovery.IncludeType(
+        typeof(TaxVision.PaymentApp.Application.Billing.Consumers.TenantBillingPreferenceProjectionConsumer)
+    );
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =
@@ -179,6 +184,8 @@ builder.Host.UseWolverine(options =>
 
     // Eventos propios: resultado de un cobro de renovación (suscripción base, seat, add-on).
     options.PublishMessage<SubscriptionRenewalPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Cambios de estado publicados tras cobro off-session (notifica a Auth/Notification).
+    options.PublishMessage<TenantSubscriptionStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatRenewalPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatRenewalPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");

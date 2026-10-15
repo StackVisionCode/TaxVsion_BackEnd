@@ -95,14 +95,62 @@ public sealed class ScheduledCancellationTests
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
     }
 
+    [Fact]
+    public void Changing_plan_after_scheduling_cancellation_clears_the_cancellation()
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+        Assert.True(subscription.CancelAtPeriodEnd);
+
+        var changed = subscription.ChangePlan(plan, version, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(changed.IsSuccess);
+        Assert.False(subscription.CancelAtPeriodEnd);
+        Assert.Null(subscription.CancellationScheduledAtUtc);
+        Assert.Null(subscription.CancellationReason);
+    }
+
+    [Fact]
+    public void Requesting_an_upgrade_after_scheduling_cancellation_clears_the_cancellation()
+    {
+        var subscription = ActiveSubscription(out _, out var plan, out var version);
+        subscription.ScheduleCancellation("too expensive", Guid.Empty, DateTime.UtcNow);
+        Assert.True(subscription.CancelAtPeriodEnd);
+
+        var upgraded = subscription.RequestUpgrade(
+            plan,
+            version,
+            BillingCycle.Yearly,
+            chargeAmountCents: 10000,
+            chargeCurrency: "USD",
+            paymentIdempotencyKey: Guid.NewGuid().ToString("N"),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.True(upgraded.IsSuccess);
+        Assert.False(subscription.CancelAtPeriodEnd);
+        Assert.Null(subscription.CancellationScheduledAtUtc);
+        Assert.Null(subscription.CancellationReason);
+    }
+
     private static TenantSubscription ActiveSubscription(out DateTime periodEndUtc)
+    {
+        return ActiveSubscription(out periodEndUtc, out _, out _);
+    }
+
+    private static TenantSubscription ActiveSubscription(
+        out DateTime periodEndUtc,
+        out SubscriptionPlan plan,
+        out SubscriptionPlanVersion version
+    )
     {
         var nowUtc = DateTime.UtcNow;
         periodEndUtc = nowUtc.AddDays(30);
-        var plan = SubscriptionPlan
+        plan = SubscriptionPlan
             .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Standard, Guid.Empty, nowUtc)
             .Value;
-        var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
+        version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
 

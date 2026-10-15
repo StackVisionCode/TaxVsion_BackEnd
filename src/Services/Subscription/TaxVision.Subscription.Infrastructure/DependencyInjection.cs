@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
         services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
+        services.AddScoped<ITenantBillingPreferenceRepository, TenantBillingPreferenceRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
@@ -140,6 +141,17 @@ public static class DependencyInjection
         // Add-ons — M2M contra PaymentApp para el hosted-checkout de una compra de add-on. Mismo cliente
         // y opciones que los dos de arriba.
         services.AddHttpClient<IAddOnCheckoutPaymentClient, PaymentApp.PaymentAppAddOnCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Update card — M2M contra PaymentApp para abrir una Checkout Session en modo "setup" (sin cobro) que
+        // reemplaza la tarjeta default del tenant. Mismo cliente/base URL que los demás.
+        services.AddHttpClient<IPaymentMethodSetupClient, PaymentApp.PaymentAppPaymentMethodSetupClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;

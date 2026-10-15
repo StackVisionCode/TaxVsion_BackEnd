@@ -20,7 +20,6 @@ public static class PurchaseSeatsHandler
     [
         SubscriptionStatus.Trialing,
         SubscriptionStatus.Active,
-        SubscriptionStatus.GracePeriod,
     ];
 
     public static async Task<Result<IReadOnlyList<Guid>>> Handle(

@@ -6,7 +6,6 @@ public enum SeatStatus
     Assigned,
     Active,
     PastDue,
-    GracePeriod,
     Suspended,
     Cancelled,
     Expired,

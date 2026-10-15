@@ -91,7 +91,14 @@ public sealed record HostedCheckoutSessionRequest(
     string SuccessUrl,
     string CancelUrl,
     DateTime ExpiresAtUtc,
-    IReadOnlyDictionary<string, string> Metadata
+    IReadOnlyDictionary<string, string> Metadata,
+    // Auto-renewal: pedir al provider que guarde el método para cobros off-session futuros.
+    // Default false preserva el flujo one-shot original (ningún caller legacy se ve afectado).
+    bool StoreMethodForOffSession = false,
+    // Opcional: id del customer en el provider (Stripe cus_...) ya resuelto por el caller.
+    // Si viene y StoreMethodForOffSession=true, el adapter lo adjunta al Checkout en lugar
+    // de pasar sólo CustomerEmail (Stripe exige Customer para que SetupFutureUsage persista).
+    string? ProviderCustomerId = null
 );
 
 /// <summary><paramref name="ProviderPaymentIntentReference"/> es la referencia que el webhook

@@ -19,7 +19,7 @@ public sealed class SubscriptionLifecycleMetricsConsumerTests
             {
                 TenantId = Guid.NewGuid(),
                 TenantSubscriptionId = Guid.NewGuid(),
-                Status = "GracePeriod",
+                Status = "Suspended",
                 PreviousStatus = "PastDue",
                 Reason = nameof(SubscriptionChangeReason.RenewalPaymentFailed),
             },
@@ -28,7 +28,7 @@ public sealed class SubscriptionLifecycleMetricsConsumerTests
 
         var (from, to, reason) = Assert.Single(metrics.StatusTransitions);
         Assert.Equal("PastDue", from);
-        Assert.Equal("GracePeriod", to);
+        Assert.Equal("Suspended", to);
         Assert.Equal(nameof(SubscriptionChangeReason.RenewalPaymentFailed), reason);
     }
 }

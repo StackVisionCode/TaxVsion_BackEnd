@@ -4964,7 +4964,7 @@ fases sobre la rama `task/ms-subscription-redesign`:
 | 1 | Plan, TenantSubscription, SubscriptionSeat, SubscriptionTenantSettings | Hecho |
 | 2 | SubscriptionSeatAssignment (asignar/liberar/reasignar asientos a usuarios) | Hecho |
 | 3 | TenantEntitlementSnapshot, AddOns, cache Redis de entitlements | Hecho |
-| 4 | Renovaciones (base/seats/add-ons), expiraciones, grace period, jobs | Hecho |
+| 4 | Renovaciones (base/seats/add-ons), expiraciones, jobs (sin ventana de gracia tras impago) | Hecho |
 | 5 | Billing/cobro real | No implementado — depende de un proveedor de pagos |
 | 6 | Cambios de plan (`PlanChangeRequest`, Immediate/EndOfPeriod) | Hecho, **sin prorrateo** |
 | 7 | Audit log (`SubscriptionAuditLog`) + endpoints admin cross-tenant | Hecho |
@@ -4976,7 +4976,7 @@ fases sobre la rama `task/ms-subscription-redesign`:
 > - **Autoría admin** (PlatformAdmin): crear add-ons y editar precios de add-on **y** de plan por endpoint (`admin/subscription/addons`, `plans/{id}/prices`, `plans/{id}/modules`).
 > - **Co-terminación**: el add-on hereda el ciclo del plan y vence/renueva en el aniversario de la base (`CoTermTo`/`NextCoTermEnd`).
 > - **Prorrateo** del período **parcial inicial** de un add-on (`ProrationCalculator`) — **la base sigue sin prorratear (invariante)**.
-> - **Enforcement status-aware**: los `module.*` se apagan cuando la base no da acceso (cierra el gap "el downgrade no revocaba"); acceso = {Trialing, Active, PastDue, GracePeriod}.
+> - **Enforcement status-aware**: los `module.*` se apagan cuando la base no da acceso (cierra el gap "el downgrade no revocaba"); acceso = {Trialing, Active, PastDue}.
 > - **Absorción**: subir a un plan que ya incluye el módulo del add-on lo cancela sin doble cobro (`SupersedeByPlan`).
 > - **Loop de cobro** real cerrado vía eventos (`AddOnRenewalDue` → PaymentApp → `…PaymentSucceeded/Failed` → `CompleteRenewal`/`PastDue`) + métricas (`TaxVision.Subscription`).
 > Guía completa con diagramas: [`Implementaciones/Subscriptions/Guia_Facturacion_AddOns.md`](../../Implementaciones/Subscriptions/Guia_Facturacion_AddOns.md).
@@ -4988,9 +4988,10 @@ fases sobre la rama `task/ms-subscription-redesign`:
   (Starter/Pro/Enterprise), con `PlanFeature`/`PlanEntitlementDefinition`/`PlanPriceTier`
   por version. Solo una version `Published` a la vez por plan.
 - **`TenantSubscription`**: raiz del agregado de suscripcion base. Estados
-  `Trialing -> Active -> (Suspended | PastDue | Cancelled | Expired)`, con
-  `GracePeriod` antes de suspender por impago. Hijas: `TenantSubscriptionRenewal`
-  (historial de renovaciones) y `PlanChangeRequest` (cambios de plan en curso).
+  `Trialing -> Active -> (PastDue -> Suspended | Cancelled | Expired)`. Al
+  agotarse los reintentos de cobro va directo a Suspended (sin ventana con
+  acceso vivo). Hijas: `TenantSubscriptionRenewal` (historial de renovaciones) y
+  `PlanChangeRequest` (cambios de plan en curso).
 - **`SubscriptionSeat`** + **`SubscriptionSeatAssignment`**: asientos comprados por
   el tenant y su asignacion a un usuario concreto (con cooldown configurable de
   reasignacion).
@@ -5060,12 +5061,13 @@ scope de DI por iteracion), para que dos replicas nunca procesen el mismo lote:
 
 | Job | Que hace |
 | --- | --- |
-| `TenantSubscriptionRenewalJob` | Publica el intent de cobro cuando `NextRenewalAtUtc` llega |
+| `TenantSubscriptionRenewalJob` | Publica el intent de cobro cuando `NextRenewalAtUtc` llega. En PaymentApp, `SubscriptionRenewalDueConsumer` consulta `TenantBillingPreferenceProjection` y rama entre cobro off-session (Automatic) y aviso manual con banner (Manual) |
 | `SeatRenewalJob` / `AddOnRenewalJob` | Igual que el anterior, para seats y add-ons |
 | `TrialExpirationJob` | Expira trials no convertidos a `Active` |
-| `GracePeriodExpirationJob` | Suspende tras agotar el `GracePeriod` por impago |
 | `SubscriptionExpirationJob` / `SeatExpirationJob` / `AddOnExpirationJob` | Cierran definitivamente lo cancelado/expirado |
-| `RenewalNotificationJob` | Dispara aviso de renovacion proxima |
+| `RenewalNotificationJob` | Avisa 7 y 1 día antes de la renovación (consumer en Auth re-emite al canal de email) |
+| `CheckoutIntentExpirationJob` | Marca intents (seat/addon/upgrade/renewal) Pending como Expired tras 30 min |
+| `OnboardingExpirationJob` | Marca onboardings `step='processing'` zombies tras 30 min |
 | `PendingPlanChangeApplicationJob` | Aplica cambios de plan `EndOfPeriod` cuya `EffectiveAtUtc` ya paso (§32.3) |
 
 ## 32.6 Eventos de integracion
@@ -5139,6 +5141,34 @@ snapshot que `TenantEntitlementsChangedIntegrationEvent` ya publicaba en el mism
 handler — se retiraron junto con `SubscriptionEventFactory` y los tres consumers
 equivalentes en Auth/CloudStorage/Communication, sin periodo de coexistencia porque
 ningun tenant productivo dependia todavia de ellos.
+
+### Modo de facturación
+
+Cada tenant elige su modo de facturación al signup y lo puede cambiar en Manage
+Subscription:
+
+- **Automatic**: guarda el método de pago en el provider (Stripe
+  `SetupFutureUsage="off_session"` o PayPal Vault v3) + registra consent
+  (`TenantPaymentMandate` con texto exacto, versión, IP, timestamp, cadencia y
+  monto acordado). Las renovaciones se cobran off-session via `IOffSessionCharger`
+  cuando llega la fecha, sin interacción del user.
+- **Manual**: la renovación falla sin PM; el banner "Pay now" permite al user
+  pagar manualmente en cada ciclo via el checkout hosteado.
+
+Endpoints: `GET /subscriptions/me/billing-preference` (lee shape público:
+`mode`, `providerCode`, `hasActiveMandate`, `agreedAmountCents`, `agreedCadence`,
+`defaultPaymentMethod`) y `POST /subscriptions/me/billing-preference` (guarda,
+exige `consentText`+`consentTextVersion` para Automatic, step-up
+`RequireRecentAuthentication`, IP capturada server-side). El toggle vive en
+Manage Subscription del Landing y en el signup del Landing. Cambios de modo se
+registran como nuevos mandates (histórico legal preservado).
+
+Si Stripe/PayPal reporta `RequiresUserAction` (SCA/3DS) al cobrar off-session, el
+intent se marca Failed con `authentication_required` y el user vuelve al flow
+manual on-session via el banner. Los emails `subscription.recurring_charge*`,
+`subscription.billing_mode_changed` y `subscription.mandate_created` viajan por
+el canal de email como motivos específicos de B8 — no son transiciones de
+estado base.
 
 ## 32.7 Persistencia y migraciones
 
@@ -7368,7 +7398,7 @@ módulo. No es RBAC: es **entitlement comercial**.
 
 - **Origen**: Subscription arma el `TenantEntitlementSnapshot` (plan publicado + add-ons activos) y
   emite los `module.*` en `TenantEntitlementsChanged`. El builder es **status-aware**: un `module.*`
-  solo se enciende si la base da acceso (estados {Trialing, Active, PastDue, GracePeriod}); en
+  solo se enciende si la base da acceso (estados {Trialing, Active, PastDue}); en
   Suspended/Cancelled/Expired/Draft se apaga (fail-closed) — esto cierra el gap histórico *"el
   downgrade no revocaba el módulo"*.
 - **Propagación**: los **13 servicios gateados** + Auth consumen el evento y derivan

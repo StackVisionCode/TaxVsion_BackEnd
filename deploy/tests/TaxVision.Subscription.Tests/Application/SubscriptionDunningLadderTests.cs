@@ -1,7 +1,6 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Plans;
@@ -15,7 +14,7 @@ namespace TaxVision.Subscription.Tests.Application;
 public sealed class SubscriptionDunningLadderTests
 {
     [Fact]
-    public async Task Renewal_failure_without_retry_enters_grace_period_and_publishes_lifecycle_event()
+    public async Task Renewal_failure_without_retry_suspends_and_publishes_lifecycle_event()
     {
         var subscription = CreateActiveSubscription();
         subscription.BeginRenewal("k1", Guid.Empty, DateTime.UtcNow);
@@ -35,20 +34,18 @@ public sealed class SubscriptionDunningLadderTests
             new FakeSubscriptionRepository(subscription),
             new FakeUnitOfWork(),
             bus,
-            Options.Create(new SubscriptionOptions { GracePeriodDays = 7 }),
             new FakeCorrelationContext(),
             NullLogger<TenantSubscription>.Instance,
             CancellationToken.None
         );
 
-        Assert.Equal(SubscriptionStatus.GracePeriod, subscription.Status);
+        Assert.Equal(SubscriptionStatus.Suspended, subscription.Status);
 
         var evt = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
         Assert.Equal("Active", evt.PreviousStatus);
-        Assert.Equal("GracePeriod", evt.Status);
+        Assert.Equal("Suspended", evt.Status);
         Assert.Equal(nameof(SubscriptionChangeReason.RenewalPaymentFailed), evt.Reason);
         Assert.Equal("card_declined", evt.FailureCode);
-        Assert.NotNull(evt.GracePeriodEndsAtUtc);
     }
 
     [Fact]
@@ -127,12 +124,6 @@ public sealed class SubscriptionDunningLadderTests
         ) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(
-            DateTime nowUtc,
-            int batchSize,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
             DateTime nowUtc,
             int batchSize,
             CancellationToken ct = default

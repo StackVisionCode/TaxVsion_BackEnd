@@ -71,9 +71,12 @@ public sealed class AccountSubscriptionEndpointTests
                 "SubscriptionsController.CancelRenewCheckout",
                 "SubscriptionsController.ChangePlan",
                 "SubscriptionsController.GetAccountSubscription",
+                "SubscriptionsController.GetBillingPreference",
                 "SubscriptionsController.GetRenewCheckoutStatus",
                 "SubscriptionsController.PreviewPlanChange",
                 "SubscriptionsController.Resume",
+                "SubscriptionsController.SetBillingPreference",
+                "SubscriptionsController.StartPaymentMethodSetup",
                 "SubscriptionsController.StartRenewCheckout",
             },
             allowed

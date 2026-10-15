@@ -31,7 +31,7 @@ public sealed record NotificationTemplateSeed(
     //      en vez de "The link expires on  UTC" con la fecha en blanco.
     // v15: la marca sale de {{ product_name }} (PlatformSettings) en vez de "TaxProffice" escrito; los
     //      overrides explícitos subieron uno cada uno por lo mismo.
-    int ContentVersion = 15,
+    int ContentVersion = 16,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -78,7 +78,12 @@ public static class NotificationTemplateSeedSource
             SubscriptionExpired,
             SubscriptionCancellationScheduled,
             SubscriptionAccessEnding,
+            SubscriptionRenewalUpcoming,
             SubscriptionReactivated,
+            SubscriptionRecurringCharge,
+            SubscriptionRecurringChargeFailed,
+            SubscriptionBillingModeChanged,
+            SubscriptionMandateCreated,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -122,7 +127,12 @@ public static class NotificationTemplateSeedSource
         ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
         ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
         ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
+        ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
+        ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
+        ["subscription.recurring_charge_failed"] = "We couldn't charge your saved card — please take a look.",
+        ["subscription.billing_mode_changed"] = "Your billing preference was updated.",
+        ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -1303,6 +1313,49 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    private static NotificationTemplateSeed SubscriptionRenewalUpcoming { get; } =
+        new(
+            EventKey: "subscription.renewal_upcoming.v1",
+            TemplateKey: "subscription.renewal_upcoming",
+            Name: "Suscripción — Renovación próxima",
+            Subject: "Your {{ product_name }} subscription renews in {{ days_until_renewal }} day(s)",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription renews soon</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, just a heads up — your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan renews on <strong style="color:#1E466B;">{{ renewal_date }}</strong> ({{ days_until_renewal }} day(s) from now). Nothing to do: we'll charge your card on file automatically.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ renew_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Manage subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Manage subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Want to make a change? You can switch plans, update your card or cancel from the dashboard before the renewal date.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("days_until_renewal", VariableType.String, true, null, "Días que faltan para la renovación."),
+                ("renewal_date", VariableType.String, true, null, "Fecha de la próxima renovación."),
+                ("renew_url", VariableType.Url, true, null, "Login de la oficina para gestionar la suscripción."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
     private static NotificationTemplateSeed SubscriptionReactivated { get; } =
         new(
             EventKey: "subscription.reactivated.v1",
@@ -1333,6 +1386,178 @@ public static class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    /// <summary>Confirmación tras un cobro recurrente off-session exitoso (Automatic).</summary>
+    private static NotificationTemplateSeed SubscriptionRecurringCharge { get; } =
+        new(
+            EventKey: "subscription.recurring_charge.v1",
+            TemplateKey: "subscription.recurring_charge",
+            Name: "Suscripción — Cobro recurrente exitoso",
+            Subject: "Payment received — your {{ product_name }} subscription continues",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Payment received</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we charged <strong style="color:#1E466B;">${{ amount }}</strong> to your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.{% if next_charge_date != blank %} The next charge is scheduled for <strong style="color:#23384B;">{{ next_charge_date }}</strong>.{% endif %}</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  {% if receipt_url != blank %}
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;margin-right:10px;"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ receipt_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">View receipt</a></td></tr></table>
+                  {% endif %}
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;"><tr><td align="center" style="border:1px solid #1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:11px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#1E466B;text-decoration:none;">Manage billing</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You turned on automatic renewal on this subscription. You can switch back to manual any time from Manage billing.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("amount", VariableType.String, true, null, "Importe cobrado ya formateado."),
+                ("date_charged", VariableType.String, false, null, "Fecha del cobro ya formateada."),
+                ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
+                ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
+                ("receipt_url", VariableType.Url, false, null, "URL del recibo del proveedor (opcional)."),
+                ("next_charge_date", VariableType.String, false, null, "Fecha del próximo cobro ya formateada."),
+                ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    /// <summary>Cobro recurrente off-session fallido. Lleva al user a actualizar la tarjeta.</summary>
+    private static NotificationTemplateSeed SubscriptionRecurringChargeFailed { get; } =
+        new(
+            EventKey: "subscription.recurring_charge_failed.v1",
+            TemplateKey: "subscription.recurring_charge_failed",
+            Name: "Suscripción — Cobro recurrente fallido",
+            Subject: "We couldn't charge your {{ card_brand }} — action needed",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">We couldn't charge your card</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we tried to charge <strong style="color:#1E466B;">${{ amount }}</strong> on your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan but it didn't go through.</td></tr>
+              {% if failure_reason != blank %}
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">Reason: {{ failure_reason }}</td></tr></table></td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;margin-right:10px;"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Update card</a></td></tr></table>
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;"><tr><td align="center" style="border:1px solid #1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:11px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#1E466B;text-decoration:none;">Pay now</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">We'll try again automatically. If you've already updated your payment, you can ignore this email.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("amount", VariableType.String, true, null, "Importe intentado ya formateado."),
+                ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
+                ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
+                (
+                    "failure_reason",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Motivo legible del fallo; si falta, se omite la línea."
+                ),
+                ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription para actualizar la tarjeta."),
+                ("renew_url", VariableType.Url, true, null, "URL de pago manual (fallback)."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    /// <summary>Confirmación del cambio Auto↔Manual.</summary>
+    private static NotificationTemplateSeed SubscriptionBillingModeChanged { get; } =
+        new(
+            EventKey: "subscription.billing_mode_changed.v1",
+            TemplateKey: "subscription.billing_mode_changed",
+            Name: "Suscripción — Cambio de preferencia de facturación",
+            Subject: "Your billing preference changed to {{ new_mode }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Billing preference updated</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your billing preference on {{ product_name }} is now <strong style="color:#1E466B;">{{ new_mode }}</strong>.{% if new_mode == 'Automatic' %} We'll renew your subscription automatically at the end of each period.{% else %} We'll remind you to pay at the end of each period — nothing is charged until you do.{% endif %}</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Manage billing</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Changed by mistake? Open Manage billing and switch back any time.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("new_mode", VariableType.String, true, null, "Automatic | Manual."),
+                ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    /// <summary>Alta de mandate la primera vez que el user eligió Automatic.</summary>
+    private static NotificationTemplateSeed SubscriptionMandateCreated { get; } =
+        new(
+            EventKey: "subscription.mandate_created.v1",
+            TemplateKey: "subscription.mandate_created",
+            Name: "Suscripción — Automático habilitado",
+            Subject: "Automatic renewal enabled on your {{ product_name }} subscription",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Automatic renewal enabled</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we'll automatically charge your {{ card_brand }} ending {{ card_last4 }} <strong style="color:#1E466B;">${{ amount }}</strong> every {{ cadence }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">You'll get a receipt every time we charge, and you can switch to manual any time.</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Manage billing</a></td></tr></table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("amount", VariableType.String, true, null, "Importe acordado ya formateado."),
+                ("cadence", VariableType.String, true, "month", "Cadencia (month/year)."),
+                ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
+                ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
+                ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription."),
                 (
                     "product_name",
                     VariableType.String,

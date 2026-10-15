@@ -4,7 +4,6 @@ public enum AddOnStatus
 {
     Active,
     PastDue,
-    GracePeriod,
     Suspended,
     Cancelled,
     Expired,

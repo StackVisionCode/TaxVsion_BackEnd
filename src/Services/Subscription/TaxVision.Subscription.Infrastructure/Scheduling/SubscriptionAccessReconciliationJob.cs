@@ -28,7 +28,7 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 ///
 /// <para>
 /// Solo re-anuncia los estados que DETERMINAN el corte: los que bloquean (<c>Suspended</c>,
-/// <c>Expired</c>) y <c>Active</c>, que lo levanta. Los intermedios (PastDue, GracePeriod, Trialing,
+/// <c>Expired</c>) y <c>Active</c>, que lo levanta. Los intermedios (PastDue, Trialing,
 /// Cancelled) no tocan el flag — re-anunciarlos sería ruido sin efecto. Las dos direcciones importan:
 /// un tenant vencido sin bloquear sigue entrando, y uno al día marcado como bloqueado no puede entrar
 /// aunque pagó.

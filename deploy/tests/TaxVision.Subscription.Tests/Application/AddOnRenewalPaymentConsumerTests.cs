@@ -1,8 +1,6 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.AddOns.IntegrationEvents;
-using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Renewals;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -44,32 +42,19 @@ public sealed class AddOnRenewalPaymentConsumerTests
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 
-    /// <summary>
-    /// A6/A5.7 — antes esto afirmaba <c>PastDue</c>, y era el sintoma de un callejon sin salida: nadie
-    /// movia un add-on de PastDue a GracePeriod, asi que <c>GracePeriodExpirationJob</c> nunca lo
-    /// encontraba y el add-on se quedaba en PastDue para siempre. Como PastDue CONSERVA los
-    /// entitlements (es gracia), su modulo quedaba habilitado sin volver a pagarse.
-    /// </summary>
+    /// <summary>Al agotarse los reintentos, el add-on se suspende de una: ya no se da ventana de gracia
+    /// con acceso vivo.</summary>
     [Fact]
-    public async Task PaymentFailed_without_retry_opens_the_grace_window_so_the_ladder_can_continue()
+    public async Task PaymentFailed_without_retry_suspends_the_addon()
     {
         var (addOn, key, _) = ActiveAddOnWithScheduledRenewal();
         var unitOfWork = new FakeUnitOfWork();
-        var before = DateTime.UtcNow;
 
         await Fail(addOn, key, unitOfWork, willRetry: false);
 
-        Assert.Equal(AddOnStatus.GracePeriod, addOn.Status);
+        Assert.Equal(AddOnStatus.Suspended, addOn.Status);
+        Assert.Equal("RenewalFailed", addOn.SuspensionReason);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
-
-        // La ventana es la MISMA que la de la suscripcion base: dos plazos distintos para el mismo
-        // impago no se le pueden explicar a un tenant.
-        Assert.NotNull(addOn.GracePeriodEndsAtUtc);
-        var expected = before.AddDays(new SubscriptionOptions().GracePeriodDays);
-        Assert.True(
-            Math.Abs((addOn.GracePeriodEndsAtUtc!.Value - expected).TotalMinutes) < 5,
-            $"La gracia del add-on ({addOn.GracePeriodEndsAtUtc}) no coincide con la politica base ({expected})."
-        );
     }
 
     [Fact]
@@ -82,7 +67,6 @@ public sealed class AddOnRenewalPaymentConsumerTests
         await Fail(addOn, key, unitOfWork, willRetry: true);
 
         Assert.Equal(AddOnStatus.Active, addOn.Status);
-        Assert.Null(addOn.GracePeriodEndsAtUtc);
     }
 
     private static Task Fail(TenantAddOn addOn, string key, FakeUnitOfWork unitOfWork, bool willRetry) =>
@@ -101,7 +85,6 @@ public sealed class AddOnRenewalPaymentConsumerTests
             new FakeTenantAddOnRepo([addOn]),
             unitOfWork,
             new FakeCorrelationContext(),
-            Options.Create(new SubscriptionOptions()),
             NullLogger<TenantAddOn>.Instance,
             CancellationToken.None
         );

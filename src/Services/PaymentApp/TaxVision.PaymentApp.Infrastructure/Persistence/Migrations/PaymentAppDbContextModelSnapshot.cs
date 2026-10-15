@@ -80,6 +80,52 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.ToTable("PaymentAuditEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentApp.Domain.Billing.TenantBillingPreferenceProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("AgreedAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AgreedCadence")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AgreedCurrency")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool>("HasActiveMandate")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<long>("RevisionTicks")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantBillingPreferenceProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.PaymentMethods.OnboardingPaymentMethodOverride", b =>
                 {
                     b.Property<Guid>("Id")

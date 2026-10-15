@@ -58,13 +58,12 @@ builder.Services.AddSingleton<ISubscriptionMetrics, SubscriptionMetrics>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 
-// Jobs de renovacion/expiracion/grace (Fase 4). Cada uno es independiente: renovar la
+// Jobs de renovacion/expiracion. Cada uno es independiente: renovar la
 // suscripcion base no renueva seats ni add-ons, y viceversa (ver diseno §34).
 builder.Services.AddHostedService<TenantSubscriptionRenewalJob>();
 builder.Services.AddHostedService<SeatRenewalJob>();
 builder.Services.AddHostedService<AddOnRenewalJob>();
 builder.Services.AddHostedService<TrialExpirationJob>();
-builder.Services.AddHostedService<GracePeriodExpirationJob>();
 builder.Services.AddHostedService<SubscriptionExpirationJob>();
 builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
@@ -165,6 +164,8 @@ builder.Host.UseWolverine(options =>
     // cambió en la suscripción" — reemplaza a los antiguos Activated/PlanChanged/
     // Suspended/SeatsPurchased (retirados en la fase de cleanup).
     options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Proyectado en PaymentApp para decidir off-session vs flow manual.
+    options.PublishMessage<TenantBillingPreferenceChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -177,7 +178,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SeatRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 16) — publicado por InternalSubscriptionActivationController.
     options.PublishMessage<SubscriptionActivatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    // Expiración/Dunning (Fase 0) — cambios de estado del ciclo de vida (GracePeriod/Suspended/Expired/
+    // Cambios de estado del ciclo de vida (Suspended/Expired/
     // recuperación). Auth los consume para bloquear/desbloquear acceso (Fase 2) y notificar (Fase 3). Sin
     // esta ruta Wolverine lo entregaría solo in-process y Auth nunca se enteraría — el bloqueo y los
     // emails quedarían muertos en silencio en producción.

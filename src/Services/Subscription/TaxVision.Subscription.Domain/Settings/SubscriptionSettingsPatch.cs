@@ -16,8 +16,6 @@ public sealed record SubscriptionSettingsPatch(
     bool ClearMaxSeatsAllowed = false,
     int? MinSeatsRequired = null,
     int? DefaultSeatRenewalDays = null,
-    GracePeriod? TenantSubscriptionGracePeriod = null,
-    GracePeriod? SeatGracePeriod = null,
     bool? AllowSeatReassignment = null,
     int? SeatReassignmentCooldownDays = null,
     bool? AllowAddons = null,

@@ -11,7 +11,6 @@ public static class SubscriptionAccess
         SubscriptionStatus.Trialing,
         SubscriptionStatus.Active,
         SubscriptionStatus.PastDue,
-        SubscriptionStatus.GracePeriod,
     ];
 
     /// <summary>Sin vuelta atrás por sí sola: los extras que cuelgan de ella tampoco tienen futuro.</summary>

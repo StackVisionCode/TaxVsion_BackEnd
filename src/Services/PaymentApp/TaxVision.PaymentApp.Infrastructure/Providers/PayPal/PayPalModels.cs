@@ -9,10 +9,31 @@ public sealed record PayPalCreateOrderRequest(
     string ReturnUrl,
     string CancelUrl,
     string IdempotencyKey,
-    IReadOnlyDictionary<string, string> Metadata
+    IReadOnlyDictionary<string, string> Metadata,
+    // Vault v3: cuando true, se agrega payment_source.paypal.attributes.vault.store_in_vault=ON_SUCCESS
+    // y se adjunta el customer id merchant-provided para que PayPal vincule el token al mismo payer.
+    bool StoreInVault = false,
+    string? MerchantCustomerId = null
 );
 
 public sealed record PayPalCreateOrderResult(string OrderId, string ApprovalUrl, string Status);
+
+// Off-session charge: POST /v2/checkout/orders con payment_source.token + capture inmediato.
+public sealed record PayPalChargeWithTokenRequest(
+    string AmountValue,
+    string CurrencyCode,
+    string Description,
+    string PaymentTokenId,
+    string IdempotencyKey,
+    string? CustomId
+);
+
+public sealed record PayPalChargeWithTokenResult(
+    string OrderId,
+    string Status,
+    string? CaptureId,
+    string? FailureReason
+);
 
 public sealed record PayPalRefundCaptureRequest(
     string CaptureId,

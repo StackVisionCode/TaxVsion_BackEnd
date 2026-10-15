@@ -13,9 +13,8 @@ public sealed class ExtraBillingTests
     [Theory]
     [InlineData(SubscriptionStatus.Active)]
     [InlineData(SubscriptionStatus.Trialing)]
-    // PastDue y GracePeriod todavía dan acceso: el tenant sigue trabajando, así que el extra se cobra.
+    // PastDue todavía da acceso: el tenant sigue trabajando, así que el extra se cobra.
     [InlineData(SubscriptionStatus.PastDue)]
-    [InlineData(SubscriptionStatus.GracePeriod)]
     public void While_the_base_still_gives_access_the_extra_renews(SubscriptionStatus status)
     {
         Assert.Equal(ExtraBillingDecision.Renew, ExtraBilling.Decide(status));

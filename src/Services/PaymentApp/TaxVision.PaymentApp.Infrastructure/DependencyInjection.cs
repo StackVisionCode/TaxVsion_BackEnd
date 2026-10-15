@@ -72,6 +72,18 @@ public static class DependencyInjection
         services.AddScoped<PayPalHostedCheckoutCanceller>();
         services.AddScoped<IHostedCheckoutSessionCanceller, DefaultHostedCheckoutSessionCanceller>();
 
+        // Auto-renewal: checkout con guardado para off-session + cobro recurrente.
+        // Ambos creators se registran no-keyed para que entren al IEnumerable que indexa el factory
+        // por ProviderCode. El handler SIEMPRE pasa por el factory — nunca inyecta
+        // IHostedCheckoutSessionCreator directo (el codegen de Wolverine resuelve mal con keyed+default).
+        services.AddScoped<IHostedCheckoutSessionCreator, StripeHostedCheckoutSessionCreator>();
+        services.AddScoped<IHostedCheckoutSessionCreator, PayPalHostedCheckoutSessionCreator>();
+        services.AddScoped<IHostedCheckoutSessionCreatorFactory, HostedCheckoutSessionCreatorFactory>();
+        services.AddScoped<IOffSessionCharger, StripeOffSessionCharger>();
+        services.AddScoped<IOffSessionChargerFactory, OffSessionChargerFactory>();
+        services.AddScoped<IStripePaymentMethodWebhookTranslator, StripePaymentMethodWebhookTranslator>();
+        services.AddScoped<IOffSessionCharger, PayPalOffSessionCharger>();
+
         services.AddScoped<IOnboardingPaymentMethodCatalog, ConfiguredOnboardingPaymentMethodCatalog>();
         services.AddScoped<IProviderWebhookSecrets, ProviderWebhookSecrets>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
@@ -97,6 +109,13 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        // Proyección local de TenantBillingPreference consumida por el renewal consumer
+        // para decidir off-session vs flow manual, sin ir contra Subscription en cada ciclo.
+        services.AddScoped<
+            TaxVision.PaymentApp.Application.Billing.Abstractions.ITenantBillingPreferenceProjectionRepository,
+            TenantBillingPreferenceProjectionRepository
+        >();
 
         AddSubscriptionClient(services, configuration);
         AddRateLimitTierQuotas(services, configuration);

@@ -77,7 +77,6 @@ public static class GetMySubscriptionHandler
                 subscription.CurrentPeriodEndUtc,
                 subscription.CancelledAtUtc,
                 subscription.NextRenewalAtUtc,
-                subscription.GracePeriodEndsAtUtc,
                 subscription.SuspendedAtUtc,
                 subscription.ExpiredAtUtc,
                 canViewBilling ? subscription.SuspensionReason : null,
