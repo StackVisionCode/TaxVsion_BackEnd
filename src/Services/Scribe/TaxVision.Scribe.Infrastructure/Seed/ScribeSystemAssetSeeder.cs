@@ -58,31 +58,25 @@ public sealed class ScribeSystemAssetSeeder(
 
             var bytes = await File.ReadAllBytesAsync(localPath, ct);
             var existing = await repository.GetByKeyAsync(SystemAssetKeys.HeaderLogo, ct);
-            if (existing is not null && existing.SizeBytes == bytes.LongLength)
+            if (existing is not null)
             {
-                // Comparar tamaño (no hash — no vale la pena la complejidad para un archivo que
-                // cambia a mano ocasionalmente) para detectar tanto "reemplazaron deploy.png por
-                // uno nuevo" como "sigue siendo el mismo": solo re-sube si difiere.
+                // La BD es la fuente de verdad: si el admin ya subió un logo desde la UI, el deploy
+                // NO lo pisa aunque el deploy.png empacado difiera. Solo re-subimos cuando el archivo
+                // en CloudStorage se perdió — ahí sí hay que reparar o los correos salen sin logo.
                 var download = await storageService.DownloadTextAsync(existing.CloudStorageFileId, null, ct);
                 if (download.IsSuccess)
                 {
-                    logger.LogDebug("ScribeSystemAssetSeeder: header logo already seeded and downloadable, skipping.");
+                    logger.LogDebug(
+                        "ScribeSystemAssetSeeder: header logo already seeded and downloadable, skipping to preserve admin edits."
+                    );
                     return;
                 }
 
                 logger.LogWarning(
-                    "SystemAssetRef '{Key}' references missing CloudStorage file {FileId}; repairing it.",
+                    "SystemAssetRef '{Key}' references missing CloudStorage file {FileId}; repairing from local '{FileName}'.",
                     SystemAssetKeys.HeaderLogo,
-                    existing.CloudStorageFileId
-                );
-            }
-            else if (existing is not null)
-            {
-                logger.LogInformation(
-                    "ScribeSystemAssetSeeder: local '{FileName}' size changed ({OldSize} -> {NewSize} bytes); re-uploading.",
-                    LocalFileName,
-                    existing.SizeBytes,
-                    bytes.LongLength
+                    existing.CloudStorageFileId,
+                    LocalFileName
                 );
             }
 

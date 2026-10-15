@@ -64,11 +64,19 @@ public sealed class SystemEmailProviderSeeder(
             cancellationToken
         );
 
+        // La BD es la fuente de verdad una vez el admin configura desde UI (UpsertSystemEmailProvider).
+        // El seeder solo siembra cuando la fila no existe — así el deploy no pisa cambios manuales.
+        if (existing is not null)
+        {
+            logger.LogDebug(
+                "SystemEmailProvider '{ProviderCode}' already exists; seeder is skipping to preserve admin edits.",
+                DefaultProviderCode
+            );
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_options.Host))
         {
-            if (existing is not null)
-                return;
-
             var placeholderResult = CreatePlaceholderProvider(secretProtector, platform.Current);
             if (placeholderResult.IsFailure)
             {
@@ -87,38 +95,6 @@ public sealed class SystemEmailProviderSeeder(
 
         var passwordCipher = _options.Password is null ? null : secretProtector.Protect(_options.Password);
         var fromAddressDefault = _options.FromAddressDefault ?? _options.Username ?? "no-reply@taxvision.local";
-
-        if (existing is not null)
-        {
-            var updateResult = existing.UpdateConnection(
-                _options.Host,
-                _options.Port,
-                _options.UseTls,
-                _options.Username,
-                passwordCipher,
-                fromAddressDefault,
-                _options.FromDisplayNameDefault,
-                _options.RateLimitPerMinute,
-                DateTime.UtcNow,
-                _options.BulkRateLimitPerMinute
-            );
-            if (updateResult.IsFailure)
-            {
-                logger.LogError(
-                    "Failed to reconcile configured SystemEmailProvider: {Error}",
-                    updateResult.Error.Message
-                );
-                return;
-            }
-
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-            logger.LogInformation(
-                "Reconciled SystemEmailProvider '{ProviderCode}' from config (host={Host}).",
-                DefaultProviderCode,
-                _options.Host
-            );
-            return;
-        }
 
         var createResult = SystemEmailProvider.Create(
             providerCode: DefaultProviderCode,
