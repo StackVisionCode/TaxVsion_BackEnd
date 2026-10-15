@@ -46,6 +46,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             new FakeUnitOfWork(),
             new FakePaymentAppMetrics(),
             new FakeCorrelationContext(),
+            new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             CancellationToken.None

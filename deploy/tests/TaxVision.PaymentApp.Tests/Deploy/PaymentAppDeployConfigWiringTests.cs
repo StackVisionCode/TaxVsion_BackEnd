@@ -14,6 +14,7 @@ public sealed class PaymentAppDeployConfigWiringTests
         "PAYPAL_CLIENT_ID",
         "PAYPAL_CLIENT_SECRET",
         "PAYPAL_WEBHOOK_ID",
+        "PAYPAL_OFFLINE_FALLBACK_ENABLED",
         "PAYPAL_ONBOARDING_ENABLED",
         "PAYPAL_ONBOARDING_DISABLED_REASON",
     ];

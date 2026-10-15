@@ -45,16 +45,19 @@ public sealed class OnboardingRegistrationReminderProcessor(
                 continue;
 
             // La referencia del raw token debe seguir viva para que Notification arme el link. Si venció
-            // (Auth caído más que el TTL), no publicamos un link roto: marcamos enviado para no reintentar
-            // en bucle. El comprador conserva su token de 72h por el camino in-session (reconcile).
+            // (Auth caído más que el TTL o Redis vacío), NO marcamos enviado: hacerlo quemaba al cliente
+            // en huérfano permanente — pagó pero jamás recibía su link. El sweeper reintenta cada tick (es
+            // una query Redis barata) hasta que el admin usa OnboardingAdmin.ResendRegistrationEmail para
+            // regenerar un token nuevo. El ERROR log es la señal al operador para intervenir.
             var rawToken = await tokenReferences.PeekAsync(tokenReference, ct);
             if (string.IsNullOrWhiteSpace(rawToken))
             {
-                logger.LogWarning(
-                    "Onboarding {OnboardingId} registration reminder skipped: token reference expired.",
-                    onboarding.Id
+                logger.LogError(
+                    "Onboarding {OnboardingId} ({Email}) registration reminder blocked: token reference lost. "
+                        + "Admin must regenerate via OnboardingAdmin.ResendRegistrationEmail.",
+                    onboarding.Id,
+                    onboarding.Email
                 );
-                onboarding.MarkRegistrationEmailSent(nowUtc);
                 continue;
             }
 

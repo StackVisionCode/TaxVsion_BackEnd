@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -16,6 +17,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 internal sealed class PaymentAppAddOnCheckoutClient(
     HttpClient httpClient,
     IGrowthServiceTokenAcquirer tokenAcquirer,
+    IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppAddOnCheckoutClient> logger
 ) : IAddOnCheckoutPaymentClient
 {
@@ -37,6 +39,17 @@ internal sealed class PaymentAppAddOnCheckoutClient(
                 new Error("AddOn.Checkout.Unauthorized", "Could not acquire a service token for the payment service.")
             );
 
+        // SEC-M1.C: ver PaymentAppSeatCheckoutClient — firma HMAC verificable localmente.
+        var amountSignature = amountSigner.Sign(
+            new PurchaseIntentAmountInput(
+                request.TenantId,
+                PurchaseIntentKind.AddOn,
+                request.AddOnPurchaseIntentId,
+                request.AmountCents,
+                request.Currency
+            )
+        );
+
         try
         {
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/add-ons/checkout")
@@ -56,6 +69,7 @@ internal sealed class PaymentAppAddOnCheckoutClient(
                         method = request.Method,
                         quantity = request.Quantity,
                         unitAmountCents = request.UnitAmountCents,
+                        amountSignature,
                     },
                     options: Json
                 ),

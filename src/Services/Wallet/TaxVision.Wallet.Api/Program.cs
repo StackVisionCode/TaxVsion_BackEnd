@@ -49,6 +49,13 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "wallet-service");
 
+// SEC-M1.e — policy ServiceOnly para endpoints internal M2M (InternalWalletTopUpsController).
+// El PermissionPolicyProvider hereda de DefaultAuthorizationPolicyProvider, así que la policy
+// registrada acá cae al base y se resuelve correctamente para los [Authorize(Policy = "ServiceOnly")].
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // Autorización por permiso ([HasPermission("wallet.view")]); los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 

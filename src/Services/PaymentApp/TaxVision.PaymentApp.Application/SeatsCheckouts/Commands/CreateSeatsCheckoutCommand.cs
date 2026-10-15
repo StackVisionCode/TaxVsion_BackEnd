@@ -25,7 +25,10 @@ public sealed record CreateSeatsCheckoutCommand(
     int? Quantity = null,
     long? UnitAmountCents = null,
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
-    PaymentMethodKind Method = PaymentMethodKind.Card
+    PaymentMethodKind Method = PaymentMethodKind.Card,
+    /// <summary>SEC-M1.C — firma HMAC emitida por Subscription que PaymentApp verifica antes de abrir
+    /// el checkout. Vacía durante rolling deploy; con <c>RejectUnsigned=true</c> en prod se vuelve requerida.</summary>
+    string? AmountSignature = null
 );
 
 public sealed record SeatsCheckoutResponse(

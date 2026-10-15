@@ -35,7 +35,9 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
         int? Quantity = null,
         long? UnitAmountCents = null,
         PaymentProviderCode? Provider = null,
-        PaymentMethodKind? Method = null
+        PaymentMethodKind? Method = null,
+        /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
+        string? AmountSignature = null
     );
 
     [HttpPost("checkout")]
@@ -58,7 +60,8 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
                 request.Quantity,
                 request.UnitAmountCents,
                 request.Provider ?? PaymentProviderCode.Stripe,
-                request.Method ?? PaymentMethodKind.Card
+                request.Method ?? PaymentMethodKind.Card,
+                request.AmountSignature
             ),
             ct
         );

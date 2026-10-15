@@ -20,7 +20,9 @@ public sealed record CreateWalletTopUpCheckoutCommand(
     string CancelUrl,
     string IdempotencyKey,
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
-    PaymentMethodKind Method = PaymentMethodKind.Card
+    PaymentMethodKind Method = PaymentMethodKind.Card,
+    /// <summary>SEC-M1.C — firma HMAC emitida por Wallet (ver CreateSeatsCheckoutCommand).</summary>
+    string? AmountSignature = null
 );
 
 public sealed record WalletTopUpCheckoutResponse(

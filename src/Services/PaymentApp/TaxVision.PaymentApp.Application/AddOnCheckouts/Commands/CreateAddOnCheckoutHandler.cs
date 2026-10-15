@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Platform;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
@@ -28,11 +29,26 @@ public static class CreateAddOnCheckoutHandler
         IUnitOfWork unitOfWork,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
+        IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         CancellationToken ct
     )
     {
+        // SEC-M1.C: ver CreateSeatsCheckoutHandler — firma HMAC local, fail-closed sólo en mismatch.
+        var verify = intentVerifier.Verify(
+            new PurchaseIntentAmountInput(
+                command.TenantId,
+                PurchaseIntentKind.AddOn,
+                command.AddOnPurchaseIntentId,
+                command.AmountCents,
+                command.Currency
+            ),
+            command.AmountSignature
+        );
+        if (verify.IsFailure)
+            return Result.Failure<AddOnCheckoutResponse>(verify.Error);
+
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,
             command.PayerEmail,

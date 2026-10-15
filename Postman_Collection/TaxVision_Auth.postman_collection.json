@@ -3189,6 +3189,80 @@
             "description": "IRREVERSIBLE. Requiere el campo Confirmation exacto (\"I understand this is irreversible\") o la API rechaza el request. Dispara compensacion (Subscription/Auth/Tenant deshacen lo que hayan provisionado, no-op por paso) y refund (PaymentApp)."
           },
           "response": []
+        },
+        {
+          "name": "ResendRegistrationEmail (Admin, OBF-3.1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Cliente reporto no haber recibido el email con el link para completar la oficina.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/resend-registration-email",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "resend-registration-email"
+              ]
+            },
+            "description": "OBF-3.1 — reenvio del email \"completa tu oficina\" con un token nuevo (7 dias). Para onboardings pagados en RegistrationPending/PaymentCompleted (link vencido, email borrado, scheduler quemo el intento). Para Expired usar /reactivate. Audita como auth.onboarding_admin.registration_email_resent."
+          },
+          "response": []
+        },
+        {
+          "name": "ReactivateExpiredOnboarding (Admin, OBF-3.1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Pago cobrado pero el sweeper marco Expired antes de que el cliente volviera. Rescate manual.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/reactivate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "reactivate"
+              ]
+            },
+            "description": "OBF-3.1 — resucita un onboarding Expired que YA pago. Status pasa a RegistrationPending, CreatedAtUtc se rejuvenece (para que el sweeper no lo tumbe de nuevo), emite token nuevo y publica el email. Fail-closed si el onboarding no esta en Expired (si esta en RegistrationPending usar /resend-registration-email) o si no hay pago. Audita como auth.onboarding_admin.reactivated."
+          },
+          "response": []
         }
       ]
     },

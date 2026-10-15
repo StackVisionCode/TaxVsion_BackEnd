@@ -76,10 +76,11 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.NotNull(tokenReferences.Stored);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
-        // Carril pagado: el email "completa tu oficina" se DIFIERE (el redirect in-session ya lleva al
-        // formulario). No sale ahora ni se marca enviado; lo publica el sweeper si el comprador no termina.
-        Assert.DoesNotContain(bus.Published, p => p is OnboardingRegistrationReadyIntegrationEvent);
-        Assert.Null(onboarding.RegistrationEmailSentAtUtc);
+        // OBF-2.3: el email "completa tu oficina" sale INMEDIATO al liquidar el pago (antes se difería
+        // 45 min al scheduler y cualquier falla intermedia dejaba huérfano al comprador). El evento se
+        // publica una sola vez por aggregate (gate RegistrationEmailSentAtUtc) para no duplicar envíos.
+        Assert.Contains(bus.Published, p => p is OnboardingRegistrationReadyIntegrationEvent);
+        Assert.NotNull(onboarding.RegistrationEmailSentAtUtc);
 
         var finalize = Assert.IsType<OnboardingFinalizeCommand>(
             bus.Published.Single(p => p is OnboardingFinalizeCommand)

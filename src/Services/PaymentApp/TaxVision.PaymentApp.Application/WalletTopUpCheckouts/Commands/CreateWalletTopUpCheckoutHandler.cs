@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Platform;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
@@ -30,11 +31,26 @@ public static class CreateWalletTopUpCheckoutHandler
         IUnitOfWork unitOfWork,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
+        IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         CancellationToken ct
     )
     {
+        // SEC-M1.C: ver CreateSeatsCheckoutHandler — firma HMAC local, fail-closed sólo en mismatch.
+        var verify = intentVerifier.Verify(
+            new PurchaseIntentAmountInput(
+                command.TenantId,
+                PurchaseIntentKind.WalletTopUp,
+                command.TopUpId,
+                command.AmountCents,
+                command.Currency
+            ),
+            command.AmountSignature
+        );
+        if (verify.IsFailure)
+            return Result.Failure<WalletTopUpCheckoutResponse>(verify.Error);
+
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,
             command.PayerEmail,

@@ -324,7 +324,7 @@ internal static class EmbeddedDocumentTemplates
               <tr>
                 <td>
                   <div class="item-name">{{ receipt.description }}</div>
-                  <div class="item-desc">{{ receipt.issuer.name }} subscription</div>
+                  <div class="item-desc">{% if receipt.secondaryDescription != "" %}{{ receipt.secondaryDescription }}{% else %}{{ receipt.issuer.name }} subscription{% endif %}</div>
                 </td>
                 <td class="num">{% if receipt.quantity != "" %}{{ receipt.quantity }}{% else %}1{% endif %}</td>
                 <td class="num">{% if receipt.unitPrice != "" %}{{ receipt.unitPrice }} {{ receipt.currency }}{% else %}{{ receipt.price }} {{ receipt.currency }}{% endif %}</td>

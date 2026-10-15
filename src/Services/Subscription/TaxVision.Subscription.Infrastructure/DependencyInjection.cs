@@ -1,6 +1,7 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -101,6 +102,10 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+
+        // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
+        // PurchaseIntentAmountSignature__Secret (misma en Subscription y PaymentApp).
+        services.AddPurchaseIntentAmountSigning(configuration);
 
         // Seats Fase 5 — M2M contra PaymentApp para crear el hosted-checkout de una compra de asientos
         // (tenant sin método en archivo). Reusa el service-token acquirer de arriba.

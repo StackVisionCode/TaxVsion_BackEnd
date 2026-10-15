@@ -50,9 +50,14 @@ public static class ReconcileOnboardingPaymentHandler
             ct
         );
 
-        // Camino por referencia (más expuesta que la cookie): no devolvemos ni la registrationUrl ni el email.
+        // OBF-2.4: camino por referencia (sin cookie) también devuelve la registrationUrl para que el
+        // landing redirija al formulario — antes forzaba null y el fallback mentía con "we sent you an
+        // email" dejando al cliente huérfano cuando volvía desde otro dispositivo. Threat model no cambia:
+        // el token raw de la URL ya va por email al mismo comprador; el reference ?r= requiere Redis vivo
+        // igual que el token. El PayerEmail SÍ se sigue ocultando — es dato personal que no corresponde
+        // devolver cuando sólo autentica un reference, no una sesión del titular.
         return result.IsSuccess && !command.IncludeRegistrationUrl
-            ? Result.Success(result.Value with { RegistrationUrl = null, PayerEmail = null })
+            ? Result.Success(result.Value with { PayerEmail = null })
             : result;
     }
 

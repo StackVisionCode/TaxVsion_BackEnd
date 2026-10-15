@@ -54,7 +54,8 @@ public static class SaaSPaymentSucceededReceiptConsumer
                         evt.PaidAtUtc,
                         evt.ProviderReferenceMask,
                         evt.Quantity,
-                        evt.UnitAmountCents
+                        evt.UnitAmountCents,
+                        SecondaryDescriptionOf(evt.PaymentType)
                     )
                 ),
                 ct
@@ -86,6 +87,20 @@ public static class SaaSPaymentSucceededReceiptConsumer
             "AddOnRenewal" => "Add-on renewal",
             "AddOnPurchaseCharge" => "Add-on",
             "PlanChangeCharge" or "PlanChangeCheckout" => "Plan upgrade",
+            "WalletTopUp" => "Wallet top-up",
             _ => paymentType,
+        };
+
+    /// <summary>Línea secundaria del recibo — contextualiza qué compró el tenant más allá del "concepto".
+    /// Vacía para renovaciones y planes, donde la plantilla ya cae al default "{{ issuer.name }} subscription"
+    /// (el pago está asociado a la suscripción como tal).</summary>
+    private static string? SecondaryDescriptionOf(string paymentType) =>
+        paymentType switch
+        {
+            "SeatsPurchaseCharge" => "Additional seats for your subscription",
+            "AddOnPurchaseCharge" => "Add-on for your subscription",
+            "WalletTopUp" => "Prepaid wallet credit",
+            "PlanChangeCharge" or "PlanChangeCheckout" => "Plan upgrade charge",
+            _ => null,
         };
 }

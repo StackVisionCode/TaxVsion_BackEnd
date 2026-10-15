@@ -271,6 +271,9 @@ jobs:
           # vacio en docker-compose.yml, asi que ese M2M quedaba sin autenticar.
           PAYMENTAPP_SUBSCRIPTION_CLIENT_ID=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_ID }}
           PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET }}
+          PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET=${{ secrets.PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET }}
+          PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET=${{ secrets.PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET }}
+          PURCHASE_INTENT_AMOUNT_SIGNATURE_REJECT_UNSIGNED=${{ secrets.PURCHASE_INTENT_AMOUNT_SIGNATURE_REJECT_UNSIGNED }}
           # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos (ServiceAuth__Clients__15-19
           # en docker-compose.yml), uno por servicio que antes solo RECIBIA llamadas M2M, solo
           # para leer el catalogo de PlanRateLimits de Subscription.
@@ -363,6 +366,7 @@ jobs:
           PAYPAL_CLIENT_ID=${{ secrets.PAYPAL_CLIENT_ID }}
           PAYPAL_CLIENT_SECRET=${{ secrets.PAYPAL_CLIENT_SECRET }}
           PAYPAL_WEBHOOK_ID=${{ secrets.PAYPAL_WEBHOOK_ID }}
+          PAYPAL_OFFLINE_FALLBACK_ENABLED=${{ secrets.PAYPAL_OFFLINE_FALLBACK_ENABLED }}
           PAYPAL_ONBOARDING_ENABLED=${{ secrets.PAYPAL_ONBOARDING_ENABLED }}
           PAYPAL_ONBOARDING_DISABLED_REASON=${{ secrets.PAYPAL_ONBOARDING_DISABLED_REASON }}
           INTELLIPAY_MERCHANT_KEY=${{ secrets.INTELLIPAY_MERCHANT_KEY }}

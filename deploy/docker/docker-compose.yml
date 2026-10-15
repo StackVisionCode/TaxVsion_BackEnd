@@ -761,6 +761,9 @@ services:
       # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
       # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
       Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080
+      # SEC-M1.C — HMAC compartido con PaymentApp (y Wallet). MISMA secret en los 3 servicios.
+      PurchaseIntentAmountSignature__Secret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET:-}
+      PurchaseIntentAmountSignature__PreviousSecret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1404,6 +1407,9 @@ services:
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Recarga (money-IN) por checkout hosteado: M2M hacia PaymentApp para crear la sesión de pago (Stripe/PayPal).
       Wallet__PaymentApp__BaseUrl: http://payment-app-api:8080
+      # SEC-M1.C — HMAC compartido con PaymentApp (ver subscription-api).
+      PurchaseIntentAmountSignature__Secret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET:-}
+      PurchaseIntentAmountSignature__PreviousSecret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # A6 — gate de módulo (ver campaigns-api): lista literal; el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${WALLET_MODULE_GATE_ENFORCE:-false}
@@ -1855,6 +1861,10 @@ services:
       PayPal__ClientId: ${PAYPAL_CLIENT_ID:-}
       PayPal__ClientSecret: ${PAYPAL_CLIENT_SECRET:-}
       PayPal__WebhookId: ${PAYPAL_WEBHOOK_ID:-}
+      # SEC-L2 — fallback offline cuando v1/notifications/verify-webhook-signature de PayPal cae.
+      # OFF por defecto; se enciende cuando el operador confirma los hosts reales que PayPal usa
+      # en PAYPAL-CERT-URL (ver PayPalOfflineFallbackOptions.AllowedCertHosts).
+      PayPal__OfflineFallback__Enabled: ${PAYPAL_OFFLINE_FALLBACK_ENABLED:-false}
       PaymentMethods__Onboarding__0__Provider: Stripe
       PaymentMethods__Onboarding__0__Method: Card
       PaymentMethods__Onboarding__0__DisplayName: Card
@@ -1879,6 +1889,11 @@ services:
       ServiceAuthClient__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
       ServiceAuthClient__ClientSecret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # SEC-M1.C — HMAC compartido con Subscription y Wallet. RejectUnsigned pasa a true en prod
+      # después de que ambos emisores (Subscription + Wallet) estén desplegados firmando.
+      PurchaseIntentAmountSignature__Secret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET:-}
+      PurchaseIntentAmountSignature__PreviousSecret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET:-}
+      PurchaseIntentAmountSignature__RejectUnsigned: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_REJECT_UNSIGNED:-false}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs

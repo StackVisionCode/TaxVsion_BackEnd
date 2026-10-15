@@ -474,7 +474,24 @@ public sealed class PayPalPaymentAdapterTests
             }
         );
 
-        return new PayPalPaymentAdapter(gateway, NullLogger<PayPalPaymentAdapter>.Instance);
+        // SEC-L2: el fallback offline queda apagado en los tests existentes del adapter — su propio
+        // suite (PayPalOfflineWebhookVerifierTests) cubre su camino.
+        var offlineOptions = Microsoft.Extensions.Options.Options.Create(
+            new PayPalOfflineFallbackOptions { Enabled = false }
+        );
+        var offlineHttp = new HttpClient(new NoopHttpMessageHandler());
+        var offline = new PayPalOfflineWebhookVerifier(
+            offlineHttp,
+            offlineOptions,
+            NullLogger<PayPalOfflineWebhookVerifier>.Instance
+        );
+        return new PayPalPaymentAdapter(gateway, offline, NullLogger<PayPalPaymentAdapter>.Instance);
+    }
+
+    private sealed class NoopHttpMessageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
     }
 
     private static PayPalGateway CreateGateway(CapturingHttpMessageHandler handler, PayPalOptions options)

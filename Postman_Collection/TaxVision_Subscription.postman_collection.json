@@ -1954,6 +1954,202 @@
             "description": "PayFlow Fase 16 — M2M interno. Llamado por PaymentApp al crear el Stripe Checkout Session del onboarding pagado, para resolver el precio real del plan server-side en vez de confiar en un monto enviado por el frontend (cierre del gap de price-trust, ver README §42). Respuesta 200: InternalPlanPricingResponse(planId, monthlyPriceCents, currency) — ej. {\"planId\": \"44444444-...\", \"monthlyPriceCents\": 4900, \"currency\": \"USD\"}."
           },
           "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount — plan-change (M2M, SEC-M1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M (payment-app-subscription), mismo que GetPlanPricing."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/plan-change/{{planChangeRequestId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "plan-change",
+                "{{planChangeRequestId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 — M2M interno. Llamado por PaymentApp (CreatePlanChangeCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ChargeAmountCents congelado en el PlanChangeRequest. Si el service-token M2M se compromete y manda otro amount, el handler rechaza antes de llegar al provider. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es AwaitingPayment."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - seats (M2M, SEC-M1.b)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/seats/{{seatPurchaseIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "seats",
+                "{{seatPurchaseIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateSeatsCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - add-on (M2M, SEC-M1.c)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/add-on/{{addOnPurchaseIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "add-on",
+                "{{addOnPurchaseIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateAddOnCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - renewal (M2M, SEC-M1.d)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/renewal/{{renewalIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "renewal",
+                "{{renewalIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateSubscriptionRenewalCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
+          },
+          "response": []
         }
       ]
     },

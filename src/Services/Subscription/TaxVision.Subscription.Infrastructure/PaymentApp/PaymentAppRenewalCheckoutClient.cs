@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
@@ -17,6 +18,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 internal sealed class PaymentAppRenewalCheckoutClient(
     HttpClient httpClient,
     IGrowthServiceTokenAcquirer tokenAcquirer,
+    IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppRenewalCheckoutClient> logger
 ) : IRenewalCheckoutPaymentClient
 {
@@ -41,6 +43,17 @@ internal sealed class PaymentAppRenewalCheckoutClient(
                 )
             );
 
+        // SEC-M1.C: ver PaymentAppSeatCheckoutClient — firma HMAC verificable localmente.
+        var amountSignature = amountSigner.Sign(
+            new PurchaseIntentAmountInput(
+                request.TenantId,
+                PurchaseIntentKind.SubscriptionRenewal,
+                request.RenewalIntentId,
+                request.AmountCents,
+                request.Currency
+            )
+        );
+
         try
         {
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/subscription-renewal/checkout")
@@ -58,6 +71,7 @@ internal sealed class PaymentAppRenewalCheckoutClient(
                         idempotencyKey = request.IdempotencyKey,
                         provider = request.Provider,
                         method = request.Method,
+                        amountSignature,
                     },
                     options: Json
                 ),

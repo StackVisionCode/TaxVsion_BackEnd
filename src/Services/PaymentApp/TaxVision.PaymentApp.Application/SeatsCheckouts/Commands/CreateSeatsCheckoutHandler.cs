@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Platform;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
@@ -28,11 +29,29 @@ public static class CreateSeatsCheckoutHandler
         IUnitOfWork unitOfWork,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
+        IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         CancellationToken ct
     )
     {
+        // SEC-M1.C: la firma HMAC viene en el body M2M (emitida por Subscription con su secret). PaymentApp
+        // la verifica localmente — sin round-trip al servicio dueño, sin TX visibility issue — para rechazar
+        // amount tampering si el token M2M del caller se compromete. Fail-closed sólo en mismatch; firma
+        // ausente pasa con warning hasta que RejectUnsigned=true.
+        var verify = intentVerifier.Verify(
+            new PurchaseIntentAmountInput(
+                command.TenantId,
+                PurchaseIntentKind.Seats,
+                command.SeatPurchaseIntentId,
+                command.AmountCents,
+                command.Currency
+            ),
+            command.AmountSignature
+        );
+        if (verify.IsFailure)
+            return Result.Failure<SeatsCheckoutResponse>(verify.Error);
+
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,
             command.PayerEmail,

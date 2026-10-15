@@ -37,6 +37,45 @@ public sealed class TenantOnboardingTests
     }
 
     [Fact]
+    public void AdminRegenerateRegistrationToken_rescues_an_expired_onboarding_that_already_paid()
+    {
+        var onboarding = AtRegistrationPending();
+        onboarding.MarkRegistrationEmailSent(Now);
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.Expired, onboarding.Status);
+
+        var newHash = RegistrationTokenHash.Create(new string('b', 64)).Value;
+        var newReference = Guid.NewGuid();
+        var later = Now.AddHours(24);
+
+        var result = onboarding.AdminRegenerateRegistrationToken(newHash, later.AddDays(7), newReference, later);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.RegistrationPending, onboarding.Status);
+        Assert.Equal(newHash.Value, onboarding.RegistrationTokenHash);
+        Assert.Equal(newReference, onboarding.RegistrationTokenReference);
+        Assert.Null(onboarding.RegistrationEmailSentAtUtc); // limpio para que el publish siguiente pueda marcar
+        Assert.Null(onboarding.RegistrationTokenUsedAtUtc);
+        Assert.Equal(later, onboarding.CreatedAtUtc); // rejuvenecido, el sweeper ya no lo tumba
+    }
+
+    [Fact]
+    public void AdminRegenerateRegistrationToken_fails_when_the_onboarding_never_paid()
+    {
+        var onboarding = Valid(); // Status = PendingPayment, sin pago
+
+        var result = onboarding.AdminRegenerateRegistrationToken(
+            ValidHash(),
+            Now.AddDays(7),
+            Guid.NewGuid(),
+            Now.AddHours(1)
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.NoPayment", result.Error.Code);
+    }
+
+    [Fact]
     public void MarkRegistrationEmailSent_stamps_the_timestamp_and_is_idempotent()
     {
         var onboarding = AtRegistrationPending();

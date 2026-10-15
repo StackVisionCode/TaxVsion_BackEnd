@@ -9,7 +9,11 @@ using TaxVision.PaymentApp.Domain.ValueObjects;
 namespace TaxVision.PaymentApp.Infrastructure.Providers.PayPal;
 
 [PaymentProvider(PaymentProviderCode.PayPal)]
-public sealed class PayPalPaymentAdapter(PayPalGateway gateway, ILogger<PayPalPaymentAdapter> logger) : IPaymentProvider
+public sealed class PayPalPaymentAdapter(
+    PayPalGateway gateway,
+    PayPalOfflineWebhookVerifier offlineVerifier,
+    ILogger<PayPalPaymentAdapter> logger
+) : IPaymentProvider
 {
     public PaymentProviderCode Code => PaymentProviderCode.PayPal;
     public ProviderCapabilities Capabilities => PayPalCapabilities.Instance;
@@ -316,26 +320,53 @@ public sealed class PayPalPaymentAdapter(PayPalGateway gateway, ILogger<PayPalPa
             return Result.Failure<WebhookVerificationResult>(requiredHeaders.Error);
 
         var headers = requiredHeaders.Value;
-        var verification = await gateway.VerifyWebhookSignatureAsync(
-            new PayPalVerifyWebhookSignatureRequest(
-                AuthAlgo: headers.AuthAlgo,
-                CertUrl: headers.CertUrl,
-                TransmissionId: headers.TransmissionId,
-                TransmissionSignature: headers.TransmissionSignature,
-                TransmissionTime: headers.TransmissionTime,
-                WebhookId: request.WebhookId,
-                RawPayload: request.RawPayload
-            ),
-            ct
+        var payload = new PayPalVerifyWebhookSignatureRequest(
+            AuthAlgo: headers.AuthAlgo,
+            CertUrl: headers.CertUrl,
+            TransmissionId: headers.TransmissionId,
+            TransmissionSignature: headers.TransmissionSignature,
+            TransmissionTime: headers.TransmissionTime,
+            WebhookId: request.WebhookId,
+            RawPayload: request.RawPayload
         );
 
-        if (verification.IsFailure)
-            return Result.Failure<WebhookVerificationResult>(verification.Error);
+        var verification = await gateway.VerifyWebhookSignatureAsync(payload, ct);
 
-        if (!verification.Value.IsValid)
+        // SEC-L2: si el online cayó o devolvió 5xx (errores transitorios del lado de PayPal), caemos a
+        // la verificación offline con el cert público para no bloquear la cola de webhooks durante el
+        // outage. Mismatch de firma (IsValid=false del online) NO cuenta como transitorio: ese sigue
+        // siendo rechazo duro.
+        if (verification.IsFailure && IsTransientVerifyError(verification.Error))
+        {
+            logger.LogWarning(
+                "PayPal online webhook verify failed with transient error {Code}; trying offline fallback.",
+                verification.Error.Code
+            );
+            var offline = await offlineVerifier.VerifyAsync(payload, ct);
+            if (offline.IsFailure)
+                return Result.Failure<WebhookVerificationResult>(verification.Error);
+            if (!offline.Value)
+                return Result.Failure<WebhookVerificationResult>(
+                    new Error(
+                        "PayPal.WebhookSignature.Invalid",
+                        "PayPal webhook signature verification failed (offline)."
+                    )
+                );
+            logger.LogInformation(
+                "PayPal webhook verified via offline fallback for transmission {TransmissionId}.",
+                headers.TransmissionId
+            );
+        }
+        else if (verification.IsFailure)
+        {
+            return Result.Failure<WebhookVerificationResult>(verification.Error);
+        }
+        else if (!verification.Value.IsValid)
+        {
             return Result.Failure<WebhookVerificationResult>(
                 new Error("PayPal.WebhookSignature.Invalid", "PayPal webhook signature verification failed.")
             );
+        }
 
         using var document = JsonDocument.Parse(request.RawPayload);
         var root = document.RootElement;
@@ -487,4 +518,13 @@ public sealed class PayPalPaymentAdapter(PayPalGateway gateway, ILogger<PayPalPa
         string TransmissionSignature,
         string TransmissionTime
     );
+
+    // SEC-L2 — errores transitorios del call online de PayPal que justifican intentar el fallback
+    // offline. Un IsValid=false del online NO entra acá: eso es rechazo intencional.
+    private static bool IsTransientVerifyError(Error error) =>
+        error.Code
+            is "PayPal.WebhookSignature.VerificationFailed"
+                or "PayPal.WebhookSignature.EmptyResponse"
+                or "PayPal.AuthenticationFailed"
+                or "PayPal.AuthenticationEmptyResponse";
 }

@@ -137,6 +137,19 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
         return Task.FromResult(ExpiredPending);
     }
 
+    public IReadOnlyList<TenantOnboarding> Orphans { get; set; } = [];
+    public DateTime? LastOrphanCutoffUtc { get; private set; }
+
+    public Task<IReadOnlyList<TenantOnboarding>> GetOrphansAsync(
+        DateTime paidBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
+    {
+        LastOrphanCutoffUtc = paidBeforeUtc;
+        return Task.FromResult(Orphans);
+    }
+
     public Task<(IReadOnlyList<TenantOnboarding> Items, int TotalCount)> GetPagedAdminAsync(
         TenantOnboardingStatus? status,
         int page,

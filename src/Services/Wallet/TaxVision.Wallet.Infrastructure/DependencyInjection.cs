@@ -2,6 +2,7 @@ using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +49,10 @@ public static class DependencyInjection
             TaxVision.Wallet.Application.Reservations.Abstractions.IReservationRepository,
             Persistence.Repositories.ReservationRepository
         >();
+
+        // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
+        // PurchaseIntentAmountSignature__Secret (misma en Wallet y PaymentApp).
+        services.AddPurchaseIntentAmountSigning(configuration);
 
         // Recarga (money-IN) por checkout HOSTEADO: cliente M2M hacia PaymentApp (crea la sesión de pago en
         // Stripe/PayPal; nunca se guarda tarjeta). Reusa el IServiceTokenAcquirer de abajo (actor_type=Service).

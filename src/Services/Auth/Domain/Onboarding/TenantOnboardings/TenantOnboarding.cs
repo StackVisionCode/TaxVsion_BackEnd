@@ -336,6 +336,44 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>OBF-3.1 — rescate admin de un onboarding huérfano. Reemite el token (nueva referencia Redis
+    /// + nuevo hash + nueva expiración), limpia la marca de email enviado para que el nuevo publish pueda
+    /// correr, y rejuvenece <c>CreatedAtUtc</c> al momento del rescate: así el sweeper de expiración no lo
+    /// vuelve a mandar a Expired antes de que el cliente alcance a usar el link. Solo aplica cuando hubo
+    /// pago cobrado — fail-closed si no hay <c>PaymentCompletedAtUtc</c>, porque sin dinero no hay nada
+    /// que rescatar.</summary>
+    public Result AdminRegenerateRegistrationToken(
+        RegistrationTokenHash hash,
+        DateTime expiresAtUtc,
+        Guid tokenReference,
+        DateTime nowUtc
+    )
+    {
+        if (PaymentCompletedAtUtc is null)
+            return Result.Failure(
+                new Error("Onboarding.NoPayment", "Cannot regenerate the registration token without a settled payment.")
+            );
+
+        if (
+            Status
+            is not (
+                TenantOnboardingStatus.PaymentCompleted
+                or TenantOnboardingStatus.RegistrationPending
+                or TenantOnboardingStatus.Expired
+            )
+        )
+            return Result.Failure(InvalidTransition());
+
+        RegistrationTokenHash = hash.Value;
+        RegistrationTokenReference = tokenReference;
+        RegistrationTokenExpiresAtUtc = expiresAtUtc;
+        RegistrationTokenUsedAtUtc = null;
+        RegistrationEmailSentAtUtc = null;
+        Status = TenantOnboardingStatus.RegistrationPending;
+        CreatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     /// <summary>Marca el email "completa tu oficina" como enviado (envío inmediato del carril $0, o
     /// publicación del sweeper). Idempotente: un segundo intento es no-op exitoso. Requiere que el
     /// token de registro ya exista — nunca se marca antes del pago liquidado.</summary>

@@ -31,7 +31,9 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
         string CancelUrl,
         string IdempotencyKey,
         PaymentProviderCode? Provider = null,
-        PaymentMethodKind? Method = null
+        PaymentMethodKind? Method = null,
+        /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
+        string? AmountSignature = null
     );
 
     [HttpPost("checkout")]
@@ -50,7 +52,8 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
                 request.CancelUrl,
                 request.IdempotencyKey,
                 request.Provider ?? PaymentProviderCode.Stripe,
-                request.Method ?? PaymentMethodKind.Card
+                request.Method ?? PaymentMethodKind.Card,
+                request.AmountSignature
             ),
             ct
         );

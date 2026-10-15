@@ -122,6 +122,12 @@ builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingExpir
 );
 builder.Services.AddHostedService<OnboardingExpirationJob>();
 
+// OBF-2.7 — orphan detector: pagados sin office-setup después de 24h → evento alerta/metrica.
+builder.Services.Configure<TaxVision.Auth.Application.Onboarding.OnboardingOrphanDetectorOptions>(
+    builder.Configuration.GetSection(TaxVision.Auth.Application.Onboarding.OnboardingOrphanDetectorOptions.SectionName)
+);
+builder.Services.AddHostedService<OnboardingOrphanDetectorJob>();
+
 // Contexto de request (IP/user-agent) para auditoría y sesiones.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRequestContext, RequestContext>();
@@ -540,6 +546,7 @@ builder.Host.UseWolverine(options =>
     // antipatrón que documenta el comentario de TenantSubdomainChangedIntegrationEvent arriba.
     options.PublishMessage<OnboardingRefundRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingCancelRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingOrphanDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Auditoría (gap MinIO/legal-docs) — pedido de guardado a CloudStorage para el documento legal
     // (ToS/Privacy) que PlatformAdmin sube (TermsContentStorageClient). Sin este registro, igual que
     // TenantSubdomainChangedIntegrationEvent/OnboardingRefundRequestedIntegrationEvent arriba, Wolverine

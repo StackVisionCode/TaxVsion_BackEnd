@@ -165,6 +165,25 @@ public sealed class OnboardingCheckoutController(
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>OBF-2.5 — resend end-user del email "completa tu oficina" para el fallback del landing
+    /// cuando el cliente volvió desde otro dispositivo y no vio el link al liquidar el pago. Autenticado
+    /// por reference (mismo primitive del resume) + rate limit nativo + cooldown de 60s por aggregate.</summary>
+    [HttpPost("resume/{reference}/resend-registration-email")]
+    [AllowAnonymous]
+    [EnableRateLimiting("onboarding-status")]
+    [RateLimitExempt("Anonymous resend end-user: usa el limiter nativo por reference+IP.")]
+    public async Task<IActionResult> ResendRegistrationEmailPublic(string reference, CancellationToken ct)
+    {
+        if (await returnReferences.ResolveAsync(reference, ct) is not { } onboardingId)
+            return StatusCode(
+                StatusCodes.Status410Gone,
+                new Error("Onboarding.ResumeReferenceExpired", "The retry link has expired. Please start again.")
+            );
+
+        var result = await bus.InvokeAsync<Result>(new ResendRegistrationEmailPublicCommand(onboardingId), ct);
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record CancelOnboardingRequest(string? Reason = null);
 
     public sealed record ReconcilePaymentRequest(string? Reference = null);

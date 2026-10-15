@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
@@ -18,6 +19,7 @@ namespace TaxVision.Wallet.Infrastructure.PaymentApp;
 internal sealed class WalletTopUpCheckoutClient(
     HttpClient httpClient,
     IServiceTokenAcquirer tokenAcquirer,
+    IPurchaseIntentAmountSigner amountSigner,
     ILogger<WalletTopUpCheckoutClient> logger
 ) : IWalletTopUpCheckoutClient
 {
@@ -42,6 +44,17 @@ internal sealed class WalletTopUpCheckoutClient(
                 )
             );
 
+        // SEC-M1.C: ver PaymentAppSeatCheckoutClient de Subscription — firma HMAC verificable localmente.
+        var amountSignature = amountSigner.Sign(
+            new PurchaseIntentAmountInput(
+                request.TenantId,
+                PurchaseIntentKind.WalletTopUp,
+                request.TopUpId,
+                request.AmountCents,
+                request.Currency
+            )
+        );
+
         try
         {
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/wallet/top-ups/checkout")
@@ -59,6 +72,7 @@ internal sealed class WalletTopUpCheckoutClient(
                         idempotencyKey = request.IdempotencyKey,
                         provider = request.Provider,
                         method = request.Method,
+                        amountSignature,
                     },
                     options: Json
                 ),
