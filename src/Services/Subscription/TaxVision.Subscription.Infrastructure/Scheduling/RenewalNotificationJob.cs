@@ -22,7 +22,9 @@ public sealed class RenewalNotificationJob(
     ILogger<RenewalNotificationJob> logger
 ) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(24), TimeSpan.FromHours(1))
 {
-    private static readonly int[] NotifyThresholdDays = [7, 3, 1];
+    // Dos avisos pre-vencimiento: una semana para que el admin reaccione, un día antes como última llamada.
+    // Tres sería ruido y el banner en la UI ya cubre los días intermedios.
+    private static readonly int[] NotifyThresholdDays = [7, 1];
     private const int BatchSize = 500;
 
     protected override string JobName => "renewal-notification";

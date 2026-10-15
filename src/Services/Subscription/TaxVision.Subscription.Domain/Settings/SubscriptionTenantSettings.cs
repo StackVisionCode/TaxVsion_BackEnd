@@ -20,8 +20,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     public int? MaxSeatsAllowed { get; private set; }
     public int MinSeatsRequired { get; private set; }
     public int DefaultSeatRenewalDays { get; private set; } = 30;
-    public GracePeriod TenantSubscriptionGracePeriod { get; private set; } = null!;
-    public GracePeriod SeatGracePeriod { get; private set; } = null!;
     public bool AllowSeatReassignment { get; private set; } = true;
     public int SeatReassignmentCooldownDays { get; private set; }
     public bool AllowAddons { get; private set; } = true;
@@ -49,13 +47,10 @@ public sealed class SubscriptionTenantSettings : TenantEntity
                 new Error("SubscriptionSettings.InvalidTenant", "TenantId is required.")
             );
 
-        var gracePeriodResult = GracePeriod.Create(7);
         var trialDaysResult = TrialDays.Create(14);
 
         var settings = new SubscriptionTenantSettings
         {
-            TenantSubscriptionGracePeriod = gracePeriodResult.Value,
-            SeatGracePeriod = gracePeriodResult.Value,
             TrialDays = trialDaysResult.Value,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
@@ -159,12 +154,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
 
         if (patch.DefaultSeatRenewalDays is { } seatRenewalDays)
             DefaultSeatRenewalDays = seatRenewalDays;
-
-        if (patch.TenantSubscriptionGracePeriod is { } tenantGrace)
-            TenantSubscriptionGracePeriod = tenantGrace;
-
-        if (patch.SeatGracePeriod is { } seatGrace)
-            SeatGracePeriod = seatGrace;
 
         if (patch.AllowSeatReassignment is { } allowReassignment)
             AllowSeatReassignment = allowReassignment;

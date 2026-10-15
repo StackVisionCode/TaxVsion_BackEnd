@@ -35,6 +35,23 @@ public sealed class AddOnPurchaseIntentRepository(SubscriptionDbContext db) : IA
             .OrderByDescending(intent => intent.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
 
+    // Todas las abiertas del tenant: la vista del Account las lista aunque el navegador haya perdido la referencia.
+    public async Task<IReadOnlyList<AddOnPurchaseIntent>> ListOpenByTenantAsync(
+        Guid tenantId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .AddOnPurchaseIntents.IgnoreQueryFilters()
+            .Where(intent =>
+                intent.TenantId == tenantId
+                && intent.Status == AddOnPurchaseIntentStatus.Pending
+                && intent.CheckoutUrl != null
+                && intent.CheckoutExpiresAtUtc > nowUtc
+            )
+            .OrderBy(intent => intent.CreatedAtUtc)
+            .ToListAsync(ct);
+
     // Trackeado y sin filtro de tenant: el consumer del webhook llega por Id de evento y valida el TenantId.
     public Task<AddOnPurchaseIntent?> GetByIdForProvisioningAsync(Guid intentId, CancellationToken ct = default) =>
         db.AddOnPurchaseIntents.IgnoreQueryFilters().FirstOrDefaultAsync(intent => intent.Id == intentId, ct);

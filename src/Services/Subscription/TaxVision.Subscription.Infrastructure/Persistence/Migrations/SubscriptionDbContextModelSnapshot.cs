@@ -191,6 +191,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
@@ -205,6 +215,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
@@ -290,9 +303,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ExpiredAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("GracePeriodEndsAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("NextRenewalAtUtc")
@@ -466,6 +476,122 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_SubscriptionAuditLogs_TenantId_OccurredAtUtc");
 
                     b.ToTable("SubscriptionAuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Billing.TenantBillingPreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChosenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ChosenByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantBillingPreferences_TenantId");
+
+                    b.ToTable("TenantBillingPreferences", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Billing.TenantPaymentMandate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("AcceptedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("AgreedAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AgreedCadence")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AgreedCurrency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("ConsentIpAddress")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ConsentText")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("ConsentTextVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ConsentUserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("TenantBillingPreferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantBillingPreferenceId");
+
+                    b.HasIndex("TenantId", "IsRevoked")
+                        .HasDatabaseName("IX_TenantPaymentMandates_Tenant_IsRevoked");
+
+                    b.ToTable("TenantPaymentMandates", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Entitlements.TenantEntitlementSnapshot", b =>
@@ -1099,6 +1225,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1113,6 +1249,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
@@ -1198,9 +1337,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("ExpiredAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("GracePeriodEndsAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("NextRenewalAtUtc")
@@ -1425,10 +1561,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PauseSeatRenewalsWhenBaseSuspended")
                         .HasColumnType("bit");
 
-                    b.Property<int>("SeatGracePeriod")
-                        .HasColumnType("int")
-                        .HasColumnName("SeatGraceDays");
-
                     b.Property<int>("SeatReassignmentCooldownDays")
                         .HasColumnType("int");
 
@@ -1440,10 +1572,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("TenantSubscriptionGracePeriod")
-                        .HasColumnType("int")
-                        .HasColumnName("TenantSubscriptionGraceDays");
 
                     b.Property<int>("TrialDays")
                         .HasColumnType("int")
@@ -1546,6 +1674,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("AppliedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<long>("ChargeAmountCents")
                         .HasColumnType("bigint");
 
@@ -1560,6 +1698,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<string>("CheckoutUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("FailedAtUtc")
                         .HasColumnType("datetime2");
@@ -1637,6 +1778,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1651,6 +1802,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
@@ -1722,9 +1876,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ExpiredAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("GracePeriodEndsAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("NextRenewalAtUtc")
@@ -1991,6 +2142,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Billing.TenantPaymentMandate", b =>
+                {
+                    b.HasOne("TaxVision.Subscription.Domain.Billing.TenantBillingPreference", null)
+                        .WithMany("Mandates")
+                        .HasForeignKey("TenantBillingPreferenceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Plans.PlanEntitlementDefinition", b =>
                 {
                     b.HasOne("TaxVision.Subscription.Domain.Plans.SubscriptionPlanVersion", null)
@@ -2222,6 +2382,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Subscription.Domain.AddOns.TenantAddOn", b =>
                 {
                     b.Navigation("Renewals");
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Billing.TenantBillingPreference", b =>
+                {
+                    b.Navigation("Mandates");
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Plans.SubscriptionPlan", b =>

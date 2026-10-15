@@ -254,6 +254,11 @@ public sealed class PaymentAppSchedulingTests
         public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<SaaSPayment?> GetByProviderCheckoutSessionIdAsync(
+            string providerSessionId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
             Guid tenantId,
             int page,

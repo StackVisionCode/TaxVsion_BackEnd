@@ -11,8 +11,8 @@ using Wolverine;
 namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 
 /// <summary>
-/// Cierra el flujo de renovación/reactivación self-service por HOSTED-CHECKOUT (Expiración/Dunning, Fase 4): al
-/// confirmarse el pago, REACTIVA la suscripción (PastDue/GracePeriod/Suspended/Expired → Active con período
+/// Cierra el flujo de renovación/reactivación self-service por HOSTED-CHECKOUT: al
+/// confirmarse el pago, REACTIVA la suscripción (PastDue/Suspended/Expired → Active con período
 /// nuevo) SIN volver a cobrar — el checkout ya cobró — y publica el <c>TenantSubscriptionStatusChanged</c> con
 /// motivo <see cref="SubscriptionChangeReason.SelfServiceRenewed"/> (Auth desbloquea acceso y manda el email de
 /// reactivación). Idempotente por el estado de la intención. Molde: <c>SeatsCheckoutPaidConsumer</c>.

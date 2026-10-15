@@ -22,7 +22,6 @@ public sealed class TenantAddOn : TenantEntity
     public DateTime CurrentPeriodStartUtc { get; private set; }
     public DateTime CurrentPeriodEndUtc { get; private set; }
     public DateTime? NextRenewalAtUtc { get; private set; }
-    public DateTime? GracePeriodEndsAtUtc { get; private set; }
     public bool AutoRenew { get; private set; }
     public Money UnitPrice { get; private set; } = null!;
     public DateTime PurchasedAtUtc { get; private set; }
@@ -124,28 +123,15 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success();
     }
 
-    public Result EnterGracePeriodAfterRetriesExhausted(DateTime graceEndsAtUtc, Guid actorUserId, DateTime nowUtc)
+    /// <summary>Al agotarse los reintentos (PastDue), se suspende de una.</summary>
+    public Result SuspendAfterRetriesExhausted(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnStatus.PastDue)
-            return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot enter grace period from {Status}."));
-
-        if (graceEndsAtUtc <= nowUtc)
-            return Result.Failure(new Error("AddOn.InvalidGracePeriod", "GraceEndsAtUtc must be in the future."));
-
-        Status = AddOnStatus.GracePeriod;
-        GracePeriodEndsAtUtc = graceEndsAtUtc;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    public Result SuspendBecauseGraceExpired(Guid actorUserId, DateTime nowUtc)
-    {
-        if (Status != AddOnStatus.GracePeriod)
             return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot suspend from {Status}."));
 
         Status = AddOnStatus.Suspended;
         SuspendedAtUtc = nowUtc;
-        SuspensionReason = "GraceExpired";
+        SuspensionReason = "RenewalFailed";
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -175,7 +161,7 @@ public sealed class TenantAddOn : TenantEntity
 
     public Result CancelActive(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue, AddOnStatus.GracePeriod))
+        if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue))
             return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot cancel from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -193,7 +179,7 @@ public sealed class TenantAddOn : TenantEntity
     /// la intención (lo dispara el sistema en el upgrade, no el usuario) — de ahí el método explícito.</summary>
     public Result SupersedeByPlan(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue, AddOnStatus.GracePeriod))
+        if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue))
             return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot supersede from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))

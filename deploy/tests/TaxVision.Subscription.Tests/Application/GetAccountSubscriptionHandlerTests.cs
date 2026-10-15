@@ -185,6 +185,7 @@ public sealed class GetAccountSubscriptionHandlerTests
             new FakeAddOnDefinitionRepository(),
             new FakeTenantAddOnRepo(),
             new FakeSeatPurchaseIntentRepository(),
+            new FakeAddOnPurchaseIntentRepository(),
             CancellationToken.None
         );
 
@@ -192,12 +193,116 @@ public sealed class GetAccountSubscriptionHandlerTests
         Assert.Equal("Subscription.NotFound", result.Error.Code);
     }
 
+    // Sin intenciones abiertas la lista es un array vacío, no null: el front siempre itera.
+    [Fact]
+    public async Task No_pending_add_on_checkouts_returns_an_empty_list()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+
+        var result = await HandleAsync(plan, subscription);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value.OpenAddOnCheckouts);
+        Assert.Empty(result.Value.OpenAddOnCheckouts);
+    }
+
+    // Dos add-ons distintos pueden estar en curso a la vez: ambas intenciones aparecen y en orden de creación.
+    [Fact]
+    public async Task Two_open_add_on_intents_appear_in_creation_order()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        var smsDef = ModuleAddOn("sms.addon", "sms", monthly: 29m);
+        var emailDef = ModuleAddOn("email.addon", "email", monthly: 29m);
+        var now = DateTime.UtcNow;
+        var older = OpenIntent(smsDef, totalCents: 1000, createdAt: now.AddMinutes(-10), expiresAt: now.AddHours(1));
+        var newer = OpenIntent(emailDef, totalCents: 2000, createdAt: now.AddMinutes(-1), expiresAt: now.AddHours(1));
+        var intents = new FakeAddOnPurchaseIntentRepository(newer, older);
+
+        var result = await HandleAsync(plan, subscription, addOns: [smsDef, emailDef], intents: intents);
+
+        Assert.True(result.IsSuccess);
+        Assert.Collection(
+            result.Value.OpenAddOnCheckouts,
+            first => Assert.Equal("sms.addon", first.AddOnCode),
+            second => Assert.Equal("email.addon", second.AddOnCode)
+        );
+        Assert.Equal("sms.addon", result.Value.OpenAddOnCheckouts[0].AddOnDisplayName);
+    }
+
+    // Una intención aprovisionada ya no está abierta, aunque viva en la misma tabla.
+    [Fact]
+    public async Task A_provisioned_intent_is_not_listed_as_open()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        var smsDef = ModuleAddOn("sms.addon", "sms", monthly: 29m);
+        var now = DateTime.UtcNow;
+        var open = OpenIntent(smsDef, totalCents: 1000, createdAt: now.AddMinutes(-5), expiresAt: now.AddHours(1));
+        var provisioned = OpenIntent(
+            smsDef,
+            totalCents: 1000,
+            createdAt: now.AddMinutes(-20),
+            expiresAt: now.AddHours(1)
+        );
+        Assert.True(provisioned.MarkPaid(now.AddMinutes(-10)).IsSuccess);
+        Assert.True(provisioned.MarkProvisioned(Guid.NewGuid(), now.AddMinutes(-10)).IsSuccess);
+        var intents = new FakeAddOnPurchaseIntentRepository(open, provisioned);
+
+        var result = await HandleAsync(plan, subscription, addOns: [smsDef], intents: intents);
+
+        var only = Assert.Single(result.Value.OpenAddOnCheckouts);
+        Assert.Equal(open.Id, only.IntentId);
+    }
+
+    // Una Pending con la sesión vencida es trabajo para el sweeper, no para la pantalla.
+    [Fact]
+    public async Task A_pending_intent_with_an_expired_checkout_is_not_listed()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        var smsDef = ModuleAddOn("sms.addon", "sms", monthly: 29m);
+        var now = DateTime.UtcNow;
+        var expired = OpenIntent(smsDef, totalCents: 1000, createdAt: now.AddHours(-2), expiresAt: now.AddMinutes(-5));
+        var intents = new FakeAddOnPurchaseIntentRepository(expired);
+
+        var result = await HandleAsync(plan, subscription, addOns: [smsDef], intents: intents);
+
+        Assert.Empty(result.Value.OpenAddOnCheckouts);
+    }
+
+    private static AddOnPurchaseIntent OpenIntent(
+        AddOnDefinition definition,
+        long totalCents,
+        DateTime createdAt,
+        DateTime expiresAt
+    )
+    {
+        var intent = AddOnPurchaseIntent
+            .Create(
+                TenantId,
+                definition,
+                quantity: 1,
+                autoRenew: true,
+                Money.Create(29m, "USD").Value,
+                BillingCycle.Monthly,
+                totalCents,
+                requestedByUserId: Guid.Empty,
+                nowUtc: createdAt
+            )
+            .Value;
+        intent.AttachCheckout(Guid.NewGuid(), "https://pay/x", expiresAt, createdAt);
+        return intent;
+    }
+
     private static Task<BuildingBlocks.Results.Result<AccountSubscriptionResponse>> HandleAsync(
         SubscriptionPlan plan,
         TenantSubscription subscription,
         AddOnDefinition[]? addOns = null,
         TenantAddOn[]? owned = null,
-        CapturingSeatRepo? seats = null
+        CapturingSeatRepo? seats = null,
+        FakeAddOnPurchaseIntentRepository? intents = null
     ) =>
         GetAccountSubscriptionHandler.Handle(
             new GetAccountSubscriptionQuery(TenantId),
@@ -207,6 +312,7 @@ public sealed class GetAccountSubscriptionHandlerTests
             new FakeAddOnDefinitionRepository(addOns ?? []),
             new FakeTenantAddOnRepo(owned ?? []),
             new FakeSeatPurchaseIntentRepository(),
+            intents ?? new FakeAddOnPurchaseIntentRepository(),
             CancellationToken.None
         );
 

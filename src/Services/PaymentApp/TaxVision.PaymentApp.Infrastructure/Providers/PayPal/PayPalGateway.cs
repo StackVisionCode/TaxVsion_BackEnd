@@ -359,39 +359,162 @@ public sealed class PayPalGateway(
             ? onboardingId
             : request.IdempotencyKey;
 
+        var experience = new
+        {
+            payment_method_preference = "IMMEDIATE_PAYMENT_REQUIRED",
+            landing_page = "LOGIN",
+            shipping_preference = "NO_SHIPPING",
+            user_action = "PAY_NOW",
+            return_url = request.ReturnUrl,
+            cancel_url = request.CancelUrl,
+        };
+
+        var purchaseUnits = new[]
+        {
+            new
+            {
+                reference_id = customId,
+                custom_id = customId,
+                description = request.Description,
+                amount = new { currency_code = request.CurrencyCode.ToUpperInvariant(), value = request.AmountValue },
+            },
+        };
+
+        // Vault v3: PayPal exige que el merchant pase customer.id para vincular el token al tenant;
+        // sin merchantCustomerId el VAULT.PAYMENT-TOKEN.CREATED no se puede atribuir y degradamos a
+        // sin-vault para no cobrar sin plan de guardado.
+        if (request.StoreInVault && !string.IsNullOrWhiteSpace(request.MerchantCustomerId))
+        {
+            return new
+            {
+                intent = "CAPTURE",
+                payment_source = new
+                {
+                    paypal = new
+                    {
+                        experience_context = experience,
+                        attributes = new
+                        {
+                            vault = new
+                            {
+                                store_in_vault = "ON_SUCCESS",
+                                usage_type = "MERCHANT",
+                                customer_type = "CONSUMER",
+                            },
+                            customer = new { id = request.MerchantCustomerId },
+                        },
+                    },
+                },
+                purchase_units = purchaseUnits,
+            };
+        }
+
         return new
         {
             intent = "CAPTURE",
-            payment_source = new
-            {
-                paypal = new
-                {
-                    experience_context = new
-                    {
-                        payment_method_preference = "IMMEDIATE_PAYMENT_REQUIRED",
-                        landing_page = "LOGIN",
-                        shipping_preference = "NO_SHIPPING",
-                        user_action = "PAY_NOW",
-                        return_url = request.ReturnUrl,
-                        cancel_url = request.CancelUrl,
-                    },
-                },
-            },
-            purchase_units = new[]
-            {
-                new
-                {
-                    reference_id = customId,
-                    custom_id = customId,
-                    description = request.Description,
-                    amount = new
-                    {
-                        currency_code = request.CurrencyCode.ToUpperInvariant(),
-                        value = request.AmountValue,
-                    },
-                },
-            },
+            payment_source = new { paypal = new { experience_context = experience } },
+            purchase_units = purchaseUnits,
         };
+    }
+
+    public async Task<Result<PayPalChargeWithTokenResult>> ChargeWithPaymentTokenAsync(
+        PayPalChargeWithTokenRequest request,
+        CancellationToken ct
+    )
+    {
+        var tokenResult = await GetAccessTokenAsync(ct);
+        if (tokenResult.IsFailure)
+            return Result.Failure<PayPalChargeWithTokenResult>(tokenResult.Error);
+
+        using var create = new HttpRequestMessage(HttpMethod.Post, "v2/checkout/orders");
+        create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Value.AccessToken);
+        create.Headers.TryAddWithoutValidation("PayPal-Request-Id", request.IdempotencyKey);
+        create.Headers.TryAddWithoutValidation("Prefer", "return=representation");
+        create.Content = JsonContent.Create(
+            new
+            {
+                intent = "CAPTURE",
+                payment_source = new { token = new { id = request.PaymentTokenId, type = "PAYMENT_METHOD_TOKEN" } },
+                purchase_units = new[]
+                {
+                    new
+                    {
+                        reference_id = request.CustomId ?? request.IdempotencyKey,
+                        custom_id = request.CustomId ?? request.IdempotencyKey,
+                        description = request.Description,
+                        amount = new
+                        {
+                            currency_code = request.CurrencyCode.ToUpperInvariant(),
+                            value = request.AmountValue,
+                        },
+                    },
+                },
+            },
+            options: JsonOptions
+        );
+
+        var createResponse = await SendAsync(create, "PayPal.OffSession.Unavailable", "create off-session order", ct);
+        if (createResponse.IsFailure)
+            return Result.Failure<PayPalChargeWithTokenResult>(createResponse.Error);
+
+        string createdOrderId;
+        using (var response = createResponse.Value)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                logger.LogWarning(
+                    "PayPal off-session create order returned HTTP {StatusCode}. Body={Body}",
+                    (int)response.StatusCode,
+                    TrimForLog(body)
+                );
+                return Result.Failure<PayPalChargeWithTokenResult>(
+                    new Error("PayPal.OffSession.CreateFailed", $"PayPal returned HTTP {(int)response.StatusCode}.")
+                );
+            }
+
+            var created = await ReadOrderStatusAsync(response, "PayPal.OffSession.EmptyResponse", ct);
+            if (created.IsFailure)
+                return Result.Failure<PayPalChargeWithTokenResult>(created.Error);
+
+            createdOrderId = created.Value.OrderId;
+            // El API-token flow puede crear la orden ya COMPLETED (sin requerir capture explícito);
+            // si vino con capture adentro, devolvemos sin segundo roundtrip.
+            if (!string.IsNullOrWhiteSpace(created.Value.CaptureId))
+                return Result.Success(
+                    new PayPalChargeWithTokenResult(
+                        created.Value.OrderId,
+                        created.Value.CaptureStatus ?? created.Value.OrderStatus,
+                        created.Value.CaptureId,
+                        created.Value.FailureReason
+                    )
+                );
+
+            // PayPal puede responder PAYER_ACTION_REQUIRED → el token requiere nueva autorización
+            // del payer (equivalente a SCA en Stripe). El caller lo mapea a RequiresUserAction.
+            if (string.Equals(created.Value.OrderStatus, "PAYER_ACTION_REQUIRED", StringComparison.OrdinalIgnoreCase))
+                return Result.Success(
+                    new PayPalChargeWithTokenResult(
+                        created.Value.OrderId,
+                        created.Value.OrderStatus,
+                        CaptureId: null,
+                        FailureReason: null
+                    )
+                );
+        }
+
+        var capture = await CaptureOrderAsync(createdOrderId, $"{request.IdempotencyKey}-capture", ct);
+        if (capture.IsFailure)
+            return Result.Failure<PayPalChargeWithTokenResult>(capture.Error);
+
+        return Result.Success(
+            new PayPalChargeWithTokenResult(
+                capture.Value.OrderId,
+                capture.Value.CaptureStatus ?? capture.Value.OrderStatus,
+                capture.Value.CaptureId,
+                capture.Value.FailureReason
+            )
+        );
     }
 
     private static object BuildRefundCapturePayload(PayPalRefundCaptureRequest request) =>

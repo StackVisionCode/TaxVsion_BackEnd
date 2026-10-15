@@ -12,17 +12,22 @@ namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 /// </summary>
 public static class SubscriptionLifecycleMetricsConsumer
 {
+    private static readonly HashSet<string> NonTransitionReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // A6 — anti-entropía re-anuncia el estado actual.
+        nameof(SubscriptionChangeReason.Reconciliation),
+        // Cobro recurrente / cambio de preferencia / mandate no mueven el estado base.
+        nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
+        nameof(SubscriptionChangeReason.RecurringChargeFailed),
+        nameof(SubscriptionChangeReason.BillingModeChanged),
+        nameof(SubscriptionChangeReason.MandateCreated),
+    };
+
     public static Task Handle(TenantSubscriptionStatusChangedIntegrationEvent evt, ISubscriptionMetrics metrics)
     {
-        // A6 — el re-anuncio del job de anti-entropía no es una transición: contarlo inventaría
-        // movimiento del ciclo de vida que no ocurrió y ensuciaría el tablero.
-        if (
-            string.Equals(
-                evt.Reason,
-                nameof(SubscriptionChangeReason.Reconciliation),
-                StringComparison.OrdinalIgnoreCase
-            )
-        )
+        // Contar estos motivos inventaría movimiento del ciclo de vida que no ocurrió y ensuciaría
+        // el tablero: todos ellos viajan por este canal solo para reusar la cadena de envío.
+        if (NonTransitionReasons.Contains(evt.Reason))
             return Task.CompletedTask;
 
         metrics.RecordStatusTransition(evt.PreviousStatus, evt.Status, evt.Reason);

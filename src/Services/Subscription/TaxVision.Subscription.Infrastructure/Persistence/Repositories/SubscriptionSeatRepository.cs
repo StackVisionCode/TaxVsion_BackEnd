@@ -61,22 +61,6 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<SubscriptionSeat>> GetPastGracePeriodAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    ) =>
-        await db
-            .Seats.IgnoreQueryFilters()
-            .Where(seat =>
-                seat.Status == SeatStatus.GracePeriod
-                && seat.GracePeriodEndsAtUtc != null
-                && seat.GracePeriodEndsAtUtc <= nowUtc
-            )
-            .OrderBy(seat => seat.GracePeriodEndsAtUtc)
-            .Take(batchSize)
-            .ToListAsync(ct);
-
     public async Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(
         DateTime cutoffUtc,
         int batchSize,

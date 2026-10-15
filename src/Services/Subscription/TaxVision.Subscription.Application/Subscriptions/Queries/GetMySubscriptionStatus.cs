@@ -10,7 +10,7 @@ namespace TaxVision.Subscription.Application.Subscriptions.Queries;
 /// <c>GET subscriptions/me</c> para el shell, que hoy lo pide con cualquier token de staff.
 /// </summary>
 /// <param name="Status">Estado de la suscripción tal cual (<c>Active</c>, <c>PastDue</c>,
-/// <c>GracePeriod</c>, <c>Suspended</c>, <c>Expired</c>, <c>Cancelled</c>, <c>Trialing</c>).</param>
+/// <c>Suspended</c>, <c>Expired</c>, <c>Cancelled</c>, <c>Trialing</c>).</param>
 /// <param name="BillingAccessBlocked">Si el acceso está cortado ahora mismo. Mismo criterio que
 /// <c>TenantSubscriptionAccessConsumer</c> en Auth: Suspended o Expired.</param>
 /// <param name="CanManageBilling">Si ESTE usuario puede ir a arreglarlo. El banner decide con esto si
@@ -18,7 +18,6 @@ namespace TaxVision.Subscription.Application.Subscriptions.Queries;
 public sealed record MySubscriptionStatusResponse(
     string Status,
     bool BillingAccessBlocked,
-    DateTime? GracePeriodEndsAtUtc,
     DateTime? NextRenewalAtUtc,
     bool CanManageBilling
 );
@@ -43,7 +42,6 @@ public static class GetMySubscriptionStatusHandler
             new MySubscriptionStatusResponse(
                 subscription.Status.ToString(),
                 subscription.Status is SubscriptionStatus.Suspended or SubscriptionStatus.Expired,
-                subscription.GracePeriodEndsAtUtc,
                 subscription.NextRenewalAtUtc,
                 query.CanManageBilling
             )

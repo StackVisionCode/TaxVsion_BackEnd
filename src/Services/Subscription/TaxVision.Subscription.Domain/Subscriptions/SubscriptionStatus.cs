@@ -6,7 +6,6 @@ public enum SubscriptionStatus
     Trialing,
     Active,
     PastDue,
-    GracePeriod,
     Suspended,
     Cancelled,
     Expired,

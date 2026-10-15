@@ -18,9 +18,8 @@ public static class EntitlementSnapshotBuilder
 {
     private const string ModuleFeaturePrefix = "module.";
 
-    // Estados que dan acceso: se mantiene el acceso durante toda la ventana de morosidad
-    // (PastDue = reintento de cobro, GracePeriod = gracia) para no cortar por un blip de pago.
-    // Fuera de este conjunto (Draft/Suspended/Cancelled/Expired) los módulos se apagan (fail-closed).
+    // Estados que dan acceso: se mantiene el acceso durante PastDue (reintento de cobro) para no cortar por
+    // un blip de pago. Fuera (Draft/Suspended/Cancelled/Expired) los módulos se apagan (fail-closed).
 
     public static async Task<Result<TenantEntitlementSnapshot>> BuildAsync(
         Guid tenantId,

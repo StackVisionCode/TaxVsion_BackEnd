@@ -67,6 +67,11 @@ public interface ISaaSPaymentRepository
     /// todavía vive con <c>TenantId = Guid.Empty</c> hasta que se re-hospeda.</summary>
     Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
+    /// <summary>Pago buscado por el id de Checkout Session del provider (<c>cs_...</c> en Stripe, OrderId en
+    /// PayPal). Se usa para desambiguar el provider en el cancel M2M cuando el caller no lo trae: el adapter
+    /// correcto sale del <see cref="SaaSPayment.ProviderCode"/>.</summary>
+    Task<SaaSPayment?> GetByProviderCheckoutSessionIdAsync(string providerSessionId, CancellationToken ct = default);
+
     /// <summary>Historial de pagos del tenant, el más reciente primero. A diferencia de
     /// <see cref="SearchAdminAsync"/>, el tenant NO es opcional y no se traen los intentos: el cuerpo crudo
     /// del proveedor no sale de admin.</summary>

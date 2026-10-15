@@ -17,11 +17,17 @@ public enum SubscriptionRenewalIntentStatus
 
     /// <summary>El pago falló o la sesión expiró sin pagar.</summary>
     Failed,
+
+    /// <summary>El owner canceló la renovación antes de pagar — libera el guard de doble cobro.</summary>
+    Cancelled,
+
+    /// <summary>Sweeper barrió una Pending vencida (CheckoutExpiresAtUtc &lt; now) sin resolución del proveedor.</summary>
+    Expired,
 }
 
 /// <summary>
 /// Intención de renovación/reactivación de la suscripción base por HOSTED-CHECKOUT (redirect), para el tenant
-/// cuya suscripción cayó en lapso (PastDue/GracePeriod/Suspended/Expired) y no tiene método de pago en archivo.
+/// cuya suscripción cayó en lapso (PastDue/Suspended/Expired) y no tiene método de pago en archivo.
 /// Espejo de <see cref="Seats.SeatPurchaseIntent"/>: Subscription guarda acá el contexto del pago (monto y
 /// ciclo) mientras PaymentApp solo lo correlaciona por <c>SaaSPayment.TargetAggregateId</c>. Al confirmarse el
 /// pago, un consumer reactiva la suscripción (nuevo período) sin volver a cobrar.
@@ -42,6 +48,10 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
+    public DateTime? CancelledAtUtc { get; private set; }
+    public DateTime? ExpiredAtUtc { get; private set; }
+    public Guid? CancelledByUserId { get; private set; }
+    public string? CancelReason { get; private set; }
     public string? FailureReason { get; private set; }
 
     private SubscriptionRenewalIntent() { }
@@ -152,6 +162,56 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
         FailureReason = reason;
         Touch(nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Cancelación interactiva antes de pagar. Idempotente; nunca revierte un pago capturado.</summary>
+    public Result Cancel(Guid actorUserId, DateTime nowUtc, string? reason = null)
+    {
+        if (Status is SubscriptionRenewalIntentStatus.Paid or SubscriptionRenewalIntentStatus.Provisioned)
+            return Result.Failure(
+                new Error("SubscriptionRenewalIntent.AlreadyPaid", "Cannot cancel a payment that was already captured.")
+            );
+
+        if (
+            Status
+            is SubscriptionRenewalIntentStatus.Cancelled
+                or SubscriptionRenewalIntentStatus.Expired
+                or SubscriptionRenewalIntentStatus.Failed
+        )
+            return Result.Success();
+
+        Status = SubscriptionRenewalIntentStatus.Cancelled;
+        CancelledAtUtc = nowUtc;
+        CancelledByUserId = actorUserId;
+        CancelReason = SanitizeReason(reason);
+        Touch(nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Sweeper: cierra una intención vencida sin cobro. Idempotente; respeta sesiones aún pagables.</summary>
+    public Result Expire(DateTime nowUtc)
+    {
+        if (Status != SubscriptionRenewalIntentStatus.Pending)
+            return Result.Success();
+
+        if (IsOpen(nowUtc))
+            return Result.Success();
+
+        if (CheckoutExpiresAtUtc is null || CheckoutExpiresAtUtc > nowUtc)
+            return Result.Success();
+
+        Status = SubscriptionRenewalIntentStatus.Expired;
+        ExpiredAtUtc = nowUtc;
+        Touch(nowUtc);
+        return Result.Success();
+    }
+
+    private static string? SanitizeReason(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var trimmed = reason.Trim();
+        return trimmed.Length > 500 ? trimmed[..500] : trimmed;
     }
 
     private void Touch(DateTime nowUtc) => UpdatedAtUtc = nowUtc;

@@ -16,4 +16,10 @@ public enum PlanChangeRequestStatus
     /// <summary>El cargo del upgrade falló. El plan se queda como estaba — no hay nada que
     /// revertir porque nunca se aplicó.</summary>
     PaymentFailed,
+
+    /// <summary>El usuario (o un admin) canceló el upgrade antes de pagar — libera el guard de doble cobro.</summary>
+    Cancelled,
+
+    /// <summary>Sweeper barrió una AwaitingPayment vencida sin resolución del proveedor.</summary>
+    Expired,
 }

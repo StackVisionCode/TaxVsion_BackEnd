@@ -220,6 +220,7 @@ public sealed class StatusTransitionsMatrixTests
                 TenantOnboardingStatus.PendingPayment,
                 TenantOnboardingStatus.PaymentProcessing,
                 TenantOnboardingStatus.RegistrationPending,
+                TenantOnboardingStatus.Expired, // idempotente para el sweeper.
             }
         ),
         (

@@ -31,12 +31,6 @@ public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISu
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
-        DateTime n,
-        int b,
-        CancellationToken ct = default
-    ) => throw new NotSupportedException();
-
     public Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
         DateTime c,
         int b,
@@ -120,12 +114,6 @@ public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) 
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<SubscriptionSeat>> GetPastGracePeriodAsync(
-        DateTime n,
-        int b,
-        CancellationToken ct = default
-    ) => throw new NotSupportedException();
-
     public Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(
         DateTime c,
         int b,
@@ -181,12 +169,6 @@ public sealed class FakeTenantAddOnRepo(IReadOnlyList<TenantAddOn>? addOns = nul
 
     public Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(DateTime n, int b, CancellationToken ct = default) =>
         throw new NotSupportedException();
-
-    public Task<IReadOnlyList<TenantAddOn>> GetPastGracePeriodAsync(
-        DateTime n,
-        int b,
-        CancellationToken ct = default
-    ) => throw new NotSupportedException();
 
     public Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(
         DateTime c,

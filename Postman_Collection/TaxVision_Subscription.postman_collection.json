@@ -138,6 +138,67 @@
           ]
         },
         {
+          "name": "GetBillingPreference",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/billing-preference",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "billing-preference"
+              ]
+            },
+            "description": "Devuelve la preferencia de facturación actual (Automatic/Manual) y el método de pago guardado si existe. Shape: { mode, providerCode?, hasActiveMandate, acceptedAtUtc?, agreedAmountCents?, agreedCurrency?, agreedCadence?, defaultPaymentMethod?: { brand, last4, expMonth, expYear } }. Permiso: billing.view."
+          },
+          "response": []
+        },
+        {
+          "name": "SetBillingPreference",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/billing-preference",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "billing-preference"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"Automatic\",\n  \"providerCode\": \"stripe\",\n  \"consentText\": \"{{consentText}}\",\n  \"consentTextVersion\": \"{{consentTextVersion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Guarda la preferencia Automatic/Manual. Para Automatic exige consentText + IP (capturada server-side) y step-up (RequireRecentAuthentication). Idempotente: segundo call con la misma Mode no re-escribe mandate. Permiso: subscription.plan.change."
+          },
+          "response": []
+        },
+        {
           "name": "ActivateSubscription",
           "event": [
             {
@@ -302,7 +363,80 @@
                 "cancel"
               ]
             },
-            "description": "Cancela el cambio de plan diferido pendiente (permiso: subscription.plan.change)."
+            "description": "Cancela un downgrade agendado (sin cobro). Permiso: subscription.plan.change."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelPendingUpgradeCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/plan-change/upgrade/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "plan-change",
+                "upgrade",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"user closed checkout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Cierra una intención de upgrade AwaitingPayment: cancela la sesión hosted del proveedor (Stripe expire / PayPal no-op) y marca la fila como Cancelled. Idempotente: si no hay upgrade pendiente devuelve alreadyCancelled=true."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelRenewCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/renew-checkout/{{renewalIntentId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "renew-checkout",
+                "{{renewalIntentId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"user closed checkout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Cancela una renovación self-service en vuelo: cierra la sesión hosted del proveedor y marca el intent como Cancelled. Permite reintentar el checkout."
           },
           "response": []
         },
@@ -775,6 +909,42 @@
           "response": []
         },
         {
+          "name": "CancelSeatCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/seats/checkout/{{seatPurchaseIntentId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "seats",
+                "checkout",
+                "{{seatPurchaseIntentId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"user closed checkout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Cierra una intención de compra de asientos Pending antes de pagar: libera el guard de doble cobro y cancela la sesión hosted del proveedor. Idempotente."
+          },
+          "response": []
+        },
+        {
           "name": "AssignSeat",
           "request": {
             "method": "POST",
@@ -1068,6 +1238,42 @@
               ]
             },
             "description": "Estado de una intencion de compra de add-on (Pending/Paid/Provisioned/Failed). El Landing lo poll-ea al volver del redirect hasta Provisioned."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelAddOnCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/addons/checkout/{{addOnPurchaseIntentId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "addons",
+                "checkout",
+                "{{addOnPurchaseIntentId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"user closed checkout\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Cierra una intención de compra de add-on Pending antes de pagar: cancela la sesión hosted del proveedor y marca el intent como Cancelled. Idempotente."
           },
           "response": []
         },

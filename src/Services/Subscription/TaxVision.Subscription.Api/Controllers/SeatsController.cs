@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.SeatAssignments.Commands.AssignSeatToUser;
 using TaxVision.Subscription.Application.SeatAssignments.Commands.ReassignSeat;
 using TaxVision.Subscription.Application.SeatAssignments.Commands.ReleaseSeatFromUser;
+using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Queries;
@@ -145,6 +146,33 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
                 string.IsNullOrWhiteSpace(request.Method) ? "Card" : request.Method,
                 userId
             ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record CancelSeatCheckoutRequest(string? Reason);
+
+    /// <summary>Cierra una intención Pending antes de pagar (click en "cancelar" o pasarela cerrada): libera el
+    /// guard de doble cobro para que la UI deje de mostrar "Finish payment".</summary>
+    [HttpPost("checkout/{intentId:guid}/cancel")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.seat_manage")]
+    [ProducesResponseType<CancelCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelCheckout(
+        Guid intentId,
+        [FromBody] CancelSeatCheckoutRequest? request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CancelCheckoutResponse>>(
+            new CancelSeatCheckoutCommand(tenantId, intentId, userId, request?.Reason),
             ct
         );
 

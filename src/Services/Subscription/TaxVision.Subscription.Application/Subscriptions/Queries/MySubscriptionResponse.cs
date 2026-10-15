@@ -19,7 +19,6 @@ public sealed record MySubscriptionResponse(
     // corta el acceso. BillingAccessBlocked se deriva localmente del estado (Suspended/Expired = bloqueado,
     // mismo criterio que TenantSubscriptionAccessConsumer en Auth) para no acoplar con el tenant de Auth.
     DateTime? NextRenewalAtUtc,
-    DateTime? GracePeriodEndsAtUtc,
     DateTime? SuspendedAtUtc,
     DateTime? ExpiredAtUtc,
     string? SuspensionReason,

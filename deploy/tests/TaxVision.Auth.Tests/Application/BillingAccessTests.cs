@@ -122,8 +122,8 @@ public sealed class BillingAccessTests
             TenantId = tenantId,
             TenantSubscriptionId = Guid.NewGuid(),
             Status = status,
-            PreviousStatus = "GracePeriod",
-            Reason = nameof(SubscriptionChangeReason.GraceExpired),
+            PreviousStatus = "PastDue",
+            Reason = nameof(SubscriptionChangeReason.RenewalPaymentFailed),
         };
 
     private static Tenant BuildTenant(bool blocked)

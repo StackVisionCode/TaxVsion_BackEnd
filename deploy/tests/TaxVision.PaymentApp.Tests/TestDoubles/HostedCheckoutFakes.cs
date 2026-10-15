@@ -81,6 +81,14 @@ public sealed class FakeSaaSPaymentRepository(SaaSPayment? existing = null) : IS
     public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
         Task.FromResult(Onboarding);
 
+    /// <summary>Lo que devuelve la búsqueda por ProviderCheckoutSessionId.</summary>
+    public SaaSPayment? BySessionId { get; set; }
+
+    public Task<SaaSPayment?> GetByProviderCheckoutSessionIdAsync(
+        string providerSessionId,
+        CancellationToken ct = default
+    ) => Task.FromResult(BySessionId);
+
     public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
         Guid tenantId,
         int page,

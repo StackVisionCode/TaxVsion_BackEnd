@@ -3,6 +3,7 @@ using System.Text.Json;
 using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Api.Controllers;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessProviderWebhook;
 using Wolverine;
@@ -25,7 +26,10 @@ public sealed class ProviderWebhookControllersTests
     public async Task Stripe_throttled_webhook_answers_429_with_retry_after()
     {
         var context = NewContext();
-        var controller = new StripeWebhookController(new ResultBus(Throttled))
+        var controller = new StripeWebhookController(
+            new ResultBus(Throttled),
+            NullLogger<StripeWebhookController>.Instance
+        )
         {
             ControllerContext = new() { HttpContext = context },
         };
@@ -56,7 +60,10 @@ public sealed class ProviderWebhookControllersTests
     {
         var context = NewContext();
         var invalid = Result.Failure(new Error("Stripe.Webhook.InvalidSignature", "Invalid signature."));
-        var controller = new StripeWebhookController(new ResultBus(invalid))
+        var controller = new StripeWebhookController(
+            new ResultBus(invalid),
+            NullLogger<StripeWebhookController>.Instance
+        )
         {
             ControllerContext = new() { HttpContext = context },
         };

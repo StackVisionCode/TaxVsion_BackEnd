@@ -169,4 +169,59 @@ public sealed class EmailVerificationChallengeTests
         Assert.Equal("Onboarding.OtpCode", challenge.Resend("bad", Now.AddMinutes(1), Ttl).Error.Code);
         Assert.Equal("Onboarding.OtpTtl", challenge.Resend("654321", Now.AddMinutes(1), TimeSpan.Zero).Error.Code);
     }
+
+    [Fact]
+    public void Supersede_sets_timestamp_and_is_idempotent()
+    {
+        var challenge = Valid();
+
+        var first = challenge.Supersede(Now.AddMinutes(1));
+
+        Assert.True(first.IsSuccess);
+        Assert.Equal(Now.AddMinutes(1), challenge.SupersededAtUtc);
+
+        var second = challenge.Supersede(Now.AddMinutes(2));
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(Now.AddMinutes(1), challenge.SupersededAtUtc);
+    }
+
+    [Fact]
+    public void Supersede_fails_when_already_verified()
+    {
+        var challenge = Valid();
+        challenge.Verify("123456", Now.AddMinutes(1));
+
+        var result = challenge.Supersede(Now.AddMinutes(2));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.AlreadyVerified", result.Error.Code);
+        Assert.Null(challenge.SupersededAtUtc);
+    }
+
+    [Fact]
+    public void Verify_rejects_superseded_challenge()
+    {
+        var challenge = Valid();
+        challenge.Supersede(Now.AddMinutes(1));
+
+        var result = challenge.Verify("123456", Now.AddMinutes(2));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.OtpSuperseded", result.Error.Code);
+        Assert.Null(challenge.VerifiedAtUtc);
+        Assert.Equal(0, challenge.Attempts);
+    }
+
+    [Fact]
+    public void Resend_rejects_superseded_challenge()
+    {
+        var challenge = Valid();
+        challenge.Supersede(Now.AddMinutes(1));
+
+        var result = challenge.Resend("654321", Now.AddMinutes(2), Ttl);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.OtpSuperseded", result.Error.Code);
+    }
 }

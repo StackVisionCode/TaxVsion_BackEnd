@@ -16,7 +16,7 @@ namespace TaxVision.Auth.Application.Subscriptions.IntegrationEvents;
 /// revocación no filtra por actor). Los gates de login/refresh consultan el flag y devuelven
 /// <c>Auth.SubscriptionInactive</c> — distinto de la suspensión admin (<c>tenant.IsActive</c>). Al volver
 /// a <c>Active</c> (recuperación de pago o reactivación) se limpia el bloqueo y los usuarios re-loguean.
-/// Estados intermedios (PastDue/GracePeriod/Trialing/Cancelled) NO cortan acceso: son avisos.
+/// Estados intermedios (PastDue/Trialing/Cancelled) NO cortan acceso: son avisos.
 /// </summary>
 public static class TenantSubscriptionAccessConsumer
 {

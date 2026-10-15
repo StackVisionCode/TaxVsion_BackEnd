@@ -94,7 +94,7 @@ public sealed class StartRenewalCheckoutHandlerTests
     }
 
     [Fact]
-    public async Task An_active_subscription_cannot_start_a_renewal_checkout()
+    public async Task An_active_subscription_can_prepay_the_next_cycle()
     {
         var (subscription, plan) = PastDueSubscription();
         subscription.RecoverFromPastDue(Guid.Empty, DateTime.UtcNow); // vuelve a Active
@@ -109,8 +109,8 @@ public sealed class StartRenewalCheckoutHandlerTests
             CancellationToken.None
         );
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("Subscription.CannotSelfServiceRenew", result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.False(string.IsNullOrEmpty(result.Value.CheckoutUrl));
     }
 
     [Fact]

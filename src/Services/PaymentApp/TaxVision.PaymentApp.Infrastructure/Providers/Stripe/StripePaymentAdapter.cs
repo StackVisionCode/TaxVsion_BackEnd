@@ -9,6 +9,7 @@ using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using CheckoutSession = Stripe.Checkout.Session;
 using CheckoutSessionCreateOptions = Stripe.Checkout.SessionCreateOptions;
+using CheckoutSessionCustomerUpdateOptions = Stripe.Checkout.SessionCustomerUpdateOptions;
 using CheckoutSessionGetOptions = Stripe.Checkout.SessionGetOptions;
 using CheckoutSessionLineItemOptions = Stripe.Checkout.SessionLineItemOptions;
 using CheckoutSessionLineItemPriceDataOptions = Stripe.Checkout.SessionLineItemPriceDataOptions;
@@ -415,43 +416,65 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         var service = new CheckoutSessionService(_client);
         try
         {
-            var session = await service.CreateAsync(
-                new CheckoutSessionCreateOptions
-                {
-                    Mode = "payment",
-                    PaymentMethodTypes = ToStripeCheckoutPaymentMethodTypes(request.Method),
-                    CustomerEmail = request.PayerEmail,
-                    LineItems =
-                    [
-                        new CheckoutSessionLineItemOptions
+            // Auto-renewal: cuando el caller pide guardar el método, se adjunta un Customer y se
+            // marca SetupFutureUsage=off_session para que Stripe deje la tarjeta chargeable sin
+            // interacción. En ese modo Stripe exige Customer (no CustomerEmail) y CustomerUpdate
+            // para aceptar los datos que Checkout recopila del comprador.
+            var useOffSessionSetup =
+                request.StoreMethodForOffSession && !string.IsNullOrEmpty(request.ProviderCustomerId);
+
+            var paymentIntentData = new CheckoutSessionPaymentIntentDataOptions
+            {
+                StatementDescriptorSuffix = request.Descriptor.Value,
+                Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
+            };
+            if (useOffSessionSetup)
+                paymentIntentData.SetupFutureUsage = "off_session";
+
+            var options = new CheckoutSessionCreateOptions
+            {
+                Mode = "payment",
+                PaymentMethodTypes = ToStripeCheckoutPaymentMethodTypes(request.Method),
+                LineItems =
+                [
+                    new CheckoutSessionLineItemOptions
+                    {
+                        Quantity = 1,
+                        PriceData = new CheckoutSessionLineItemPriceDataOptions
                         {
-                            Quantity = 1,
-                            PriceData = new CheckoutSessionLineItemPriceDataOptions
+                            Currency = request.Amount.Currency.ToLowerInvariant(),
+                            UnitAmount = request.Amount.AmountCents,
+                            ProductData = new CheckoutSessionLineItemPriceDataProductDataOptions
                             {
-                                Currency = request.Amount.Currency.ToLowerInvariant(),
-                                UnitAmount = request.Amount.AmountCents,
-                                ProductData = new CheckoutSessionLineItemPriceDataProductDataOptions
-                                {
-                                    Name = request.Descriptor.Value,
-                                },
+                                Name = request.Descriptor.Value,
                             },
                         },
-                    ],
-                    SuccessUrl = request.SuccessUrl,
-                    CancelUrl = request.CancelUrl,
-                    ExpiresAt = request.ExpiresAtUtc,
-                    PaymentIntentData = new CheckoutSessionPaymentIntentDataOptions
-                    {
-                        StatementDescriptorSuffix = request.Descriptor.Value,
-                        Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
                     },
-                    Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
-                    // Expand no fuerza la creación sincrónica del PaymentIntent -- sólo trae el
-                    // objeto completo SI el campo crudo ya viene poblado. Se deja porque a veces sí
-                    // ayuda (no hace daño) pero el fallback de abajo es lo que hace el flujo
-                    // confiable de verdad.
-                    Expand = ["payment_intent"],
-                },
+                ],
+                SuccessUrl = request.SuccessUrl,
+                CancelUrl = request.CancelUrl,
+                ExpiresAt = request.ExpiresAtUtc,
+                PaymentIntentData = paymentIntentData,
+                Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
+                // Expand no fuerza la creación sincrónica del PaymentIntent -- sólo trae el
+                // objeto completo SI el campo crudo ya viene poblado. Se deja porque a veces sí
+                // ayuda (no hace daño) pero el fallback de abajo es lo que hace el flujo
+                // confiable de verdad.
+                Expand = ["payment_intent"],
+            };
+
+            if (useOffSessionSetup)
+            {
+                options.Customer = request.ProviderCustomerId;
+                options.CustomerUpdate = new CheckoutSessionCustomerUpdateOptions { Address = "auto" };
+            }
+            else
+            {
+                options.CustomerEmail = request.PayerEmail;
+            }
+
+            var session = await service.CreateAsync(
+                options,
                 new RequestOptions { IdempotencyKey = request.IdempotencyKey.Value },
                 ct
             );

@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
         services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
+        services.AddScoped<ITenantBillingPreferenceRepository, TenantBillingPreferenceRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
@@ -145,6 +146,29 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Update card — M2M contra PaymentApp para abrir una Checkout Session en modo "setup" (sin cobro) que
+        // reemplaza la tarjeta default del tenant. Mismo cliente/base URL que los demás.
+        services.AddHttpClient<IPaymentMethodSetupClient, PaymentApp.PaymentAppPaymentMethodSetupClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Best-effort cancel contra PaymentApp cuando el usuario cierra la pasarela. Fail-open hacia la red
+        // interna: si PaymentApp no responde, el guard local ya marcó Cancelled y la sesión hosted expira
+        // sola. El NoOp se queda disponible como clase (tests), pero el registro productivo es el HTTP.
+        services.AddHttpClient<IHostedCheckoutCancellationClient, PaymentApp.HostedCheckoutCancellationClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(5);
             }
         );
 

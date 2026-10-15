@@ -79,12 +79,9 @@ public sealed class MySubscriptionBillingVisibilityTests
         Assert.False(result.Value.BillingAccessBlocked);
         Assert.True(result.Value.CanManageBilling);
 
-        // El contrato entero son cinco campos: ninguno nombra el plan ni un monto.
+        // El contrato son cuatro campos: ninguno nombra el plan ni un monto.
         var properties = typeof(MySubscriptionStatusResponse).GetProperties().Select(property => property.Name);
-        Assert.Equal(
-            ["Status", "BillingAccessBlocked", "GracePeriodEndsAtUtc", "NextRenewalAtUtc", "CanManageBilling"],
-            properties
-        );
+        Assert.Equal(["Status", "BillingAccessBlocked", "NextRenewalAtUtc", "CanManageBilling"], properties);
     }
 
     [Fact]

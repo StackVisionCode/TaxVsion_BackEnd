@@ -140,6 +140,17 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
     public Task<SaaSPayment?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
         db.SaaSPayments.IgnoreQueryFilters().FirstOrDefaultAsync(payment => payment.OnboardingId == onboardingId, ct);
 
+    // IgnoreQueryFilters: el cancel M2M lo invoca Subscription, que corre con un tenant conocido pero el
+    // handler resuelve por sessionId sin filtrarlo (mismo criterio que GetByExternalReferenceAsync). El id de
+    // sesión del provider ya es único global.
+    public Task<SaaSPayment?> GetByProviderCheckoutSessionIdAsync(
+        string providerSessionId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SaaSPayments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(payment => payment.ProviderCheckoutSessionId == providerSessionId, ct);
+
     // Solo refunds: los Attempts traen el cuerpo crudo del proveedor y no salen del lado admin. El .Where
     // explícito por tenant es lo que aísla, igual que en el resto de lecturas.
     public async Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(

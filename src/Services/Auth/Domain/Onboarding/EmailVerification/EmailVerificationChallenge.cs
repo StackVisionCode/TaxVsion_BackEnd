@@ -23,6 +23,7 @@ public sealed class EmailVerificationChallenge : BaseEntity
     public int Attempts { get; private set; }
     public int ResendCount { get; private set; }
     public DateTime? VerifiedAtUtc { get; private set; }
+    public DateTime? SupersededAtUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
     public static Result<EmailVerificationChallenge> Create(string email, string otpCode, DateTime nowUtc, TimeSpan ttl)
@@ -58,6 +59,10 @@ public sealed class EmailVerificationChallenge : BaseEntity
         if (VerifiedAtUtc is not null)
             return Result.Success(); // idempotent replay
 
+        // Un reenvío posterior ya emitió un código nuevo; el viejo deja de valer.
+        if (SupersededAtUtc is not null)
+            return Result.Failure(new Error("Onboarding.OtpSuperseded", "This verification code is no longer valid."));
+
         if (nowUtc >= ExpiresAtUtc)
             return Result.Failure(new Error("Onboarding.OtpExpired", "The verification code has expired."));
 
@@ -79,6 +84,10 @@ public sealed class EmailVerificationChallenge : BaseEntity
         if (VerifiedAtUtc is not null)
             return Result.Failure(new Error("Onboarding.AlreadyVerified", "This challenge was already verified."));
 
+        // Un challenge invalidado no se puede reactivar; el usuario debe pedir uno nuevo.
+        if (SupersededAtUtc is not null)
+            return Result.Failure(new Error("Onboarding.OtpSuperseded", "This verification code is no longer valid."));
+
         if (ResendCount >= MaxResends)
             return Result.Failure(new Error("Onboarding.ResendLimitExceeded", "Maximum number of resends reached."));
 
@@ -92,6 +101,19 @@ public sealed class EmailVerificationChallenge : BaseEntity
         OtpHash = ComputeHash(Id, newOtpCode);
         Attempts = 0;
         ExpiresAtUtc = nowUtc.Add(ttl);
+        return Result.Success();
+    }
+
+    public Result Supersede(DateTime nowUtc)
+    {
+        // Defensivo: un challenge ya verificado no debería invalidarse; indica un bug upstream.
+        if (VerifiedAtUtc is not null)
+            return Result.Failure(new Error("Onboarding.AlreadyVerified", "This challenge was already verified."));
+
+        if (SupersededAtUtc is not null)
+            return Result.Success();
+
+        SupersededAtUtc = nowUtc;
         return Result.Success();
     }
 

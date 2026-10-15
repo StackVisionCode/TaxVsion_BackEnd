@@ -546,12 +546,17 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<int>("ResendCount")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("SupersededAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("VerifiedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Email", "CreatedAtUtc");
+
+                    b.HasIndex("Email", "SupersededAtUtc", "VerifiedAtUtc", "ExpiresAtUtc");
 
                     b.ToTable("EmailVerificationChallenges", (string)null);
                 });

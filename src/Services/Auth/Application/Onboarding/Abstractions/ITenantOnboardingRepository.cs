@@ -38,6 +38,15 @@ public interface ITenantOnboardingRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Onboardings sin cerrar (PendingPayment/PaymentProcessing/RegistrationPending) cuya
+    /// edad superó el TTL del sweeper. OnboardingExpirationJob los marca Expired para desatascar
+    /// pestañas que volvieron sin callback (buyer apretó "atrás" en el navegador).</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
+        DateTime createdBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>PayFlow (Fase 17) — listado paginado para <c>OnboardingAdminController</c>, filtrable
     /// por Status (típicamente ManualReview/ProvisioningFailed). Cross-tenant a propósito: es un
     /// endpoint PlatformAdmin-only, igual que el resto de los admin controllers del monorepo.</summary>

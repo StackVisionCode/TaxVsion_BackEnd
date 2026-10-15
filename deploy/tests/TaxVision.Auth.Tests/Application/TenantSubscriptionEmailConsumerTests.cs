@@ -15,7 +15,7 @@ namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>
 /// Fase 3 del plan de Expiración/Dunning: Auth resuelve el admin/owner y republica el email-request para
-/// que Notification lo envíe. Cubre qué estados notifican (GracePeriod/Suspended/Expired y Active solo por
+/// que Notification lo envíe. Cubre qué estados notifican (Suspended/Expired y Active solo por
 /// recuperación) y que el RenewUrl se arma con el subdominio del tenant.
 /// </summary>
 public sealed class TenantSubscriptionEmailConsumerTests
@@ -70,13 +70,13 @@ public sealed class TenantSubscriptionEmailConsumerTests
     }
 
     [Fact]
-    public async Task GracePeriod_publishes_email_request_for_primary_admin_with_subdomain_url()
+    public async Task Suspended_publishes_email_request_for_primary_admin_with_subdomain_url()
     {
         var tenantId = Guid.NewGuid();
         var bus = new FakeMessageBus();
 
         await TenantSubscriptionEmailConsumer.Handle(
-            StatusEvent(tenantId, "GracePeriod", nameof(SubscriptionChangeReason.RenewalPaymentFailed)),
+            StatusEvent(tenantId, "Suspended", nameof(SubscriptionChangeReason.RenewalPaymentFailed)),
             AdminRepo(tenantId),
             TenantRegistry(tenantId, "coretaxpro"),
             bus,
@@ -89,7 +89,7 @@ public sealed class TenantSubscriptionEmailConsumerTests
         var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
         Assert.Equal("owner@office.com", request.Email);
         Assert.Equal("Carlos", request.FirstName);
-        Assert.Equal("GracePeriod", request.Status);
+        Assert.Equal("Suspended", request.Status);
         Assert.Equal("https://coretaxpro.taxproffice.com", request.RenewUrl);
     }
 

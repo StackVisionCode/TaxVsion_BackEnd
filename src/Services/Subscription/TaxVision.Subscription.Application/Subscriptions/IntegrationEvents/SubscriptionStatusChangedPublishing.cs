@@ -30,10 +30,6 @@ public static class SubscriptionStatusChangedPublishing
                     Status = subscription.Status.ToString(),
                     PreviousStatus = previousStatus.ToString(),
                     Reason = reason.ToString(),
-                    GracePeriodEndsAtUtc =
-                        subscription.Status == SubscriptionStatus.GracePeriod
-                            ? subscription.GracePeriodEndsAtUtc
-                            : null,
                     // La cancelación programada necesita decir hasta cuándo llega el acceso ya pagado.
                     AccessEndsAtUtc = subscription.CancelAtPeriodEnd ? subscription.CurrentPeriodEndUtc : null,
                     FailureCode = failureCode,

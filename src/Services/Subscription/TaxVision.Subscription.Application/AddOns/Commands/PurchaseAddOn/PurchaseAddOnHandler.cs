@@ -19,7 +19,6 @@ public static class PurchaseAddOnHandler
     [
         SubscriptionStatus.Trialing,
         SubscriptionStatus.Active,
-        SubscriptionStatus.GracePeriod,
     ];
 
     public static async Task<Result<Guid>> Handle(

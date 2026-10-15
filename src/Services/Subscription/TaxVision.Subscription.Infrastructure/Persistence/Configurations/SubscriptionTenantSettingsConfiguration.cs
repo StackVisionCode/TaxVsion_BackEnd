@@ -37,18 +37,6 @@ public sealed class SubscriptionTenantSettingsConfiguration : IEntityTypeConfigu
         builder.Property(settings => settings.PauseSeatRenewalsWhenBaseSuspended).IsRequired();
 
         builder
-            .Property(settings => settings.TenantSubscriptionGracePeriod)
-            .HasConversion(grace => grace.Days, days => GracePeriod.Create(days).Value)
-            .HasColumnName("TenantSubscriptionGraceDays")
-            .IsRequired();
-
-        builder
-            .Property(settings => settings.SeatGracePeriod)
-            .HasConversion(grace => grace.Days, days => GracePeriod.Create(days).Value)
-            .HasColumnName("SeatGraceDays")
-            .IsRequired();
-
-        builder
             .Property(settings => settings.TrialDays)
             .HasConversion(trial => trial.Value, days => TrialDays.Create(days).Value)
             .HasColumnName("TrialDays")

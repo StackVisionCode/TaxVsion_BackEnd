@@ -10,7 +10,7 @@ using Xunit;
 namespace TaxVision.Subscription.Tests.Application;
 
 /// <summary>Enforcement status-aware: los módulos del plan y de los add-ons se apagan cuando la base
-/// no da acceso (Suspended/Cancelled/Expired/Draft) y se mantienen durante la morosidad (PastDue/GracePeriod).</summary>
+/// no da acceso (Suspended/Cancelled/Expired/Draft) y se mantienen durante la morosidad (PastDue).</summary>
 public sealed class EntitlementSnapshotBuilderTests
 {
     [Fact]
@@ -24,7 +24,6 @@ public sealed class EntitlementSnapshotBuilderTests
 
     [Theory]
     [InlineData(SubscriptionStatus.PastDue)]
-    [InlineData(SubscriptionStatus.GracePeriod)]
     public async Task Dunning_window_keeps_modules_on(SubscriptionStatus status)
     {
         var snapshot = await BuildAsync(status, withActiveAddOn: true);
@@ -138,10 +137,6 @@ public sealed class EntitlementSnapshotBuilderTests
                 break;
             case SubscriptionStatus.PastDue:
                 subscription.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, nowUtc);
-                break;
-            case SubscriptionStatus.GracePeriod:
-                subscription.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, nowUtc);
-                subscription.EnterGracePeriodAfterRetriesExhausted(nowUtc.AddDays(7), Guid.Empty, nowUtc);
                 break;
             case SubscriptionStatus.Suspended:
                 subscription.SuspendForPolicyViolation("test", Guid.Empty, nowUtc);

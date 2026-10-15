@@ -4,7 +4,6 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Platform;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using Wolverine;
@@ -15,7 +14,7 @@ namespace TaxVision.Auth.Application.Subscriptions.IntegrationEvents;
 /// Notificaciones de ciclo de vida de la suscripción (plan de Expiración/Dunning, Fase 3). Auth es el
 /// dueño del contacto: consume el evento de estado (solo TenantId), resuelve el email del admin/owner y
 /// publica <see cref="TenantSubscriptionEmailRequestedIntegrationEvent"/> para que Notification lo envíe.
-/// Solo dispara en los estados con copy relevante: GracePeriod (pago falló, aviso de gracia), Suspended,
+/// Solo dispara en los estados con copy relevante: Suspended,
 /// Expired y la vuelta a Active por recuperación/reactivación. El resto (PastDue transitorio, Trialing,
 /// Cancelled, Active inicial) no manda email.
 /// </summary>
@@ -26,6 +25,15 @@ public static class TenantSubscriptionEmailConsumer
         nameof(SubscriptionChangeReason.PaymentRecovered),
         nameof(SubscriptionChangeReason.AdminReactivated),
         nameof(SubscriptionChangeReason.SelfServiceRenewed),
+    };
+
+    /// <summary>Motivos que viajan por el canal de email pero no son transiciones de estado.</summary>
+    private static readonly HashSet<string> NonTransitionNotifyReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
+        nameof(SubscriptionChangeReason.RecurringChargeFailed),
+        nameof(SubscriptionChangeReason.BillingModeChanged),
+        nameof(SubscriptionChangeReason.MandateCreated),
     };
 
     public static async Task Handle(
@@ -75,11 +83,20 @@ public static class TenantSubscriptionEmailConsumer
                     FirstName = admin.Name,
                     Status = evt.Status,
                     Reason = evt.Reason,
-                    GracePeriodEndsAtUtc = evt.GracePeriodEndsAtUtc,
                     AccessEndsAtUtc = evt.AccessEndsAtUtc,
                     FailureCode = evt.FailureCode,
                     RenewUrl = renewUrl,
                     CorrelationId = correlationId,
+                    // Reenviar los campos de cobro recurrente/mandate/preferencia del evento de estado.
+                    Amount = evt.Amount,
+                    CardLast4 = evt.CardLast4,
+                    CardBrand = evt.CardBrand,
+                    ReceiptUrl = evt.ReceiptUrl,
+                    ManageUrl = $"{renewUrl.TrimEnd('/')}/account/manage-subscription",
+                    NewMode = evt.NewMode,
+                    Cadence = evt.Cadence,
+                    DateCharged = evt.DateCharged,
+                    NextChargeDate = evt.NextChargeDate,
                 }
             );
 
@@ -100,8 +117,10 @@ public static class TenantSubscriptionEmailConsumer
     };
 
     private static bool IsScheduledCancellation(string status, string reason) =>
-        string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
-        && ScheduledCancellationReasons.Contains(reason);
+        (
+            string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Trialing", StringComparison.OrdinalIgnoreCase)
+        ) && ScheduledCancellationReasons.Contains(reason);
 
     private static bool ShouldNotify(string status, string reason) =>
         // A6 — un re-anuncio del job de anti-entropía no es una transición y no se le avisa a nadie:
@@ -110,7 +129,7 @@ public static class TenantSubscriptionEmailConsumer
         !string.Equals(reason, nameof(SubscriptionChangeReason.Reconciliation), StringComparison.OrdinalIgnoreCase)
         && (
             IsScheduledCancellation(status, reason)
-            || string.Equals(status, "GracePeriod", StringComparison.OrdinalIgnoreCase)
+            || NonTransitionNotifyReasons.Contains(reason)
             || string.Equals(status, "Suspended", StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase)
             || (string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase) && RecoveryReasons.Contains(reason))

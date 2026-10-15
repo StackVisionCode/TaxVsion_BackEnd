@@ -5,9 +5,9 @@ using TaxVision.Subscription.Domain.ValueObjects;
 namespace TaxVision.Subscription.Tests.Domain;
 
 /// <summary>
-/// Renovación/reactivación self-service (plan de Expiración/Dunning, Fase 4): el dueño paga y la
-/// suscripción vuelve a Active con período nuevo desde cualquier estado de lapso. A diferencia de
-/// <c>ReactivateAfterAdminReview</c> (solo Suspended), ésta acepta también PastDue/GracePeriod/Expired.
+/// Renovación/reactivación self-service: el dueño paga y la suscripción vuelve a Active con período nuevo
+/// desde cualquier estado de lapso. A diferencia de <c>ReactivateAfterAdminReview</c> (solo Suspended),
+/// ésta acepta también PastDue/Expired.
 /// </summary>
 public sealed class TenantSubscriptionSelfServiceRenewalTests
 {
@@ -25,7 +25,6 @@ public sealed class TenantSubscriptionSelfServiceRenewalTests
         Assert.Null(subscription.ExpiredAtUtc);
         Assert.Null(subscription.SuspendedAtUtc);
         Assert.Null(subscription.SuspensionReason);
-        Assert.Null(subscription.GracePeriodEndsAtUtc);
         Assert.Equal(newStart, subscription.CurrentPeriodStartUtc);
         Assert.Equal(newEnd, subscription.CurrentPeriodEndUtc);
         Assert.Equal(newEnd, subscription.NextRenewalAtUtc);
@@ -33,7 +32,6 @@ public sealed class TenantSubscriptionSelfServiceRenewalTests
 
     [Theory]
     [InlineData("PastDue")]
-    [InlineData("GracePeriod")]
     [InlineData("Suspended")]
     public void Reactivates_from_each_lapse_state(string state)
     {
@@ -92,11 +90,7 @@ public sealed class TenantSubscriptionSelfServiceRenewalTests
         if (state == "PastDue")
             return subscription;
 
-        subscription.EnterGracePeriodAfterRetriesExhausted(now.AddDays(7), Guid.Empty, now);
-        if (state == "GracePeriod")
-            return subscription;
-
-        subscription.SuspendBecauseGraceExpired(Guid.Empty, now.AddDays(8));
+        subscription.SuspendAfterRetriesExhausted(Guid.Empty, now.AddDays(8));
         return subscription;
     }
 

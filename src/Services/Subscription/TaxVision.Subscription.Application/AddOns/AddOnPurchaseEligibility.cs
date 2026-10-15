@@ -17,7 +17,6 @@ public static class AddOnPurchaseEligibility
     [
         SubscriptionStatus.Trialing,
         SubscriptionStatus.Active,
-        SubscriptionStatus.GracePeriod,
     ];
 
     public static async Task<

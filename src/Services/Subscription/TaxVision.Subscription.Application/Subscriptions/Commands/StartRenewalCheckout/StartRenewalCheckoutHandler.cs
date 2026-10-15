@@ -7,16 +7,19 @@ using TaxVision.Subscription.Domain.Subscriptions;
 namespace TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
 
 /// <summary>
-/// Crea la intención de renovación self-service y pide a PaymentApp la sesión de checkout hosteada. Solo para
-/// suscripciones en lapso (PastDue/GracePeriod/Suspended/Expired) — el camino feliz (Active) renueva off-session
-/// por el job. El monto es el precio del ciclo vigente, resuelto server-side. Molde: <c>StartSeatCheckoutHandler</c>.
+/// Crea la intención de renovación self-service y pide a PaymentApp la sesión de checkout hosteada. Dos usos:
+/// (a) recuperarse de un lapso (PastDue/Suspended/Expired) y (b) prepagar el próximo ciclo cuando la sub
+/// sigue Active/Trialing. En ambos casos el monto es el precio del ciclo vigente, resuelto server-side.
+/// El consumer del webhook distingue la ruta por el status actual: reactiva en lapso, avanza período en Active.
+/// Molde: <c>StartSeatCheckoutHandler</c>.
 /// </summary>
 public static class StartRenewalCheckoutHandler
 {
     private static readonly SubscriptionStatus[] RenewableStatuses =
     [
+        SubscriptionStatus.Trialing,
+        SubscriptionStatus.Active,
         SubscriptionStatus.PastDue,
-        SubscriptionStatus.GracePeriod,
         SubscriptionStatus.Suspended,
         SubscriptionStatus.Expired,
     ];

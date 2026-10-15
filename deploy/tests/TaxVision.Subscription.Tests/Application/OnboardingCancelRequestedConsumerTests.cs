@@ -157,12 +157,6 @@ public sealed class OnboardingCancelRequestedConsumerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
-            DateTime nowUtc,
-            int batchSize,
-            CancellationToken ct = default
-        ) => throw new NotSupportedException();
-
         public Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
             DateTime cutoffUtc,
             int batchSize,

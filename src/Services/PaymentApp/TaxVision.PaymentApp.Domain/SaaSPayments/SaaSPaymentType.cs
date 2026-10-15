@@ -32,7 +32,7 @@ public enum SaaSPaymentType
     OnboardingInitial = 8,
 
     /// <summary>Renovación/reactivación self-service de la suscripción base por HOSTED-CHECKOUT (redirect),
-    /// para el tenant sin método en archivo cuya suscripción cayó en lapso (PastDue/GracePeriod/Suspended/
+    /// para el tenant sin método en archivo cuya suscripción cayó en lapso (PastDue/Suspended/
     /// Expired). Distinto de <see cref="SubscriptionRenewal"/> (cobro off-session periódico): éste se paga
     /// por checkout y al confirmarse reactiva la suscripción sin re-cobrar.</summary>
     SubscriptionRenewalCheckout = 9,

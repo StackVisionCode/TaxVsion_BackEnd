@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Audit;
+using TaxVision.Subscription.Domain.Billing;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Permissions;
 using TaxVision.Subscription.Domain.Plans;
@@ -46,6 +47,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<PlanRateLimit> PlanRateLimits => Set<PlanRateLimit>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+    public DbSet<TenantBillingPreference> BillingPreferences => Set<TenantBillingPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

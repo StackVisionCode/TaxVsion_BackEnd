@@ -36,6 +36,10 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.SaaSPaymentId);
         builder.Property(request => request.CheckoutUrl).HasMaxLength(2048);
         builder.Property(request => request.CheckoutExpiresAtUtc);
+        builder.Property(request => request.CancelledAtUtc);
+        builder.Property(request => request.ExpiredAtUtc);
+        builder.Property(request => request.CancelledByUserId);
+        builder.Property(request => request.CancelReason).HasMaxLength(500);
 
         builder
             .HasIndex(request => new { request.TenantSubscriptionId, request.Status })

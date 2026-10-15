@@ -36,6 +36,7 @@ public static class CancelOnboardingHandler
             ? "Buyer cancelled the checkout."
             : command.Reason.Trim();
 
+        // TODO best-effort provider cancel: cuando IPaymentAppOnboardingClient exponga Cancel.
         // Cancel() valida el estado: rechaza si ya está pagado/provisionado (no se libera un código de un
         // onboarding que ya completó). Recién si la transición es válida liberamos las reservas.
         var cancelResult = onboarding.Cancel(reason);
