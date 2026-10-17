@@ -21,10 +21,12 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 public sealed class InternalSubscriptionActivationController(IMessageBus bus) : ControllerBase
 {
     // BillingCycle opcional (Monthly|Yearly|…); ausente/inválido cae a Monthly para compat con callers viejos.
+    // OwnerUserId identifica al TenantAdmin del onboarding; es el actor que firma la preference de billing.
     public sealed record ActivateFromOnboardingRequest(
         Guid OnboardingId,
         Guid TenantId,
         Guid PlanId,
+        Guid OwnerUserId,
         string? BillingCycle = null,
         bool AutoRenewRequested = false
     );
@@ -49,6 +51,7 @@ public sealed class InternalSubscriptionActivationController(IMessageBus bus) : 
             request.TenantId,
             request.PlanId,
             parsedCycle ?? BillingCycle.Monthly,
+            request.OwnerUserId,
             request.AutoRenewRequested
         );
 

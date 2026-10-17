@@ -7,6 +7,7 @@ public sealed record ActivateSubscriptionForOnboardingRequest(
     Guid TenantId,
     Guid PlanId,
     string BillingCycle,
+    Guid OwnerUserId,
     bool AutoRenewRequested = false
 );
 

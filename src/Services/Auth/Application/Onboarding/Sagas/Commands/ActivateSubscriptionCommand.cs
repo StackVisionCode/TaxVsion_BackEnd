@@ -11,6 +11,7 @@ public sealed record ActivateSubscriptionCommand(
     Guid TenantId,
     Guid PlanId,
     string BillingCycle,
+    Guid OwnerUserId,
     bool AutoRenewRequested = false
 );
 
@@ -32,6 +33,7 @@ public static class ActivateSubscriptionHandler
                 command.TenantId,
                 command.PlanId,
                 command.BillingCycle,
+                command.OwnerUserId,
                 command.AutoRenewRequested
             ),
             ct
