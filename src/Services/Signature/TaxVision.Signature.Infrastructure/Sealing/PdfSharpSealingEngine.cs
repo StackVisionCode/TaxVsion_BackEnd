@@ -3,10 +3,7 @@ using BuildingBlocks.Platform;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Domain.Requests;
 
@@ -285,18 +282,35 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
     /// Aplana un PNG/imagen sobre fondo BLANCO y lo re-codifica como PNG SIN canal alfa (RGB 24-bit).
     /// Necesario porque PdfSharp pinta el alfa como negro. Si la imagen no se puede decodificar, devuelve
     /// los bytes originales (el estampado nunca aborta por una firma malformada).
+    ///
+    /// Usa SkiaSharp (Apache 2.0) en lugar de SixLabors.ImageSharp 3.x (EOL con CVEs sin patch gratis;
+    /// ver csproj). SkiaSharp.Decode acepta PNG/JPEG/WEBP/GIF; la decodificación de formatos no soportados
+    /// o inválidos devuelve null y caemos al byte[] original.
     /// </summary>
     private static byte[] FlattenOntoWhite(byte[] imageBytes)
     {
         try
         {
-            using var image = Image.Load<Rgba32>(imageBytes);
-            // BackgroundColor compone la imagen sobre blanco (los píxeles transparentes quedan blancos).
-            image.Mutate(ctx => ctx.BackgroundColor(Color.White));
-            using var output = new MemoryStream();
-            // ColorType Rgb = sin canal alfa → PdfSharp lo trata como opaco, nunca negro.
-            image.SaveAsPng(output, new PngEncoder { ColorType = PngColorType.Rgb });
-            return output.ToArray();
+            using var original = SKBitmap.Decode(imageBytes);
+            if (original is null)
+                return imageBytes;
+
+            // Surface opaca RGB888x: SkiaSharp garantiza que al componer un bitmap con alfa sobre un
+            // canvas limpiado a blanco, los píxeles transparentes salen BLANCOS (no negros como pintaría
+            // PdfSharp). SKColorType.Rgb888x descarta el canal alfa en el snapshot.
+            var info = new SKImageInfo(original.Width, original.Height, SKColorType.Rgb888x, SKAlphaType.Opaque);
+            using var surface = SKSurface.Create(info);
+            if (surface is null)
+                return imageBytes;
+            var canvas = surface.Canvas;
+            canvas.Clear(SKColors.White);
+            canvas.DrawBitmap(original, 0, 0);
+            canvas.Flush();
+
+            using var snapshot = surface.Snapshot();
+            // PNG quality 100: PNG es lossless, el parámetro solo afecta el nivel de compresión zlib.
+            using var data = snapshot.Encode(SKEncodedImageFormat.Png, 100);
+            return data.ToArray();
         }
         catch (Exception)
         {
