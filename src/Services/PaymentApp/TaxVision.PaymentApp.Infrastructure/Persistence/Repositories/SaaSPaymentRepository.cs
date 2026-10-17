@@ -173,6 +173,46 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         return (items, total);
     }
 
+    public async Task<
+        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime>
+    > GetLatestSucceededCreatedAtByTargetsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<(SaaSPaymentType Type, Guid TargetAggregateId)> targets,
+        CancellationToken ct = default
+    )
+    {
+        if (targets.Count == 0)
+            return new Dictionary<(SaaSPaymentType, Guid), DateTime>();
+
+        // Pre-filtramos por los Types y TargetAggregateIds candidatos antes de agrupar; con esto la
+        // query sigue traversable por EF (sin tuplas en el WHERE) y aún así reduce el conjunto en SQL.
+        // El pareo exacto (Type, Target) se cierra en memoria sobre un grupo pequeño.
+        var types = targets.Select(t => t.Type).Distinct().ToArray();
+        var ids = targets.Select(t => t.TargetAggregateId).Distinct().ToArray();
+
+        var rows = await db
+            .SaaSPayments.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(payment =>
+                payment.TenantId == tenantId
+                && payment.Status == PaymentStatus.Succeeded
+                && types.Contains(payment.Type)
+                && ids.Contains(payment.TargetAggregateId)
+            )
+            .GroupBy(payment => new { payment.Type, payment.TargetAggregateId })
+            .Select(group => new
+            {
+                group.Key.Type,
+                group.Key.TargetAggregateId,
+                LatestCreatedAtUtc = group.Max(payment => payment.CreatedAtUtc),
+            })
+            .ToListAsync(ct);
+
+        var wanted = targets.ToHashSet();
+        return rows.Where(row => wanted.Contains((row.Type, row.TargetAggregateId)))
+            .ToDictionary(row => (row.Type, row.TargetAggregateId), row => row.LatestCreatedAtUtc);
+    }
+
     public async Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
         Guid? tenantId,
         PaymentStatus? status,
