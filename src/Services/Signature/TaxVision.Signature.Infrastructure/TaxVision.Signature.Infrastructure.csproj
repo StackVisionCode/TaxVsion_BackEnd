@@ -21,7 +21,7 @@
     <!-- ImageSharp 4.x cambió a licencia comercial (Six Labors Split License). Nos quedamos en 3.1.x
          (Apache 2.0) y usamos el patch más alto (3.1.12) que trae los últimos fixes de seguridad del
          decoder: TIFF overflow, WEBP metadata, Issue 2679. Subir a 4.x requiere comprar licencia. -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <!-- Override directo para parchear CVE GHSA-846f-f764-76mx (high) y GHSA-2fmv-rv2c-59x7 (moderate)
          del System.Security.Cryptography.Pkcs 9.0.4/10.0.0 que arrastran los paquetes de Microsoft. -->
