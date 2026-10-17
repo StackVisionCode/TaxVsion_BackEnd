@@ -87,10 +87,13 @@ public sealed class OnboardingSuccessCompleter(
 
         bus.TenantId = PlatformTenant.Id.ToString();
 
-        // El email "completa tu oficina" se difiere en el carril pagado (el redirect in-session ya lleva
-        // al formulario): lo publica OnboardingRegistrationReminderScheduler pasada la ventana, solo si el
-        // comprador no terminó. El carril $0 no tiene redirect de por medio, así que sale de inmediato.
-        if (sendRegistrationEmailNow)
+        // OBF-2.3: el email "completa tu oficina" sale INMEDIATAMENTE al liquidar el pago en todos los
+        // carriles — carril $0, webhook y reconcile pollados. Antes solo salía en $0 y los demás esperaban
+        // 45 min al scheduler; cualquier falla intermedia (token Redis vencido, scheduler quemó el intento)
+        // dejaba al comprador huérfano. Idempotencia a nivel aggregate: si otro carril ya marcó sent (ej.
+        // webhook y poll a la vez), el segundo es no-op — así nunca duplicamos el evento al consumer. El
+        // scheduler queda como safety net para la ventana entre liquidación y commit del outbox.
+        if (onboarding.RegistrationEmailSentAtUtc is null)
         {
             await bus.PublishAsync(
                 new OnboardingRegistrationReadyIntegrationEvent

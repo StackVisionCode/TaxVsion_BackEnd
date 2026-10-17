@@ -59,11 +59,13 @@ public sealed class RecalculateEntitlementsForAllPlansHandlerTests
     private static SubscriptionPlan CreatePublishedPlan(string code)
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly, BillingCycle.Yearly])
             .Value;
+        PlanTestData.EnsurePublishableFeature(version);
+        PlanTestData.EnsurePublishablePrice(version);
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         Assert.True(plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow).IsSuccess);
         return plan;
@@ -82,5 +84,13 @@ public sealed class RecalculateEntitlementsForAllPlansHandlerTests
 
         public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddAsync(SubscriptionPlan plan, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default) => Task.FromResult(false);
     }
 }

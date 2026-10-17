@@ -7,6 +7,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOn;
 using TaxVision.Subscription.Application.AddOns.Commands.CancelAddOnCheckout;
 using TaxVision.Subscription.Application.AddOns.Commands.PurchaseAddOn;
@@ -17,28 +18,24 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
 
-/// <summary>GetCatalog es público ([AllowAnonymous], el filtro de actor type lo saltea); el resto es staff-only del tenant.</summary>
 [ApiController]
 [Route("addons")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class AddOnsController(IMessageBus bus) : ControllerBase
+public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> logger) : ControllerBase
 {
-    /// <summary>
-    /// Catálogo público de add-ons. Fase 4.10 (rate limiting) — D-category exempt: mismo criterio
-    /// que <see cref="PlansController.GetPlans"/>.
-    /// </summary>
-    [HttpGet]
-    [AllowAnonymous]
-    [ResponseCache(Duration = 300)]
-    [RateLimitExempt(
-        "Public add-on catalog — no JWT, no pre-existing native limiter; adding new protection is out of scope for a migration phase."
-    )]
-    [ProducesResponseType<IReadOnlyList<AddOnDefinitionResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetCatalog(CancellationToken ct)
+    [HttpGet("available")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.f.addon_read")]
+    [ProducesResponseType<IReadOnlyList<AvailableAddOnResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAvailable(CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnDefinitionResponse>>>(
-            new GetAddOnCatalogQuery(),
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<AvailableAddOnResponse>>>(
+            new GetAvailableAddOnsForTenantQuery(tenantId),
             ct
         );
 
@@ -123,6 +120,21 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
             ),
             ct
         );
+
+        if (result.IsFailure)
+        {
+            // Observabilidad del guard que rechaza: sin esto el landing solo ve "400 null" y el usuario no sabe
+            // por qué (AddOn.MutexGroupConflict, Subscription.CannotPurchaseAddOns, etc.). El body JSON sigue
+            // llevando el code; esto lo deja también en logs para el soporte.
+            logger.LogWarning(
+                "StartAddOnCheckout rejected tenant={TenantId} addOnCode={AddOnCode} qty={Quantity} code={Code} message={Message}",
+                tenantId,
+                request.AddOnCode,
+                request.Quantity,
+                result.Error.Code,
+                result.Error.Message
+            );
+        }
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

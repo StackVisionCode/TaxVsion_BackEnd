@@ -70,10 +70,7 @@ public sealed class PermissionCatalogTests
     }
 
     [Theory]
-    [InlineData(PermissionCatalog.EmailUse)]
-    [InlineData(PermissionCatalog.CommsCalls)]
     [InlineData(PermissionCatalog.CampaignsManage)]
-    [InlineData(PermissionCatalog.ReportsView)]
     public void Pro_only_modules_require_at_least_the_pro_tier(string code)
     {
         var definition = PermissionCatalog.All.Single(d => d.Code == code);
@@ -295,7 +292,9 @@ public sealed class PermissionCatalogTests
             .All.Where(definition => definition.Module is "growth" or "codes" or "referrals")
             .ToArray();
 
-        Assert.Equal(18, growth.Length);
+        // CAT-F0 — Fase 0 removió los permisos IsReserved del módulo growth/codes/referrals.
+        // Quedan los 6 que un endpoint real exige.
+        Assert.Equal(6, growth.Length);
         Assert.Equal(growth.Length, growth.Select(definition => definition.Code).Distinct().Count());
         Assert.Equal(growth.Length, growth.Select(definition => definition.Id).Distinct().Count());
     }
@@ -345,10 +344,10 @@ public sealed class PermissionCatalogTests
     }
 
     /// <summary>
-    /// Las comms de doble uso están marcadas IsCustomerPortal=true, así que el filtro
-    /// !IsCustomerPortal de los dos sets del admin las excluía — un Owner no podía iniciar chats,
-    /// unirse a reuniones ni leer sus notificaciones. Deben llegar por ambos caminos: el bundle de
-    /// creación (SystemRoleDefaults) y el resync de tenants existentes (SystemTenantAdminRootPermissions).
+    /// Las comms de doble uso están marcadas IsCustomerPortal=true pero declaran AllowedActorTypes
+    /// explícito incluyendo TenantAdmin. El filtro AllowedActorTypes.Contains(TenantAdmin) de los dos
+    /// sets del admin las incluye por la vía declarativa, sin el hack TenantAdminCommunicationExtras
+    /// retirado. Un Owner debe poder iniciar chats, unirse a reuniones y leer sus notificaciones.
     /// </summary>
     [Theory]
     [InlineData(PermissionCatalog.CommunicationChatStart)]
@@ -445,21 +444,6 @@ public sealed class PermissionCatalogTests
             PermissionCatalog.PortalCallsUse,
             PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
         );
-    }
-
-    /// <summary>§R.6: no hay módulo de millas ni endpoint que lo exija, así que no se concede a nadie.</summary>
-    [Fact]
-    public void Portal_miles_use_is_reserved_and_reaches_no_role()
-    {
-        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PortalMilesUse);
-
-        Assert.True(definition.IsReserved);
-        Assert.False(definition.IsAssignableByTenant);
-        Assert.DoesNotContain(
-            PermissionCatalog.PortalMilesUse,
-            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal)
-        );
-        Assert.DoesNotContain(PermissionCatalog.PortalMilesUse, PermissionCatalog.SystemTenantAdminRootPermissions());
     }
 
     /// <summary>

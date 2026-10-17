@@ -98,7 +98,7 @@ public static class SubscriptionRenewalDueConsumer
                 );
             }
 
-            await DispatchLegacyChargeAsync(evt, bus, logger, ct);
+            await DispatchLegacyChargeAsync(evt, DunningProviderResolver.Resolve(preference), bus, logger, ct);
         }
     }
 
@@ -167,7 +167,7 @@ public static class SubscriptionRenewalDueConsumer
                 "Could not create SaaSPayment for off-session renewal: {Error}",
                 paymentResult.Error.Message
             );
-            await DispatchLegacyChargeAsync(evt, bus, logger, ct);
+            await DispatchLegacyChargeAsync(evt, provider, bus, logger, ct);
             return;
         }
         var payment = paymentResult.Value;
@@ -328,30 +328,36 @@ public static class SubscriptionRenewalDueConsumer
         if (descriptorResult.IsFailure)
             return Result.Failure<SaaSPayment>(descriptorResult.Error);
 
-        return SaaSPayment.Create(
-            evt.TenantId,
-            keyResult.Value,
-            amountResult.Value,
-            SaaSPaymentType.SubscriptionRenewal,
-            evt.TenantSubscriptionId,
-            provider,
-            descriptorResult.Value,
-            actorUserId: Guid.Empty,
-            DateTime.UtcNow,
-            evt.CodeReservationId,
-            evt.CodeReservationPaymentId,
-            evt.DiscountAmountCents,
-            evt.PromotionSnapshotHash
-        );
+        return SaaSPayment
+            .Create(
+                evt.TenantId,
+                keyResult.Value,
+                amountResult.Value,
+                SaaSPaymentType.SubscriptionRenewal,
+                evt.TenantSubscriptionId,
+                provider,
+                descriptorResult.Value,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow,
+                evt.CodeReservationId,
+                evt.CodeReservationPaymentId,
+                evt.DiscountAmountCents,
+                evt.PromotionSnapshotHash
+            )
+            .WithConceptFor(SaaSPaymentType.SubscriptionRenewal);
     }
 
     private static async Task DispatchLegacyChargeAsync(
         SubscriptionRenewalDueIntegrationEvent evt,
+        PaymentProviderCode provider,
         IMessageBus bus,
         ILogger logger,
         CancellationToken ct
     )
     {
+        // Respetar el provider del tenant también en el fallback: antes se hardcodeaba Stripe y la
+        // renovación entraba en loop de "Failed — provider declined" para cualquier tenant con PayPal.
+        // El provider lo resuelven los callers vía DunningProviderResolver con la preference del tenant.
         var command = new ChargeSaaSPaymentCommand(
             TenantId: evt.TenantId,
             IdempotencyKey: evt.IdempotencyKey,
@@ -359,7 +365,7 @@ public static class SubscriptionRenewalDueConsumer
             Currency: evt.Currency,
             Type: SaaSPaymentType.SubscriptionRenewal,
             TargetAggregateId: evt.TenantSubscriptionId,
-            Provider: PaymentProviderCode.Stripe,
+            Provider: provider,
             PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
             PayerName: null,
             RequestedByUserId: Guid.Empty,
@@ -373,8 +379,9 @@ public static class SubscriptionRenewalDueConsumer
         if (result.IsFailure)
         {
             logger.LogError(
-                "ChargeSaaSPayment (legacy fallback) failed for renewal of subscription {TenantSubscriptionId}: {Code} — {Msg}",
+                "ChargeSaaSPayment (legacy fallback) failed for renewal of subscription {TenantSubscriptionId} (provider {Provider}): {Code} — {Msg}",
                 evt.TenantSubscriptionId,
+                provider,
                 result.Error.Code,
                 result.Error.Message
             );

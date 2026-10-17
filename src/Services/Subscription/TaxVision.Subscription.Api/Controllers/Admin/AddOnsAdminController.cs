@@ -7,7 +7,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Subscription.Application.AddOns.Commands.CreateModuleAddOn;
+using TaxVision.Subscription.Application.AddOns.Commands.CreateQuotaAddOn;
 using TaxVision.Subscription.Application.AddOns.Commands.SetAddOnPrices;
 using Wolverine;
 
@@ -21,22 +21,28 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class AddOnsAdminController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Crea y publica un add-on de módulo con su precio mensual/anual. Un add-on de un módulo
-    /// NUEVO (prefijo aún no mapeado en PermissionModuleMap) exige agregar antes ese prefijo en código
-    /// + deploy; los módulos ya existentes se venden sin tocar código.</summary>
-    [HttpPost]
+    /// <summary>CAT-F3.5 — Crea y publica un add-on de cuota genérico (<c>storage</c>, <c>+invitaciones</c>,
+    /// etc.) con un entitlement aditivo (MergeStrategy = Sum/Max) sobre una entitlement key existente, y
+    /// un opcional <c>MutexGroup</c> para exclusividad entre SKUs del mismo grupo. El pipeline runtime
+    /// (snapshot + evento + consumers) ya respeta MergeStrategy sin cambios adicionales.</summary>
+    [HttpPost("quota")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType<Guid>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Create([FromBody] CreateModuleAddOnRequest request, CancellationToken ct)
+    public async Task<IActionResult> CreateQuota([FromBody] CreateQuotaAddOnRequest request, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out _, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new CreateModuleAddOnCommand(
+            new CreateQuotaAddOnCommand(
                 request.Code,
                 request.Name,
-                request.Module,
+                request.Description,
+                request.EntitlementKey,
+                request.ValueType,
+                request.EntitlementAmount,
+                request.MergeStrategy,
+                request.MutexGroup,
                 request.MonthlyUsd,
                 request.YearlyUsd,
                 userId
@@ -69,12 +75,17 @@ public sealed class AddOnsAdminController(IMessageBus bus) : ControllerBase
     }
 }
 
-public sealed record CreateModuleAddOnRequest(
+public sealed record SetAddOnPricesRequest(decimal MonthlyUsd, decimal YearlyUsd);
+
+public sealed record CreateQuotaAddOnRequest(
     string Code,
     string Name,
-    string Module,
+    string Description,
+    string EntitlementKey,
+    string ValueType,
+    string EntitlementAmount,
+    string MergeStrategy,
+    string? MutexGroup,
     decimal MonthlyUsd,
     decimal YearlyUsd
 );
-
-public sealed record SetAddOnPricesRequest(decimal MonthlyUsd, decimal YearlyUsd);

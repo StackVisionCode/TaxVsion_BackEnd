@@ -18,11 +18,14 @@ using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Subscription.Api.Bootstrap;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
+using TaxVision.Subscription.Infrastructure.Configuration;
 using TaxVision.Subscription.Infrastructure.Observability;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Scheduling;
@@ -48,6 +51,7 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
+builder.Services.Configure<SubscriptionCatalogOptions>(builder.Configuration.GetSection("Subscription"));
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
@@ -73,7 +77,7 @@ builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 // Los seeders del catálogo solo actúan contra una base vacía; este pone al día la que YA existe:
 // publica versión nueva del plan (+ recálculo masivo) y retira los add-ons que no se ofrecen.
 // Compara antes de actuar — ver el doc-comment, ReviseModules no es idempotente.
-builder.Services.AddHostedService<TaxVision.Subscription.Api.Bootstrap.SubscriptionCatalogReconciler>();
+builder.Services.AddHostedService<SubscriptionCatalogReconciler>();
 builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
 builder.Services.AddHostedService<CheckoutIntentExpirationJob>();
@@ -85,8 +89,7 @@ builder.Services.AddHostedService<SubscriptionAccessReconciliationJob>();
 // Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
 // justo antes de facturar la renovación — no hay un job separado.
 
-// Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
-// esta policy. No se expone vía gateway público.
+// Solo llamadas service-to-service pasan esta policy. No se expone vía gateway público.
 builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
@@ -164,10 +167,16 @@ builder.Host.UseWolverine(options =>
     // cambió en la suscripción" — reemplaza a los antiguos Activated/PlanChanged/
     // Suspended/SeatsPurchased (retirados en la fase de cleanup).
     options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // CAT-F5.2 — Admin editó el catálogo (plan/add-on). Communication lo relaya como socket broadcast
+    // `catalog.changed` a todos los frontends conectados para que refetcheen GET /subscription/plans.
+    // Exchange dedicado: observado en vivo que publicar al fanout compartido 'taxvision-events'
+    // ensucia los consumers .NET (CloudStorage, Auth, etc.) con "No known handler". El evento es
+    // broadcast platform-wide y solo Communication (Node) lo escucha para refetch socket; aislarlo
+    // en 'taxvision-catalog' deja a los otros servicios tranquilos.
+    options.PublishMessage<CatalogChangedIntegrationEvent>().ToRabbitExchange("taxvision-catalog");
+    options.PublishMessage<ModuleCategoryChangedIntegrationEvent>().ToRabbitExchange("taxvision-catalog");
     // Proyectado en PaymentApp para decidir off-session vs flow manual.
     options.PublishMessage<TenantBillingPreferenceChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -225,7 +234,11 @@ app.UseTaxVisionClientIp();
 
 await using (var seedScope = app.Services.CreateAsyncScope())
 {
-    var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
+    var seedServices = seedScope.ServiceProvider;
+    var seedDb = seedServices.GetRequiredService<SubscriptionDbContext>();
+    var catalogOptions = seedServices.GetRequiredService<IOptions<SubscriptionCatalogOptions>>().Value;
+    var seedLogger = seedServices.GetRequiredService<ILogger<SubscriptionCatalogReconciler>>();
+    await SubscriptionModuleCatalogSeeder.SeedAsync(seedDb, catalogOptions, seedLogger, CancellationToken.None);
     await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
     await SubscriptionAddOnCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
     await SubscriptionSeatPricingSeeder.SeedAsync(seedDb, CancellationToken.None);

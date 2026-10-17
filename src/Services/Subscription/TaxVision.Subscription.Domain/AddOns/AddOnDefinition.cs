@@ -22,6 +22,12 @@ public sealed class AddOnDefinition : BaseEntity
     public string Category { get; private set; } = default!;
     public AddOnDefinitionStatus Status { get; private set; }
     public bool AllowMultipleInstances { get; private set; }
+
+    /// <summary>CAT-F3.1 — grupo mutuamente exclusivo (<c>null</c> = sin exclusividad). Dos add-ons con
+    /// el mismo <see cref="MutexGroup"/> no pueden coexistir activos en el mismo tenant: comprar uno
+    /// requiere cancelar el otro primero. Usado para storage packs (small/medium/large comparten
+    /// grupo <c>storage</c>) — un tenant tiene UN tamaño de storage, no acumula tres.</summary>
+    public string? MutexGroup { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public Guid CreatedBy { get; private set; }
@@ -42,7 +48,8 @@ public sealed class AddOnDefinition : BaseEntity
         bool allowMultipleInstances,
         IReadOnlyCollection<BillingCycle> supportedBillingCycles,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? mutexGroup = null
     )
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
@@ -65,6 +72,11 @@ public sealed class AddOnDefinition : BaseEntity
                 new Error("AddOnDefinition.NoBillingCycles", "At least one billing cycle is required.")
             );
 
+        if (mutexGroup is not null && (mutexGroup.Length == 0 || mutexGroup.Length > 32))
+            return Result.Failure<AddOnDefinition>(
+                new Error("AddOnDefinition.InvalidMutexGroup", "MutexGroup, when set, must be 1-32 characters.")
+            );
+
         var definition = new AddOnDefinition
         {
             Code = code,
@@ -73,6 +85,7 @@ public sealed class AddOnDefinition : BaseEntity
             Category = category,
             Status = AddOnDefinitionStatus.Draft,
             AllowMultipleInstances = allowMultipleInstances,
+            MutexGroup = mutexGroup,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
@@ -91,7 +104,8 @@ public sealed class AddOnDefinition : BaseEntity
         string category,
         bool allowMultipleInstances,
         IReadOnlyCollection<BillingCycle> supportedBillingCycles,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? mutexGroup = null
     )
     {
         var created = Create(
@@ -102,13 +116,22 @@ public sealed class AddOnDefinition : BaseEntity
             allowMultipleInstances,
             supportedBillingCycles,
             Guid.Empty,
-            nowUtc
+            nowUtc,
+            mutexGroup
         );
         if (created.IsFailure)
             return created;
 
         created.Value.Id = id;
         return created;
+    }
+
+    /// <summary>Alinea <see cref="AllowMultipleInstances"/> con el catálogo del seeder. Separado de
+    /// <see cref="Seed"/> para que el reconciliador de arranque pueda migrar add-ons ya existentes a la
+    /// semántica nueva (ej. storage pasó de "un tier por tenant" a "N packs apilables"). Idempotente.</summary>
+    public void SetAllowMultipleInstances(bool allow)
+    {
+        AllowMultipleInstances = allow;
     }
 
     /// <summary>True si este add-on es de tipo módulo (features <c>module.*</c>) y TODOS sus módulos ya
@@ -205,6 +228,46 @@ public sealed class AddOnDefinition : BaseEntity
         return Result.Success();
     }
 
+    public Result ReplaceFeatures(IReadOnlyCollection<AddOnFeature> features, Guid actorUserId, DateTime nowUtc)
+    {
+        if (features.Count == 0)
+            return Result.Failure(new Error("AddOnDefinition.NoFeatures", "At least one feature is required."));
+
+        if (features.Any(feature => feature.AddOnDefinitionId != Id))
+            return Result.Failure(
+                new Error("AddOnDefinition.FeatureMismatch", "A feature does not belong to this add-on.")
+            );
+
+        _features.Clear();
+        _features.AddRange(features);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    public Result UpdateMetadata(string name, string description, Guid actorUserId, DateTime nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+            return Result.Failure(
+                new Error("AddOnDefinition.InvalidName", "Name is required and must be 200 characters or fewer.")
+            );
+
+        if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
+            return Result.Failure(
+                new Error(
+                    "AddOnDefinition.InvalidDescription",
+                    "Description is required and must be 2000 characters or fewer."
+                )
+            );
+
+        if (Name == name && Description == description)
+            return Result.Success();
+
+        Name = name;
+        Description = description;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result Publish(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnDefinitionStatus.Draft)
@@ -221,6 +284,31 @@ public sealed class AddOnDefinition : BaseEntity
             return Result.Failure(new Error("AddOnDefinition.InvalidTransition", $"Cannot deprecate from {Status}."));
 
         Status = AddOnDefinitionStatus.Deprecated;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    public Result Restore(Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != AddOnDefinitionStatus.Deprecated)
+            return Result.Failure(new Error("AddOnDefinition.InvalidTransition", $"Cannot restore from {Status}."));
+
+        Status = AddOnDefinitionStatus.Published;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    public Result RestoreManagedModuleShadow(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!string.Equals(Category, "module", StringComparison.OrdinalIgnoreCase))
+            return Result.Failure(
+                new Error("AddOnDefinition.NotModuleShadow", "Only managed module shadows can use this transition.")
+            );
+
+        if (Status == AddOnDefinitionStatus.Published)
+            return Result.Success();
+
+        Status = AddOnDefinitionStatus.Published;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }

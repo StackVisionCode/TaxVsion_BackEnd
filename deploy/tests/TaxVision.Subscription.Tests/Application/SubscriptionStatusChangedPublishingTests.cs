@@ -38,12 +38,13 @@ public sealed class SubscriptionStatusChangedPublishingTests
     private static TenantSubscription BuildActiveSubscription(Guid tenantId, DateTime nowUtc)
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("starter").Value, "Starter", "Starter plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("starter").Value, "Starter", "Starter plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         version.AddPriceTier(
             PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(49m, "USD").Value).Value
         );
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
 

@@ -62,6 +62,8 @@ public static class SaaSPaymentResultPublisher
                 ProviderReferenceMask = Mask(payment.ExternalChargeReference?.Value),
                 Quantity = payment.Breakdown?.Quantity,
                 UnitAmountCents = payment.Breakdown?.UnitAmountCents,
+                ConceptCode = payment.Concept?.Code,
+                ConceptDisplayName = payment.Concept?.DisplayName,
                 CorrelationId = correlationId,
             }
         );

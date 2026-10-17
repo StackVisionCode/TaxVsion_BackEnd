@@ -85,6 +85,11 @@ public static class AddOnEligibility
 
     /// <summary>Se puede comprar.</summary>
     public const string Available = "Available";
+
+    /// <summary>Hay otro add-on activo del mismo <c>MutexGroup</c> (p. ej. ya tiene Storage +10 GB y pide +5 GB):
+    /// la compra la rechaza <c>AddOn.MutexGroupConflict</c>, así que el read-model lo expone así para que la
+    /// pantalla NO pinte botón de comprar.</summary>
+    public const string Blocked = "Blocked";
 }
 
 /// <summary>
@@ -111,5 +116,11 @@ public sealed record AccountAddOnView(
     string? Currency,
     Guid? TenantAddOnId,
     DateTime? CurrentPeriodEndUtc,
-    bool? AutoRenew
+    bool? AutoRenew,
+    /// <summary>Cuántas instancias activas tiene el tenant de este SKU (storage packs son apilables).
+    /// 0 cuando no hay ninguna; 1 cuando el add-on no admite múltiples.</summary>
+    int ActiveQuantity,
+    /// <summary>Si el tenant puede comprar OTRA instancia del mismo SKU. Para storage packs es true cuando
+    /// el status no bloquea compras; para add-ons de módulo es false.</summary>
+    bool CanStack
 );

@@ -9,6 +9,7 @@ using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using TaxVision.Auth.Infrastructure.Onboarding.Concurrency;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -51,6 +52,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -62,15 +64,15 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
         Assert.Equal(TenantOnboardingStatus.RegistrationPending, onboarding.Status);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.NotNull(tokenReferences.Stored);
-        // Carril pagado (reconcile): el email "completa tu oficina" se DIFIERE — el reconcile ya devuelve
-        // la RegistrationUrl in-session; el email lo publica el sweeper si el comprador no termina.
-        Assert.DoesNotContain(bus.Published, message => message is OnboardingRegistrationReadyIntegrationEvent);
+        // OBF-2.3: reconcile también publica el email INMEDIATO (antes se difería 45 min al scheduler).
+        // Idempotente a nivel aggregate: si el webhook ya lo marcó sent, el publish aquí no corre.
+        Assert.Contains(bus.Published, message => message is OnboardingRegistrationReadyIntegrationEvent);
         Assert.Contains(bus.Published, message => message is OnboardingFinalizeCommand);
         Assert.Contains(bus.Published, message => message is RequestOnboardingReceiptCommand);
     }
 
     [Fact]
-    public async Task Reference_path_completes_the_payment_but_suppresses_the_registration_url()
+    public async Task Reference_path_completes_the_payment_and_returns_registration_url_but_hides_the_email()
     {
         var now = DateTime.UtcNow;
         var onboarding = CreatePaymentProcessingOnboarding(now, out var paymentId);
@@ -99,14 +101,17 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(TenantOnboardingStatus.RegistrationPending.ToString(), result.Value.Status);
-        // Camino por referencia (más expuesta que la cookie): el pago se completa y el token se emite,
-        // pero la registrationUrl NO se devuelve — sigue llegando solo por email.
-        Assert.Null(result.Value.RegistrationUrl);
+        // OBF-2.4: el camino por referencia (sin cookie) también devuelve la registrationUrl para que el
+        // landing redirija al formulario — antes fallbackeaba con "we sent you an email" dejando huérfano
+        // al cliente que volvía desde otro dispositivo. El PayerEmail SÍ se oculta: es dato personal y el
+        // reference no autentica al titular.
+        Assert.StartsWith("https://app.example.com/register?token=", result.Value.RegistrationUrl);
         Assert.Null(result.Value.PayerEmail);
         Assert.NotNull(tokenReferences.Stored);
     }
@@ -138,6 +143,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -176,6 +182,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -215,6 +222,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -266,6 +274,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 

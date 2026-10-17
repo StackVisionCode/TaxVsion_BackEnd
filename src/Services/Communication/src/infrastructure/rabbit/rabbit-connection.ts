@@ -75,6 +75,10 @@ async function tryConnect(): Promise<RabbitContext> {
   });
   const channel = await connection.createChannel();
   await channel.assertExchange(config.rabbitmq.exchange, 'fanout', { durable: true });
+  // CAT-F7.2 — exchange dedicado para eventos de catálogo platform-wide. Solo Communication
+  // (y futuros consumers de broadcast de catálogo) lo escucha. Aislar aquí evita el ruido
+  // "No known handler" en CloudStorage/Auth/etc. que recibían el fanout compartido sin manejarlo.
+  await channel.assertExchange('taxvision-catalog', 'fanout', { durable: true });
   // DLQ must exist before the main queue references it as dead-letter target.
   await channel.assertQueue(config.rabbitmq.dlq, { durable: true });
   // Route rejected/expired messages to the DLQ via the default exchange (empty
@@ -87,6 +91,9 @@ async function tryConnect(): Promise<RabbitContext> {
     deadLetterRoutingKey: config.rabbitmq.dlq,
   });
   await channel.bindQueue(config.rabbitmq.queue, config.rabbitmq.exchange, '');
+  // Misma cola bindeada a ambos exchanges: así el consumer-runtime procesa catalog events por
+  // el mismo pipeline (ack/retry/DLQ) sin duplicar código, pero la publicación queda aislada.
+  await channel.bindQueue(config.rabbitmq.queue, 'taxvision-catalog', '');
 
   // H-15 — cadena de espera con TTL. RabbitMQ no sabe reintentar con backoff por si solo: la
   // unica forma sin plugins es una cola por cooldown cuyo `messageTtl` vence y dead-letterea el

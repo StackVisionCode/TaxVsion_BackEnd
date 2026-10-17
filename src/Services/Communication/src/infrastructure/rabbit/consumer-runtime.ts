@@ -91,8 +91,7 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'sms.message.accepted.v1',
   'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageDeliveredIntegrationEvent':
     'sms.message.delivered.v1',
-  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageFailedIntegrationEvent':
-    'sms.message.failed.v1',
+  'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageFailedIntegrationEvent': 'sms.message.failed.v1',
   'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageSuppressedIntegrationEvent':
     'sms.message.suppressed.v1',
   // Customer
@@ -162,6 +161,12 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // rediseno de Subscription).
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantEntitlementsChangedIntegrationEvent':
     'subscription.entitlements_changed.v1',
+  // CAT-F7.3 — faltaba el mapping: Communication recibía el envelope pero sin match caía al
+  // "unknown event type" silencioso y nunca disparaba el broadcast socket catalog.changed.
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.CatalogChangedIntegrationEvent':
+    'subscription.catalog_changed.v1',
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.ModuleCategoryChangedIntegrationEvent':
+    'subscription.module_category_changed.v1',
   // CloudStorage
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAvailableIntegrationEvent':
     'cloudstorage.file.available.v1',

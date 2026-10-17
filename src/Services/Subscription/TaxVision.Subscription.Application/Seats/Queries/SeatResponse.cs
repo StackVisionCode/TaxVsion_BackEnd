@@ -11,7 +11,5 @@ public sealed record SeatResponse(
     DateTime? CurrentPeriodEndUtc,
     DateTime? NextRenewalAtUtc,
     bool AutoRenew,
-    string BillingCycle,
-    Guid? CurrentUserId,
-    DateTime? CurrentUserAssignedAtUtc
+    string BillingCycle
 );

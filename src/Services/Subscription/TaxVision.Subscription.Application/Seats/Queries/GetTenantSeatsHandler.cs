@@ -41,9 +41,6 @@ public static class GetTenantSeatsHandler
             )
                 continue;
 
-            if (query.UserId is { } userId && seat.CurrentUserId != userId)
-                continue;
-
             result.Add(seat);
         }
 

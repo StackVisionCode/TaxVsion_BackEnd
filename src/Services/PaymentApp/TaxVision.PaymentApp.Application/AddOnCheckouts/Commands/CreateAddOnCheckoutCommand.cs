@@ -24,7 +24,12 @@ public sealed record CreateAddOnCheckoutCommand(
     int? Quantity = null,
     long? UnitAmountCents = null,
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
-    PaymentMethodKind Method = PaymentMethodKind.Card
+    PaymentMethodKind Method = PaymentMethodKind.Card,
+    /// <summary>SEC-M1.C — firma HMAC emitida por Subscription (ver CreateSeatsCheckoutCommand).</summary>
+    string? AmountSignature = null,
+    /// <summary>Nombre comercial del add-on del catálogo de Subscription, para el recibo. Si no viene,
+    /// el concept cae al genérico "Add-on" / "Add-on × N".</summary>
+    string? AddOnDisplayName = null
 );
 
 public sealed record AddOnCheckoutResponse(

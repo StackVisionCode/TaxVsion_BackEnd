@@ -19,6 +19,7 @@ public sealed class SetAddOnPricesHandlerTests
             new SetAddOnPricesCommand(definition.Id, 39m, 390m, Guid.NewGuid()),
             addOns,
             unitOfWork,
+            new CapturingMessageBus(),
             CancellationToken.None
         );
 
@@ -41,6 +42,7 @@ public sealed class SetAddOnPricesHandlerTests
             new SetAddOnPricesCommand(Guid.NewGuid(), 39m, 390m, Guid.NewGuid()),
             addOns,
             unitOfWork,
+            new CapturingMessageBus(),
             CancellationToken.None
         );
 
@@ -57,7 +59,7 @@ public sealed class SetAddOnPricesHandlerTests
                 AddOnCode.Create("email.addon").Value,
                 "Email",
                 "Email",
-                "module",
+                "quota",
                 false,
                 [BillingCycle.Monthly, BillingCycle.Yearly],
                 Guid.Empty,

@@ -100,6 +100,46 @@ public sealed class OnboardingAdminController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record ReasonRequest(string Reason);
+
+    /// <summary>OBF-3.1 — reemite el email "completa tu oficina" con un token nuevo de 7 días. Para
+    /// onboardings pagados en RegistrationPending/PaymentCompleted (link vencido, email borrado,
+    /// scheduler quemó el intento). Para Expired usar <see cref="Reactivate"/>.</summary>
+    [HttpPost("{id:guid}/resend-registration-email")]
+    [RateLimit("auth.g.onboarding_admin_manage")]
+    public async Task<IActionResult> ResendRegistrationEmail(
+        Guid id,
+        [FromBody] ReasonRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var adminUserId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ResendOnboardingRegistrationEmailAdminCommand(id, request.Reason, adminUserId),
+            ct
+        );
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>OBF-3.1 — rescata un onboarding Expired que YA pagó. Reinicia Status a RegistrationPending,
+    /// rejuvenece CreatedAtUtc (para que el sweeper no lo vuelva a Expired), emite token nuevo y publica el
+    /// email de registro.</summary>
+    [HttpPost("{id:guid}/reactivate")]
+    [RateLimit("auth.g.onboarding_admin_manage")]
+    public async Task<IActionResult> Reactivate(Guid id, [FromBody] ReasonRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var adminUserId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ReactivateExpiredOnboardingAdminCommand(id, request.Reason, adminUserId),
+            ct
+        );
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record CancelAndRefundRequest(string Reason, string Confirmation);
 
     [HttpPost("{id:guid}/cancel-and-refund")]

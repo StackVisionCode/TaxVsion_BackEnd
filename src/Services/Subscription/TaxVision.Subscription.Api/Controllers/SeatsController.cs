@@ -8,12 +8,10 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Subscription.Application.SeatAssignments.Commands.AssignSeatToUser;
-using TaxVision.Subscription.Application.SeatAssignments.Commands.ReassignSeat;
-using TaxVision.Subscription.Application.SeatAssignments.Commands.ReleaseSeatFromUser;
 using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
+using TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout;
 using TaxVision.Subscription.Application.Seats.Queries;
 using Wolverine;
 
@@ -33,7 +31,6 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> GetSeats(
         [FromQuery] string? status,
         [FromQuery] string? type,
-        [FromQuery] Guid? userId,
         [FromQuery] int page,
         [FromQuery] int pageSize,
         CancellationToken ct
@@ -43,7 +40,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<SeatResponse>>>(
-            new GetTenantSeatsQuery(tenantId, status, type, userId, page, pageSize),
+            new GetTenantSeatsQuery(tenantId, status, type, page, pageSize),
             ct
         );
 
@@ -152,6 +149,51 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record StartSeatReactivationCheckoutRequest(
+        string PayerEmail,
+        string SuccessUrl,
+        string CancelUrl,
+        string? Provider,
+        string? Method
+    );
+
+    /// <summary>Pago manual del admin para reactivar un seat Suspended/PastDue. Devuelve la URL de checkout
+    /// del provider; al confirmarse el pago, el consumer <c>SeatRenewalPaymentSucceeded</c> detecta estado
+    /// Suspended/PastDue y aplica <c>SubscriptionSeat.CompleteReactivation</c> (transición a Active con
+    /// período nuevo). Replay idempotente del mismo click mientras el seat sigue en el mismo bucket (ver
+    /// <c>IdempotencyKeyFactory.SeatReactivation</c>).</summary>
+    [HttpPost("{seatId:guid}/reactivate-checkout")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.l.seat_purchase")]
+    [ProducesResponseType<StartSeatReactivationCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> StartReactivationCheckout(
+        Guid seatId,
+        StartSeatReactivationCheckoutRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<StartSeatReactivationCheckoutResponse>>(
+            new StartSeatReactivationCheckoutCommand(
+                tenantId,
+                seatId,
+                request.PayerEmail,
+                request.SuccessUrl,
+                request.CancelUrl,
+                string.IsNullOrWhiteSpace(request.Provider) ? "Stripe" : request.Provider,
+                string.IsNullOrWhiteSpace(request.Method) ? "Card" : request.Method,
+                userId
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record CancelSeatCheckoutRequest(string? Reason);
 
     /// <summary>Cierra una intención Pending antes de pagar (click en "cancelar" o pasarela cerrada): libera el
@@ -196,65 +238,5 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    public sealed record AssignSeatRequest(Guid UserId);
-
-    [HttpPost("{id:guid}/assign")]
-    [HasPermission(SubscriptionPermissions.SeatsManage)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Assign(Guid id, AssignSeatRequest request, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result>(
-            new AssignSeatToUserCommand(tenantId, id, request.UserId, userId),
-            ct
-        );
-
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    public sealed record ReleaseSeatRequest(string? Reason);
-
-    [HttpPost("{id:guid}/release")]
-    [HasPermission(SubscriptionPermissions.SeatsManage)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Release(Guid id, ReleaseSeatRequest request, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result>(
-            new ReleaseSeatFromUserCommand(tenantId, id, request.Reason, userId),
-            ct
-        );
-
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    public sealed record ReassignSeatRequest(Guid ToUserId, string? Reason);
-
-    [HttpPost("{id:guid}/reassign")]
-    [HasPermission(SubscriptionPermissions.SeatsManage)]
-    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [RateLimit("subscription.g.seat_manage")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Reassign(Guid id, ReassignSeatRequest request, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result>(
-            new ReassignSeatCommand(tenantId, id, request.ToUserId, request.Reason, userId),
-            ct
-        );
-
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

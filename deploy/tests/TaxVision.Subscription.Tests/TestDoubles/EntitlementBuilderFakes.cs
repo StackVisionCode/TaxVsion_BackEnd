@@ -1,5 +1,6 @@
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
@@ -88,6 +89,33 @@ public sealed class FakePlanRepo(SubscriptionPlan? plan) : IPlanRepository
 
     public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
         Task.FromResult(plan is not null && plan.Id == planId ? plan : null);
+
+    public Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    public Task AddAsync(SubscriptionPlan p, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default) => Task.FromResult(false);
+}
+
+public sealed class FakeModuleRepo(params Module[] modules) : IModuleRepository
+{
+    private readonly List<Module> _modules = [.. modules];
+
+    public Task<IReadOnlyList<Module>> GetAllAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Module>>(_modules);
+
+    public Task<Module?> GetByCodeAsync(string code, CancellationToken ct = default) =>
+        Task.FromResult(_modules.FirstOrDefault(module => module.Code == code));
+
+    public Task<Module?> GetByCodeForUpdateAsync(string code, CancellationToken ct = default) =>
+        GetByCodeAsync(code, ct);
+
+    public Task AddAsync(Module module, CancellationToken ct = default)
+    {
+        _modules.Add(module);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) : ISubscriptionSeatRepository
@@ -99,12 +127,6 @@ public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) 
 
     public Task<SubscriptionSeat?> GetByIdAsync(Guid id, Guid t, CancellationToken ct = default) =>
         throw new NotSupportedException();
-
-    public Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
-        Task.FromResult(_seats.FirstOrDefault(seat => seat.TenantId == t && seat.CurrentUserId == u));
-
-    public Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid t, Guid u, CancellationToken ct = default) =>
-        Task.FromResult(_seats.FirstOrDefault(seat => seat.TenantId == t && seat.CurrentUserId == u));
 
     public Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) => throw new NotSupportedException();
 

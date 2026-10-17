@@ -134,7 +134,7 @@ public sealed class MySubscriptionBillingVisibilityTests
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("pro").Value, "Pro", "Pro plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("pro").Value, "Pro", "Pro plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
 

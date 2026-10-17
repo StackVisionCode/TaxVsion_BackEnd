@@ -40,6 +40,10 @@ describe('A6/A5.2 — exenciones del gate de modulo', () => {
     expect(moduleFor('communication.support.agent')).toBeNull();
   });
 
+  it('reports no pertenece al catalogo ejecutable', () => {
+    expect(moduleFor('reports.view')).toBeNull();
+  });
+
   it('las reuniones son su propio modulo', () => {
     // Se venden aparte (Pro y Enterprise); chat, llamadas y video van en todos los planes.
     expect(moduleFor('communication.meeting.create')).toBe('meetings');
@@ -170,11 +174,7 @@ describe('A6 — camino de enforce del gate de modulo', () => {
       return { denied: true, module: 'comms' };
     });
     try {
-      const result = await checkPermission(
-        subject('u4'),
-        CommunicationPermissions.ChatReply,
-        projection([]),
-      );
+      const result = await checkPermission(subject('u4'), CommunicationPermissions.ChatReply, projection([]));
 
       expect(result.allowed).toBe(false);
       if (result.allowed) return;

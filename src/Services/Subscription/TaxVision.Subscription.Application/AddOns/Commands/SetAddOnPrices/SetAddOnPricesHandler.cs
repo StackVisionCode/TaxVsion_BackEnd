@@ -1,7 +1,10 @@
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
-using TaxVision.Subscription.Application.AddOns.Commands.CreateModuleAddOn;
+using TaxVision.Subscription.Application.AddOns;
+using TaxVision.Subscription.Domain.AddOns;
+using Wolverine;
 
 namespace TaxVision.Subscription.Application.AddOns.Commands.SetAddOnPrices;
 
@@ -11,6 +14,7 @@ public static class SetAddOnPricesHandler
         SetAddOnPricesCommand command,
         IAddOnDefinitionRepository addOnDefinitions,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -18,7 +22,12 @@ public static class SetAddOnPricesHandler
         if (definition is null)
             return Result.Failure(new Error("AddOn.NotFound", "Add-on does not exist."));
 
-        var tiers = CreateModuleAddOnHandler.BuildTiers(definition.Id, command.MonthlyUsd, command.YearlyUsd);
+        if (string.Equals(definition.Category, "module", StringComparison.OrdinalIgnoreCase))
+            return Result.Failure(
+                new Error("Module.ManagedByCatalog", "Module add-on prices are managed by the module catalog.")
+            );
+
+        var tiers = AddOnPriceTierFactory.Create(definition.Id, command.MonthlyUsd, command.YearlyUsd);
         if (tiers.IsFailure)
             return Result.Failure(tiers.Error);
 
@@ -27,6 +36,15 @@ public static class SetAddOnPricesHandler
             return replaced;
 
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new CatalogChangedIntegrationEvent
+            {
+                ChangeKind = "addon.prices",
+                EntityId = definition.Id,
+                EntityCode = definition.Code.Value,
+                CorrelationId = string.Empty,
+            }
+        );
         return Result.Success();
     }
 }

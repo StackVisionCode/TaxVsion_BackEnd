@@ -1,12 +1,14 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Platform;
+using BuildingBlocks.PurchaseIntentAmount;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -28,11 +30,26 @@ public static class CreatePlanChangeCheckoutHandler
         IUnitOfWork unitOfWork,
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
+        IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         CancellationToken ct
     )
     {
+        // SEC-M1.C: ver CreateSeatsCheckoutHandler — firma HMAC local, fail-closed sólo en mismatch.
+        var verify = intentVerifier.Verify(
+            new PurchaseIntentAmountInput(
+                command.TenantId,
+                PurchaseIntentKind.PlanChange,
+                command.PlanChangeRequestId,
+                command.AmountCents,
+                command.Currency
+            ),
+            command.AmountSignature
+        );
+        if (verify.IsFailure)
+            return Result.Failure<PlanChangeCheckoutResponse>(verify.Error);
+
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,
             command.PayerEmail,
@@ -80,17 +97,19 @@ public static class CreatePlanChangeCheckoutHandler
             // Subscription ya resolvió el precio COMPLETO del plan destino; acá no se prorratea nada.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>
-                SaaSPayment.Create(
-                    command.TenantId,
-                    key,
-                    amount,
-                    SaaSPaymentType.PlanChangeCheckout,
-                    command.PlanChangeRequestId,
-                    command.Provider,
-                    descriptor,
-                    actorUserId: Guid.Empty,
-                    nowUtc
-                ),
+                SaaSPayment
+                    .Create(
+                        command.TenantId,
+                        key,
+                        amount,
+                        SaaSPaymentType.PlanChangeCheckout,
+                        command.PlanChangeRequestId,
+                        command.Provider,
+                        descriptor,
+                        actorUserId: Guid.Empty,
+                        nowUtc
+                    )
+                    .WithConceptFor(SaaSPaymentType.PlanChangeCheckout),
             DecideOnExisting = DecideOnExisting,
             BuildMetadata = payment => new Dictionary<string, string>
             {

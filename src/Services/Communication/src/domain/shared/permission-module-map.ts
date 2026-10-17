@@ -29,7 +29,6 @@ const PREFIX_TO_MODULE: ReadonlyArray<readonly [string, string]> = [
   ['communication.', 'comms'],
   ['comms.', 'comms'],
   ['campaigns.', 'campaigns'],
-  ['reports.', 'reports'],
 ];
 
 /**

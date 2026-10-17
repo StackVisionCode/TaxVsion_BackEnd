@@ -1,0 +1,68 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+		"name": "TaxVision_Wallet",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Endpoints del servicio Wallet. Hoy sólo expone el endpoint M2M interno que PaymentApp llama antes de abrir el checkout de un top-up para verificar amount/currency (SEC-M1.e). El resto de operaciones de Wallet (reserve/settle, saldos, consumo por SMS/Campaigns) viven en integraciones M2M entre servicios y no se usan desde Postman."
+	},
+	"item": [
+		{
+			"name": "Internal",
+			"item": [
+				{
+					"name": "GetWalletTopUpAmount (M2M)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceToken}}",
+								"type": "text",
+								"description": "Token M2M (client-credentials) emitido por auth-api. Esta ruta exige ActorType.Service y rechaza sesiones humanas."
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/wallet/internal/wallet/top-ups/{{walletTopUpId}}/amount?tenantId={{tenantId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"wallet",
+								"internal",
+								"wallet",
+								"top-ups",
+								"{{walletTopUpId}}",
+								"amount"
+							],
+							"query": [
+								{
+									"key": "tenantId",
+									"value": "{{tenantId}}"
+								}
+							]
+						},
+						"description": "SEC-M1.e — fuente de verdad del AmountCents/Currency de un WalletTopUp. PaymentApp consulta este endpoint ANTES de abrir el checkout; si el body M2M entrante no coincide con lo que devuelve este endpoint, rechaza el checkout sin tocar al provider.\n\nFail-closed: 404 si el top-up no es del tenant pasado, error de dominio si ya salió del estado Pending (ya acreditado o fallido)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 o 404\", () => pm.expect([200, 404]).to.include(pm.response.code));",
+									"if (pm.response.code === 200) {",
+									"    const body = pm.response.json();",
+									"    pm.test(\"tenantId coincide\", () => pm.expect(body.tenantId).to.eql(pm.environment.get(\"tenantId\")));",
+									"    pm.test(\"amountCents es número\", () => pm.expect(body.amountCents).to.be.a(\"number\"));",
+									"    pm.test(\"currency presente\", () => pm.expect(body.currency).to.be.a(\"string\").and.not.empty);",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

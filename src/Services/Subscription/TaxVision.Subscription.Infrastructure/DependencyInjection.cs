@@ -1,14 +1,19 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog;
+using TaxVision.Subscription.Application.Catalog.Abstractions;
 using TaxVision.Subscription.Application.RateLimiting.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
+using TaxVision.Subscription.Infrastructure.Catalog;
+using TaxVision.Subscription.Infrastructure.Catalog.Concurrency;
 using TaxVision.Subscription.Infrastructure.Growth;
 using TaxVision.Subscription.Infrastructure.Permissions;
 using TaxVision.Subscription.Infrastructure.Persistence;
@@ -33,6 +38,9 @@ public static class DependencyInjection
         services.Configure<SubscriptionOptions>(configuration.GetSection(SubscriptionOptions.SectionName));
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<SubscriptionDbContext>());
+        services.AddSingleton<IModuleEditSerializer, InMemoryModuleEditSerializer>();
+        services.AddScoped<ICommercialModuleShadowReconciler, CommercialModuleShadowReconciler>();
+        services.AddScoped<IModuleRepository, ModuleRepository>();
         services.AddScoped<IPlanRepository, PlanRepository>();
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
@@ -102,12 +110,27 @@ public static class DependencyInjection
             }
         );
 
+        // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
+        // PurchaseIntentAmountSignature__Secret (misma en Subscription y PaymentApp).
+        services.AddPurchaseIntentAmountSigning(configuration);
+
         // Seats Fase 5 — M2M contra PaymentApp para crear el hosted-checkout de una compra de asientos
         // (tenant sin método en archivo). Reusa el service-token acquirer de arriba.
         services
             .AddOptions<PaymentAppClientOptions>()
             .Bind(configuration.GetSection(PaymentAppClientOptions.SectionName));
         services.AddHttpClient<ISeatCheckoutPaymentClient, PaymentApp.PaymentAppSeatCheckoutClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // B5 — M2M contra PaymentApp para reactivar un seat Suspended/PastDue específico. Mismo molde que
+        // el client de arriba; la ruta es POST internal/seats/{seatId}/reactivate-checkout.
+        services.AddHttpClient<ISeatReactivationCheckoutClient, PaymentApp.PaymentAppSeatReactivationCheckoutClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
@@ -157,6 +180,18 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Payment-options picker — M2M contra PaymentApp para que el Account del Landing pregunte al
+        // usuario qué proveedor usar antes de arrancar add-on/seat/renew/plan checkout. Sin esto el
+        // landing asumía Stripe por default y rompía al tenant que onboardeó con PayPal.
+        services.AddHttpClient<IAccountPaymentOptionsClient, PaymentApp.PaymentAppAccountPaymentOptionsClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<PaymentAppClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(10);
             }
         );
 

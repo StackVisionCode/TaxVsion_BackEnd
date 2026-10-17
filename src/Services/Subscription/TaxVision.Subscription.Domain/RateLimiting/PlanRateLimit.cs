@@ -60,4 +60,23 @@ public sealed class PlanRateLimit : BaseEntity
             }
         );
     }
+
+    /// <summary>CAT-F2.6 — autoría: actualiza el multiplicador y/o el hard override de una fila ya
+    /// sembrada. No cambia PlanCode ni Category (son clave compuesta).</summary>
+    public Result Revise(decimal multiplierOverride, int? hardOverridePerMinute)
+    {
+        if (multiplierOverride <= 0)
+            return Result.Failure(
+                new Error("PlanRateLimit.InvalidMultiplier", "Multiplier override must be greater than zero.")
+            );
+
+        if (hardOverridePerMinute is <= 0)
+            return Result.Failure(
+                new Error("PlanRateLimit.InvalidHardOverride", "Hard override, when set, must be greater than zero.")
+            );
+
+        MultiplierOverride = multiplierOverride;
+        HardOverridePerMinute = hardOverridePerMinute;
+        return Result.Success();
+    }
 }

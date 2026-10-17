@@ -1,8 +1,10 @@
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
+using TaxVision.Subscription.Application.Plans;
 using TaxVision.Subscription.Domain.Plans;
 using Wolverine;
 
@@ -15,6 +17,7 @@ public static class SetPlanModulesHandler
     public static async Task<Result> Handle(
         SetPlanModulesCommand command,
         IPlanRepository plans,
+        IModuleRepository modules,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<SubscriptionPlan> logger,
@@ -25,12 +28,25 @@ public static class SetPlanModulesHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan not found."));
 
-        var revised = plan.ReviseModules(command.Modules, command.ActorUserId, DateTime.UtcNow);
+        var selection = await PlanModuleSelection.ComposeAsync(command.Modules, modules, ct);
+        if (selection.IsFailure)
+            return Result.Failure(selection.Error);
+
+        var revised = plan.ReviseModules(selection.Value, command.ActorUserId, DateTime.UtcNow);
         if (revised.IsFailure)
             return revised;
 
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(command.PlanId));
+        await bus.PublishAsync(
+            new CatalogChangedIntegrationEvent
+            {
+                ChangeKind = "plan.modules",
+                EntityId = plan.Id,
+                EntityCode = plan.Code.Value,
+                CorrelationId = string.Empty,
+            }
+        );
 
         logger.LogInformation(
             "Plan {PlanId} modules revised by {ActorUserId}; mass recalculation queued for its tenants.",

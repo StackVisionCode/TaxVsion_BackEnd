@@ -20,7 +20,7 @@ public sealed class SubscriptionPlanTests
     public void Publishing_a_version_moves_the_plan_to_published()
     {
         var plan = CreatePlan("starter");
-        var version = CreateVersion(plan.Id, versionNumber: 1);
+        var version = CreateSellableVersion(plan.Id, versionNumber: 1);
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
 
         var result = plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
@@ -34,8 +34,8 @@ public sealed class SubscriptionPlanTests
     public void Publishing_a_new_version_supersedes_the_previous_one()
     {
         var plan = CreatePlan("starter");
-        var v1 = CreateVersion(plan.Id, versionNumber: 1);
-        var v2 = CreateVersion(plan.Id, versionNumber: 2);
+        var v1 = CreateSellableVersion(plan.Id, versionNumber: 1);
+        var v2 = CreateSellableVersion(plan.Id, versionNumber: 2);
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
         plan.AddVersion(v2, Guid.Empty, DateTime.UtcNow);
         plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
@@ -46,6 +46,43 @@ public sealed class SubscriptionPlanTests
         Assert.Equal(PlanVersionStatus.Superseded, v1.Status);
         Assert.Equal(PlanVersionStatus.Published, v2.Status);
         Assert.Equal(v2.Id, plan.GetPublishedVersion()!.Id);
+    }
+
+    // Caught in vivo 2026-10-16: una v1 vacía quedó Published tras un DRAFT fallido (400)
+    // porque Publish solo validaba Status==Draft. El plan apareció en /subscription/plans sin
+    // precio ni módulo — incontratable. El guard pertenece al dominio.
+    [Fact]
+    public void Publishing_fails_when_version_has_no_features_or_modules()
+    {
+        var plan = CreatePlan("starter");
+        var version = CreateVersion(plan.Id, versionNumber: 1);
+        version.AddPriceTier(
+            PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(29m, "USD").Value).Value
+        );
+        plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
+
+        var result = plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PlanVersion.NoFeatures", result.Error.Code);
+        Assert.Equal(PlanVersionStatus.Draft, version.Status);
+    }
+
+    [Fact]
+    public void Publishing_fails_when_version_has_no_price_tiers()
+    {
+        var plan = CreatePlan("starter");
+        var version = CreateVersion(plan.Id, versionNumber: 1);
+        version.AddFeature(
+            PlanFeature.Create(version.Id, EntitlementKey.Create("module.customers").Value, true, "customers").Value
+        );
+        plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
+
+        var result = plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PlanVersion.NoPriceTiers", result.Error.Code);
+        Assert.Equal(PlanVersionStatus.Draft, version.Status);
     }
 
     [Fact]
@@ -157,9 +194,22 @@ public sealed class SubscriptionPlanTests
 
     private static SubscriptionPlan CreatePlan(string code) =>
         SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
 
     private static SubscriptionPlanVersion CreateVersion(Guid planId, int versionNumber) =>
         SubscriptionPlanVersion.Create(planId, versionNumber, trialDaysDefault: 14, [BillingCycle.Monthly]).Value;
+
+    // Versión mínima publicable: 1 feature + 1 price tier (invariante del dominio).
+    private static SubscriptionPlanVersion CreateSellableVersion(Guid planId, int versionNumber)
+    {
+        var version = CreateVersion(planId, versionNumber);
+        version.AddFeature(
+            PlanFeature.Create(version.Id, EntitlementKey.Create("module.customers").Value, true, "customers").Value
+        );
+        version.AddPriceTier(
+            PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(29m, "USD").Value).Value
+        );
+        return version;
+    }
 }

@@ -11,6 +11,18 @@ namespace BuildingBlocks.Authorization;
 /// 403 falso. La lista <see cref="Exempt"/> mete en esa misma categoría a los pocos códigos que un
 /// prefijo llevaría a un módulo sin ser la feature que ese módulo vende.</para>
 ///
+/// <para><b>Decisión arquitectónica (CAT-F6 #234 revisado 2026-10-16, mantener):</b> este mapa
+/// parece duplicar <c>PermissionDefinition.GatedModule</c> (persistido en la DB de Auth y seedeado
+/// desde <see cref="ModuleFor"/>). <b>No lo es.</b> Esta tabla es la fuente CROSS-SERVICE: la
+/// consulta <c>BuildingBlocks.Web.ActorTypeAuthorization.PermissionPolicyProvider</c> en CADA
+/// request HTTP de los 25 microservicios para decidir "¿este permiso requiere módulo?" sin tocar la
+/// DB de Auth ni hacer M2M. <c>PermissionDefinition.GatedModule</c> es el snapshot persistido que
+/// vive SÓLO en Auth (usado en queries admin). Communication-TS tiene su propio espejo del mapa por
+/// la misma razón. Retirar <see cref="PrefixToModule"/> requeriría introducir un canal de
+/// proyección cross-service (evento + consumer + tabla en los 25 servicios) para una tabla de ~18
+/// entradas que cambia 1 vez cada 6 meses — mismo trade-off que <see cref="KnownModules"/>, que
+/// también se mantiene (CAT-F9-G4-B.2/B.3).</para>
+///
 /// <para><b>Módulos sin permisos backend</b> (<c>marketing</c>, <c>builder</c>, <c>irs</c>,
 /// <c>miles</c>) se omiten a propósito: son features de frontend/futuras sin endpoints propios; el
 /// frontend ya los muestra/oculta por <c>/auth/me</c>.</para>
@@ -53,7 +65,6 @@ public static class PermissionModuleMap
         ("comms.", "comms"),
         ("campaigns.", "campaigns"),
         ("wallet.", "wallet"),
-        ("reports.", "reports"),
     ];
 
     /// <summary>

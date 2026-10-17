@@ -463,6 +463,28 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         string? ConsentTextVersion
     );
 
+    /// <summary>Lista los métodos de pago habilitados hoy para que el Landing arme el picker "Choose how
+    /// to pay" antes de arrancar add-on/seats/renewal/plan checkouts. Proxyfica a PaymentApp (dueño del
+    /// catálogo). Sin este endpoint el landing hardcodeaba Stripe y rompía a tenants que onboardearon
+    /// con PayPal — ver <c>IAccountPaymentOptionsClient</c>.</summary>
+    [HttpGet("me/payment-options")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<AccountPaymentOptionsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPaymentOptions(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<AccountPaymentOptionsResponse>>(
+            new GetAccountPaymentOptionsQuery(tenantId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Devuelve la preferencia de cobro vigente del tenant (Automatic/Manual)
     /// con la metadata del mandate activo cuando aplica. Default Manual si el tenant nunca eligió.</summary>
     [HttpGet("me/billing-preference")]

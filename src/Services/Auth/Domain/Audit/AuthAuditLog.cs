@@ -115,6 +115,17 @@ public static class AuthAuditAction
     // auditoría — TargetType="TenantOnboarding", TargetId=onboarding.Id.
     public const string OnboardingAdminCancelledAndRefunded = "auth.onboarding_admin.cancelled_and_refunded";
 
+    // OBF-3.1 — rescate manual de onboardings huérfanos (pago cobrado + token Redis vencido o
+    // scheduler quemó el intento). TargetType="TenantOnboarding", DetailsJson lleva el motivo del admin.
+    public const string OnboardingAdminRegistrationEmailResent = "auth.onboarding_admin.registration_email_resent";
+    public const string OnboardingAdminReactivated = "auth.onboarding_admin.reactivated";
+
+    // OBF-2.5 — resend end-user (self-service): botón "Resend" en el fallback del landing. UserId siempre
+    // Guid.Empty (anónimo), rate-limitado por reference+IP a nivel endpoint. Útil para auditar abuso del
+    // botón o detectar un reference comprometido con flooding.
+    public const string OnboardingSelfServiceRegistrationEmailResent =
+        "auth.onboarding_selfservice.registration_email_resent";
+
     // Invariante §4 del plan de rate limiting — categoría M exige rastro incluso al 429 (ver
     // AuthAuditLogRateLimitAuditSink). Success=false siempre; TargetType="RateLimitPolicy",
     // DetailsJson lleva el nombre de la política bloqueada.

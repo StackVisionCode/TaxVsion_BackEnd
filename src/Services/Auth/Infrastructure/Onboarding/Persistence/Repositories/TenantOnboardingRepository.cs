@@ -62,12 +62,33 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // OBF-2.7 — huérfanos: pagados que nunca completaron el office-setup, para alerta/metrica.
+    // IgnoreQueryFilters por si el aggregate se vuelve tenant-filtered (mismo motivo que GetExpiredPending).
+    public async Task<IReadOnlyList<TenantOnboarding>> GetOrphansAsync(
+        DateTime paidBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.IgnoreQueryFilters()
+            .Where(onboarding =>
+                onboarding.PaymentCompletedAtUtc != null
+                && onboarding.PaymentCompletedAtUtc < paidBeforeUtc
+                && onboarding.RegistrationCompletedAtUtc == null
+                && onboarding.TenantId == null
+            )
+            .OrderBy(onboarding => onboarding.PaymentCompletedAtUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantOnboarding>> GetExpiredPendingAsync(
         DateTime createdBeforeUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         // Sweeper fuera de scope HTTP: IgnoreQueryFilters por si el aggregate se vuelve tenant-filtered.
+        // Un onboarding con PaymentCompletedAtUtc != null NUNCA se expira — hay dinero cobrado, el usuario
+        // tiene derecho a completar el office setup; su recuperación va por el admin recovery flow.
         await db
             .TenantOnboardings.IgnoreQueryFilters()
             .Where(onboarding =>
@@ -76,6 +97,7 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
                     || onboarding.Status == TenantOnboardingStatus.PaymentProcessing
                     || onboarding.Status == TenantOnboardingStatus.RegistrationPending
                 )
+                && onboarding.PaymentCompletedAtUtc == null
                 && onboarding.CreatedAtUtc < createdBeforeUtc
             )
             .OrderBy(onboarding => onboarding.CreatedAtUtc)

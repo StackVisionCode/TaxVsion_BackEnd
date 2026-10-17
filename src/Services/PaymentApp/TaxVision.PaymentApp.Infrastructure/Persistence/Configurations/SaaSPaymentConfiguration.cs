@@ -45,6 +45,15 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
             }
         );
 
+        builder.OwnsOne(
+            payment => payment.Concept,
+            concept =>
+            {
+                concept.Property(c => c.Code).HasColumnName("ConceptCode").HasMaxLength(50);
+                concept.Property(c => c.DisplayName).HasColumnName("ConceptDisplayName").HasMaxLength(200);
+            }
+        );
+
         builder.Property(payment => payment.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(payment => payment.TargetAggregateId).IsRequired();
         builder.Property(payment => payment.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();

@@ -1,16 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence;
 
 /// <summary>
-/// Siembra el catálogo de add-ons de módulo (<see cref="ModuleAddOnCatalog"/>) con precios armonizados
-/// a los planes (anual = mensual × 10,
-/// mismo criterio de "2 meses gratis"). Idempotente: no hace nada si ya existe un add-on. Construye vía
-/// la API de dominio (Seed/AddFeature/AddPriceTier/Publish). Precios de arranque — PlatformAdmin los edita
-/// por endpoint.
+/// Siembra add-ons de cuota. Los módulos comerciales se materializan como shadows desde Modules.
 /// </summary>
 public static class SubscriptionAddOnCatalogSeeder
 {
@@ -20,39 +17,91 @@ public static class SubscriptionAddOnCatalogSeeder
             return;
 
         var nowUtc = DateTime.UtcNow;
-        // Se siembran TODOS, incluidos los que no se ofrecen: así una instalación nueva queda igual
-        // que una existente después de reconciliar, y el día que la feature exista solo hay que
-        // volver a publicarlo en vez de crear una definición nueva con otro id.
-        foreach (var addOn in ModuleAddOnCatalog.All)
-            db.AddOnDefinitions.Add(BuildDefinition(addOn, nowUtc));
+        foreach (var addOn in QuotaAddOnCatalog.All)
+            db.AddOnDefinitions.Add(BuildQuotaDefinition(addOn, nowUtc));
 
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>
-    /// Construye la definición desde la entrada del catálogo. Público porque lo necesita también el
-    /// reconciliador de arranque: un add-on NUEVO no llega nunca a una base ya sembrada (este seeder
-    /// solo actúa si la tabla está vacía), y duplicar la construcción sería la forma segura de que las
-    /// dos versiones acabaran con precios o features distintos.
-    /// </summary>
-    public static AddOnDefinition BuildDefinition(ModuleAddOnDefinition addOn, DateTime nowUtc)
+    public static AddOnDefinition BuildModuleShadow(Module module, DateTime nowUtc)
     {
         var definition = AddOnDefinition
-            .Seed(
-                addOn.Id,
-                AddOnCode.Create(addOn.Code).Value,
-                addOn.Name,
-                $"Modulo {addOn.Name} a la carta.",
+            .Create(
+                AddOnCode.Create(module.AddOnCode).Value,
+                module.Name,
+                module.Description,
                 category: "module",
                 allowMultipleInstances: false,
                 supportedBillingCycles: [BillingCycle.Monthly, BillingCycle.Yearly],
+                actorUserId: Guid.Empty,
                 nowUtc
             )
             .Value;
 
         definition.AddFeature(
             AddOnFeature
-                .Create(definition.Id, EntitlementKey.Create($"module.{addOn.Module}").Value, enabled: true)
+                .Create(definition.Id, EntitlementKey.Create($"module.{module.Code}").Value, enabled: true)
+                .Value
+        );
+        definition.AddPriceTier(
+            AddOnPriceTier
+                .Create(
+                    definition.Id,
+                    BillingCycle.Monthly,
+                    minQuantity: 1,
+                    maxQuantity: null,
+                    Money.Create(module.AddonPriceMonthlyUsd!.Value, "USD").Value
+                )
+                .Value
+        );
+        definition.AddPriceTier(
+            AddOnPriceTier
+                .Create(
+                    definition.Id,
+                    BillingCycle.Yearly,
+                    minQuantity: 1,
+                    maxQuantity: null,
+                    Money.Create(module.AddonPriceYearlyUsd!.Value, "USD").Value
+                )
+                .Value
+        );
+        definition.Publish(Guid.Empty, nowUtc);
+
+        return definition;
+    }
+
+    /// <summary>CAT-F3 — construye un add-on de cuota: entitlement aditivo (Sum/Max) + MutexGroup +
+    /// precio. Sin AddOnFeature de módulo — <c>IsIncludedInPlan</c> lo trata como "nada que absorber".
+    /// Público para que el reconciliador reutilice la misma construcción.</summary>
+    public static AddOnDefinition BuildQuotaDefinition(QuotaAddOnDefinition addOn, DateTime nowUtc)
+    {
+        var definition = AddOnDefinition
+            .Seed(
+                addOn.Id,
+                AddOnCode.Create(addOn.Code).Value,
+                addOn.Name,
+                addOn.Description,
+                category: "quota",
+                // Un tenant puede comprar N× del MISMO pack (storage +10 GB × 3 = +30 GB). El guard
+                // de MutexGroup sigue impidiendo mezclar tiers (no small + large), y Sum ya aditiva
+                // el entitlement. Patrón estándar en la industria (Google Workspace, Microsoft 365,
+                // GitHub LFS legacy): un SKU por tier, N unidades por SKU, factura limpia.
+                allowMultipleInstances: true,
+                supportedBillingCycles: [BillingCycle.Monthly, BillingCycle.Yearly],
+                nowUtc,
+                mutexGroup: addOn.MutexGroup
+            )
+            .Value;
+
+        definition.AddEntitlementDefinition(
+            AddOnEntitlementDefinition
+                .Create(
+                    definition.Id,
+                    EntitlementKey.Create(addOn.EntitlementKey).Value,
+                    addOn.ValueType,
+                    addOn.EntitlementAmount,
+                    addOn.MergeStrategy
+                )
                 .Value
         );
         definition.AddPriceTier(
@@ -77,8 +126,7 @@ public static class SubscriptionAddOnCatalogSeeder
                 )
                 .Value
         );
-        // Un add-on sin nada construido detrás se queda en Draft: nunca llega a la tienda. El caso
-        // contrario —una base donde YA se había publicado— lo resuelve el reconciliador de arranque.
+
         if (addOn.Offered)
             definition.Publish(Guid.Empty, nowUtc);
 

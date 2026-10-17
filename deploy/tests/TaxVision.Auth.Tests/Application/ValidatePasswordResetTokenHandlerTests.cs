@@ -19,6 +19,9 @@ public sealed class ValidatePasswordResetTokenHandlerTests
         var result = await ValidateAsync(rawToken);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal("Valid", result.Value.Status);
+        Assert.NotNull(result.Value.Tenant);
+        Assert.Equal(_world.Tenant.SubDomain, result.Value.Tenant!.SubDomain);
         Assert.True(link.IsUsable(DateTime.UtcNow));
         Assert.Equal(0, link.Attempts);
     }
@@ -31,7 +34,9 @@ public sealed class ValidatePasswordResetTokenHandlerTests
 
         var result = await ValidateAsync(rawToken);
 
-        Assert.Equal("Auth.InvalidResetToken", result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Invalid", result.Value.Status);
+        Assert.Null(result.Value.Tenant);
     }
 
     [Fact]
@@ -42,7 +47,8 @@ public sealed class ValidatePasswordResetTokenHandlerTests
 
         var result = await ValidateAsync(rawToken);
 
-        Assert.Equal("Auth.InvalidResetToken", result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Invalid", result.Value.Status);
     }
 
     [Fact]
@@ -50,7 +56,8 @@ public sealed class ValidatePasswordResetTokenHandlerTests
     {
         var result = await ValidateAsync("raw-unknown");
 
-        Assert.Equal("Auth.InvalidResetToken", result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Invalid", result.Value.Status);
     }
 
     private PasswordResetToken IssueLink(out string rawToken)
@@ -67,12 +74,13 @@ public sealed class ValidatePasswordResetTokenHandlerTests
         return link;
     }
 
-    private Task<Result> ValidateAsync(string rawToken) =>
+    private Task<Result<PasswordResetValidationResponse>> ValidateAsync(string rawToken) =>
         ValidatePasswordResetTokenHandler.Handle(
             new ValidatePasswordResetTokenQuery(rawToken),
             _credentials,
             _tokens,
             _world.Users,
+            _world.Tenants,
             CancellationToken.None
         );
 }

@@ -7,12 +7,10 @@ namespace TaxVision.Subscription.Domain.Seats;
 
 /// <summary>
 /// Licencia individual con identidad propia, independiente de <see cref="Subscriptions.TenantSubscription"/>.
-/// Un seat tiene su propio ciclo de facturación, su propio estado, su propia renovación
-/// y su propia asignación a un empleado del tenant.
+/// Un seat tiene su propio ciclo de facturación, su propio estado y su propia renovación.
 /// </summary>
 public sealed class SubscriptionSeat : TenantEntity
 {
-    private readonly List<SubscriptionSeatAssignment> _assignments = [];
     private readonly List<SubscriptionSeatRenewal> _renewals = [];
 
     public SeatType Type { get; private set; }
@@ -31,15 +29,12 @@ public sealed class SubscriptionSeat : TenantEntity
     public DateTime? ExpiredAtUtc { get; private set; }
     public string? CancellationReason { get; private set; }
     public string? SuspensionReason { get; private set; }
-    public Guid? CurrentAssignmentId { get; private set; }
-    public Guid? CurrentUserId { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public Guid CreatedBy { get; private set; }
     public Guid UpdatedBy { get; private set; }
 
-    public IReadOnlyCollection<SubscriptionSeatAssignment> Assignments => _assignments;
     public IReadOnlyCollection<SubscriptionSeatRenewal> Renewals => _renewals;
 
     private SubscriptionSeat() { }
@@ -86,88 +81,9 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success(seat);
     }
 
-    /// <summary>Asigna el seat a un empleado del tenant. Requiere que el seat esté
-    /// disponible y que no haya sido liberado hace menos de <paramref name="reassignmentCooldownDays"/> días.</summary>
-    public Result AssignTo(Guid userId, Guid actorUserId, DateTime nowUtc, int reassignmentCooldownDays)
-    {
-        // Status y CurrentUserId siempre cambian juntos (ver ReleaseCurrentAssignment), así
-        // que Status == Available ya implica que no hay assignment vigente.
-        if (Status != SeatStatus.Available)
-            return Result.Failure(new Error("Seat.NotAvailable", $"Seat is {Status}."));
-
-        if (reassignmentCooldownDays > 0)
-        {
-            var mostRecentRelease = FindMostRecentReleaseUtc();
-            if (
-                mostRecentRelease is not null
-                && (nowUtc - mostRecentRelease.Value).TotalDays < reassignmentCooldownDays
-            )
-            {
-                return Result.Failure(
-                    new Error(
-                        "Seat.ReassignmentCooldown",
-                        $"Wait {reassignmentCooldownDays} day(s) after release before reassigning."
-                    )
-                );
-            }
-        }
-
-        var assignmentResult = SubscriptionSeatAssignment.Create(Id, TenantId, userId, actorUserId, nowUtc);
-        if (assignmentResult.IsFailure)
-            return assignmentResult;
-
-        _assignments.Add(assignmentResult.Value);
-        CurrentAssignmentId = assignmentResult.Value.Id;
-        CurrentUserId = userId;
-        Status = SeatStatus.Assigned;
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    /// <summary>Libera la asignación vigente. El seat vuelve a Available si aún no estaba
-    /// activo (pago pendiente), o se mantiene en su estado de billing si ya estaba pagado.</summary>
-    public Result ReleaseCurrentAssignment(Guid actorUserId, DateTime nowUtc, string? reason)
-    {
-        if (CurrentUserId is null || CurrentAssignmentId is null)
-            return Result.Failure(new Error("Seat.NotAssigned", "Seat has no active assignment."));
-
-        var active = FindAssignmentById(CurrentAssignmentId.Value);
-        if (active is null)
-            return Result.Failure(new Error("Seat.NotAssigned", "Seat has no active assignment."));
-
-        var releaseResult = active.Release(actorUserId, nowUtc, reason);
-        if (releaseResult.IsFailure)
-            return releaseResult;
-
-        CurrentAssignmentId = null;
-        CurrentUserId = null;
-        if (Status == SeatStatus.Assigned)
-            Status = SeatStatus.Available;
-
-        Touch(actorUserId, nowUtc);
-        return Result.Success();
-    }
-
-    /// <summary>Reasigna el seat a otro usuario: libera la asignación vigente y crea una
-    /// nueva en la misma operación, aplicando el cooldown de reasignación.</summary>
-    public Result ReassignSeat(
-        Guid toUserId,
-        Guid actorUserId,
-        DateTime nowUtc,
-        string? releaseReason,
-        int reassignmentCooldownDays
-    )
-    {
-        var releaseResult = ReleaseCurrentAssignment(actorUserId, nowUtc, releaseReason);
-        if (releaseResult.IsFailure)
-            return releaseResult;
-
-        return AssignTo(toUserId, actorUserId, nowUtc, reassignmentCooldownDays);
-    }
-
     public Result Activate(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.PastDue))
+        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.PastDue))
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot activate from {Status}."));
 
         if (periodEndUtc <= periodStartUtc)
@@ -219,7 +135,7 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.Active, SeatStatus.PastDue))
+        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Active, SeatStatus.PastDue))
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot suspend from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -232,6 +148,9 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Recupera un seat Suspended O PastDue tras pago del admin: queda Active con un período nuevo
+    /// (start = ahora, end = ahora + ciclo). PastDue se admite porque el admin paga antes de agotarse los
+    /// reintentos — recuperamos el cupo sin esperar a que el dunning lo baje a Suspended.</summary>
     public Result ReactivateAfterAdminReview(
         DateTime periodStartUtc,
         DateTime periodEndUtc,
@@ -239,7 +158,7 @@ public sealed class SubscriptionSeat : TenantEntity
         DateTime nowUtc
     )
     {
-        if (Status != SeatStatus.Suspended)
+        if (Status != SeatStatus.Suspended && Status != SeatStatus.PastDue)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot reactivate from {Status}."));
 
         if (periodEndUtc <= periodStartUtc)
@@ -268,7 +187,7 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public Result CancelBeforeActivation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned))
+        if (Status != SeatStatus.Available)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot cancel from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -361,6 +280,66 @@ public sealed class SubscriptionSeat : TenantEntity
         _renewals.Add(chargeResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Prepara el cobro para reactivar un seat Suspended/PastDue: crea un
+    /// <see cref="SubscriptionSeatRenewal"/> con período NUEVO (ahora → ahora+ciclo) que al succeed se aplica
+    /// vía <see cref="CompleteReactivation"/>. Es análogo a <see cref="BeginRenewal"/> pero exige
+    /// Suspended/PastDue en vez de Active, y usa `nowUtc` como periodStart (no el fin del período anterior,
+    /// que ya expiró). Idempotente por <paramref name="idempotencyKey"/>.</summary>
+    public Result BeginReactivation(string idempotencyKey, DateTime newPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != SeatStatus.Suspended && Status != SeatStatus.PastDue)
+            return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot begin reactivation from {Status}."));
+
+        if (newPeriodEndUtc <= nowUtc)
+            return Result.Failure(new Error("Seat.InvalidPeriod", "Reactivation period end must be in the future."));
+
+        if (FindRenewalByKey(idempotencyKey) is not null)
+            return Result.Success();
+
+        var renewalResult = SubscriptionSeatRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            nowUtc,
+            newPeriodEndUtc,
+            nowUtc
+        );
+        if (renewalResult.IsFailure)
+            return Result.Failure(renewalResult.Error);
+
+        _renewals.Add(renewalResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Aplica un pago exitoso de reactivación: marca el renewal succeeded y transiciona el seat
+    /// Suspended/PastDue → Active con el período nuevo del renewal. Idempotente: si el renewal ya está
+    /// Succeeded (reentrega del webhook, retry del consumer) el método es inert y no vuelve a mutar.</summary>
+    public Result CompleteReactivation(
+        Guid renewalId,
+        string? externalPaymentReference,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var renewal = FindRenewalById(renewalId);
+        if (renewal is null)
+            return Result.Failure(new Error("Seat.RenewalNotFound", "Renewal does not exist."));
+
+        // Reentrega: el renewal ya se cerró y el seat ya transicionó. Nada que hacer.
+        if (renewal.Status == RenewalStatus.Succeeded)
+            return Result.Success();
+
+        var succeeded = CompleteRenewalAttempt(renewal, externalPaymentReference, nowUtc);
+        if (succeeded.IsFailure)
+            return succeeded;
+
+        if (Status == SeatStatus.Active)
+            return Result.Success();
+
+        return ReactivateAfterAdminReview(renewal.PeriodStartUtc, renewal.PeriodEndUtc, actorUserId, nowUtc);
     }
 
     /// <summary>Aplica una renovación exitosa: avanza el período del seat. No toca la
@@ -468,32 +447,6 @@ public sealed class SubscriptionSeat : TenantEntity
         {
             if (renewal.Id == renewalId)
                 return renewal;
-        }
-
-        return null;
-    }
-
-    private DateTime? FindMostRecentReleaseUtc()
-    {
-        DateTime? mostRecent = null;
-        foreach (var assignment in _assignments)
-        {
-            if (assignment.ReleasedAtUtc is null)
-                continue;
-
-            if (mostRecent is null || assignment.ReleasedAtUtc > mostRecent)
-                mostRecent = assignment.ReleasedAtUtc;
-        }
-
-        return mostRecent;
-    }
-
-    private SubscriptionSeatAssignment? FindAssignmentById(Guid assignmentId)
-    {
-        foreach (var assignment in _assignments)
-        {
-            if (assignment.Id == assignmentId)
-                return assignment;
         }
 
         return null;

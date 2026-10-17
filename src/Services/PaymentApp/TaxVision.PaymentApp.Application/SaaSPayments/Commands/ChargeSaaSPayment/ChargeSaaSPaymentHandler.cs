@@ -106,22 +106,24 @@ public static class ChargeSaaSPaymentHandler
         if (descriptorResult.IsFailure)
             return Result.Failure<SaaSPayment>(descriptorResult.Error);
 
-        return SaaSPayment.Create(
-            command.TenantId,
-            keyResult.Value,
-            amountResult.Value,
-            command.Type,
-            command.TargetAggregateId,
-            command.Provider,
-            descriptorResult.Value,
-            command.RequestedByUserId,
-            DateTime.UtcNow,
-            command.CodeReservationId,
-            command.CodeReservationPaymentId,
-            command.DiscountAmountCents,
-            command.PromotionSnapshotHash,
-            ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
-        );
+        return SaaSPayment
+            .Create(
+                command.TenantId,
+                keyResult.Value,
+                amountResult.Value,
+                command.Type,
+                command.TargetAggregateId,
+                command.Provider,
+                descriptorResult.Value,
+                command.RequestedByUserId,
+                DateTime.UtcNow,
+                command.CodeReservationId,
+                command.CodeReservationPaymentId,
+                command.DiscountAmountCents,
+                command.PromotionSnapshotHash,
+                ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
+            )
+            .WithConceptFor(command.Type, command.Quantity);
     }
 
     private static async Task ExecuteChargeAsync(

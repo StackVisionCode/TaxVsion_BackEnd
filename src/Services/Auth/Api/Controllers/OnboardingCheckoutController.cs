@@ -29,7 +29,12 @@ public sealed class OnboardingCheckoutController(
         string? Phone,
         Guid PlanId,
         Guid EmailVerificationChallengeId,
-        string? BillingCycle = null
+        string? BillingCycle = null,
+        // 2026-10-16: la landing lo pide ("renovar automáticamente") pero sin este campo el flag se
+        // tiraba y el TenantBillingPreference nunca se creaba. En Manage Subscription después el
+        // toggle salía en OFF pidiendo activarlo, pese a que el user ya había consentido y Stripe ya
+        // tenía el mandate guardado (SetupFutureUsage=off_session).
+        bool AutoRenew = false
     );
 
     [HttpPost]
@@ -57,7 +62,8 @@ public sealed class OnboardingCheckoutController(
                 request.Phone,
                 request.PlanId,
                 request.EmailVerificationChallengeId,
-                request.BillingCycle
+                request.BillingCycle,
+                request.AutoRenew
             ),
             ct
         );
@@ -163,6 +169,25 @@ public sealed class OnboardingCheckoutController(
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>OBF-2.5 — resend end-user del email "completa tu oficina" para el fallback del landing
+    /// cuando el cliente volvió desde otro dispositivo y no vio el link al liquidar el pago. Autenticado
+    /// por reference (mismo primitive del resume) + rate limit nativo + cooldown de 60s por aggregate.</summary>
+    [HttpPost("resume/{reference}/resend-registration-email")]
+    [AllowAnonymous]
+    [EnableRateLimiting("onboarding-status")]
+    [RateLimitExempt("Anonymous resend end-user: usa el limiter nativo por reference+IP.")]
+    public async Task<IActionResult> ResendRegistrationEmailPublic(string reference, CancellationToken ct)
+    {
+        if (await returnReferences.ResolveAsync(reference, ct) is not { } onboardingId)
+            return StatusCode(
+                StatusCodes.Status410Gone,
+                new Error("Onboarding.ResumeReferenceExpired", "The retry link has expired. Please start again.")
+            );
+
+        var result = await bus.InvokeAsync<Result>(new ResendRegistrationEmailPublicCommand(onboardingId), ct);
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record CancelOnboardingRequest(string? Reason = null);

@@ -22,6 +22,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
             .HasMaxLength(24)
             .IsRequired()
             .HasDefaultValue("Monthly");
+        builder.Property(onboarding => onboarding.AutoRenewRequested).IsRequired().HasDefaultValue(false);
         builder.Property(onboarding => onboarding.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
 
         builder.Property(onboarding => onboarding.PaymentStatus).HasMaxLength(24);

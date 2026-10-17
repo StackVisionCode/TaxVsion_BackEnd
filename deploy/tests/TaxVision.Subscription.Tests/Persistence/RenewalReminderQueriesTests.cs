@@ -59,7 +59,7 @@ public sealed class RenewalReminderQueriesTests
     private static TenantSubscription ActiveSubscription(DateTime nowUtc, DateTime periodEndUtc)
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         plan.AddVersion(version, Guid.Empty, nowUtc);

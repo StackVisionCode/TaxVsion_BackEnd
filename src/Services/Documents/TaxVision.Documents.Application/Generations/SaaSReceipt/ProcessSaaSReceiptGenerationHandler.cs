@@ -159,6 +159,9 @@ public static class ProcessSaaSReceiptGenerationHandler
                 // Vacíos cuando el cobro no tiene unidades que contar; la plantilla omite la línea de desglose.
                 ["quantity"] = receipt.Quantity?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                 ["unitPrice"] = receipt.UnitAmountCents is { } unit ? ReceiptRenderData.Money(unit) : string.Empty,
+                // Subtítulo opcional por tipo de cobro (seats/add-on/wallet-top-up); vacío cae al
+                // fallback "{{ issuer.name }} subscription" de la plantilla.
+                ["secondaryDescription"] = receipt.SecondaryDescription ?? string.Empty,
                 ["issuer"] = ReceiptRenderData.Issuer(issuer, brandLogoDataUri),
             },
         };

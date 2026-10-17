@@ -40,6 +40,12 @@ public sealed class TenantOnboarding : BaseEntity
     /// lo parsean. Default "Monthly".</summary>
     public string BillingCycle { get; private set; } = "Monthly";
 
+    /// <summary>2026-10-16: el comprador marcó "renovación automática" en el checkout del landing.
+    /// Viaja hasta <c>ActivateFromOnboardingHandler</c> (Subscription) para materializar un
+    /// <c>TenantBillingPreference</c> en modo Automatic con el mandate que Stripe ya guardó via
+    /// <c>SetupFutureUsage=off_session</c>. Default false: comportamiento Manual (previo al fix).</summary>
+    public bool AutoRenewRequested { get; private set; }
+
     public TenantOnboardingStatus Status { get; private set; }
 
     public Guid? PaymentId { get; private set; }
@@ -118,7 +124,8 @@ public sealed class TenantOnboarding : BaseEntity
         string lastName,
         string? phone,
         DateTime nowUtc,
-        string? billingCycle = null
+        string? billingCycle = null,
+        bool autoRenewRequested = false
     )
     {
         var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -140,6 +147,7 @@ public sealed class TenantOnboarding : BaseEntity
                 EmailVerifiedAtUtc = emailVerifiedAtUtc,
                 PlanId = planId,
                 BillingCycle = string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle.Trim(),
+                AutoRenewRequested = autoRenewRequested,
                 FirstName = firstName.Trim(),
                 LastName = lastName.Trim(),
                 Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),
@@ -333,6 +341,44 @@ public sealed class TenantOnboarding : BaseEntity
         RegistrationTokenReference = tokenReference;
         RegistrationTokenExpiresAtUtc = expiresAtUtc;
         Status = TenantOnboardingStatus.RegistrationPending;
+        return Result.Success();
+    }
+
+    /// <summary>OBF-3.1 — rescate admin de un onboarding huérfano. Reemite el token (nueva referencia Redis
+    /// + nuevo hash + nueva expiración), limpia la marca de email enviado para que el nuevo publish pueda
+    /// correr, y rejuvenece <c>CreatedAtUtc</c> al momento del rescate: así el sweeper de expiración no lo
+    /// vuelve a mandar a Expired antes de que el cliente alcance a usar el link. Solo aplica cuando hubo
+    /// pago cobrado — fail-closed si no hay <c>PaymentCompletedAtUtc</c>, porque sin dinero no hay nada
+    /// que rescatar.</summary>
+    public Result AdminRegenerateRegistrationToken(
+        RegistrationTokenHash hash,
+        DateTime expiresAtUtc,
+        Guid tokenReference,
+        DateTime nowUtc
+    )
+    {
+        if (PaymentCompletedAtUtc is null)
+            return Result.Failure(
+                new Error("Onboarding.NoPayment", "Cannot regenerate the registration token without a settled payment.")
+            );
+
+        if (
+            Status
+            is not (
+                TenantOnboardingStatus.PaymentCompleted
+                or TenantOnboardingStatus.RegistrationPending
+                or TenantOnboardingStatus.Expired
+            )
+        )
+            return Result.Failure(InvalidTransition());
+
+        RegistrationTokenHash = hash.Value;
+        RegistrationTokenReference = tokenReference;
+        RegistrationTokenExpiresAtUtc = expiresAtUtc;
+        RegistrationTokenUsedAtUtc = null;
+        RegistrationEmailSentAtUtc = null;
+        Status = TenantOnboardingStatus.RegistrationPending;
+        CreatedAtUtc = nowUtc;
         return Result.Success();
     }
 

@@ -149,6 +149,7 @@ class FakeEmitter implements RealtimeEmitter {
   emitToTenant(): void {}
   emitToTenantStaff(): void {}
   emitToTenantMembers(): void {}
+  emitBroadcast(): void {}
 }
 
 class StaticMetadataClient implements CloudStorageMetadataClient {

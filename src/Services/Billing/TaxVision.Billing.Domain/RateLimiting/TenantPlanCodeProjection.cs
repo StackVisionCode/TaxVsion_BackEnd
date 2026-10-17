@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BuildingBlocks.Domain;
 using BuildingBlocks.RateLimiting;
 
@@ -17,6 +18,10 @@ public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProj
     public long RevisionNumber { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    public string EnabledModulesJson { get; private set; } = "[]";
+
+    public IReadOnlyList<string> EnabledModules => Deserialize(EnabledModulesJson);
+
     public static TenantPlanCodeProjection Create(Guid tenantId, string planCode, long revisionNumber)
     {
         var projection = new TenantPlanCodeProjection
@@ -30,12 +35,25 @@ public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProj
         return projection;
     }
 
-    public void ApplyIfNewer(string planCode, long revisionNumber)
+    public void ApplyIfNewer(string planCode, long revisionNumber) =>
+        ApplyIfNewer(planCode, revisionNumber, EnabledModules);
+
+    /// <summary>
+    /// Override del default de <see cref="ITenantPlanCodeProjection"/>: además de plan+revisión,
+    /// persiste los módulos habilitados. Idempotente por revisión monotónica.
+    /// </summary>
+    public void ApplyIfNewer(string planCode, long revisionNumber, IReadOnlyList<string> enabledModules)
     {
         if (revisionNumber < RevisionNumber)
             return;
         PlanCode = planCode;
         RevisionNumber = revisionNumber;
+        EnabledModulesJson = Serialize(enabledModules);
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    private static string Serialize(IReadOnlyList<string> modules) => JsonSerializer.Serialize(modules);
+
+    private static IReadOnlyList<string> Deserialize(string json) =>
+        string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<string>>(json) ?? [];
 }

@@ -30,7 +30,9 @@ public sealed class InternalWalletCheckoutController(IMessageBus bus) : Controll
         string CancelUrl,
         string IdempotencyKey,
         PaymentProviderCode? Provider = null,
-        PaymentMethodKind? Method = null
+        PaymentMethodKind? Method = null,
+        /// <summary>SEC-M1.C — HMAC emitido por Wallet que PaymentApp verifica localmente.</summary>
+        string? AmountSignature = null
     );
 
     [HttpPost("top-ups/checkout")]
@@ -49,7 +51,8 @@ public sealed class InternalWalletCheckoutController(IMessageBus bus) : Controll
                 request.CancelUrl,
                 request.IdempotencyKey,
                 request.Provider ?? PaymentProviderCode.Stripe,
-                request.Method ?? PaymentMethodKind.Card
+                request.Method ?? PaymentMethodKind.Card,
+                request.AmountSignature
             ),
             ct
         );

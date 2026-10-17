@@ -669,7 +669,7 @@ public sealed class TenantSubscriptionTests
     )
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, trialDaysDefault: 14, supportedBillingCycles).Value;
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);

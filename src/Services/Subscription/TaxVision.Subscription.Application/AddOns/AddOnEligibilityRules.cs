@@ -40,4 +40,36 @@ public static class AddOnEligibilityRules
             addOn.Status == AddOnStatus.Active
             && string.Equals(addOn.AddOnCode, definition.Code.Value, StringComparison.OrdinalIgnoreCase)
         );
+
+    /// <summary>
+    /// Hay otro add-on activo del mismo <c>MutexGroup</c> (p. ej. otro tramo de storage) que impide esta compra.
+    /// Lo evalúa igual que el guard de compra (<c>AddOnPurchaseEligibility</c>) para que read-model y write-side
+    /// nunca digan cosas distintas: la pantalla no debe pintar comprable algo que el POST va a rechazar.
+    /// El lookup de MutexGroup por código se calcula una vez por request con <c>MutexGroupLookupFor</c>.
+    /// </summary>
+    public static bool BlockedByMutex(
+        AddOnDefinition definition,
+        IReadOnlyList<TenantAddOn> owned,
+        IReadOnlyDictionary<string, string?> mutexGroupByCode
+    )
+    {
+        if (definition.MutexGroup is null)
+            return false;
+        foreach (var ownedAddOn in owned)
+        {
+            if (ownedAddOn.Status != AddOnStatus.Active)
+                continue;
+            if (string.Equals(ownedAddOn.AddOnCode, definition.Code.Value, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!mutexGroupByCode.TryGetValue(ownedAddOn.AddOnCode, out var ownedGroup) || ownedGroup is null)
+                continue;
+            if (string.Equals(ownedGroup, definition.MutexGroup, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Diccionario <c>Code → MutexGroup</c> del catálogo para resolver los <c>owned</c> sin re-consultar.</summary>
+    public static IReadOnlyDictionary<string, string?> MutexGroupLookupFor(IEnumerable<AddOnDefinition> definitions) =>
+        definitions.ToDictionary(d => d.Code.Value, d => d.MutexGroup, StringComparer.OrdinalIgnoreCase);
 }

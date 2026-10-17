@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
@@ -23,7 +24,8 @@ public sealed record DiscoverLoginCommand(
     string Password,
     string? DeviceName = null,
     UserAccountKind? AccountKind = null,
-    string? DeviceToken = null
+    string? DeviceToken = null,
+    SessionSurface Surface = SessionSurface.Workspace
 );
 
 /// <summary>
@@ -96,6 +98,7 @@ public static class DiscoverLoginHandler
             command.Password,
             command.AccountKind,
             command.DeviceToken,
+            command.Surface,
             users,
             tenants,
             hasher,
@@ -171,6 +174,7 @@ public static class DiscoverLoginHandler
         string password,
         UserAccountKind? accountKind,
         string? deviceToken,
+        SessionSurface surface,
         IUserRepository users,
         ITenantRegistry tenants,
         IPasswordHasher hasher,
@@ -208,6 +212,15 @@ public static class DiscoverLoginHandler
             // Fase 2 — oficina con acceso bloqueado por facturación: no matchea para empleados/clientes
             // (el TenantAdmin sí, para poder entrar a renovar).
             if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+                continue;
+
+            // Landing (surface=Account) solo lista oficinas donde el usuario es TenantAdmin. Sin este
+            // filtro, el flujo discover→selector→handoff→from-ticket terminaba con 403 "Only office
+            // administrators..." al materializar la sesión — el usuario veía oficinas donde era
+            // Employee/Portal como si pudiera entrar a gestionar suscripción, y recibía el rechazo
+            // tres pasos después. AccountSurfacePolicy sigue siendo defensa en profundidad en
+            // ExchangeHandoffTicket; este filtro corrige la raíz y evita la fuga de información.
+            if (surface == SessionSurface.Account && user.ActorType != UserActorType.TenantAdmin)
                 continue;
 
             var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct, mfaEnforced);

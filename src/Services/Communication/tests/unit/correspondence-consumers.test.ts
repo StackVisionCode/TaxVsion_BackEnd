@@ -21,6 +21,7 @@ function setup() {
     emitToTenant: vi.fn(),
     emitToTenantStaff: vi.fn(),
     emitToTenantMembers: vi.fn(),
+    emitBroadcast: vi.fn(),
   } as unknown as RealtimeEmitter;
 
   bindCorrespondenceConsumers(register, { emitter });

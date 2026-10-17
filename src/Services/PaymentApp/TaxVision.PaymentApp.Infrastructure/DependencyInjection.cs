@@ -1,6 +1,7 @@
 ﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,6 +62,18 @@ public static class DependencyInjection
             {
                 var opt = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayPalOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(opt.HttpTimeoutSeconds);
+            }
+        );
+        // SEC-L2: verifier offline para webhooks PayPal — fallback cuando el endpoint online cae.
+        services
+            .AddOptions<PayPalOfflineFallbackOptions>()
+            .Bind(configuration.GetSection(PayPalOfflineFallbackOptions.SectionName));
+        services.AddHttpClient<PayPalOfflineWebhookVerifier>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayPalOfflineFallbackOptions>>().Value;
                 http.Timeout = TimeSpan.FromSeconds(opt.HttpTimeoutSeconds);
             }
         );
@@ -211,6 +224,12 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+
+        // SEC-M1.C: verifica el HMAC que Subscription/Wallet incluyen en el body del request M2M.
+        // Reemplaza el verifier HTTP previo (que no funcionaba por aislamiento TX cross-service, ver
+        // feedback_wolverine_transaccion_antes_del_handler.md). RejectUnsigned=false durante rolling
+        // deploy; se activa cuando ambas puntas emiten firma.
+        services.AddPurchaseIntentAmountVerification(config);
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

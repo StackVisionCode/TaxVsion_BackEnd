@@ -15,7 +15,9 @@ public sealed record AddOnCheckoutClientRequest(
     string Method,
     /// <summary>Unidades y precio unitario, para el recibo. PaymentApp los ignora si no cuadran.</summary>
     int? Quantity = null,
-    long? UnitAmountCents = null
+    long? UnitAmountCents = null,
+    /// <summary>Nombre comercial del add-on del catálogo (ej. "+10 GB Storage"), para el recibo.</summary>
+    string? AddOnDisplayName = null
 );
 
 public sealed record AddOnCheckoutClientResult(

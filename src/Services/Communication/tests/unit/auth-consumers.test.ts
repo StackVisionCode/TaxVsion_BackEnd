@@ -60,6 +60,7 @@ function setup() {
     emitToTenant: vi.fn(),
     emitToTenantStaff: vi.fn(),
     emitToTenantMembers: vi.fn(),
+    emitBroadcast: vi.fn(),
   };
 
   bindAuthConsumers(register, {

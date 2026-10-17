@@ -47,6 +47,17 @@ public interface ITenantOnboardingRepository
         CancellationToken ct = default
     );
 
+    /// <summary>OBF-2.7 — onboardings huérfanos: cliente pagó pero sigue sin completar el office-setup
+    /// después de la ventana (default 24h). Se consideran huérfanos los que están pagados sin registro
+    /// completado y sin tenant creado, independientemente del Status (RegistrationPending normal, pero
+    /// también Expired si el sweeper viejo los tocó antes del fix OBF-2.1). El detector publica un evento
+    /// por cada uno para que alerta/metricas lo recojan.</summary>
+    Task<IReadOnlyList<TenantOnboarding>> GetOrphansAsync(
+        DateTime paidBeforeUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+
     /// <summary>PayFlow (Fase 17) — listado paginado para <c>OnboardingAdminController</c>, filtrable
     /// por Status (típicamente ManualReview/ProvisioningFailed). Cross-tenant a propósito: es un
     /// endpoint PlatformAdmin-only, igual que el resto de los admin controllers del monorepo.</summary>

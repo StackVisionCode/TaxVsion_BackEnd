@@ -237,7 +237,7 @@ public sealed class PlanChangeDowngradeGuardTests
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         version.AddEntitlementDefinition(
@@ -254,6 +254,7 @@ public sealed class PlanChangeDowngradeGuardTests
         version.AddPriceTier(
             PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(priceUsd, "USD").Value).Value
         );
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
         return plan;
@@ -273,5 +274,14 @@ public sealed class PlanChangeDowngradeGuardTests
 
         public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
             GetByIdAsync(planId, ct);
+
+        public Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SubscriptionPlan>>(plans);
+
+        public Task AddAsync(SubscriptionPlan plan, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default) =>
+            Task.FromResult(plans.Any(plan => plan.Code.Value == code));
     }
 }

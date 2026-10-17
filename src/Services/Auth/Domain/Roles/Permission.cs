@@ -15,6 +15,11 @@ public sealed class Permission : BaseEntity
     public string Module { get; private set; } = default!;
     public string Description { get; private set; } = default!;
 
+    /// <summary>
+    /// Código del módulo que gatea este permiso, o <c>null</c> si es transversal.
+    /// </summary>
+    public string? GatedModule { get; private set; }
+
     /// <summary>Permisos que aplican al portal del cliente final.</summary>
     public bool IsCustomerPortal { get; private set; }
 
@@ -84,7 +89,8 @@ public sealed class Permission : BaseEntity
         bool platformOnly = false,
         UserActorType[]? allowedActorTypes = null,
         bool isDangerous = false,
-        bool isReserved = false
+        bool isReserved = false,
+        string? gatedModule = null
     ) =>
         new()
         {
@@ -99,6 +105,7 @@ public sealed class Permission : BaseEntity
             AllowedActorTypes = allowedActorTypes ?? InferAllowedActorTypes(isCustomerPortal, platformOnly),
             IsDangerous = isDangerous,
             IsReserved = isReserved,
+            GatedModule = gatedModule,
         };
 
     /// <summary>

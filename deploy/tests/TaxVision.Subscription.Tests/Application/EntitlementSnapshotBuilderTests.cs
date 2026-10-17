@@ -2,6 +2,7 @@ using TaxVision.Subscription.Application.Entitlements;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Tests.TestDoubles;
@@ -46,6 +47,85 @@ public sealed class EntitlementSnapshotBuilderTests
         Assert.Equal("3", ModuleValue(snapshot, "seats.max"));
     }
 
+    /// <summary>Cupo: Active y PastDue cuentan (PastDue es la ventana de reintentos, grace natural);
+    /// Suspended, Cancelled y Expired no cuentan — Suspended significa reintentos agotados. Si contara,
+    /// el tenant podría seguir invitando empleados a seats que ya nadie está pagando.</summary>
+    [Fact]
+    public async Task Seat_count_excludes_suspended_cancelled_expired_but_keeps_pastdue()
+    {
+        var tenantId = Guid.NewGuid();
+        var seats = new[]
+        {
+            BuildSeat(tenantId, SeatStatus.Active),
+            BuildSeat(tenantId, SeatStatus.PastDue),
+            BuildSeat(tenantId, SeatStatus.Suspended),
+            BuildSeat(tenantId, SeatStatus.Cancelled),
+            BuildSeat(tenantId, SeatStatus.Expired),
+            BuildSeat(tenantId, SeatStatus.Available),
+        };
+        var plan = BuildPublishedPlan();
+        var snapshot = await EntitlementSnapshotBuilder.BuildAsync(
+            tenantId,
+            new FakeSubscriptionRepo(BuildSubscription(tenantId, plan, SubscriptionStatus.Active)),
+            new FakePlanRepo(plan),
+            new FakeSeatRepo(seats),
+            new FakeTenantAddOnRepo([]),
+            new FakeAddOnDefinitionRepository(),
+            new FakeSnapshotRepo(),
+            CancellationToken.None
+        );
+
+        Assert.True(snapshot.IsSuccess, snapshot.IsFailure ? snapshot.Error.Message : null);
+        // Available + Active + PastDue = 3.
+        Assert.Equal(3, snapshot.Value.SeatCount);
+        Assert.Equal(1, snapshot.Value.AvailableSeatCount);
+    }
+
+    private static SubscriptionSeat BuildSeat(Guid tenantId, SeatStatus targetStatus)
+    {
+        var now = DateTime.UtcNow;
+        var seat = SubscriptionSeat
+            .Purchase(
+                tenantId,
+                SeatType.Standard,
+                SeatSourceType.AddOn,
+                sourceReferenceId: null,
+                Money.Create(10m, "USD").Value,
+                BillingCycle.Monthly,
+                autoRenew: true,
+                Guid.Empty,
+                now
+            )
+            .Value;
+
+        switch (targetStatus)
+        {
+            case SeatStatus.Available:
+                return seat;
+            case SeatStatus.Active:
+                seat.Activate(now.AddDays(-5), now.AddDays(25), Guid.Empty, now);
+                return seat;
+            case SeatStatus.PastDue:
+                seat.Activate(now.AddDays(-5), now.AddDays(25), Guid.Empty, now);
+                seat.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, now);
+                return seat;
+            case SeatStatus.Suspended:
+                seat.Activate(now.AddDays(-5), now.AddDays(25), Guid.Empty, now);
+                seat.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, now);
+                seat.SuspendAfterRetriesExhausted(Guid.Empty, now);
+                return seat;
+            case SeatStatus.Cancelled:
+                seat.CancelBeforeActivation("test", Guid.Empty, now);
+                return seat;
+            case SeatStatus.Expired:
+                seat.CancelBeforeActivation("test", Guid.Empty, now);
+                seat.ExpireAfterCancellationPeriodEnded(Guid.Empty, now);
+                return seat;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(targetStatus));
+        }
+    }
+
     private static string? ModuleValue(TenantEntitlementSnapshot snapshot, string key)
     {
         foreach (var entry in snapshot.Entries)
@@ -88,7 +168,7 @@ public sealed class EntitlementSnapshotBuilderTests
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("starter").Value, "Starter", "Starter plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("starter").Value, "Starter", "Starter plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         version.AddEntitlementDefinition(

@@ -172,7 +172,7 @@ public sealed class TenantSubscriptionRenewalTests
     private static TenantSubscription CreateActiveSubscription()
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);

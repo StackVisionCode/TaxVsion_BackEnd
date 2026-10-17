@@ -35,8 +35,11 @@ public sealed class OnboardingRegistrationReminderProcessorTests
     }
 
     [Fact]
-    public async Task ProcessDueAsync_marks_sent_without_publishing_a_broken_link_when_reference_expired()
+    public async Task ProcessDueAsync_does_not_mark_sent_when_reference_expired_so_admin_can_recover()
     {
+        // Guardrail: marcar RegistrationEmailSentAtUtc al perder la referencia convertía al cliente en
+        // huérfano permanente — pagó pero nunca más recibía su link. El sweeper DEBE reintentar cada tick
+        // y el admin repara con OnboardingAdmin.ResendRegistrationEmail regenerando un token nuevo.
         var store = new FakeTokenReferenceStore { ToPeek = null };
         var onboarding = DueOnboarding(store.Reference);
         var repo = new FakeTenantOnboardingRepository { RemindersDue = [onboarding] };
@@ -48,7 +51,9 @@ public sealed class OnboardingRegistrationReminderProcessorTests
 
         Assert.Equal(0, published);
         Assert.Empty(bus.Published.OfType<OnboardingRegistrationReadyIntegrationEvent>());
-        Assert.NotNull(onboarding.RegistrationEmailSentAtUtc);
+        Assert.Null(onboarding.RegistrationEmailSentAtUtc);
+        // SaveChanges se sigue llamando al final del batch (es un no-op sin tracked changes); lo que
+        // importa es que el aggregate NO quedó marcado como sent.
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 

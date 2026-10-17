@@ -883,6 +883,57 @@
           ]
         },
         {
+          "name": "StartSeatReactivationCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/seats/{{seatId}}/reactivate-checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "seats",
+                "{{seatId}}",
+                "reactivate-checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payerEmail\": \"owner@acme.test\",\n  \"successUrl\": \"http://localhost:4200/account/seats?checkout=success\",\n  \"cancelUrl\": \"http://localhost:4200/account/seats?checkout=cancelled\",\n  \"provider\": \"Stripe\",\n  \"method\": \"Card\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Pago manual del admin para reactivar un seat Suspended/PastDue. Rechaza con Seat.NotReactivatable si el seat está Active/Cancelled/Expired, y con Seat.NotFound si no pertenece al tenant del token. Cobra 1 período completo al precio histórico del seat (sin prorrateo). Al confirmarse el pago, el consumer SeatRenewalPaymentSucceeded detecta el estado del seat y aplica CompleteReactivation en vez de CompleteRenewal: el seat vuelve a Active con período nuevo (ahora → ahora+ciclo). Replay idempotente del mismo click mientras el bucket (SuspendedAtUtc/UpdatedAtUtc) del seat no cambie. Categoría de rate limit L. Acepta tokens de la superficie account."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {\r",
+                  "    const res = pm.response.json();\r",
+                  "    if (res.checkoutUrl) {\r",
+                  "        console.log('Reactivation checkout URL:', res.checkoutUrl);\r",
+                  "    }\r",
+                  "}\r"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
           "name": "GetSeatCheckoutStatus",
           "request": {
             "method": "GET",
@@ -1055,20 +1106,27 @@
       "name": "AddOns",
       "item": [
         {
-          "name": "GetAddOnCatalog",
+          "name": "GetAvailableAddOns",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
             "url": {
-              "raw": "{{UrlBase}}/addons",
+              "raw": "{{UrlBase}}/addons/available",
               "host": [
                 "{{UrlBase}}"
               ],
               "path": [
-                "addons"
+                "addons",
+                "available"
               ]
             },
-            "description": "Catalogo publico de add-ons. Anonimo."
+            "description": "Add-ons disponibles para el tenant. Los modulos se calculan desde Modules y los add-ons de cuota desde AddOnDefinitions. Requiere addons.manage."
           },
           "response": [],
           "event": [
@@ -1564,7 +1622,114 @@
           "response": []
         },
         {
-          "name": "CreateModuleAddOn (PlatformAdmin)",
+          "name": "GetModules (PlatformAdmin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/modules",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "modules"
+              ]
+            },
+            "description": "Fuente unica de modulos. Devuelve categoria, precios de add-on y si el modulo es vendible. Solo PlatformAdmin."
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateModule (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"Commercial\",\n  \"addonPriceMonthlyUsd\": 15,\n  \"addonPriceYearlyUsd\": 150\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/modules/{{moduleCode}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "modules",
+                "{{moduleCode}}"
+              ]
+            },
+            "description": "Cambia un modulo entre Core y Commercial. Para hacerlo vendible, envie ambos precios; para Commercial no vendible, omita ambos. Solo PlatformAdmin. Devuelve 204."
+          },
+          "response": []
+        },
+        {
+          "name": "CreateModule (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"example-module\",\n  \"name\": \"Example module\",\n  \"description\": \"Runtime-created module.\",\n  \"category\": \"Core\",\n  \"addonPriceMonthlyUsd\": null,\n  \"addonPriceYearlyUsd\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/modules",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "modules"
+              ]
+            },
+            "description": "Crea un modulo global en runtime. Los codigos son unicos y usan minusculas, digitos, guion o underscore. Solo PlatformAdmin. Devuelve 201 con el id."
+          },
+          "response": []
+        },
+        {
+          "name": "CreateQuotaAddOn (PlatformAdmin) — CAT-F3.5",
           "request": {
             "method": "POST",
             "header": [
@@ -1575,20 +1740,21 @@
               }
             ],
             "url": {
-              "raw": "{{UrlBase}}/admin/subscription/addons",
+              "raw": "{{UrlBase}}/admin/subscription/addons/quota",
               "host": [
                 "{{UrlBase}}"
               ],
               "path": [
                 "admin",
                 "subscription",
-                "addons"
+                "addons",
+                "quota"
               ]
             },
-            "description": "Crea y publica un add-on de modulo (habilita un module.*) con precio mensual/anual. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant). Un add-on de un modulo NUEVO exige antes su prefijo en PermissionModuleMap (codigo + deploy). Devuelve 201 con el Guid del add-on.",
+            "description": "CAT-F3.5 — Crea y publica un add-on de cuota genérico (storage, +invitaciones, etc.) con un entitlement aditivo sobre una entitlement key existente. MergeStrategy debe ser Sum o Max (Replace/Or son para feature/module). MutexGroup (opcional) impide que dos SKUs del mismo grupo coexistan activos en el mismo tenant. Solo PlatformAdmin. 201 con addOnId.\n\nEjemplo: Storage +2 GB a $3/mo.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"addon-forms\",\n  \"name\": \"Forms\",\n  \"module\": \"forms\",\n  \"monthlyUsd\": 29,\n  \"yearlyUsd\": 290\n}",
+              "raw": "{\n  \"code\": \"addon.storage.small\",\n  \"name\": \"Storage +2 GB\",\n  \"description\": \"Adds 2 GB to the tenant storage limit.\",\n  \"entitlementKey\": \"storage.max_bytes\",\n  \"valueType\": \"Long\",\n  \"entitlementAmount\": \"2147483648\",\n  \"mergeStrategy\": \"Sum\",\n  \"mutexGroup\": \"storage\",\n  \"monthlyUsd\": 3,\n  \"yearlyUsd\": 30\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1622,7 +1788,7 @@
                 "prices"
               ]
             },
-            "description": "Actualiza el precio mensual/anual de un add-on. Afecta compras NUEVAS; las vigentes conservan su precio. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 204.",
+            "description": "Actualiza el precio mensual/anual de un add-on de cuota. Los precios de modulos se administran desde Modules. Solo PlatformAdmin. Devuelve 204.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"monthlyUsd\": 39,\n  \"yearlyUsd\": 390\n}",
@@ -1723,10 +1889,10 @@
                 "modules"
               ]
             },
-            "description": "Fija los modulos (module.*) del plan: publica una version nueva (supersede la anterior) y encola el recalculo masivo de los tenants del plan. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 202.",
+            "description": "Selecciona solo modulos Commercial. Los Core se agregan automaticamente. Publica una version nueva y encola el recalculo masivo. Solo PlatformAdmin. Devuelve 202.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"modules\": [\n    \"customers\",\n    \"signatures\",\n    \"documents\",\n    \"planner\",\n    \"email\"\n  ]\n}",
+              "raw": "{\n  \"modules\": [\n    \"email\",\n    \"meetings\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1798,6 +1964,332 @@
               ]
             },
             "description": "Recalculo masivo: encola el recalculo de entitlements de TODOS los tenants del plan y republica TenantEntitlementsChanged. Solo PlatformAdmin (subscription.admin.cross_tenant). Devuelve 202."
+          },
+          "response": []
+        },
+        {
+          "name": "ListPlansAdmin (PlatformAdmin) — CAT-F2.2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans"
+              ]
+            },
+            "description": "CAT-F2.2 — Lista completa para autoria: TODOS los planes con TODAS las versiones (Draft/Published/Superseded/Archived) + features + entitlements + price tiers. El GET publico /subscription/plans solo expone la version publicada. Solo PlatformAdmin (subscription.admin.cross_tenant). 200."
+          },
+          "response": []
+        },
+        {
+          "name": "CreatePlan (PlatformAdmin) — CAT-F2.3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans"
+              ]
+            },
+            "description": "CAT-F2.3 — Crea un plan nuevo con una version v1 Draft inicial sin modulos ni entitlements ni precios. El plan NO sale en el listado publico ni se puede contratar hasta publicar la version. Code valida ^[a-z][a-z0-9_-]{2,49}$; Tier dentro del enum Standard/Pro/Enterprise/Trial. 201 con {planId, versionId, versionNumber}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"growth\",\n  \"name\": \"Growth\",\n  \"description\": \"Plan mid-tier para oficinas en expansion. Draft inicial — completar con PUT draft antes de publicar.\",\n  \"tier\": \"Pro\",\n  \"supportedBillingCycles\": [\n    \"Monthly\",\n    \"Yearly\"\n  ],\n  \"trialDaysDefault\": 14\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "UpdatePlanMetadata (PlatformAdmin) — CAT-F2.3",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}"
+              ]
+            },
+            "description": "CAT-F2.3 — Edita Name/Description del plan. No cambia Code ni Tier ni versiones; para revisar modulos/precios usar los endpoints de versiones. Archivado rechaza con Plan.AlreadyArchived; no-op si no hay cambios. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Growth\",\n  \"description\": \"Plan mid-tier con mas asientos y storage para oficinas en crecimiento.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ReplaceDraftVersion (PlatformAdmin) — CAT-F2.4",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/versions/{{versionId}}/draft",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "versions",
+                "{{versionId}}",
+                "draft"
+              ]
+            },
+            "description": "CAT-F2.4 — Reemplazo total del contenido de una version Draft: modulos (persisten como features module.*), features no-modulo, entitlements, price tiers, trial, ciclos. Modulos solo del registry canonico (10); feature con prefijo module.* se rechaza (deben venir en Modules). Si la version no es Draft -> 409 (crear nueva con POST versions). 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modules\": [\n    \"email\",\n    \"meetings\"\n  ],\n  \"features\": [],\n  \"entitlements\": [\n    {\n      \"key\": \"seats.max\",\n      \"valueType\": \"Int\",\n      \"defaultValue\": \"7\",\n      \"description\": \"Maximum included seats before purchasing extras.\"\n    },\n    {\n      \"key\": \"invitations.max_pending\",\n      \"valueType\": \"Int\",\n      \"defaultValue\": \"12\",\n      \"description\": \"Max pending user invitations at once.\"\n    },\n    {\n      \"key\": \"storage.max_bytes\",\n      \"valueType\": \"Long\",\n      \"defaultValue\": \"32212254720\",\n      \"description\": \"Storage quota: 30 GB.\"\n    }\n  ],\n  \"priceTiers\": [\n    {\n      \"billingCycle\": \"Monthly\",\n      \"minQuantity\": 0,\n      \"maxQuantity\": null,\n      \"amount\": 79,\n      \"currency\": \"USD\"\n    },\n    {\n      \"billingCycle\": \"Yearly\",\n      \"minQuantity\": 0,\n      \"maxQuantity\": null,\n      \"amount\": 790,\n      \"currency\": \"USD\"\n    }\n  ],\n  \"trialDaysDefault\": 14,\n  \"supportedBillingCycles\": [\n    \"Monthly\",\n    \"Yearly\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CreateDraftVersion (PlatformAdmin) — CAT-F2.5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/versions",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "versions"
+              ]
+            },
+            "description": "CAT-F2.5 — Abre version Draft nueva (versionNumber = max+1) para un plan existente. Solo una Draft por plan a la vez (409 Plan.DraftAlreadyExists si ya hay una abierta). Despues se edita con PUT draft (F2.4) y se publica con POST publish. 201 con {versionId, versionNumber}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trialDaysDefault\": 14,\n  \"supportedBillingCycles\": [\n    \"Monthly\",\n    \"Yearly\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PublishDraftVersion (PlatformAdmin) — CAT-F2.5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/versions/{{versionId}}/publish",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "versions",
+                "{{versionId}}",
+                "publish"
+              ]
+            },
+            "description": "CAT-F2.5 — Publica una version Draft (supersede la publicada anterior si existe) y encola el recalculo masivo de entitlements para los tenants del plan — emite TenantEntitlementsChangedIntegrationEvent para los 24+ consumers downstream. 202."
+          },
+          "response": []
+        },
+        {
+          "name": "DeprecatePlan (PlatformAdmin) — CAT-F2.5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/deprecate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "deprecate"
+              ]
+            },
+            "description": "CAT-F2.5 — Marca el plan como Deprecated: no se ofrece en nuevas contrataciones pero los tenants activos conservan el plan y aceptan renovaciones. Rechaza con Plan.AlreadyArchived si ya esta archivado. 204."
+          },
+          "response": []
+        },
+        {
+          "name": "ArchivePlan (PlatformAdmin) — CAT-F2.5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/archive",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "archive"
+              ]
+            },
+            "description": "CAT-F2.5 — Archiva un plan previamente deprecated (ningun tenant activo lo tendria ya). Si el plan no esta en Deprecated devuelve Plan.NotDeprecated. 204."
+          },
+          "response": []
+        },
+        {
+          "name": "ListPlanRateLimits (PlatformAdmin) — CAT-F2.6",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planCode}}/rate-limits",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planCode}}",
+                "rate-limits"
+              ]
+            },
+            "description": "CAT-F2.6 — Lista las filas (planCode, category) sembradas para el plan: multiplicador y hard override por minuto cuando aplica. La ausencia de fila implica multiplicador 1.0 implicito. 200."
+          },
+          "response": []
+        },
+        {
+          "name": "UpsertPlanRateLimit (PlatformAdmin) — CAT-F2.6",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planCode}}/rate-limits/categories/{{category}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planCode}}",
+                "rate-limits",
+                "categories",
+                "{{category}}"
+              ]
+            },
+            "description": "CAT-F2.6 — Upsert del multiplicador: actualiza la fila si existe, la crea si no. Util para completar un plan recien creado con F2.3 que todavia no tiene multiplicadores sembrados. category parsea del enum RateLimitCategory. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"multiplierOverride\": 1.5,\n  \"hardOverridePerMinute\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
@@ -1952,6 +2444,202 @@
               ]
             },
             "description": "PayFlow Fase 16 — M2M interno. Llamado por PaymentApp al crear el Stripe Checkout Session del onboarding pagado, para resolver el precio real del plan server-side en vez de confiar en un monto enviado por el frontend (cierre del gap de price-trust, ver README §42). Respuesta 200: InternalPlanPricingResponse(planId, monthlyPriceCents, currency) — ej. {\"planId\": \"44444444-...\", \"monthlyPriceCents\": 4900, \"currency\": \"USD\"}."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount — plan-change (M2M, SEC-M1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M (payment-app-subscription), mismo que GetPlanPricing."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/plan-change/{{planChangeRequestId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "plan-change",
+                "{{planChangeRequestId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 — M2M interno. Llamado por PaymentApp (CreatePlanChangeCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ChargeAmountCents congelado en el PlanChangeRequest. Si el service-token M2M se compromete y manda otro amount, el handler rechaza antes de llegar al provider. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es AwaitingPayment."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - seats (M2M, SEC-M1.b)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/seats/{{seatPurchaseIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "seats",
+                "{{seatPurchaseIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateSeatsCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - add-on (M2M, SEC-M1.c)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/add-on/{{addOnPurchaseIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "add-on",
+                "{{addOnPurchaseIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateAddOnCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
+          },
+          "response": []
+        },
+        {
+          "name": "GetPurchaseIntentAmount - renewal (M2M, SEC-M1.d)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene amountCents', () => pm.expect(body).to.have.property('amountCents'));",
+                  "pm.test('tiene currency', () => pm.expect(body).to.have.property('currency'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "Token M2M, mismo que GetPurchaseIntentAmount plan-change."
+              }
+            ],
+            "url": {
+              "raw": "{{SubscriptionDirectBase}}/internal/purchase-intents/renewal/{{renewalIntentId}}/amount?tenantId={{tenantId}}",
+              "host": [
+                "{{SubscriptionDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "purchase-intents",
+                "renewal",
+                "{{renewalIntentId}}",
+                "amount"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{tenantId}}"
+                }
+              ]
+            },
+            "description": "SEC-M1 - M2M interno. Llamado por PaymentApp (CreateSubscriptionRenewalCheckoutHandler) ANTES de abrir el checkout, para verificar que AmountCents/Currency del body coinciden con el ProratedTotalCents/AmountCents congelado en el intent. Respuesta 200: PurchaseIntentAmountResponse(tenantId, intentId, amountCents, currency). 404 si el intent no existe para el tenant; 400 si el status no es Pending."
           },
           "response": []
         }

@@ -14,7 +14,11 @@ public sealed record SaaSReceiptPayload(
     string TransactionReferenceMask,
     /// <summary>Unidades y precio unitario. Cuando faltan, el recibo muestra solo el concepto y el total.</summary>
     int? Quantity = null,
-    long? UnitAmountCents = null
+    long? UnitAmountCents = null,
+    /// <summary>Línea secundaria debajo del concepto (p.ej. "Additional seats for your subscription",
+    /// "Prepaid wallet credit"). Cuando viene vacía, la plantilla cae a "{issuer.name} subscription"
+    /// — el comportamiento legacy, válido para renovaciones y planes.</summary>
+    string? SecondaryDescription = null
 );
 
 /// <summary>Registra la generación del recibo de una compra SaaS. Responde 202: el PDF se produce después.</summary>

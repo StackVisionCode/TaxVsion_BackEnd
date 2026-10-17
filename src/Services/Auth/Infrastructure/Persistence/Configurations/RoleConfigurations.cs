@@ -22,6 +22,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.Property(permission => permission.IsDangerous).IsRequired();
         builder.Property(permission => permission.IsReserved).IsRequired();
+        builder.Property(permission => permission.GatedModule).HasMaxLength(32);
         builder.HasIndex(permission => permission.Code).IsUnique();
 
         // Mismo patrón que AddOnDefinitionConfiguration (Subscription) para List<BillingCycle>:
@@ -62,6 +63,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                     ?? Permission.InferAllowedActorTypes(definition.IsCustomerPortal, definition.PlatformOnly),
                 definition.IsDangerous,
                 definition.IsReserved,
+                definition.GatedModule,
             })
         );
     }

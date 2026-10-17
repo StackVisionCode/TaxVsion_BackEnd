@@ -15,22 +15,6 @@ public sealed class SubscriptionTenantSettingsTests
     }
 
     [Fact]
-    public void ApplyPatch_updates_only_the_touched_fields()
-    {
-        var settings = SubscriptionTenantSettings.Default(Guid.NewGuid(), Guid.Empty, DateTime.UtcNow).Value;
-
-        var result = settings.ApplyPatch(
-            new SubscriptionSettingsPatch(AllowSeatSelfAssignment: true),
-            Guid.Empty,
-            DateTime.UtcNow
-        );
-
-        Assert.True(result.IsSuccess);
-        Assert.True(settings.AllowSeatSelfAssignment);
-        Assert.True(settings.AllowAutoRenewTenantSubscription);
-    }
-
-    [Fact]
     public void ApplyPatch_rejects_max_seats_below_min_seats()
     {
         var settings = SubscriptionTenantSettings.Default(Guid.NewGuid(), Guid.Empty, DateTime.UtcNow).Value;

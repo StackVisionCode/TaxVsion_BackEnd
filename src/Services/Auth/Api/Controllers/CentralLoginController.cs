@@ -4,6 +4,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Application.CentralLogin.Commands;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -24,7 +25,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
         string Password,
         string? DeviceName = null,
         UserAccountKind? AccountKind = null,
-        string? DeviceToken = null
+        string? DeviceToken = null,
+        SessionSurface Surface = SessionSurface.Workspace
     );
 
     /// <summary>Paso 1: password contra cada oficina. Devuelve vale directo (1 oficina, sin MFA) o selector.</summary>
@@ -42,7 +44,8 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
             request.Password,
             request.DeviceName,
             request.AccountKind,
-            request.DeviceToken
+            request.DeviceToken,
+            request.Surface
         );
         var result = await bus.InvokeAsync<Result<DiscoverLoginResponse>>(command, ct);
 

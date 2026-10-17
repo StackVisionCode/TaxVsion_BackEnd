@@ -25,7 +25,7 @@ public sealed class PurchaseAddOnGuardsTests
     public async Task An_add_on_whose_module_the_plan_already_includes_cannot_be_bought()
     {
         var plan = AddOnTestCatalog.PlanWith("enterprise", modules: ["email"]);
-        var definition = AddOnTestCatalog.ModuleAddOn("email.addon", "email");
+        var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
         var addOns = new FakeTenantAddOnRepo();
 
         var result = await PurchaseAsync(plan, definition, addOns);
@@ -39,7 +39,7 @@ public sealed class PurchaseAddOnGuardsTests
     public async Task The_same_add_on_cannot_be_bought_twice()
     {
         var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
-        var definition = AddOnTestCatalog.ModuleAddOn("email.addon", "email");
+        var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
         var addOns = new FakeTenantAddOnRepo([AddOnTestCatalog.Owned(TenantId, definition)]);
 
         var result = await PurchaseAsync(plan, definition, addOns);
@@ -54,7 +54,7 @@ public sealed class PurchaseAddOnGuardsTests
     public async Task An_add_on_that_allows_several_instances_can_be_bought_again()
     {
         var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
-        var definition = AddOnTestCatalog.ModuleAddOn("storage.pack", module: null, allowMultiple: true);
+        var definition = AddOnTestCatalog.QuotaAddOn("storage.pack", allowMultiple: true);
         var addOns = new FakeTenantAddOnRepo([AddOnTestCatalog.Owned(TenantId, definition)]);
 
         var result = await PurchaseAsync(plan, definition, addOns);
@@ -67,7 +67,7 @@ public sealed class PurchaseAddOnGuardsTests
     public async Task An_add_on_the_plan_does_not_cover_is_purchased()
     {
         var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
-        var definition = AddOnTestCatalog.ModuleAddOn("email.addon", "email");
+        var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
         var addOns = new FakeTenantAddOnRepo();
 
         var result = await PurchaseAsync(plan, definition, addOns);
@@ -76,10 +76,25 @@ public sealed class PurchaseAddOnGuardsTests
         Assert.Single(addOns.Added);
     }
 
+    [Fact]
+    public async Task A_stale_module_shadow_cannot_be_purchased()
+    {
+        var plan = AddOnTestCatalog.PlanWith("starter", modules: ["documents"]);
+        var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
+        var module = AddOnTestCatalog.SellableModule("email");
+        module.RemoveAddonPricing();
+
+        var result = await PurchaseAsync(plan, definition, new FakeTenantAddOnRepo(), module);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("AddOnDefinition.NotFound", result.Error.Code);
+    }
+
     private static Task<Result<Guid>> PurchaseAsync(
         SubscriptionPlan plan,
         AddOnDefinition definition,
-        FakeTenantAddOnRepo addOns
+        FakeTenantAddOnRepo addOns,
+        TaxVision.Subscription.Domain.Catalog.Module? module = null
     )
     {
         var subscription = AddOnTestCatalog.ActiveSubscription(TenantId, plan);
@@ -88,6 +103,7 @@ public sealed class PurchaseAddOnGuardsTests
             new PurchaseAddOnCommand(TenantId, definition.Code.Value, Quantity: 1, AutoRenew: true, Guid.NewGuid()),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(module ?? AddOnTestCatalog.SellableModule("email")),
             new FakeAddOnDefinitionRepository(definition),
             new NoSettingsRepo(),
             addOns,

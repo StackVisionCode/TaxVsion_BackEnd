@@ -36,9 +36,17 @@ public static class ReconcileOnboardingPaymentHandler
         IPlanCatalogClient planCatalog,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOnboardingReconcileSerializer serializer,
         CancellationToken ct
     )
     {
+        // Caught live 2026-10-16: dos POST /onboarding/reconcile-payment concurrentes del landing
+        // cargaron el aggregate antes de que ninguno guardara. Ambos vieron PaymentProcessing +
+        // RegistrationEmailSentAtUtc=null y publicaron el pipeline completo (email + invoice +
+        // receipt duplicados). Serializar por OnboardingId cierra la ventana: el 2do request espera,
+        // ve PaymentCompleted/RegistrationPending y rebota por la rama de early-return.
+        await using var _lock = await serializer.AcquireAsync(command.OnboardingId, ct);
+
         var result = await ReconcileAsync(
             command,
             onboardings,
@@ -50,9 +58,14 @@ public static class ReconcileOnboardingPaymentHandler
             ct
         );
 
-        // Camino por referencia (más expuesta que la cookie): no devolvemos ni la registrationUrl ni el email.
+        // OBF-2.4: camino por referencia (sin cookie) también devuelve la registrationUrl para que el
+        // landing redirija al formulario — antes forzaba null y el fallback mentía con "we sent you an
+        // email" dejando al cliente huérfano cuando volvía desde otro dispositivo. Threat model no cambia:
+        // el token raw de la URL ya va por email al mismo comprador; el reference ?r= requiere Redis vivo
+        // igual que el token. El PayerEmail SÍ se sigue ocultando — es dato personal que no corresponde
+        // devolver cuando sólo autentica un reference, no una sesión del titular.
         return result.IsSuccess && !command.IncludeRegistrationUrl
-            ? Result.Success(result.Value with { RegistrationUrl = null, PayerEmail = null })
+            ? Result.Success(result.Value with { PayerEmail = null })
             : result;
     }
 

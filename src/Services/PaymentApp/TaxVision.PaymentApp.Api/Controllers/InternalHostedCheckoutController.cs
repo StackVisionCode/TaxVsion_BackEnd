@@ -5,6 +5,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.HostedCheckout.Commands;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -20,7 +21,8 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 [Route("internal/hosted-checkout")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
-public sealed class InternalHostedCheckoutController(IMessageBus bus) : ControllerBase
+public sealed class InternalHostedCheckoutController(IMessageBus bus, ILogger<InternalHostedCheckoutController> logger)
+    : ControllerBase
 {
     public sealed record CancelHostedCheckoutRequest(PaymentProviderCode? ProviderCode);
 
@@ -59,6 +61,28 @@ public sealed class InternalHostedCheckoutController(IMessageBus bus) : Controll
         CancellationToken ct
     )
     {
+        // SEC-L1: el token M2M lleva su propio tenantId. Si el query trae otro, el caller está
+        // intentando cancelar un pago fuera de su scope o enumerar pagos ajenos — fail-closed con 403.
+        if (!User.TryGetTenantId(out var callerTenantId) || callerTenantId == Guid.Empty)
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                new Error("SaaSPayment.Forbidden", "The caller token has no tenant scope.")
+            );
+        if (callerTenantId != tenantId)
+        {
+            logger.LogWarning(
+                "Cancel checkout cross-tenant attempt: caller tenant {CallerTenantId} tried to cancel payment "
+                    + "{PaymentId} for tenant {QueryTenantId}.",
+                callerTenantId,
+                saaSPaymentId,
+                tenantId
+            );
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                new Error("SaaSPayment.Forbidden", "The caller tenant does not match the requested tenant.")
+            );
+        }
+
         var payment = await payments.GetByIdAsync(saaSPaymentId, tenantId, ct);
         if (payment is null)
             return StatusCode(

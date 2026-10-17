@@ -30,6 +30,13 @@ public static class IdempotencyKeyFactory
     /// propia <c>SeatPurchaseIntent</c>) — el re-submit de la misma intención replaya su sesión.</summary>
     public static string SeatCheckout(Guid seatPurchaseIntentId) => $"seat-checkout-{seatPurchaseIntentId:N}";
 
+    /// <summary>Reactivación de un seat Suspended/PastDue por pago manual del admin. El bucket es el momento
+    /// en que el seat pasó a Suspended (o su última actualización si nunca pasó por Suspended, caso PastDue):
+    /// si el seat vuelve a caer tras reactivarse, un nuevo <c>SuspendedAtUtc</c> genera key nueva y permite otro
+    /// pago; dentro de la misma ventana el mismo click (o reintento) replaya el checkout existente.</summary>
+    public static string SeatReactivation(Guid seatId, DateTime bucketUtc) =>
+        $"seat-reactivation-{seatId:N}-{bucketUtc.Ticks}";
+
     /// <summary>Cargo por hosted-checkout de la compra de un add-on. Único por intención — el re-submit de la
     /// misma intención replaya su sesión.</summary>
     public static string AddOnCheckout(Guid addOnPurchaseIntentId) => $"addon-checkout-{addOnPurchaseIntentId:N}";

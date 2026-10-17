@@ -164,7 +164,6 @@ public sealed class RenewalNotificationJob(
                     SeatId = seat.Id,
                     DueAtUtc = seat.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
-                    CurrentUserId = seat.CurrentUserId,
                 }
             );
             count++;

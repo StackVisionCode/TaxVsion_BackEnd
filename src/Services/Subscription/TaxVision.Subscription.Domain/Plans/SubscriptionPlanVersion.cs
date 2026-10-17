@@ -130,6 +130,19 @@ public sealed class SubscriptionPlanVersion : BaseEntity
                 new Error("PlanVersion.InvalidTransition", $"Cannot publish a version from {Status}.")
             );
 
+        // Caught live when a failed Draft update left v1 empty but Publish still returned 202,
+        // creating an uncontractable plan on /subscription/plans. A version must carry at least
+        // one feature/module and one price tier to be purchasable.
+        if (_features.Count == 0)
+            return Result.Failure(
+                new Error("PlanVersion.NoFeatures", "Cannot publish a version without at least one feature or module.")
+            );
+
+        if (_priceTiers.Count == 0)
+            return Result.Failure(
+                new Error("PlanVersion.NoPriceTiers", "Cannot publish a version without at least one price tier.")
+            );
+
         Status = PlanVersionStatus.Published;
         EffectiveFromUtc = effectiveFromUtc;
         return Result.Success();
@@ -144,6 +157,42 @@ public sealed class SubscriptionPlanVersion : BaseEntity
 
         Status = PlanVersionStatus.Superseded;
         EffectiveUntilUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>CAT-F2.4 — reemplazo total del contenido de la versión draft (features, entitlements,
+    /// price tiers). Mantiene VersionNumber/Status/EffectiveFrom. El guard <see cref="EnsureDraft"/>
+    /// garantiza que no se toca una versión publicada o superseded.</summary>
+    public Result ReplaceDraftContent(
+        IReadOnlyList<PlanFeature> features,
+        IReadOnlyList<PlanEntitlementDefinition> entitlements,
+        IReadOnlyList<PlanPriceTier> priceTiers,
+        int trialDaysDefault,
+        IReadOnlyCollection<BillingCycle> supportedBillingCycles
+    )
+    {
+        var guard = EnsureDraft();
+        if (guard.IsFailure)
+            return guard;
+
+        if (trialDaysDefault is < 0 or > 90)
+            return Result.Failure(
+                new Error("PlanVersion.InvalidTrialDays", "TrialDaysDefault must be between 0 and 90.")
+            );
+
+        if (supportedBillingCycles.Count == 0)
+            return Result.Failure(new Error("PlanVersion.NoBillingCycles", "At least one billing cycle is required."));
+
+        TrialDaysDefault = trialDaysDefault;
+        _supportedBillingCycles.Clear();
+        _supportedBillingCycles.AddRange(supportedBillingCycles);
+
+        _features.Clear();
+        _features.AddRange(features);
+        _entitlements.Clear();
+        _entitlements.AddRange(entitlements);
+        _priceTiers.Clear();
+        _priceTiers.AddRange(priceTiers);
         return Result.Success();
     }
 

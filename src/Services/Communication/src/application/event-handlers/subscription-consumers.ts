@@ -7,6 +7,7 @@ import {
   NotificationSocketEvents,
   type AccessChangedDto,
 } from '../../contracts/socket/notification-socket-events.js';
+import { CatalogSocketEvents, type CatalogChangedDto } from '../../contracts/socket/catalog-socket-events.js';
 
 /**
  * Consumer Subscription -> proyeccion `TenantCommunicationLimits`.
@@ -32,6 +33,46 @@ export function bindSubscriptionConsumers(
     emitter?: RealtimeEmitter;
   },
 ): void {
+  // CAT-F5.2 — Admin editó el catálogo (crear/publicar/precios/archivar plan o add-on). Broadcast
+  // platform-wide: todos los frontends (landing + CRM + portal) refetchean el listado publico sin
+  // accion manual. El evento NO lleva snapshot — es un "trigger refetch" conscious del flujo real-time
+  // existente (el detalle lo tiene el GET publico).
+  register('subscription.catalog_changed.v1', async (env) => {
+    if (!deps.emitter) return;
+    const payload: CatalogChangedDto = {
+      changeKind: getString(env.payload, 'changeKind', 'ChangeKind') ?? 'unknown',
+      entityId: getString(env.payload, 'entityId', 'EntityId') ?? null,
+      entityCode: getString(env.payload, 'entityCode', 'EntityCode') ?? null,
+    };
+    deps.emitter.emitBroadcast({
+      event: CatalogSocketEvents.Changed,
+      envelope: {
+        eventId: crypto.randomUUID(),
+        correlationId: '',
+        emittedAtUtc: new Date().toISOString(),
+        payload,
+      },
+    });
+  });
+
+  register('subscription.module_category_changed.v1', async (env) => {
+    if (!deps.emitter) return;
+    const payload: CatalogChangedDto = {
+      changeKind: 'module.configuration',
+      entityId: null,
+      entityCode: getString(env.payload, 'moduleCode', 'ModuleCode') ?? null,
+    };
+    deps.emitter.emitBroadcast({
+      event: CatalogSocketEvents.Changed,
+      envelope: {
+        eventId: crypto.randomUUID(),
+        correlationId: env.correlationId ?? '',
+        emittedAtUtc: new Date().toISOString(),
+        payload,
+      },
+    });
+  });
+
   register('subscription.entitlements_changed.v1', async (env) => {
     const snapshot = extractLimitsSnapshot(env);
     if (!snapshot) return;
@@ -67,7 +108,8 @@ function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimits
   return {
     tenantId: env.tenantId,
     planCode,
-    maxMeetingParticipants: getEntitlementNumber(entitlementValues, 'communication.max_participants_per_meeting') ?? 4,
+    maxMeetingParticipants:
+      getEntitlementNumber(entitlementValues, 'communication.max_participants_per_meeting') ?? 4,
     maxMeetingMinutes: getEntitlementNumber(entitlementValues, 'communication.max_meeting_minutes') ?? 60,
     maxConcurrentCalls: getEntitlementNumber(entitlementValues, 'communication.max_concurrent_calls') ?? 2,
     maxMonthlyMinutes: getEntitlementNumber(entitlementValues, 'communication.max_monthly_minutes') ?? 600,

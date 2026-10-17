@@ -17,7 +17,6 @@ public sealed record SignatureReadyForDownloadIntegrationEvent : IntegrationEven
     /// Token del share-link público de CloudStorage. Null si no se pudo emitir: el correo igual sale,
     /// pero sin botón de descarga.
     /// </summary>
-
     /// <summary>Snapshot de contacto de cada firmante — destinatarios del correo, sin lookup síncrono.</summary>
     public required IReadOnlyList<SignerContactSnapshot> Signers { get; init; }
 
