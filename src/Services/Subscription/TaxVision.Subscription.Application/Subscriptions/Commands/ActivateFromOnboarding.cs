@@ -17,6 +17,7 @@ public sealed record ActivateFromOnboardingCommand(
     Guid TenantId,
     Guid PlanId,
     BillingCycle BillingCycle,
+    Guid OwnerUserId,
     bool AutoRenewRequested = false
 );
 
@@ -95,7 +96,7 @@ public static class ActivateFromOnboardingHandler
                 command.TenantId,
                 BillingMode.Automatic,
                 providerCode: "stripe",
-                chosenByUserId: Guid.Empty,
+                chosenByUserId: command.OwnerUserId,
                 consentText: "Automatic renewal selected during onboarding checkout.",
                 consentIpAddress: "0.0.0.0",
                 consentUserAgent: null,

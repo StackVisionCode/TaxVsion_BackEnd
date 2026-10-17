@@ -94,4 +94,16 @@ public interface ISaaSPaymentRepository
     );
 
     Task AddAsync(SaaSPayment payment, CancellationToken ct = default);
+
+    /// <summary>Para cada <c>(Type, TargetAggregateId)</c> del tenant, el <c>CreatedAtUtc</c> del pago
+    /// Succeeded más reciente. Lo usa el billing history para no mostrar "Pay now" sobre filas Failed
+    /// cuyo cobro ya fue saldado por un pago posterior (p. ej. el usuario pagó manualmente dos días
+    /// después y la fila vieja Failed quedó zombi).</summary>
+    Task<
+        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime>
+    > GetLatestSucceededCreatedAtByTargetsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<(SaaSPaymentType Type, Guid TargetAggregateId)> targets,
+        CancellationToken ct = default
+    );
 }

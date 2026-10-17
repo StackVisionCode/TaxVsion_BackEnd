@@ -31,7 +31,13 @@ public sealed class ActivateFromOnboardingHandlerTests
         var unitOfWork = new FakeUnitOfWork();
         var bus = new CapturingMessageBus();
 
-        var command = new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Monthly);
+        var command = new ActivateFromOnboardingCommand(
+            onboardingId,
+            tenantId,
+            plan.Id,
+            BillingCycle.Monthly,
+            OwnerUserId: Guid.NewGuid()
+        );
 
         var result = await ActivateFromOnboardingHandler.Handle(
             command,
@@ -75,7 +81,13 @@ public sealed class ActivateFromOnboardingHandlerTests
         var bus = new CapturingMessageBus();
 
         var result = await ActivateFromOnboardingHandler.Handle(
-            new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Yearly),
+            new ActivateFromOnboardingCommand(
+                onboardingId,
+                tenantId,
+                plan.Id,
+                BillingCycle.Yearly,
+                OwnerUserId: Guid.NewGuid()
+            ),
             subscriptions,
             plans,
             settingsRepository,
@@ -108,7 +120,13 @@ public sealed class ActivateFromOnboardingHandlerTests
         var bus = new CapturingMessageBus();
 
         var result = await ActivateFromOnboardingHandler.Handle(
-            new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Monthly),
+            new ActivateFromOnboardingCommand(
+                onboardingId,
+                tenantId,
+                plan.Id,
+                BillingCycle.Monthly,
+                OwnerUserId: Guid.NewGuid()
+            ),
             subscriptions,
             plans,
             settingsRepository,
@@ -136,7 +154,13 @@ public sealed class ActivateFromOnboardingHandlerTests
         var bus = new CapturingMessageBus();
 
         var result = await ActivateFromOnboardingHandler.Handle(
-            new ActivateFromOnboardingCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), BillingCycle.Monthly),
+            new ActivateFromOnboardingCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                BillingCycle.Monthly,
+                OwnerUserId: Guid.NewGuid()
+            ),
             subscriptions,
             plans,
             settingsRepository,

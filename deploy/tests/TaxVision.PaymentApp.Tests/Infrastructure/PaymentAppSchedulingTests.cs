@@ -266,6 +266,17 @@ public sealed class PaymentAppSchedulingTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<
+            IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime>
+        > GetLatestSucceededCreatedAtByTargetsAsync(
+            Guid tenantId,
+            IReadOnlyCollection<(SaaSPaymentType Type, Guid TargetAggregateId)> targets,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<(SaaSPaymentType, Guid), DateTime>>(
+                new Dictionary<(SaaSPaymentType, Guid), DateTime>()
+            );
+
         public Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
             Guid? tenantId,
             PaymentStatus? status,

@@ -54,6 +54,7 @@ public sealed class SubscriptionActivationClient(
                         tenantId = request.TenantId,
                         planId = request.PlanId,
                         billingCycle = request.BillingCycle,
+                        ownerUserId = request.OwnerUserId,
                         autoRenewRequested = request.AutoRenewRequested,
                     }
                 ),
