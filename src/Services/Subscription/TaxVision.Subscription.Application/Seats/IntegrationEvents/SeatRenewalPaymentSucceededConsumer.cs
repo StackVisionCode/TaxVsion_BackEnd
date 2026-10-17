@@ -44,15 +44,33 @@ public static class SeatRenewalPaymentSucceededConsumer
                 return;
             }
 
-            var result = seat.CompleteRenewal(
-                renewal.Id,
-                evt.ExternalPaymentReference,
-                actorUserId: Guid.Empty,
-                evt.PaidAtUtc
-            );
+            // El mismo evento sirve para 2 flujos distintos: renovación automática (seat Active, dunning
+            // periódico) y reactivación manual (admin pagó un seat Suspended/PastDue vía
+            // StartSeatReactivationCheckout). El estado del seat decide a cuál despachar: CompleteRenewal
+            // exige Active, CompleteReactivation acepta Suspended/PastDue y transiciona a Active con nuevo
+            // período. Así no multiplicamos eventos de integración para una misma intención ("pago de seat").
+            var isReactivation = seat.Status is SeatStatus.Suspended or SeatStatus.PastDue;
+            var result = isReactivation
+                ? seat.CompleteReactivation(
+                    renewal.Id,
+                    evt.ExternalPaymentReference,
+                    actorUserId: Guid.Empty,
+                    evt.PaidAtUtc
+                )
+                : seat.CompleteRenewal(
+                    renewal.Id,
+                    evt.ExternalPaymentReference,
+                    actorUserId: Guid.Empty,
+                    evt.PaidAtUtc
+                );
             if (result.IsFailure)
             {
-                logger.LogWarning("Could not complete renewal for seat {SeatId}: {Code}.", seat.Id, result.Error.Code);
+                logger.LogWarning(
+                    "Could not {Op} for seat {SeatId}: {Code}.",
+                    isReactivation ? "reactivate" : "complete renewal",
+                    seat.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

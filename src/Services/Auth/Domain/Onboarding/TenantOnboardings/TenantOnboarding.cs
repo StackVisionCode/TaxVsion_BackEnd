@@ -40,6 +40,12 @@ public sealed class TenantOnboarding : BaseEntity
     /// lo parsean. Default "Monthly".</summary>
     public string BillingCycle { get; private set; } = "Monthly";
 
+    /// <summary>2026-10-16: el comprador marcó "renovación automática" en el checkout del landing.
+    /// Viaja hasta <c>ActivateFromOnboardingHandler</c> (Subscription) para materializar un
+    /// <c>TenantBillingPreference</c> en modo Automatic con el mandate que Stripe ya guardó via
+    /// <c>SetupFutureUsage=off_session</c>. Default false: comportamiento Manual (previo al fix).</summary>
+    public bool AutoRenewRequested { get; private set; }
+
     public TenantOnboardingStatus Status { get; private set; }
 
     public Guid? PaymentId { get; private set; }
@@ -118,7 +124,8 @@ public sealed class TenantOnboarding : BaseEntity
         string lastName,
         string? phone,
         DateTime nowUtc,
-        string? billingCycle = null
+        string? billingCycle = null,
+        bool autoRenewRequested = false
     )
     {
         var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -140,6 +147,7 @@ public sealed class TenantOnboarding : BaseEntity
                 EmailVerifiedAtUtc = emailVerifiedAtUtc,
                 PlanId = planId,
                 BillingCycle = string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle.Trim(),
+                AutoRenewRequested = autoRenewRequested,
                 FirstName = firstName.Trim(),
                 LastName = lastName.Trim(),
                 Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),

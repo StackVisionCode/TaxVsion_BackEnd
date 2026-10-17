@@ -16,6 +16,7 @@ using TaxVision.Subscription.Domain.RateLimiting;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
+using SubscriptionModule = TaxVision.Subscription.Domain.Catalog.Module;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence;
 
@@ -32,6 +33,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
         IUnitOfWork
 {
     public DbSet<SubscriptionPlan> Plans => Set<SubscriptionPlan>();
+    public DbSet<SubscriptionModule> Modules => Set<SubscriptionModule>();
     public DbSet<TenantSubscription> Subscriptions => Set<TenantSubscription>();
     public DbSet<SubscriptionSeat> Seats => Set<SubscriptionSeat>();
     public DbSet<SeatPricing> SeatPricings => Set<SeatPricing>();

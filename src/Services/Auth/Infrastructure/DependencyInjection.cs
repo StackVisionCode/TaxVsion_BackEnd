@@ -117,6 +117,12 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IInvitationTokenService, InvitationTokenService>();
         services.AddSingleton<IOnboardingMetrics, OnboardingMetrics>();
+        // Scoped: cada request toma la conexión del DbContext scoped de Auth. El lock es session-scoped
+        // en SQL Server, se libera al Dispose. Fallback InMemory queda en tests via WAF override.
+        services.AddScoped<
+            TaxVision.Auth.Application.Onboarding.Abstractions.IOnboardingReconcileSerializer,
+            TaxVision.Auth.Infrastructure.Onboarding.Concurrency.SqlOnboardingReconcileSerializer
+        >();
         services.AddSingleton<
             TaxVision.Auth.Application.Subscriptions.Abstractions.ISubscriptionAccessMetrics,
             TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics

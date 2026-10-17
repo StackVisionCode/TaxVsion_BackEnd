@@ -1,5 +1,7 @@
+using BuildingBlocks.RateLimiting;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Billing;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.RateLimiting;
@@ -9,14 +11,33 @@ using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.Abstractions;
 
+public interface IModuleRepository
+{
+    Task<IReadOnlyList<Module>> GetAllAsync(CancellationToken ct = default);
+    Task<Module?> GetByCodeAsync(string code, CancellationToken ct = default);
+    Task<Module?> GetByCodeForUpdateAsync(string code, CancellationToken ct = default);
+    Task AddAsync(Module module, CancellationToken ct = default);
+}
+
 public interface IPlanRepository
 {
     Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default);
+
+    /// <summary>CAT-F2.2 — vista de admin: todos los planes con todas sus versiones (Draft/Published/
+    /// Superseded/Archived). AsNoTracking como el resto de reads; para editar usa <see cref="GetByIdForUpdateAsync"/>.</summary>
+    Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default);
+
     Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default);
 
     /// <summary>Plan trackeado (con versiones e hijas) para autoría; el resto de reads son AsNoTracking.</summary>
     Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default);
+
+    /// <summary>CAT-F2.3 — autoría: inserta un plan nuevo (con versión v1 draft inicial).</summary>
+    Task AddAsync(SubscriptionPlan plan, CancellationToken ct = default);
+
+    /// <summary>CAT-F2.3 — autoría: existe algún plan con ese code (unicidad case-sensitive, igual que PlanCode).</summary>
+    Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default);
 }
 
 public interface ISubscriptionRepository
@@ -98,11 +119,6 @@ public interface ISubscriptionSeatRepository
 {
     Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
-    Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
-
-    /// <summary>Como GetByCurrentUserIdAsync pero TRACKED — para liberar el asiento desde un consumer
-    /// (la variante AsNoTracking no persistiría la mutación).</summary>
-    Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>
@@ -298,6 +314,14 @@ public interface ITenantEntitlementSnapshotRepository
 public interface IPlanRateLimitRepository
 {
     Task<IReadOnlyList<PlanRateLimit>> GetAllAsync(CancellationToken ct = default);
+
+    /// <summary>CAT-F2.6 — autoría: filtra por plan para la pantalla de rate-limit del admin.</summary>
+    Task<IReadOnlyList<PlanRateLimit>> GetByPlanCodeAsync(string planCode, CancellationToken ct = default);
+
+    /// <summary>CAT-F2.6 — autoría: la fila específica trackeada para edición.</summary>
+    Task<PlanRateLimit?> GetForUpdateAsync(string planCode, RateLimitCategory category, CancellationToken ct = default);
+
+    Task AddAsync(PlanRateLimit rateLimit, CancellationToken ct = default);
 }
 
 /// <summary>Preferencia de cobro por tenant (Automatic/Manual) junto con los mandates que la

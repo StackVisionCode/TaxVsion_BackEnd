@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Domain.Billing;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -15,7 +16,8 @@ public sealed record ActivateFromOnboardingCommand(
     Guid OnboardingId,
     Guid TenantId,
     Guid PlanId,
-    BillingCycle BillingCycle
+    BillingCycle BillingCycle,
+    bool AutoRenewRequested = false
 );
 
 /// <summary>
@@ -33,6 +35,7 @@ public static class ActivateFromOnboardingHandler
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
         ISubscriptionTenantSettingsRepository settingsRepository,
+        ITenantBillingPreferenceRepository billingPreferences,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -75,6 +78,36 @@ public static class ActivateFromOnboardingHandler
                 return Result.Failure(settingsResult.Error);
 
             await settingsRepository.AddAsync(settingsResult.Value, ct);
+        }
+
+        // 2026-10-16: el comprador marcó "renovación automática" en el landing. Stripe ya guardó el
+        // mandate (SetupFutureUsage=off_session en StripePaymentAdapter), pero sin este espejo en
+        // nuestro agregado el GET /subscriptions/me/billing-preference devolvía default Manual y la
+        // pantalla Manage Subscription pintaba el toggle en OFF. Materializamos la preferencia con
+        // los datos que SÍ tenemos aquí (monto, moneda, cadencia); el consent completo (texto, IP,
+        // UA) queda como enhancement — por ahora pasamos un marker legible.
+        if (command.AutoRenewRequested && await billingPreferences.GetByTenantIdAsync(command.TenantId, ct) is null)
+        {
+            var monthlyPrice = planVersion.PriceTiers.FirstOrDefault(t => t.BillingCycle == command.BillingCycle);
+            var amountCents = monthlyPrice is null ? 0L : (long)(monthlyPrice.UnitAmount.Amount * 100);
+            var currency = monthlyPrice?.UnitAmount.Currency ?? "USD";
+            var preferenceResult = TenantBillingPreference.Choose(
+                command.TenantId,
+                BillingMode.Automatic,
+                providerCode: "stripe",
+                chosenByUserId: Guid.Empty,
+                consentText: "Automatic renewal selected during onboarding checkout.",
+                consentIpAddress: "0.0.0.0",
+                consentUserAgent: null,
+                amountCents: amountCents,
+                currency: currency,
+                cadence: command.BillingCycle.ToString(),
+                nowUtc: nowUtc
+            );
+            if (preferenceResult.IsFailure)
+                return Result.Failure(preferenceResult.Error);
+
+            await billingPreferences.AddAsync(preferenceResult.Value, ct);
         }
 
         // Sellar el tenant real: este handler corre con un token M2M scoped a PlatformTenant.Id

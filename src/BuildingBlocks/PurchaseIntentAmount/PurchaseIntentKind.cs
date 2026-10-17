@@ -10,4 +10,5 @@ public enum PurchaseIntentKind
     AddOn,
     SubscriptionRenewal,
     WalletTopUp,
+    SeatReactivation,
 }

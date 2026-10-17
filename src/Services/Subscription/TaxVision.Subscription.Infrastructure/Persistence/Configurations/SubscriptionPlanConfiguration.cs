@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
+using TaxVision.Subscription.Infrastructure.Persistence.Converters;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence.Configurations;
 
@@ -21,7 +22,7 @@ public sealed class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Sub
 
         builder.Property(plan => plan.Name).HasMaxLength(200).IsRequired();
         builder.Property(plan => plan.Description).HasMaxLength(2000).IsRequired();
-        builder.Property(plan => plan.Tier).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(plan => plan.Tier).HasConversion(new PlanTierConverter()).HasMaxLength(30).IsRequired();
         builder.Property(plan => plan.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
 
         builder

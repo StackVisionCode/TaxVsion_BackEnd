@@ -34,4 +34,9 @@ public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
     /// </summary>
     public int? Quantity { get; init; }
     public long? UnitAmountCents { get; init; }
+
+    // CAT-F9-G2: identidad del SKU cobrado para que el recibo diga "Storage +10 GB" en vez de
+    // "Add-on". Opcional (null para pagos legacy o para los callers que aún no lo setean).
+    public string? ConceptCode { get; init; }
+    public string? ConceptDisplayName { get; init; }
 }

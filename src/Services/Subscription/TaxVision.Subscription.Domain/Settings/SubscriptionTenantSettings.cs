@@ -15,13 +15,9 @@ public sealed class SubscriptionTenantSettings : TenantEntity
 
     public bool AllowAutoRenewTenantSubscription { get; private set; } = true;
     public bool AllowAutoRenewSeats { get; private set; } = true;
-    public bool AllowSeatSelfAssignment { get; private set; }
-    public bool AllowAdminSeatAssignment { get; private set; } = true;
     public int? MaxSeatsAllowed { get; private set; }
     public int MinSeatsRequired { get; private set; }
     public int DefaultSeatRenewalDays { get; private set; } = 30;
-    public bool AllowSeatReassignment { get; private set; } = true;
-    public int SeatReassignmentCooldownDays { get; private set; }
     public bool AllowAddons { get; private set; } = true;
     public bool AllowTrial { get; private set; } = true;
     public TrialDays TrialDays { get; private set; } = null!;
@@ -97,14 +93,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
                 )
             );
 
-        if (patch.SeatReassignmentCooldownDays is < 0 or > 90)
-            return Result.Failure(
-                new Error(
-                    "SubscriptionSettings.InvalidCooldown",
-                    "SeatReassignmentCooldownDays must be between 0 and 90."
-                )
-            );
-
         if (patch.NotifyAfterFailedRenewalDays is < 0 or > 30)
             return Result.Failure(
                 new Error(
@@ -138,12 +126,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
         if (patch.AllowAutoRenewSeats is { } allowAutoRenewSeats)
             AllowAutoRenewSeats = allowAutoRenewSeats;
 
-        if (patch.AllowSeatSelfAssignment is { } allowSelfAssignment)
-            AllowSeatSelfAssignment = allowSelfAssignment;
-
-        if (patch.AllowAdminSeatAssignment is { } allowAdminAssignment)
-            AllowAdminSeatAssignment = allowAdminAssignment;
-
         if (patch.ClearMaxSeatsAllowed)
             MaxSeatsAllowed = null;
         else if (patch.MaxSeatsAllowed is { } maxSeats)
@@ -154,12 +136,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
 
         if (patch.DefaultSeatRenewalDays is { } seatRenewalDays)
             DefaultSeatRenewalDays = seatRenewalDays;
-
-        if (patch.AllowSeatReassignment is { } allowReassignment)
-            AllowSeatReassignment = allowReassignment;
-
-        if (patch.SeatReassignmentCooldownDays is { } cooldownDays)
-            SeatReassignmentCooldownDays = cooldownDays;
 
         if (patch.AllowAddons is { } allowAddons)
             AllowAddons = allowAddons;

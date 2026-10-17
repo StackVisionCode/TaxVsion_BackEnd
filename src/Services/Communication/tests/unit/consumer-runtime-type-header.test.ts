@@ -19,12 +19,20 @@ const channel = {
 };
 
 vi.mock('../../src/infrastructure/rabbit/rabbit-connection.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/infrastructure/rabbit/rabbit-connection.js')>();
+  const actual =
+    await importOriginal<typeof import('../../src/infrastructure/rabbit/rabbit-connection.js')>();
   return { ...actual, getRabbitContext: () => ({ channel, connection: {} }) };
 });
 
 vi.mock('../../src/infrastructure/config.js', () => ({
-  config: { rabbitmq: { uri: '', exchange: 'taxvision-events', queue: 'communication-events', dlq: 'communication-events.dlq' } },
+  config: {
+    rabbitmq: {
+      uri: '',
+      exchange: 'taxvision-events',
+      queue: 'communication-events',
+      dlq: 'communication-events.dlq',
+    },
+  },
 }));
 
 vi.mock('../../src/infrastructure/logger/logger.js', () => ({
@@ -42,7 +50,7 @@ function message(amqpType: string | undefined, body: Record<string, unknown>): C
   };
 }
 
-async function startRuntime() {
+async function startRuntime(eventType = 'correspondence.customer_email_received.v1') {
   const processedEvents = {
     tryMarkProcessed: vi.fn().mockResolvedValue(true),
     unmark: vi.fn().mockResolvedValue(undefined),
@@ -55,7 +63,7 @@ async function startRuntime() {
 
   const runtime = new ConsumerRuntime(processedEvents as never);
   const handler = vi.fn().mockResolvedValue(undefined);
-  runtime.register('correspondence.customer_email_received.v1', handler);
+  runtime.register(eventType, handler);
   await runtime.start();
 
   const dispatch = async (msg: ConsumeMessage) => {
@@ -98,5 +106,24 @@ describe('ConsumerRuntime — resolución del header AMQP `type`', () => {
     expect(handler).not.toHaveBeenCalled();
     expect(channel.ack).toHaveBeenCalledTimes(1);
     expect(channel.nack).not.toHaveBeenCalled();
+  });
+
+  it('mapea ModuleCategoryChanged de Wolverine al alias del consumer', async () => {
+    const eventType = 'subscription.module_category_changed.v1';
+    const { dispatch, handler } = await startRuntime(eventType);
+
+    await dispatch(
+      message(
+        'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.ModuleCategoryChangedIntegrationEvent',
+        {
+          EventId: 'evt-module-1',
+          TenantId: '8f58a521-4c25-4d91-9f4e-7ad5df14c001',
+          ModuleCode: 'wallet',
+        },
+      ),
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]![0].eventType).toBe(eventType);
   });
 });

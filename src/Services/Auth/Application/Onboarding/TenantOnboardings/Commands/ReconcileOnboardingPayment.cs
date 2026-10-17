@@ -36,9 +36,17 @@ public static class ReconcileOnboardingPaymentHandler
         IPlanCatalogClient planCatalog,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOnboardingReconcileSerializer serializer,
         CancellationToken ct
     )
     {
+        // Caught live 2026-10-16: dos POST /onboarding/reconcile-payment concurrentes del landing
+        // cargaron el aggregate antes de que ninguno guardara. Ambos vieron PaymentProcessing +
+        // RegistrationEmailSentAtUtc=null y publicaron el pipeline completo (email + invoice +
+        // receipt duplicados). Serializar por OnboardingId cierra la ventana: el 2do request espera,
+        // ve PaymentCompleted/RegistrationPending y rebota por la rama de early-return.
+        await using var _lock = await serializer.AcquireAsync(command.OnboardingId, ct);
+
         var result = await ReconcileAsync(
             command,
             onboardings,

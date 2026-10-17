@@ -326,10 +326,11 @@ public sealed class GetAccountSubscriptionHandlerTests
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, name, $"{name} plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create(code).Value, name, $"{name} plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         AddEntitlements(version, monthlyPrice, seatsMax, modules);
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
         return plan;
@@ -348,6 +349,7 @@ public sealed class GetAccountSubscriptionHandlerTests
         var nowUtc = DateTime.UtcNow;
         var version = SubscriptionPlanVersion.Create(plan.Id, 2, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         AddEntitlements(version, monthlyPrice, seatsMax, modules);
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
     }

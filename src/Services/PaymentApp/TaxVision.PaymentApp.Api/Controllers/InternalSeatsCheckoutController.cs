@@ -69,6 +69,57 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record CreateSeatReactivationCheckoutRequest(
+        Guid TenantId,
+        Guid SeatId,
+        long AmountCents,
+        string Currency,
+        string PayerEmail,
+        string SuccessUrl,
+        string CancelUrl,
+        string IdempotencyKey,
+        PaymentProviderCode? Provider = null,
+        PaymentMethodKind? Method = null,
+        /// <summary>SEC-M1.C — HMAC emitido por Subscription (PurchaseIntentKind.SeatReactivation).</summary>
+        string? AmountSignature = null
+    );
+
+    /// <summary>Pago para reactivar un seat Suspended/PastDue específico. Reusa el publisher de
+    /// <c>SeatRenewalPaymentSucceeded</c> emitiendo el <c>SaaSPayment</c> como <c>SeatRenewal</c> con
+    /// <c>TargetAggregateId = seatId</c>, de modo que el consumer existente en Subscription aplique
+    /// <c>CompleteReactivation</c> por detectar estado Suspended/PastDue.</summary>
+    [HttpPost("{seatId:guid}/reactivate-checkout")]
+    [RateLimitExempt("M2M ServiceOnly — invocado por Subscription (StartSeatReactivationCheckout).")]
+    [ProducesResponseType<SeatsCheckoutResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateReactivationCheckout(
+        Guid seatId,
+        CreateSeatReactivationCheckoutRequest request,
+        CancellationToken ct
+    )
+    {
+        if (request.SeatId != seatId)
+            return BadRequest(new Error("SeatReactivation.MismatchedSeat", "Route seatId must match body seatId."));
+
+        var result = await bus.InvokeAsync<Result<SeatsCheckoutResponse>>(
+            new CreateSeatReactivationCheckoutCommand(
+                request.TenantId,
+                request.SeatId,
+                request.AmountCents,
+                request.Currency,
+                request.PayerEmail,
+                request.SuccessUrl,
+                request.CancelUrl,
+                request.IdempotencyKey,
+                request.Provider ?? PaymentProviderCode.Stripe,
+                request.Method ?? PaymentMethodKind.Card,
+                request.AmountSignature
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Estado de un pago de asientos — lo consulta el job de reconciliación de Subscription para
     /// aprovisionar intenciones que quedaron Pending pese a un pago confirmado (evento de resultado perdido).</summary>
     [HttpGet("payments/{saaSPaymentId:guid}")]

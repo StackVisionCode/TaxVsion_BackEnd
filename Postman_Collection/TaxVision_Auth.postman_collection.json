@@ -1072,17 +1072,17 @@
                 }
               }
             },
-            "description": "Canjea el token del enlace del correo por la contraseña nueva (204). El enlace es de un solo uso; al cambiar la contraseña se anulan los demás enlaces pendientes de esa cuenta y se cierran todas sus sesiones."
+            "description": "Canjea el token del enlace del correo por la contraseña nueva (204). El enlace es de un solo uso; al cambiar la contraseña se anulan los demás enlaces pendientes de esa cuenta y se cierran todas sus sesiones. Cross-tenant: si el Host resuelve una oficina de cliente distinta de la del token, el canje se rechaza con Auth.InvalidResetToken (defense in depth; el UI ya rebota al subdominio correcto al validar)."
           },
           "response": []
         },
         {
           "name": "ValidateResetToken",
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{UrlBase}}/auth/password/reset/validate",
+              "raw": "{{UrlBase}}/auth/password/reset/validate?token={{resetToken}}",
               "host": [
                 "{{UrlBase}}"
               ],
@@ -1091,18 +1091,12 @@
                 "password",
                 "reset",
                 "validate"
+              ],
+              "query": [
+                { "key": "token", "value": "{{resetToken}}" }
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"<token del enlace del correo>\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "Dice si el enlace de reset todavía sirve, sin consumirlo ni contar intentos: 204 si sirve; 401 Auth.InvalidResetToken si caducó, ya se usó o fue anulado. La página de reset lo consulta al abrirse."
+            "description": "¿El enlace de reset todavía sirve y a qué oficina pertenece? Siempre 200 (anti-enumeración) con { status: 'Valid'|'Invalid', tenant: {id, name, subDomain} | null }. La página lo consulta al abrirse para pintar el branding de la oficina real del token y rebotar al subdominio correcto si el link se abrió en otro host. No consume el token ni cuenta intentos."
           },
           "response": []
         },

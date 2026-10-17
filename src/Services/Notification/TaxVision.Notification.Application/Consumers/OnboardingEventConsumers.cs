@@ -133,7 +133,12 @@ public static class OnboardingRegistrationReadyConsumer
                     tenantId: evt.TenantId,
                     to: evt.Email,
                     templateKey: "onboarding.registration_ready",
-                    relatedEventId: evt.EventId,
+                    // Caught live 2026-10-16: dos reconcile-payment concurrentes publicaron DOS eventos
+                    // distintos (EventIds nuevos) para el mismo OnboardingId, el guard en el aggregate
+                    // los dejó pasar y Notification mandó el correo "Complete your office" duplicado.
+                    // OnboardingId es la clave de idempotencia semántica para este template — colapsa
+                    // los dos publishes en el gateway sin importar cuántos EventIds se emitan.
+                    relatedEventId: evt.OnboardingId,
                     correlationId: correlation.CorrelationId
                 ),
                 ct

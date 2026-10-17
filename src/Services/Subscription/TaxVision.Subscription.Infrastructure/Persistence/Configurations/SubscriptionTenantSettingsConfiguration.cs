@@ -17,13 +17,9 @@ public sealed class SubscriptionTenantSettingsConfiguration : IEntityTypeConfigu
 
         builder.Property(settings => settings.AllowAutoRenewTenantSubscription).IsRequired();
         builder.Property(settings => settings.AllowAutoRenewSeats).IsRequired();
-        builder.Property(settings => settings.AllowSeatSelfAssignment).IsRequired();
-        builder.Property(settings => settings.AllowAdminSeatAssignment).IsRequired();
         builder.Property(settings => settings.MaxSeatsAllowed);
         builder.Property(settings => settings.MinSeatsRequired).IsRequired();
         builder.Property(settings => settings.DefaultSeatRenewalDays).IsRequired();
-        builder.Property(settings => settings.AllowSeatReassignment).IsRequired();
-        builder.Property(settings => settings.SeatReassignmentCooldownDays).IsRequired();
         builder.Property(settings => settings.AllowAddons).IsRequired();
         builder.Property(settings => settings.AllowTrial).IsRequired();
         builder.Property(settings => settings.SuspendTenantWhenBaseSubscriptionExpired).IsRequired();

@@ -1,6 +1,8 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Credentials.Commands;
 using TaxVision.Auth.Domain.Credentials;
+using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 using Xunit;
 
@@ -52,6 +54,34 @@ public sealed class ResetPasswordHandlerTests
         Assert.Equal("Auth.InvalidResetToken", result.Error.Code);
     }
 
+    /// <summary>Un enlace de reset emitido para la oficina A no se puede canjear desde el subdominio de la
+    /// oficina B — el UI ya rebota al load del validate, este guard es la defensa en profundidad.</summary>
+    [Fact]
+    public async Task Submitting_from_a_different_office_host_is_rejected()
+    {
+        IssueLink(_world.Admin, out var rawToken);
+        var otherOffice = Tenant
+            .Register(Guid.NewGuid(), "other", "Other", TenantKind.Customer, "America/New_York")
+            .Value;
+        _world.Tenants.Add(otherOffice);
+
+        var result = await ResetAsync(rawToken, hostTenantId: otherOffice.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.InvalidResetToken", result.Error.Code);
+    }
+
+    /// <summary>El Host de un tenant Platform (api.*) o un Host no resuelto son entrada general: no acotan.</summary>
+    [Fact]
+    public async Task Submitting_without_a_host_hint_still_works()
+    {
+        IssueLink(_world.Admin, out var rawToken);
+
+        var result = await ResetAsync(rawToken, hostTenantId: null);
+
+        Assert.True(result.IsSuccess);
+    }
+
     private PasswordResetToken IssueLink(User user, out string rawToken)
     {
         rawToken = _tokens.GenerateToken();
@@ -66,12 +96,13 @@ public sealed class ResetPasswordHandlerTests
         return token;
     }
 
-    private Task<Result> ResetAsync(string rawToken) =>
+    private Task<Result> ResetAsync(string rawToken, Guid? hostTenantId = null) =>
         ResetPasswordHandler.Handle(
-            new ResetPasswordCommand(rawToken, NewPassword),
+            new ResetPasswordCommand(rawToken, NewPassword, hostTenantId),
             _credentials,
             _tokens,
             _world.Users,
+            _world.Tenants,
             _world.Sessions,
             _world.Denylist,
             new PrefixedPasswordHasher(),

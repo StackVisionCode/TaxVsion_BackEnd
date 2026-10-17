@@ -1,4 +1,5 @@
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -13,7 +14,7 @@ public static class AddOnTestCatalog
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         version.AddEntitlementDefinition(
@@ -67,6 +68,36 @@ public static class AddOnTestCatalog
         );
         definition.Publish(Guid.Empty, nowUtc);
         return definition;
+    }
+
+    public static AddOnDefinition QuotaAddOn(string code, bool allowMultiple = false)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var definition = AddOnDefinition
+            .Create(
+                AddOnCode.Create(code).Value,
+                code,
+                code,
+                "quota",
+                allowMultiple,
+                [BillingCycle.Monthly],
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+        definition.AddPriceTier(
+            AddOnPriceTier.Create(definition.Id, BillingCycle.Monthly, 1, null, Money.Create(29m, "USD").Value).Value
+        );
+        definition.Publish(Guid.Empty, nowUtc);
+        return definition;
+    }
+
+    public static Module SellableModule(string code)
+    {
+        var module = Module.Create(code, code, $"{code} module").Value;
+        module.MarkAsCommercial();
+        module.SetAsAddon(29m, 290m);
+        return module;
     }
 
     public static TenantSubscription ActiveSubscription(Guid tenantId, SubscriptionPlan plan)

@@ -128,7 +128,14 @@ public sealed class AccountSessionControllerTests
         var allowed = SurfaceActions().Select(method => $"{method.DeclaringType!.Name}.{method.Name}").ToArray();
 
         Assert.Equal(
-            new[] { "AuthController.Me", "AuthController.Reauthenticate", "UsersController.GetTenantLimits" },
+            new[]
+            {
+                "AuthController.Me",
+                "AuthController.Reauthenticate",
+                "TermsController.Accept",
+                "TermsController.Status",
+                "UsersController.GetTenantLimits",
+            },
             allowed
         );
     }

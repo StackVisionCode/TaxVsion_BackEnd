@@ -5,7 +5,7 @@ namespace TaxVision.Subscription.Tests.Api;
 
 /// <summary>
 /// Iniciar un cobro de asientos va en la categoría L (financiera), no en la G de escribir cualquier cosa:
-/// asignar o liberar un asiento no mueve dinero y no debe compartir cupo con comprar.
+/// comprar seats mueve dinero y no debe compartir cupo con operaciones no financieras.
 /// </summary>
 public sealed class SeatsControllerTests
 {
@@ -15,15 +15,6 @@ public sealed class SeatsControllerTests
     public void Starting_a_charge_uses_the_financial_policy(string action)
     {
         Assert.Equal("subscription.l.seat_purchase", Policy(action));
-    }
-
-    [Theory]
-    [InlineData(nameof(SeatsController.Assign))]
-    [InlineData(nameof(SeatsController.Release))]
-    [InlineData(nameof(SeatsController.Reassign))]
-    public void Moving_a_seat_between_users_stays_a_plain_write(string action)
-    {
-        Assert.Equal("subscription.g.seat_manage", Policy(action));
     }
 
     // El nombre de la política viaja en el constructor del atributo, no en una propiedad.

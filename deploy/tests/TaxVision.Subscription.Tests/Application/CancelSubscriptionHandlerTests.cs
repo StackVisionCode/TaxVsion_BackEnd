@@ -172,7 +172,7 @@ public sealed class CancelSubscriptionHandlerTests
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = nowUtc.AddDays(30);
         plan = SubscriptionPlan
-            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
         plan.AddVersion(version, Guid.Empty, nowUtc);

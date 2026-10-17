@@ -26,6 +26,7 @@ public sealed class AddOnDefinitionConfiguration : IEntityTypeConfiguration<AddO
         builder.Property(definition => definition.Category).HasMaxLength(50).IsRequired();
         builder.Property(definition => definition.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(definition => definition.AllowMultipleInstances).IsRequired();
+        builder.Property(definition => definition.MutexGroup).HasMaxLength(32);
 
         var billingCyclesConverter = new ValueConverter<List<BillingCycle>, string>(
             cycles => string.Join(',', cycles),

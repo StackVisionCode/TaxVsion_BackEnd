@@ -8,6 +8,7 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -94,17 +95,19 @@ public static class CreateSubscriptionRenewalCheckoutHandler
             StatementDescriptor = PlatformStatementDescriptors.For(platform, "RENEWAL"),
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>
-                SaaSPayment.Create(
-                    command.TenantId,
-                    key,
-                    amount,
-                    SaaSPaymentType.SubscriptionRenewalCheckout,
-                    command.RenewalIntentId,
-                    command.Provider,
-                    descriptor,
-                    actorUserId: Guid.Empty,
-                    nowUtc
-                ),
+                SaaSPayment
+                    .Create(
+                        command.TenantId,
+                        key,
+                        amount,
+                        SaaSPaymentType.SubscriptionRenewalCheckout,
+                        command.RenewalIntentId,
+                        command.Provider,
+                        descriptor,
+                        actorUserId: Guid.Empty,
+                        nowUtc
+                    )
+                    .WithConceptFor(SaaSPaymentType.SubscriptionRenewalCheckout),
             DecideOnExisting = DecideOnExisting,
             BuildMetadata = payment => new Dictionary<string, string>
             {

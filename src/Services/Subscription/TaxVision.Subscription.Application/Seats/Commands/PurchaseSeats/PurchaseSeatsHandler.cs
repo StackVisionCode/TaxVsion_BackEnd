@@ -295,7 +295,7 @@ public static class PurchaseSeatsHandler
         var count = 0;
         foreach (var seat in tenantSeats)
         {
-            if (seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Released))
+            if (seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired))
                 count++;
         }
 

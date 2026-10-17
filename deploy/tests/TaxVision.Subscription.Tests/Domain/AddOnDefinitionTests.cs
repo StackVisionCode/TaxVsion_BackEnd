@@ -7,6 +7,19 @@ namespace TaxVision.Subscription.Tests.Domain;
 public sealed class AddOnDefinitionTests
 {
     [Fact]
+    public void Deprecated_definition_can_be_restored()
+    {
+        var definition = ModuleAddOn("module.email");
+        Assert.True(definition.Publish(Guid.Empty, DateTime.UtcNow).IsSuccess);
+        Assert.True(definition.Deprecate(Guid.Empty, DateTime.UtcNow).IsSuccess);
+
+        var result = definition.Restore(Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AddOnDefinitionStatus.Published, definition.Status);
+    }
+
+    [Fact]
     public void IsAbsorbedByPlanModules_true_when_the_plan_covers_all_its_modules()
     {
         var def = ModuleAddOn("module.email");

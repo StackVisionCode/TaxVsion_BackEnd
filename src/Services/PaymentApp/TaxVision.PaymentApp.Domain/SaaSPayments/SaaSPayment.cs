@@ -69,10 +69,15 @@ public sealed class SaaSPayment : TenantEntity
     public Guid UpdatedBy { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
+    // Opcional. Null para pagos legacy; el consumer de recibos cae al mapping por PaymentType cuando falta.
+    public ChargeConcept? Concept { get; private set; }
+
     public IReadOnlyCollection<SaaSPaymentAttempt> Attempts => _attempts;
     public IReadOnlyCollection<RefundLine> Refunds => _refunds;
 
     private SaaSPayment() { }
+
+    public void AttachConcept(ChargeConcept concept) => Concept = concept;
 
     public static Result<SaaSPayment> Create(
         Guid tenantId,

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -20,31 +21,36 @@ public static class SubscriptionPlanCatalogSeeder
             return;
 
         var nowUtc = DateTime.UtcNow;
+        var coreModules = await db
+            .Modules.AsNoTracking()
+            .Where(module => module.Category == ModuleCategory.Core)
+            .Select(module => module.Code)
+            .ToListAsync(ct);
 
-        db.Plans.Add(BuildStarterPlan(nowUtc));
-        db.Plans.Add(BuildProPlan(nowUtc));
-        db.Plans.Add(BuildEnterprisePlan(nowUtc));
+        db.Plans.Add(BuildStarterPlan(coreModules, nowUtc));
+        db.Plans.Add(BuildProPlan(coreModules, nowUtc));
+        db.Plans.Add(BuildEnterprisePlan(coreModules, nowUtc));
 
         await db.SaveChangesAsync(ct);
     }
 
-    private static SubscriptionPlan BuildStarterPlan(DateTime nowUtc) =>
+    private static SubscriptionPlan BuildStarterPlan(IReadOnlyCollection<string> coreModules, DateTime nowUtc) =>
         BuildPlan(
             planId: PlanCatalog.StarterId,
             versionId: PlanCatalog.StarterV1Id,
             code: PlanCatalog.Starter,
             name: "Starter",
             description: "Para oficinas que estan empezando: 3 usuarios, clientes, firmas y documentos.",
-            tier: PlanTier.Standard,
+            tier: PlanTier.Starter,
             monthlyPriceUsd: 49m,
             seatsMax: 3,
             maxPendingInvitations: 5,
             storageQuotaBytes: 10L * 1024 * 1024 * 1024,
-            modules: PlanModuleCatalog.Starter,
+            modules: coreModules,
             nowUtc: nowUtc
         );
 
-    private static SubscriptionPlan BuildProPlan(DateTime nowUtc) =>
+    private static SubscriptionPlan BuildProPlan(IReadOnlyCollection<string> coreModules, DateTime nowUtc) =>
         BuildPlan(
             planId: PlanCatalog.ProId,
             versionId: PlanCatalog.ProV1Id,
@@ -56,11 +62,11 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 10,
             maxPendingInvitations: 15,
             storageQuotaBytes: 50L * 1024 * 1024 * 1024,
-            modules: PlanModuleCatalog.Pro,
+            modules: [.. coreModules, "email", "meetings", "campaigns"],
             nowUtc: nowUtc
         );
 
-    private static SubscriptionPlan BuildEnterprisePlan(DateTime nowUtc) =>
+    private static SubscriptionPlan BuildEnterprisePlan(IReadOnlyCollection<string> coreModules, DateTime nowUtc) =>
         BuildPlan(
             planId: PlanCatalog.EnterpriseId,
             versionId: PlanCatalog.EnterpriseV1Id,
@@ -72,7 +78,7 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 25,
             maxPendingInvitations: 40,
             storageQuotaBytes: 200L * 1024 * 1024 * 1024,
-            modules: PlanModuleCatalog.Enterprise,
+            modules: [.. coreModules, "email", "meetings", "campaigns"],
             nowUtc: nowUtc
         );
 

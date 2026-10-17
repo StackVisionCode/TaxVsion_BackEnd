@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Application.Subscriptions.Commands;
+using TaxVision.Subscription.Domain.Billing;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -37,6 +38,7 @@ public sealed class ActivateFromOnboardingHandlerTests
             subscriptions,
             plans,
             settingsRepository,
+            new FakeBillingPrefRepo(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -77,6 +79,7 @@ public sealed class ActivateFromOnboardingHandlerTests
             subscriptions,
             plans,
             settingsRepository,
+            new FakeBillingPrefRepo(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -109,6 +112,7 @@ public sealed class ActivateFromOnboardingHandlerTests
             subscriptions,
             plans,
             settingsRepository,
+            new FakeBillingPrefRepo(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -136,6 +140,7 @@ public sealed class ActivateFromOnboardingHandlerTests
             subscriptions,
             plans,
             settingsRepository,
+            new FakeBillingPrefRepo(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -152,15 +157,28 @@ public sealed class ActivateFromOnboardingHandlerTests
     private static SubscriptionPlan CreatePublishedPlan(string code)
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly, BillingCycle.Yearly])
             .Value;
+        // CAT-F7.1 guard: toda versión publicada necesita al menos 1 feature y 1 price tier (regla
+        // del dominio que atrapa planes sin precios/módulos antes de que lleguen al listado público).
+        version.AddFeature(
+            PlanFeature.Create(version.Id, EntitlementKey.Create("module.customers").Value, true, "customers").Value
+        );
+        version.AddPriceTier(
+            PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(29m, "USD").Value).Value
+        );
+        version.AddPriceTier(
+            PlanPriceTier.Create(version.Id, BillingCycle.Yearly, 1, null, Money.Create(290m, "USD").Value).Value
+        );
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         var publishResult = plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
         if (publishResult.IsFailure)
-            throw new InvalidOperationException("Test setup failure: could not publish the plan version.");
+            throw new InvalidOperationException(
+                $"Test setup failure: could not publish the plan version: {publishResult.Error.Code}"
+            );
 
         return plan;
     }
@@ -273,6 +291,14 @@ public sealed class ActivateFromOnboardingHandlerTests
 
         public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
             Task.FromResult(existing is not null && existing.Id == planId ? existing : null);
+
+        public Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task AddAsync(SubscriptionPlan plan, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default) => Task.FromResult(false);
     }
 
     private sealed class FakeSettingsRepository : ISubscriptionTenantSettingsRepository
@@ -311,6 +337,20 @@ public sealed class ActivateFromOnboardingHandlerTests
         private sealed class NoopScope : IDisposable
         {
             public void Dispose() { }
+        }
+    }
+
+    private sealed class FakeBillingPrefRepo : ITenantBillingPreferenceRepository
+    {
+        public TenantBillingPreference? Added { get; private set; }
+
+        public Task<TenantBillingPreference?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<TenantBillingPreference?>(null);
+
+        public Task AddAsync(TenantBillingPreference preference, CancellationToken ct = default)
+        {
+            Added = preference;
+            return Task.CompletedTask;
         }
     }
 }

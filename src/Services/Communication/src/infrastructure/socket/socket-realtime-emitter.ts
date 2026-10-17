@@ -64,4 +64,10 @@ export class SocketRealtimeEmitter implements RealtimeEmitter {
   emitToTenantMembers<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void {
     this.io.to(`t:${input.tenantId}:members`).emit(input.event, input.envelope);
   }
+
+  // CAT-F5.2 — Broadcast tenant-agnostico a TODOS los sockets conectados. Reservado para catalog
+  // changes (planes/addons) que afectan a cualquiera que mire la lista.
+  emitBroadcast<T>(input: { event: string; envelope: SocketEnvelope<T> }): void {
+    this.io.emit(input.event, input.envelope);
+  }
 }

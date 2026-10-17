@@ -63,6 +63,18 @@ public sealed class DirectPlanRateLimitReaderTests
             CallCount++;
             return Task.FromResult(rows);
         }
+
+        public Task<IReadOnlyList<PlanRateLimit>> GetByPlanCodeAsync(string planCode, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<PlanRateLimit>>(rows.Where(r => r.PlanCode.Value == planCode).ToArray());
+
+        public Task<PlanRateLimit?> GetForUpdateAsync(
+            string planCode,
+            RateLimitCategory category,
+            CancellationToken ct = default
+        ) => Task.FromResult(rows.FirstOrDefault(r => r.PlanCode.Value == planCode && r.Category == category));
+
+        public Task AddAsync(PlanRateLimit rateLimit, CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 
     // Cachea el resultado en memoria para el proceso del test (igual que ICacheService real,

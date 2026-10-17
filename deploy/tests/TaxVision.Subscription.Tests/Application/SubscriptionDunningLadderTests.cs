@@ -87,7 +87,7 @@ public sealed class SubscriptionDunningLadderTests
     {
         var nowUtc = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Standard, Guid.Empty, nowUtc)
+            .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         plan.AddVersion(version, Guid.Empty, nowUtc);

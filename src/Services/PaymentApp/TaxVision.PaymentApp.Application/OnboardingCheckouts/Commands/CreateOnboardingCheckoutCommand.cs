@@ -22,7 +22,9 @@ public sealed record CreateOnboardingCheckoutCommand(
     long? DiscountAmountCents = null,
     string? Currency = null,
     Guid? CodeReservationId = null,
-    string? PromotionSnapshotHash = null
+    string? PromotionSnapshotHash = null,
+    /// <summary>Nombre comercial del plan comprado (ej. "Professional"), para el recibo.</summary>
+    string? PlanDisplayName = null
 );
 
 public sealed record OnboardingCheckoutResponse(

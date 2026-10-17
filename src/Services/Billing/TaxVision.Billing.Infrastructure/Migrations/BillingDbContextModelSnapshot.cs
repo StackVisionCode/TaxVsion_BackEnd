@@ -267,7 +267,6 @@ namespace TaxVision.Billing.Infrastructure.Migrations
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.InvoiceStatusChange", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ChangedAtUtc")
@@ -468,6 +467,12 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EnabledModulesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("PlanCode")
                         .IsRequired()

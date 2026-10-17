@@ -9,6 +9,7 @@ using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common;
 using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -99,22 +100,24 @@ public static class CreateSeatsCheckoutHandler
             // Subscription (dueño del precio de asiento) ya resolvió el total prorrateado.
             ResolveAmount = _ => Task.FromResult(Money.Create(command.AmountCents, command.Currency)),
             CreatePayment = (key, amount, descriptor, nowUtc) =>
-                SaaSPayment.Create(
-                    command.TenantId,
-                    key,
-                    amount,
-                    SaaSPaymentType.SeatsPurchaseCharge,
-                    command.SeatPurchaseIntentId,
-                    command.Provider,
-                    descriptor,
-                    actorUserId: Guid.Empty,
-                    nowUtc,
-                    breakdown: ChargeBreakdowns.FromRequest(
-                        command.Quantity,
-                        command.UnitAmountCents,
-                        amount.AmountCents
+                SaaSPayment
+                    .Create(
+                        command.TenantId,
+                        key,
+                        amount,
+                        SaaSPaymentType.SeatsPurchaseCharge,
+                        command.SeatPurchaseIntentId,
+                        command.Provider,
+                        descriptor,
+                        actorUserId: Guid.Empty,
+                        nowUtc,
+                        breakdown: ChargeBreakdowns.FromRequest(
+                            command.Quantity,
+                            command.UnitAmountCents,
+                            amount.AmountCents
+                        )
                     )
-                ),
+                    .WithConceptFor(SaaSPaymentType.SeatsPurchaseCharge, command.Quantity),
             DecideOnExisting = DecideOnExisting,
             BuildMetadata = payment => new Dictionary<string, string>
             {

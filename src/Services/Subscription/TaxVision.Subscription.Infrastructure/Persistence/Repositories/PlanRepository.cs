@@ -13,6 +13,12 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
             .OrderBy(plan => plan.Tier)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>
+        await WithVersions(db.Plans.AsNoTracking())
+            .OrderBy(plan => plan.Tier)
+            .ThenBy(plan => plan.Code)
+            .ToListAsync(ct);
+
     public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default)
     {
         var planCodeResult = PlanCode.Create(code);
@@ -28,6 +34,21 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
 
     public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
         WithVersions(db.Plans).FirstOrDefaultAsync(plan => plan.Id == planId, ct);
+
+    public async Task AddAsync(SubscriptionPlan plan, CancellationToken ct = default)
+    {
+        await db.Plans.AddAsync(plan, ct);
+    }
+
+    public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var planCodeResult = PlanCode.Create(code);
+        if (planCodeResult.IsFailure)
+            return Task.FromResult(false);
+
+        var planCode = planCodeResult.Value;
+        return db.Plans.AsNoTracking().AnyAsync(plan => plan.Code == planCode, ct);
+    }
 
     private static IQueryable<SubscriptionPlan> WithVersions(IQueryable<SubscriptionPlan> query) =>
         query

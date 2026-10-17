@@ -132,6 +132,33 @@ public sealed class SubscriptionPlan : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>CAT-F2.3 — autoría: edita Name/Description del plan. El código, el tier y la lista de
+    /// versiones no se tocan por acá — un cambio de tier es un plan nuevo (publicar un plan distinto)
+    /// y una revisión de módulos/precios usa <see cref="ReviseModules"/>/<see cref="RevisePrices"/>.</summary>
+    public Result UpdateMetadata(string name, string description, Guid actorUserId, DateTime nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+            return Result.Failure(
+                new Error("Plan.InvalidName", "Name is required and must be 200 characters or fewer.")
+            );
+
+        if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
+            return Result.Failure(
+                new Error("Plan.InvalidDescription", "Description is required and must be 2000 characters or fewer.")
+            );
+
+        if (Status == PlanStatus.Archived)
+            return Result.Failure(new Error("Plan.AlreadyArchived", "Archived plans cannot be renamed."));
+
+        if (Name == name && Description == description)
+            return Result.Success();
+
+        Name = name;
+        Description = description;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result Archive(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != PlanStatus.Deprecated)

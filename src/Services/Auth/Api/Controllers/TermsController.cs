@@ -10,11 +10,16 @@ using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
 
-/// <summary>Fase L1.4 — aceptacion del ToS/AUP vigente. Cualquier usuario autenticado del tenant puede aceptar (no requiere un permiso especifico) para evitar un bloqueo de arranque si el admin no esta disponible.</summary>
+/// <summary>Fase L1.4 — aceptacion del ToS/AUP vigente. Cualquier usuario autenticado del tenant puede
+/// aceptar (no requiere un permiso especifico) para evitar un bloqueo de arranque si el admin no esta
+/// disponible. El Landing (surface=account) tambien debe poder aceptar: su gate de ToS llama a este
+/// endpoint tras el takeover; sin [AllowSurface(Account)] el SurfaceAuthorizationFilter responde 403 y
+/// deja al admin encerrado sin poder desbloquearse.</summary>
 [ApiController]
 [Route("auth/tenant/terms")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
+[AllowSurface(AccessSurface.Account)]
 public sealed class TermsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("status")]

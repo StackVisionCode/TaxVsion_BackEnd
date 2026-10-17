@@ -101,7 +101,7 @@ public sealed class StartAddOnCheckoutHandlerTests
     private static Fixture Scenario(string[]? planModules = null, bool alreadyOwned = false)
     {
         var plan = AddOnTestCatalog.PlanWith("starter", planModules ?? ["documents"]);
-        var definition = AddOnTestCatalog.ModuleAddOn("email.addon", "email");
+        var definition = AddOnTestCatalog.ModuleAddOn("module-addon-email", "email");
         var subscription = AddOnTestCatalog.ActiveSubscription(TenantId, plan);
         var owned = alreadyOwned ? new[] { AddOnTestCatalog.Owned(TenantId, definition) } : [];
 
@@ -140,6 +140,7 @@ public sealed class StartAddOnCheckoutHandlerTests
             ),
             new FakeSubscriptionRepo(fixture.Subscription),
             new FakePlanRepo(fixture.Plan),
+            new FakeModuleRepo(AddOnTestCatalog.SellableModule("email")),
             new FakeAddOnDefinitionRepository(fixture.Definition),
             new NoAddOnSettingsRepo(),
             fixture.TenantAddOns,

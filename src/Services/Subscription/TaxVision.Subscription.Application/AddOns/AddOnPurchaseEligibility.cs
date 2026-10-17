@@ -27,6 +27,7 @@ public static class AddOnPurchaseEligibility
         int quantity,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        IModuleRepository modules,
         IAddOnDefinitionRepository addOnDefinitions,
         ISubscriptionTenantSettingsRepository settingsRepository,
         ITenantAddOnRepository tenantAddOns,
@@ -57,10 +58,57 @@ public static class AddOnPurchaseEligibility
         if (definition is null || definition.Status != AddOnDefinitionStatus.Published)
             return Fail("AddOnDefinition.NotFound", "Add-on does not exist.");
 
+        if (string.Equals(definition.Category, "module", StringComparison.OrdinalIgnoreCase))
+        {
+            var moduleCodes = definition
+                .Features.Where(feature =>
+                    feature.Enabled && feature.FeatureKey.Value.StartsWith("module.", StringComparison.Ordinal)
+                )
+                .Select(feature => feature.FeatureKey.Value["module.".Length..])
+                .Take(2)
+                .ToArray();
+            var module = moduleCodes.Length == 1 ? await modules.GetByCodeAsync(moduleCodes[0], ct) : null;
+            if (module is null || !module.IsSellableAsAddon || definition.Code.Value != module.AddOnCode)
+                return Fail("AddOnDefinition.NotFound", "Add-on does not exist.");
+        }
+
         // C6 — no cobrar por algo que el plan ya trae ni por el mismo add-on dos veces.
         var owned = await tenantAddOns.GetByTenantIdAsync(tenantId, ct);
         if (AddOnEligibilityRules.AlreadyOwned(definition, owned))
             return Fail("AddOn.AlreadyActive", "This add-on is already active for your office.");
+
+        // CAT-F3.4 — guard mutex: dos add-ons del mismo MutexGroup no coexisten (p.ej. storage small
+        // y storage large). Para cambiar de tamaño hay que cancelar el actual primero. Hacerlo acá
+        // en lugar de en el aggregate TenantAddOn porque necesita leer el catálogo (MutexGroup vive
+        // en AddOnDefinition, no en TenantAddOn), y ambos handlers (off-session y checkout) deben
+        // ver el guard sin duplicar la consulta.
+        if (definition.MutexGroup is not null)
+        {
+            foreach (var ownedAddOn in owned)
+            {
+                if (ownedAddOn.Status != AddOnStatus.Active)
+                    continue;
+                if (string.Equals(ownedAddOn.AddOnCode, definition.Code.Value, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var ownedDefinition = await addOnDefinitions.GetByCodeAsync(ownedAddOn.AddOnCode, ct);
+                if (ownedDefinition?.MutexGroup is null)
+                    continue;
+                if (
+                    !string.Equals(
+                        ownedDefinition.MutexGroup,
+                        definition.MutexGroup,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                    continue;
+
+                return Fail(
+                    "AddOn.MutexGroupConflict",
+                    $"Cannot purchase this add-on while '{ownedAddOn.AddOnCode}' is active (same group '{definition.MutexGroup}'). Cancel it first."
+                );
+            }
+        }
 
         var enabledModules = await EnabledModulesAsync(subscription, plans, ct);
         if (AddOnEligibilityRules.IsIncludedInPlan(definition, enabledModules))

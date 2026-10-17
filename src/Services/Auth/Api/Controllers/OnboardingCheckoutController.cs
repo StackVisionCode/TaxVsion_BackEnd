@@ -29,7 +29,12 @@ public sealed class OnboardingCheckoutController(
         string? Phone,
         Guid PlanId,
         Guid EmailVerificationChallengeId,
-        string? BillingCycle = null
+        string? BillingCycle = null,
+        // 2026-10-16: la landing lo pide ("renovar automáticamente") pero sin este campo el flag se
+        // tiraba y el TenantBillingPreference nunca se creaba. En Manage Subscription después el
+        // toggle salía en OFF pidiendo activarlo, pese a que el user ya había consentido y Stripe ya
+        // tenía el mandate guardado (SetupFutureUsage=off_session).
+        bool AutoRenew = false
     );
 
     [HttpPost]
@@ -57,7 +62,8 @@ public sealed class OnboardingCheckoutController(
                 request.Phone,
                 request.PlanId,
                 request.EmailVerificationChallengeId,
-                request.BillingCycle
+                request.BillingCycle,
+                request.AutoRenew
             ),
             ct
         );

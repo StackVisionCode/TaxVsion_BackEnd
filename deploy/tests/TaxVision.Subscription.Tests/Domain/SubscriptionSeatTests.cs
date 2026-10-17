@@ -127,6 +127,131 @@ public sealed class SubscriptionSeatTests
         Assert.Equal(end, seat.CurrentPeriodEndUtc);
     }
 
+    // -------- Reactivación por pago manual del admin (B5) --------
+
+    [Fact]
+    public void BeginReactivation_from_suspended_schedules_a_new_period_renewal()
+    {
+        var seat = SuspendedSeat(out var suspendedAt);
+        var now = suspendedAt.AddHours(2);
+        var newEnd = now.AddMonths(1);
+
+        var result = seat.BeginReactivation("seat-reactivation-1", newEnd, Guid.Empty, now);
+
+        Assert.True(result.IsSuccess);
+        var renewal = Assert.Single(seat.Renewals);
+        Assert.Equal(now, renewal.PeriodStartUtc);
+        Assert.Equal(newEnd, renewal.PeriodEndUtc);
+        // El seat sigue Suspended hasta CompleteReactivation.
+        Assert.Equal(SeatStatus.Suspended, seat.Status);
+    }
+
+    [Fact]
+    public void BeginReactivation_from_pastdue_is_allowed()
+    {
+        var seat = PastDueSeat();
+        var now = DateTime.UtcNow;
+
+        var result = seat.BeginReactivation("seat-reactivation-1", now.AddMonths(1), Guid.Empty, now);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void BeginReactivation_rejects_active_seats()
+    {
+        var seat = ActiveSeat();
+        var now = DateTime.UtcNow;
+
+        var result = seat.BeginReactivation("seat-reactivation-1", now.AddMonths(1), Guid.Empty, now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Seat.InvalidTransition", result.Error.Code);
+    }
+
+    [Fact]
+    public void BeginReactivation_is_idempotent_by_key()
+    {
+        var seat = SuspendedSeat(out var suspendedAt);
+        var now = suspendedAt.AddHours(1);
+        seat.BeginReactivation("seat-reactivation-1", now.AddMonths(1), Guid.Empty, now);
+
+        var second = seat.BeginReactivation("seat-reactivation-1", now.AddMonths(1), Guid.Empty, now);
+
+        Assert.True(second.IsSuccess);
+        Assert.Single(seat.Renewals);
+    }
+
+    [Fact]
+    public void BeginReactivation_rejects_a_period_end_in_the_past()
+    {
+        var seat = SuspendedSeat(out var suspendedAt);
+        var now = suspendedAt.AddHours(1);
+
+        var result = seat.BeginReactivation("seat-reactivation-1", now.AddMinutes(-5), Guid.Empty, now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Seat.InvalidPeriod", result.Error.Code);
+    }
+
+    [Fact]
+    public void CompleteReactivation_transitions_suspended_to_active_with_new_period()
+    {
+        var seat = SuspendedSeat(out var suspendedAt);
+        var now = suspendedAt.AddHours(2);
+        var newEnd = now.AddMonths(1);
+        seat.BeginReactivation("seat-reactivation-1", newEnd, Guid.Empty, now);
+        var renewalId = seat.Renewals.Single().Id;
+
+        var result = seat.CompleteReactivation(renewalId, "pi_react_1", Guid.Empty, now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SeatStatus.Active, seat.Status);
+        Assert.Equal(now, seat.CurrentPeriodStartUtc);
+        Assert.Equal(newEnd, seat.CurrentPeriodEndUtc);
+        Assert.Equal(newEnd, seat.NextRenewalAtUtc);
+        Assert.Null(seat.SuspendedAtUtc);
+    }
+
+    [Fact]
+    public void CompleteReactivation_on_already_active_seat_is_inert_but_marks_renewal_succeeded()
+    {
+        // Reentrega del webhook: el seat ya se reactivó, no revertimos ni fallamos.
+        var seat = SuspendedSeat(out var suspendedAt);
+        var now = suspendedAt.AddHours(2);
+        seat.BeginReactivation("seat-reactivation-1", now.AddMonths(1), Guid.Empty, now);
+        var renewalId = seat.Renewals.Single().Id;
+        seat.CompleteReactivation(renewalId, "pi_react_1", Guid.Empty, now);
+
+        var second = seat.CompleteReactivation(renewalId, "pi_react_1", Guid.Empty, now.AddMinutes(5));
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(SeatStatus.Active, seat.Status);
+    }
+
+    private static SubscriptionSeat ActiveSeat()
+    {
+        var seat = CreateSeat();
+        var start = DateTime.UtcNow;
+        seat.Activate(start, start.AddMonths(1), Guid.Empty, start);
+        return seat;
+    }
+
+    private static SubscriptionSeat PastDueSeat()
+    {
+        var seat = ActiveSeat();
+        seat.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, DateTime.UtcNow);
+        return seat;
+    }
+
+    private static SubscriptionSeat SuspendedSeat(out DateTime suspendedAt)
+    {
+        var seat = PastDueSeat();
+        suspendedAt = DateTime.UtcNow;
+        seat.SuspendAfterRetriesExhausted(Guid.Empty, suspendedAt);
+        return seat;
+    }
+
     private static SubscriptionSeat CreateSeat() =>
         SubscriptionSeat
             .Purchase(

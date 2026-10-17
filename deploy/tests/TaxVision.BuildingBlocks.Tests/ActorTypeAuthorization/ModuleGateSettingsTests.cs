@@ -150,21 +150,12 @@ public sealed class ModuleGateSettingsTests
     [Fact]
     public void Every_module_of_the_commercial_catalog_is_known_by_the_map()
     {
-        // Si Subscription vende un módulo que `PermissionModuleMap` no conoce, ese módulo NO gatea
-        // nada aunque el plan lo cobre: el tenant paga por algo que nadie protege.
-        // `marketing`, `builder`, `irs` y `miles` quedan fuera a propósito — son de frontend y no
-        // tienen endpoints propios (está documentado en el mapa).
-        //
-        // `reports` está en el mapa pero NO en esta lista: su único permiso (`reports.view`) existe en
-        // el catálogo y **ningún endpoint lo exige** (medido, 0 resultados), así que hoy se comporta
-        // como los de frontend. Está en el mapa para el día que tenga endpoints; encender su escalón
-        // ahora no gatearía nada. Candidato a `IsReserved` (A3.5).
+        // Every sold module with endpoints must be enforced by the permission map.
         string[] soldWithEndpoints = ["customers", "signatures", "documents", "planner", "email", "comms", "campaigns"];
 
         foreach (var module in soldWithEndpoints)
             Assert.Contains(module, PermissionModuleMap.KnownModules);
 
-        // El mapa sigue conociéndolo, para que su escalón se pueda configurar sin tocar código.
-        Assert.Contains("reports", PermissionModuleMap.KnownModules);
+        Assert.DoesNotContain("reports", PermissionModuleMap.KnownModules);
     }
 }

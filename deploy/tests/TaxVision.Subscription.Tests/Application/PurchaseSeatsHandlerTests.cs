@@ -131,11 +131,13 @@ public sealed class PurchaseSeatsHandlerTests
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(string code)
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly, BillingCycle.Yearly])
             .Value;
+        PlanTestData.EnsurePublishableFeature(version);
+        PlanTestData.EnsurePublishablePrice(version);
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         Assert.True(plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow).IsSuccess);
         return (plan, version);

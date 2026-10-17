@@ -168,7 +168,11 @@ internal static class PendingPasswordResets
 // Reset password (con token de un solo uso)
 // ---------------------------------------------------------------------------
 
-public sealed record ResetPasswordCommand(string Token, string NewPassword);
+/// <summary><see cref="HostTenantId"/>: la oficina que resolvió el Host de la request. Si está presente y es una
+/// oficina de cliente, el token DEBE pertenecer a ella — un enlace de reset emitido para la oficina A no se
+/// puede canjear desde el subdominio de la oficina B. El UI ya rebota al subdominio correcto en el load del
+/// validate; este guard es la defensa en profundidad por si el UI falla o alguien llama la API directo.</summary>
+public sealed record ResetPasswordCommand(string Token, string NewPassword, Guid? HostTenantId = null);
 
 public static class ResetPasswordHandler
 {
@@ -177,6 +181,7 @@ public static class ResetPasswordHandler
         ICredentialTokenRepository credentials,
         ISecureTokenService tokens,
         IUserRepository users,
+        ITenantRegistry tenantRegistry,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
         IPasswordHasher hasher,
@@ -193,6 +198,29 @@ public static class ResetPasswordHandler
         if (found is not { } usable)
             return Result.Failure(PasswordResetLinks.Invalid);
         var (resetToken, user) = usable;
+
+        if (
+            await ResolveHostOfficeAsync(command.HostTenantId, tenantRegistry, ct) is { } hostOfficeId
+            && hostOfficeId != resetToken.TenantId
+        )
+        {
+            // Mismo código que un token no-usable: el canje falla y, por anti-enumeración, no decimos "a otra oficina".
+            resetToken.RegisterAttempt();
+            await unitOfWork.SaveChangesAsync(ct);
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    resetToken.TenantId,
+                    user.Id,
+                    AuthAuditAction.PasswordResetCompleted,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId
+                ),
+                ct
+            );
+            return Result.Failure(PasswordResetLinks.Invalid);
+        }
 
         var policyResult = PasswordPolicy.Validate(command.NewPassword, user.Email);
         if (policyResult.IsFailure)
@@ -246,6 +274,20 @@ public static class ResetPasswordHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    /// <summary>El Host del tenant Platform (api.*) o uno no resuelto no acotan: el guard solo aplica cuando
+    /// el Host es una oficina de cliente, igual que en <c>ForgotPasswordHandler.OfficeOfHostAsync</c>.</summary>
+    private static async Task<Guid?> ResolveHostOfficeAsync(
+        Guid? hostTenantId,
+        ITenantRegistry tenantRegistry,
+        CancellationToken ct
+    )
+    {
+        if (hostTenantId is not { } tenantId)
+            return null;
+        var tenant = await tenantRegistry.GetByIdAsync(tenantId, ct);
+        return tenant?.Kind == TenantKind.Customer ? tenant.Id : null;
     }
 }
 

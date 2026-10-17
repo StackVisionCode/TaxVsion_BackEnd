@@ -6,7 +6,8 @@ public sealed record ActivateSubscriptionForOnboardingRequest(
     Guid OnboardingId,
     Guid TenantId,
     Guid PlanId,
-    string BillingCycle
+    string BillingCycle,
+    bool AutoRenewRequested = false
 );
 
 /// <summary>PayFlow (Fase 15) — dispara la activación asíncrona de la suscripción

@@ -158,7 +158,7 @@ public sealed class ActorTypeAuthorizationFilterTests
     }
 
     // Service (M2M, client_credentials) es un actor type real (ver ActorType.cs) usado por
-    // endpoints como Subscription.UserAccessController o Scribe.RenderController — a diferencia de
+    // endpoints como Scribe.RenderController — a diferencia de
     // PlatformAdmin, NO tiene bypass implícito: si un endpoint no lo declara, un client de servicio
     // queda bloqueado igual que cualquier otro actor type no declarado.
 

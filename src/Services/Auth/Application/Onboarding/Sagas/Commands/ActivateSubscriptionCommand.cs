@@ -6,7 +6,13 @@ using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 
 namespace TaxVision.Auth.Application.Onboarding.Sagas.Commands;
 
-public sealed record ActivateSubscriptionCommand(Guid OnboardingId, Guid TenantId, Guid PlanId, string BillingCycle);
+public sealed record ActivateSubscriptionCommand(
+    Guid OnboardingId,
+    Guid TenantId,
+    Guid PlanId,
+    string BillingCycle,
+    bool AutoRenewRequested = false
+);
 
 /// <summary>PayFlow (Fase 15) — tercer paso de la Saga: dispara la activación de la suscripción
 /// (Active, no Trialing) vía M2M fire-and-forget. La Saga avanza cuando le llega
@@ -25,7 +31,8 @@ public static class ActivateSubscriptionHandler
                 command.OnboardingId,
                 command.TenantId,
                 command.PlanId,
-                command.BillingCycle
+                command.BillingCycle,
+                command.AutoRenewRequested
             ),
             ct
         );

@@ -70,6 +70,7 @@ internal sealed class PaymentAppAddOnCheckoutClient(
                         quantity = request.Quantity,
                         unitAmountCents = request.UnitAmountCents,
                         amountSignature,
+                        addOnDisplayName = request.AddOnDisplayName,
                     },
                     options: Json
                 ),

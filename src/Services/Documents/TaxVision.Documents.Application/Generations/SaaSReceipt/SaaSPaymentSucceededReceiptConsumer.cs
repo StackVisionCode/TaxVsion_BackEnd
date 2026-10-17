@@ -48,14 +48,16 @@ public static class SaaSPaymentSucceededReceiptConsumer
                     correlationId,
                     new SaaSReceiptPayload(
                         evt.OfficeName,
-                        DescriptionOf(evt.PaymentType),
+                        !string.IsNullOrWhiteSpace(evt.ConceptDisplayName)
+                            ? evt.ConceptDisplayName
+                            : DescriptionOf(evt.PaymentType, evt.Quantity ?? 0),
                         evt.AmountPaidCents,
                         evt.Currency,
                         evt.PaidAtUtc,
                         evt.ProviderReferenceMask,
                         evt.Quantity,
                         evt.UnitAmountCents,
-                        SecondaryDescriptionOf(evt.PaymentType)
+                        SecondaryDescriptionOf(evt.PaymentType, evt.Quantity ?? 0)
                     )
                 ),
                 ct
@@ -72,9 +74,11 @@ public static class SaaSPaymentSucceededReceiptConsumer
         }
     }
 
-    /// <summary>El concepto que lee el cliente. Un tipo que aparezca después sale con su nombre crudo, que es
-    /// feo pero cierto: mejor eso que un recibo sin concepto.</summary>
-    private static string DescriptionOf(string paymentType) =>
+    /// <summary>El concepto que lee el cliente. 2026-10-16: cuando el PaymentType ya trae Quantity, componer
+    /// con ella da información mucho más útil que la etiqueta genérica (comparado contra el bug reportado del
+    /// recibo "Add-on × 1" y "Extra seats" sin número). Fix completo con ConceptDisplayName dedicado por SKU
+    /// via extensión del integration event queda pendiente para quando se decida tocar el dominio SaaSPayment.</summary>
+    private static string DescriptionOf(string paymentType, int quantity) =>
         paymentType switch
         {
             // El primer cobro tiene su propio recibo del onboarding (bajo el tenant de plataforma, con el
@@ -82,10 +86,10 @@ public static class SaaSPaymentSucceededReceiptConsumer
             // ser del tenant, se le genera el suyo para que el historial pueda ofrecerlo como a los demás.
             "OnboardingInitial" => "First payment",
             "SubscriptionRenewal" or "SubscriptionRenewalCheckout" => "Subscription renewal",
-            "SeatRenewal" => "Seat renewal",
-            "SeatsPurchaseCharge" => "Extra seats",
+            "SeatRenewal" => quantity > 1 ? $"{quantity} seat renewals" : "Seat renewal",
+            "SeatsPurchaseCharge" => quantity > 0 ? $"+{quantity} seat{(quantity == 1 ? "" : "s")}" : "Extra seats",
             "AddOnRenewal" => "Add-on renewal",
-            "AddOnPurchaseCharge" => "Add-on",
+            "AddOnPurchaseCharge" => quantity > 1 ? $"Add-on × {quantity}" : "Add-on",
             "PlanChangeCharge" or "PlanChangeCheckout" => "Plan upgrade",
             "WalletTopUp" => "Wallet top-up",
             _ => paymentType,
@@ -94,10 +98,12 @@ public static class SaaSPaymentSucceededReceiptConsumer
     /// <summary>Línea secundaria del recibo — contextualiza qué compró el tenant más allá del "concepto".
     /// Vacía para renovaciones y planes, donde la plantilla ya cae al default "{{ issuer.name }} subscription"
     /// (el pago está asociado a la suscripción como tal).</summary>
-    private static string? SecondaryDescriptionOf(string paymentType) =>
+    private static string? SecondaryDescriptionOf(string paymentType, int quantity) =>
         paymentType switch
         {
-            "SeatsPurchaseCharge" => "Additional seats for your subscription",
+            "SeatsPurchaseCharge" => quantity > 0
+                ? $"{quantity} additional seat{(quantity == 1 ? "" : "s")} for your subscription"
+                : "Additional seats for your subscription",
             "AddOnPurchaseCharge" => "Add-on for your subscription",
             "WalletTopUp" => "Prepaid wallet credit",
             "PlanChangeCharge" or "PlanChangeCheckout" => "Plan upgrade charge",

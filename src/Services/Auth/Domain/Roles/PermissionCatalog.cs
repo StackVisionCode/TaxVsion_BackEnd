@@ -40,19 +40,13 @@ public static class PermissionCatalog
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
-    public const string SignaturesRequest = "signatures.request";
-    public const string DocumentsView = "documents.view";
-    public const string DocumentsManage = "documents.manage";
     public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
-    public const string EmailUse = "email.use";
-    public const string CommsCalls = "comms.calls";
     public const string CampaignsView = CampaignsPermissions.View;
     public const string CampaignsManage = CampaignsPermissions.Manage;
     public const string CampaignsSend = CampaignsPermissions.Send;
     public const string CampaignsSendersManage = CampaignsPermissions.SendersManage;
     public const string WalletView = WalletPermissions.View;
     public const string WalletManage = WalletPermissions.Manage;
-    public const string ReportsView = "reports.view";
 
     // CloudStorage / Media Security Gateway
     public const string CloudStorageFileView = CloudStoragePermissions.FileView;
@@ -366,7 +360,21 @@ public static class PermissionCatalog
         // Declarado pero sin ningún endpoint que lo exija todavía: no se concede a nadie ni se
         // ofrece en el cajón de accesos. Ver Permission.IsReserved.
         bool IsReserved = false
-    );
+    )
+    {
+        // CAT-F1: módulo comercial que gatea este permiso (null = transversal, siempre efectivo).
+        // Backfill desde PermissionModuleMap.ModuleFor para no re-anotar los ~140 permisos a mano.
+        // Esta propiedad computada se persiste vía EF HasData — la columna GatedModule en Permissions
+        // es la fuente runtime de la que leen PermissionPolicyProvider y PermissionCeiling (F1.4).
+        public string? GatedModule { get; init; } = BuildingBlocks.Authorization.PermissionModuleMap.ModuleFor(Code);
+
+        // AllowedActorTypes puede quedar null en el record cuando el permiso no declara explícito —
+        // se infiere con la misma regla que usa Permission.Seed. Esta vista computada vive aquí para
+        // que los filtros del catálogo (SystemRoleDefaults, SystemTenantAdminRootPermissions) sean
+        // null-safe sin repetir la inferencia en cada call-site.
+        public UserActorType[] EffectiveAllowedActorTypes =>
+            AllowedActorTypes ?? Permission.InferAllowedActorTypes(IsCustomerPortal, PlatformOnly);
+    }
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
     [
@@ -480,74 +488,11 @@ public static class PermissionCatalog
             false
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000012"),
-            // LEGACY. Lo reemplazó el set granular signature.request.* (create/read/cancel/resend/
-            // expire): este nunca gateó nada. No se borra porque la fila ya está sembrada en
-            // producción — se reserva, que es lo que lo saca del cajón de accesos.
-            SignaturesRequest,
-            "signatures",
-            "Request signatures",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        // El microservicio Documents no expone lectura de documentos: solo generación (M2M) y
-        // branding. Los archivos del cliente son CloudStorage, con cloudstorage.file.*. Reservado hasta
-        // que Documents tenga su propia superficie de usuario.
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000013"),
-            DocumentsView,
-            "documents",
-            "View documents",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000014"),
-            // Idem view: fuera del branding —que ya tiene documents.branding.manage— no hay nada
-            // que gestionar todavía en Documents. Reservado.
-            DocumentsManage,
-            "documents",
-            "Manage documents",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
             new Guid("a1000000-0000-0000-0000-000000000152"),
             DocumentsBrandingManage,
             "documents",
             "Configure document branding",
             false
-        ),
-        new(
-            // Módulo "email" solo disponible desde el plan Pro (ver SubscriptionPlanCatalogSeeder).
-            new Guid("a1000000-0000-0000-0000-000000000015"),
-            // Redundante: QUIEN puede usar el correo lo deciden los correspondence.* (leer, redactar,
-            // responder, enviar) y SI el plan lo incluye lo decide el gate del módulo "email" (Pro+).
-            EmailUse,
-            "email",
-            "Use the email module",
-            false,
-            MinPlanTier: (int)PlanTier.Pro,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            // MinPlanTier Pro es inerte acá: reservado + no asignable por el tenant = no gatea nada.
-            // (El módulo "comms" YA no es solo de Pro — chat, llamadas y vídeo van en todos los planes
-            // desde que se separó `meetings`; este permiso legacy se deja tal cual, no se toca.)
-            new Guid("a1000000-0000-0000-0000-000000000016"),
-            // LEGACY. Lo reemplazaron communication.call.start, videocall.start y meeting.*: este
-            // nunca gateó nada. Mismo criterio que signatures.request — reservado, no borrado.
-            CommsCalls,
-            "comms",
-            "Make calls and hold meetings",
-            false,
-            MinPlanTier: (int)PlanTier.Pro,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             // Módulo "campaigns" solo disponible desde el plan Pro. Los cuatro permisos del servicio
@@ -617,19 +562,6 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
-            // Módulo "reports" solo disponible desde el plan Pro.
-            new Guid("a1000000-0000-0000-0000-000000000018"),
-            // Todavía no hay microservicio de reportes. El código queda declarado para cuando exista,
-            // pero reservado: hoy no protege nada y no debe ofrecerse como si lo hiciera.
-            ReportsView,
-            "reports",
-            "View the dashboard and reports",
-            false,
-            MinPlanTier: (int)PlanTier.Pro,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
             // Lo exigen las rutas de llamada de Communication solo para el actor CustomerPortal
             // (equivalente en Node de HasPermissionForActor): es la palanca que el administrador
             // reconoce en el cajón de accesos del cliente para quitarle las llamadas.
@@ -638,18 +570,6 @@ public static class PermissionCatalog
             "portal",
             "The client can make calls",
             true
-        ),
-        new(
-            // Reservado: no existe módulo "miles" ni ningún endpoint que lo exija. Se deja declarado
-            // (la fila ya está sembrada en producción) pero sin concederse a nadie hasta que la
-            // función exista — un permiso que no protege nada solo ensucia el cajón de accesos.
-            new Guid("a1000000-0000-0000-0000-000000000020"),
-            PortalMilesUse,
-            "portal",
-            "The client can use mileage tracking",
-            true,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000021"),
@@ -939,17 +859,6 @@ public static class PermissionCatalog
             false
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000081"),
-            // EmailLayoutsController solo expone escrituras (crear, versionar, publicar); no hay GET
-            // de layouts que gatear. Reservado hasta que exista.
-            ScribeLayoutsRead,
-            "scribe",
-            "View email layouts (system and this office's)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
             new Guid("a1000000-0000-0000-0000-000000000082"),
             ScribeLayoutsWrite,
             "scribe",
@@ -969,35 +878,6 @@ public static class PermissionCatalog
             "scribe",
             "Create, edit and delete the rules that resolve an event to a template",
             false
-        ),
-        new(
-            // Reservado: sin EmailCampaignsController real en Scribe todavía (confirmado por
-            // lectura directa de los 4 controllers existentes en la Fase 10.5) — el par
-            // campaigns.read/write de ScribePermissions.cs es scaffolding para una feature que
-            // aún no se construyó (relacionado con el retiro de EmailCampaigns de Notification,
-            // fuera de este plan). Se siembra igual porque el código ya define la constante y este
-            // catálogo debe reflejar 1:1 lo que ScribePermissions.cs declara, pero sin otorgarlo
-            // por defecto a nadie (ver SystemRoleDefaults) hasta que exista un controller real que
-            // lo exija.
-            new Guid("a1000000-0000-0000-0000-000000000085"),
-            // Scribe no tiene superficie de campañas: son de su propio servicio, con campaigns.*.
-            // Reservado.
-            ScribeCampaignsRead,
-            "scribe",
-            "View email campaigns built on templates (reserved, no endpoint yet)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000086"),
-            // Idem read: las campañas no viven en Scribe. Reservado.
-            ScribeCampaignsWrite,
-            "scribe",
-            "Manage email campaigns built on templates (reserved, no endpoint yet)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             // A diferencia de los 8 permisos anteriores de este bloque, ScribeRender no lo pide
@@ -1150,28 +1030,6 @@ public static class PermissionCatalog
             false
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000036"),
-            // No hay endpoint: ver un documento firmado es GET signature/requests/{id}, que ya
-            // exige request.read. Reservado hasta que exista una vista de documentos propia.
-            SignatureDocumentView,
-            "signature",
-            "View signed documents and their details",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000037"),
-            // No hay endpoint: el sellado vive en CloudStorage y se descarga con
-            // cloudstorage.file.download. Reservado para no prometer un control que no existe.
-            SignatureDocumentDownload,
-            "signature",
-            "Download the sealed file, the original or the certificate",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
             // Controla la ENTREGA hacia afuera (email/SMS del documento firmado y del certificado al
             // firmante). Separado de crear/firmar para que el preparador lo niegue por-empleado con el
             // deny-layer. Asignable por el tenant; no peligroso, no platform-only.
@@ -1180,17 +1038,6 @@ public static class PermissionCatalog
             "signature",
             "Email or text the signed document and certificate to the signers",
             false
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000038"),
-            // No hay endpoint de staff: el audit trail solo se consulta desde el enlace
-            // publico del firmante, que es anonimo por token. Reservado.
-            SignatureDocumentAuditRead,
-            "signature",
-            "View a signature's audit trail",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             // Legal hold escribe estado (bloquea el borrado), no es una lectura del audit trail — por
@@ -1237,6 +1084,16 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // F7 — Audit trail del request. El endpoint real existe en SignatureRequestsController.
+            // (SignatureRequestsController.GetAuditTrail); el admin del tenant decide qué roles
+            // tienen acceso al timeline del audit chain.
+            new Guid("a1000000-0000-0000-0000-000000000038"),
+            SignatureDocumentAuditRead,
+            "signature",
+            "View a signature's audit trail",
+            false
+        ),
+        new(
             // F4 — Aplicar la firma propia del empleado. El kill-switch de tenant
             // AllowEmployeeOwnSignature sigue arriba: apagado, nadie puede aunque tenga el permiso.
             // Asignable por el tenant; sembrado por default a TenantEmployee (transición segura:
@@ -1246,17 +1103,6 @@ public static class PermissionCatalog
             "signature",
             "Apply the employee's own signature to a document",
             false
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000044"),
-            // Es un endpoint PÚBLICO (anónimo): no hay usuario a quien exigirle un permiso,
-            // así que este código nunca podrá aplicarse tal como esta. Reservado.
-            SignatureCertificateVerify,
-            "signature",
-            "Verify signature certificates (public endpoint)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             // Nunca asignable a un rol custom (escalada de billing/límites) NI al rol de sistema
@@ -1603,27 +1449,6 @@ public static class PermissionCatalog
             false
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000100"),
-            // El motor de EmailCampaigns de Notification fue RETIRADO (ver EmailSendController): estos
-            // dos quedaron sin superficie. Las campañas son hoy el servicio Campaigns, con campaigns.*.
-            NotificationCampaignView,
-            "notification",
-            "View the office's email campaigns (reserved, no endpoint yet)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000101"),
-            // Idem view: resto del motor retirado. Reservado.
-            NotificationCampaignManage,
-            "notification",
-            "Manage the office's email campaigns (reserved, no endpoint yet)",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
             new Guid("a1000000-0000-0000-0000-000000000102"),
             NotificationLogView,
             "notification",
@@ -1699,17 +1524,6 @@ public static class PermissionCatalog
             "payment_client",
             "Charge a payment to one of the office's clients",
             false
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000112"),
-            // TenantPaymentsController solo cobra y consulta; no hay endpoint de reembolso. Reservado
-            // hasta que exista — y ojo: cuando exista, el plan lo marca IsDangerous.
-            PaymentClientPaymentRefund,
-            "payment_client",
-            "Refund a payment collected from one of the office's clients",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000113"),
@@ -1797,168 +1611,14 @@ public static class PermissionCatalog
             "Manage the office's codes",
             false
         ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000125"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthCodesIssue,
-            "codes",
-            "Issue benefit codes",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
         new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activate codes", false),
         new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revoke codes", false),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000128"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthCodesAuditRead,
-            "codes",
-            "View the code audit log",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000129"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthCodesRedemptionRead,
-            "codes",
-            "View code redemptions",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000130"),
-            // Compensar una redención YA está protegido, pero por el otro mecanismo: el endpoint es M2M y usa
-            // el scope de servicio growth.codes.compensate. No hay superficie humana. Reservado.
-            GrowthCodesCompensationManage,
-            "codes",
-            "Manage promotional compensation",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000131"),
             GrowthReferralsOwnRead,
             "referrals",
             "View your own referrals",
             false
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000132"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsProgramRead,
-            "referrals",
-            "View referral programs",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000133"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsProgramManage,
-            "referrals",
-            "Manage referral programs",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000134"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsAttributionRead,
-            "referrals",
-            "View referral attributions",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000135"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsFraudRead,
-            "referrals",
-            "View anti-fraud reviews",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000136"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsFraudManage,
-            "referrals",
-            "Manage anti-fraud reviews",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000137"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsRewardRead,
-            "referrals",
-            "View rewards",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000138"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsRewardManage,
-            "referrals",
-            "Manage non-monetary rewards",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000139"),
-            // Growth declara el catálogo completo del modulo, pero de referidos y códigos solo están
-            // construidos 6 endpoints humanos (crear/ver/activar/revocar un código, crear una
-            // atribución y emitir el código propio). Este no tiene endpoint: reservado hasta que
-            // exista, para no ofrecer en el cajón de accesos un control que no existe.
-            GrowthReferralsAuditRead,
-            "referrals",
-            "View the referral audit log",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000140"),
@@ -2173,17 +1833,6 @@ public static class PermissionCatalog
             "calendar",
             "Define the firm's appointment types",
             false
-        ),
-        new(
-            new Guid("a1000000-0000-0000-0000-000000000178"),
-            // AvailabilityController solo expone GET, y ya pide calendar.read. No hay escritura de
-            // disponibilidad que gatear. Reservado.
-            CalendarAvailabilityManage,
-            "calendar",
-            "Define working hours and calendar blocks",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
         ),
         // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
         // de pedidos, no la tarea interna de la que salieron.
@@ -2466,10 +2115,10 @@ public static class PermissionCatalog
     /// excluyendo PlatformOnly e IsCustomerPortal, igual que <see cref="SystemRoleDefaults"/>.
     /// </summary>
     public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
-        All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly && !definition.IsReserved)
+        All.Where(definition =>
+                definition.EffectiveAllowedActorTypes.Contains(UserActorType.TenantAdmin) && !definition.IsReserved
+            )
             .Select(definition => definition.Code)
-            .Concat(TenantAdminCommunicationExtras)
-            .Distinct()
             .ToArray();
 
     /// <summary>

@@ -129,7 +129,7 @@ public sealed class SeatsCheckoutPaidConsumerTests
     {
         var now = DateTime.UtcNow;
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Standard, Guid.Empty, now)
+            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Starter, Guid.Empty, now)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly, BillingCycle.Yearly])

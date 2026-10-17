@@ -133,7 +133,13 @@ public sealed class TenantOnboardingProcessManager : Saga
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        return new ActivateSubscriptionCommand(Id, TenantId!.Value, PlanId, BillingCycle);
+        return new ActivateSubscriptionCommand(
+            Id,
+            TenantId!.Value,
+            PlanId,
+            BillingCycle,
+            onboarding.AutoRenewRequested
+        );
     }
 
     public async Task<ProvisionStorageForTenantCommand?> Handle(
@@ -249,7 +255,8 @@ public sealed class TenantOnboardingProcessManager : Saga
                 Id,
                 TenantId!.Value,
                 onboarding.PlanId,
-                onboarding.BillingCycle
+                onboarding.BillingCycle,
+                onboarding.AutoRenewRequested
             ),
             _ => null,
         };

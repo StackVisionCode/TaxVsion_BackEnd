@@ -52,6 +52,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("MutexGroup")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -592,6 +596,45 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_TenantPaymentMandates_Tenant_IsRevoked");
 
                     b.ToTable("TenantPaymentMandates", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Catalog.Module", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("AddonPriceMonthlyUsd")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("AddonPriceYearlyUsd")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Modules", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Entitlements.TenantEntitlementSnapshot", b =>
@@ -1143,6 +1186,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("EnabledModulesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
                     b.Property<string>("PlanCode")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1324,17 +1373,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("CurrentAssignmentId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("CurrentPeriodEndUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("CurrentPeriodStartUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CurrentUserId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("ExpiredAtUtc")
                         .HasColumnType("datetime2");
@@ -1381,10 +1424,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CurrentUserId")
-                        .HasDatabaseName("IX_SubscriptionSeats_CurrentUserId")
-                        .HasFilter("[CurrentUserId] IS NOT NULL");
-
                     b.HasIndex("NextRenewalAtUtc")
                         .HasDatabaseName("IX_SubscriptionSeats_NextRenewalAtUtc")
                         .HasFilter("[Status] IN ('Active','PastDue') AND [AutoRenew] = 1");
@@ -1392,49 +1431,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status");
 
                     b.ToTable("SubscriptionSeats", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeatAssignment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("AssignedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("AssignedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ReleaseReason")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime?>("ReleasedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ReleasedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("SeatId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeatId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SubscriptionSeatAssignments_SeatId_Active")
-                        .HasFilter("[ReleasedAtUtc] IS NULL");
-
-                    b.HasIndex("UserId", "TenantId")
-                        .HasDatabaseName("IX_SubscriptionSeatAssignments_UserId_TenantId");
-
-                    b.ToTable("SubscriptionSeatAssignments", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeatRenewal", b =>
@@ -1517,19 +1513,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AllowAddons")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("AllowAdminSeatAssignment")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("AllowAutoRenewSeats")
                         .HasColumnType("bit");
 
                     b.Property<bool>("AllowAutoRenewTenantSubscription")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AllowSeatReassignment")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("AllowSeatSelfAssignment")
                         .HasColumnType("bit");
 
                     b.Property<bool>("AllowTrial")
@@ -1560,9 +1547,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("PauseSeatRenewalsWhenBaseSuspended")
                         .HasColumnType("bit");
-
-                    b.Property<int>("SeatReassignmentCooldownDays")
-                        .HasColumnType("int");
 
                     b.Property<bool>("SuspendTenantWhenBaseSubscriptionExpired")
                         .HasColumnType("bit");
@@ -2310,15 +2294,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeatAssignment", b =>
-                {
-                    b.HasOne("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", null)
-                        .WithMany("Assignments")
-                        .HasForeignKey("SeatId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeatRenewal", b =>
                 {
                     b.HasOne("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", null)
@@ -2410,8 +2385,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", b =>
                 {
-                    b.Navigation("Assignments");
-
                     b.Navigation("Renewals");
                 });
 

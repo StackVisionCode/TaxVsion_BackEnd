@@ -166,7 +166,12 @@ public static class EntitlementSnapshotBuilder
         var availableSeatCount = 0;
         foreach (var seat in tenantSeats)
         {
-            if (seat.Status is SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Released)
+            // Terminales por dominio: Cancelled/Expired ya nunca vuelven y no cuentan al cupo.
+            // Suspended también se excluye: significa que agotamos los reintentos de cobro — hasta que
+            // el admin lo renueve (ReactivateAfterAdminReview → Active) deja de ser cupo vendido. Si se
+            // mantuviera dentro del cupo, el tenant seguiría pudiendo invitar empleados a seats que ya
+            // nadie está pagando. PastDue sí sigue contando: es la ventana de reintentos (grace natural).
+            if (seat.Status is SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Suspended)
                 continue;
 
             seatCount++;

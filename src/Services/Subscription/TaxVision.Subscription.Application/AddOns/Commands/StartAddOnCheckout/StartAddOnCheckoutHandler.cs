@@ -19,6 +19,7 @@ public static class StartAddOnCheckoutHandler
         StartAddOnCheckoutCommand command,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        IModuleRepository modules,
         IAddOnDefinitionRepository addOnDefinitions,
         ISubscriptionTenantSettingsRepository settings,
         ITenantAddOnRepository tenantAddOns,
@@ -34,6 +35,7 @@ public static class StartAddOnCheckoutHandler
             command.Quantity,
             subscriptions,
             plans,
+            modules,
             addOnDefinitions,
             settings,
             tenantAddOns,
@@ -75,7 +77,8 @@ public static class StartAddOnCheckoutHandler
                 command.Provider,
                 command.Method,
                 intent.Quantity,
-                ProratedUnit.Of(intent.ProratedTotalCents, intent.Quantity)
+                ProratedUnit.Of(intent.ProratedTotalCents, intent.Quantity),
+                definition.Name
             ),
             ct
         );

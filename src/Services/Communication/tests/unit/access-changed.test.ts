@@ -18,6 +18,7 @@ function fakeEmitter() {
     emitToTenant: vi.fn(),
     emitToTenantStaff: vi.fn(),
     emitToTenantMembers: vi.fn(),
+    emitBroadcast: vi.fn(),
   };
 }
 
@@ -146,5 +147,33 @@ describe('access.changed — cambio de entitlements del tenant', () => {
     );
 
     expect(emitter.emitToTenantMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('catalog.changed - module configuration', () => {
+  it('broadcasts the module change so clients refresh the catalog', async () => {
+    const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
+    const emitter = fakeEmitter();
+    bindSubscriptionConsumers((eventType, handler) => void handlers.set(eventType, handler), {
+      limits: { get: vi.fn(), upsert: vi.fn() } as never,
+      emitter,
+    });
+
+    await handlers.get('subscription.module_category_changed.v1')!(
+      envelope('subscription.module_category_changed.v1', { ModuleCode: 'wallet' }),
+    );
+
+    expect(emitter.emitBroadcast).toHaveBeenCalledTimes(1);
+    const call = emitter.emitBroadcast.mock.calls[0]![0] as {
+      event: string;
+      envelope: { correlationId: string; payload: Record<string, unknown> };
+    };
+    expect(call.event).toBe('catalog.changed');
+    expect(call.envelope.correlationId).toBe('corr-1');
+    expect(call.envelope.payload).toEqual({
+      changeKind: 'module.configuration',
+      entityId: null,
+      entityCode: 'wallet',
+    });
   });
 });

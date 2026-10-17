@@ -27,7 +27,7 @@ public sealed class InternalSurfaceGuardMiddlewareTests
     }
 
     /// <summary>
-    /// Las 18 rutas M2M reales del sistema tras unificar la convención en <c>internal/*</c> (GW-02).
+    /// Las 17 rutas M2M reales del sistema tras unificar la convención en <c>internal/*</c> (GW-02).
     /// Si aparece un controller interno nuevo, esta lista se queda corta pero el guard lo cubre igual
     /// — la lista existe para fijar las formas que ya sabemos que se dan.
     /// </summary>
@@ -50,7 +50,6 @@ public sealed class InternalSurfaceGuardMiddlewareTests
     [InlineData("/internal/plans/33333333-3333-3333-3333-333333333333/pricing")]
     [InlineData("/internal/plan-rate-limits")]
     [InlineData("/internal/subscriptions/activate-from-onboarding")]
-    [InlineData("/internal/users")]
     [InlineData("/internal/tenants/subdomain-available")]
     [InlineData("/internal/tenants/from-onboarding")]
     public async Task Bloquea_con_404_las_rutas_internas_reales(string path)

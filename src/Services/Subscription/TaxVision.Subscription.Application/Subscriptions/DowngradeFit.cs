@@ -55,7 +55,7 @@ public static class DowngradeFit
         var live = 0;
         foreach (var seat in seats)
         {
-            if (seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Released))
+            if (seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired))
                 live++;
         }
 

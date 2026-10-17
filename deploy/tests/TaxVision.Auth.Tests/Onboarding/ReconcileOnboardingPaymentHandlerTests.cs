@@ -9,6 +9,7 @@ using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Domain.Onboarding.ValueObjects;
+using TaxVision.Auth.Infrastructure.Onboarding.Concurrency;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
@@ -51,6 +52,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -99,6 +101,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -140,6 +143,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -178,6 +182,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -217,6 +222,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 
@@ -268,6 +274,7 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
             new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
             CancellationToken.None
         );
 

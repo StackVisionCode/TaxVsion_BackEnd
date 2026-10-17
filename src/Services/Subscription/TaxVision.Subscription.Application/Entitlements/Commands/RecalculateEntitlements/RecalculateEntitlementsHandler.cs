@@ -98,8 +98,7 @@ public static class RecalculateEntitlementsHandler
     /// (Portal/Signature/ReadOnly/ServiceAccount) son pools aparte y no cuentan.</summary>
     public static int CountActiveStaffSeats(IReadOnlyList<SubscriptionSeat> seats) =>
         seats.Count(seat =>
-            seat.Type == SeatType.Standard
-            && seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Released)
+            seat.Type == SeatType.Standard && seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired)
         );
 
     private static int ParseIncludedSeats(TenantEntitlementSnapshot snapshot)

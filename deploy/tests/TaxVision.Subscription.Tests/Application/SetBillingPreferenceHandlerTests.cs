@@ -151,7 +151,7 @@ public sealed class SetBillingPreferenceHandlerTests
     )
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly])
@@ -162,6 +162,13 @@ public sealed class SetBillingPreferenceHandlerTests
                 PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(amount, "USD").Value).Value
             );
         }
+        else
+        {
+            version.AddPriceTier(
+                PlanPriceTier.Create(version.Id, BillingCycle.Yearly, 1, null, Money.Create(290m, "USD").Value).Value
+            );
+        }
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         Assert.True(plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow).IsSuccess);
         return (plan, version);

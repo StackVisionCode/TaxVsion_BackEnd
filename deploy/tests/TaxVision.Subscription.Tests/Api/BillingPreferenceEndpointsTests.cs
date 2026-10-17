@@ -193,7 +193,7 @@ public sealed class BillingPreferenceEndpointsTests
     )
     {
         var plan = SubscriptionPlan
-            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Create(PlanCode.Create("pro").Value, "pro", "pro plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
             .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly])
@@ -201,6 +201,7 @@ public sealed class BillingPreferenceEndpointsTests
         version.AddPriceTier(
             PlanPriceTier.Create(version.Id, BillingCycle.Monthly, 1, null, Money.Create(monthlyUsd, "USD").Value).Value
         );
+        PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         Assert.True(plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow).IsSuccess);
 

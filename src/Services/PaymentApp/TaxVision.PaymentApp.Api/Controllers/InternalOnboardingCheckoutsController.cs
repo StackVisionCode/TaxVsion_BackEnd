@@ -37,7 +37,9 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
         long? DiscountAmountCents = null,
         string? Currency = null,
         Guid? CodeReservationId = null,
-        string? PromotionSnapshotHash = null
+        string? PromotionSnapshotHash = null,
+        /// <summary>Nombre comercial del plan comprado, para el recibo.</summary>
+        string? PlanDisplayName = null
     );
 
     public sealed record ReconcileOnboardingCheckoutRequest(Guid PaymentId);
@@ -64,7 +66,8 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
                 request.DiscountAmountCents,
                 request.Currency,
                 request.CodeReservationId,
-                request.PromotionSnapshotHash
+                request.PromotionSnapshotHash,
+                request.PlanDisplayName
             ),
             ct
         );

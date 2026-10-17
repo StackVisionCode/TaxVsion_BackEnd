@@ -30,7 +30,6 @@ public sealed class PermissionModuleMapTests
     [InlineData("communication.chat.start", "comms")]
     [InlineData("comms.calls", "comms")]
     [InlineData("campaigns.manage", "campaigns")]
-    [InlineData("reports.view", "reports")]
     public void Maps_permission_to_its_module(string permissionCode, string expectedModule)
     {
         Assert.Equal(expectedModule, PermissionModuleMap.ModuleFor(permissionCode));
@@ -56,6 +55,7 @@ public sealed class PermissionModuleMapTests
     [InlineData("builder.something")]
     [InlineData("irs.something")]
     [InlineData("miles.something")]
+    [InlineData("reports.view")]
     public void Leaves_transversal_or_unmapped_permissions_ungated(string permissionCode)
     {
         Assert.Null(PermissionModuleMap.ModuleFor(permissionCode));

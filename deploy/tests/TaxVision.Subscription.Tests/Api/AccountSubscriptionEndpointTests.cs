@@ -65,6 +65,7 @@ public sealed class AccountSubscriptionEndpointTests
                 "SeatsController.GetQuote",
                 "SeatsController.GetSeats",
                 "SeatsController.StartCheckout",
+                "SeatsController.StartReactivationCheckout",
                 "SubscriptionsController.Cancel",
                 "SubscriptionsController.CancelPendingPlanChange",
                 "SubscriptionsController.CancelPendingUpgrade",
@@ -72,6 +73,7 @@ public sealed class AccountSubscriptionEndpointTests
                 "SubscriptionsController.ChangePlan",
                 "SubscriptionsController.GetAccountSubscription",
                 "SubscriptionsController.GetBillingPreference",
+                "SubscriptionsController.GetPaymentOptions",
                 "SubscriptionsController.GetRenewCheckoutStatus",
                 "SubscriptionsController.PreviewPlanChange",
                 "SubscriptionsController.Resume",
@@ -94,6 +96,7 @@ public sealed class AccountSubscriptionEndpointTests
         [
             "AddOnsController.StartCheckout",
             "SeatsController.StartCheckout",
+            "SeatsController.StartReactivationCheckout",
             "SubscriptionsController.ChangePlan",
             "SubscriptionsController.StartRenewCheckout",
         ];

@@ -75,6 +75,7 @@ public sealed class PaymentAppOnboardingClient(
                         currency = request.Currency,
                         codeReservationId = request.CodeReservationId,
                         promotionSnapshotHash = request.PromotionSnapshotHash,
+                        planDisplayName = request.PlanDisplayName,
                     }
                 ),
             };

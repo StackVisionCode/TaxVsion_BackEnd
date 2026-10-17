@@ -7,6 +7,7 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Common.Branding;
 using TaxVision.PaymentApp.Application.Common.HostedCheckout;
+using TaxVision.PaymentApp.Application.SaaSPayments.Common;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -84,15 +85,17 @@ public static class CreateOnboardingCheckoutHandler
             PreCheck = ct => EnsureCheckoutMethodEnabledAsync(command, paymentMethodCatalog, ct),
             ResolveAmount = ct => ResolveAmountAsync(command, planPricing, ct),
             CreatePayment = (key, amount, descriptor, nowUtc) =>
-                SaaSPayment.CreateForOnboarding(
-                    command.OnboardingId,
-                    key,
-                    amount,
-                    command.PlanId,
-                    command.Provider,
-                    descriptor,
-                    nowUtc
-                ),
+                SaaSPayment
+                    .CreateForOnboarding(
+                        command.OnboardingId,
+                        key,
+                        amount,
+                        command.PlanId,
+                        command.Provider,
+                        descriptor,
+                        nowUtc
+                    )
+                    .WithConceptFor(SaaSPaymentType.OnboardingInitial, displayName: command.PlanDisplayName),
             DecideOnExisting = DecideOnExisting,
             ProviderKey = ProviderKeyFor,
             BuildMetadata = payment => new Dictionary<string, string>

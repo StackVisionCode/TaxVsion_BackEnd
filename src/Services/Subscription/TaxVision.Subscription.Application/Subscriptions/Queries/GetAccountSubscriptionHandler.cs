@@ -20,12 +20,7 @@ public static class GetAccountSubscriptionHandler
     private const string DefaultCurrency = "USD";
 
     /// <summary>Un asiento en estos estados ya no cuenta, mismo criterio que el snapshot de entitlements.</summary>
-    private static readonly SeatStatus[] DeadSeatStatuses =
-    [
-        SeatStatus.Cancelled,
-        SeatStatus.Expired,
-        SeatStatus.Released,
-    ];
+    private static readonly SeatStatus[] DeadSeatStatuses = [SeatStatus.Cancelled, SeatStatus.Expired];
 
     public static async Task<Result<AccountSubscriptionResponse>> Handle(
         GetAccountSubscriptionQuery query,
@@ -101,6 +96,7 @@ public static class GetAccountSubscriptionHandler
 
         var definitions = await addOnDefinitions.GetPublishedAsync(ct);
         var addOns = BuildAddOns(
+            subscription,
             definitions,
             await tenantAddOns.GetByTenantIdAsync(query.TenantId, ct),
             enabledModules,
@@ -181,29 +177,59 @@ public static class GetAccountSubscriptionHandler
         return views;
     }
 
+    /// <summary>
+    /// La misma lista blanca que <c>AddOnPurchaseEligibility</c>: fuera de estos estados el guard de compra
+    /// rechaza cualquier add-on, así que el read-model no debe pintarlo "Available".
+    /// </summary>
+    private static readonly SubscriptionStatus[] AddOnPurchasableStatuses =
+    [
+        SubscriptionStatus.Trialing,
+        SubscriptionStatus.Active,
+    ];
+
     private static List<AccountAddOnView> BuildAddOns(
+        TenantSubscription subscription,
         IReadOnlyList<AddOnDefinition> definitions,
         IReadOnlyList<TenantAddOn> owned,
         IReadOnlyList<string> enabledModules,
         BillingCycle billingCycle
     )
     {
+        // Si la suscripción no está en estado de compra (PastDue, Suspended, Expired…) el POST rechaza con
+        // Subscription.CannotPurchaseAddOns, así que ningún add-on sin comprar debe aparecer "Available".
+        var baseBlocked = Array.IndexOf(AddOnPurchasableStatuses, subscription.Status) < 0;
+        // Un tenant puede tener N instancias del mismo SKU apilable (storage pack × N). Se agrupan por
+        // código: el conteo alimenta la UI ("+10 GB × 3") y la primera instancia da fecha de renovación
+        // y autoRenew para mostrar en el card. Las N comparten UnitPrice (tier fijo).
         var activeByCode = owned
             .Where(addOn => addOn.Status == AddOnStatus.Active)
             .GroupBy(addOn => addOn.AddOnCode, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+        // El guard de compra lee MutexGroup del catálogo (no de TenantAddOn); acá se precalcula una vez para
+        // que la evaluación del read-model no dispare queries extra por add-on.
+        var mutexGroupByCode = AddOnEligibilityRules.MutexGroupLookupFor(definitions);
 
         var views = new List<AccountAddOnView>(definitions.Count);
         foreach (var definition in definitions)
         {
-            var active = activeByCode.GetValueOrDefault(definition.Code.Value);
+            var activeInstances = activeByCode.GetValueOrDefault(definition.Code.Value) ?? [];
+            var first = activeInstances.FirstOrDefault();
             // Con el add-on activo vale lo que el tenant paga hoy; si no, lo que costaría comprarlo.
             var catalogPrice = definition.ResolveUnitPrice(billingCycle, quantity: 1);
-            var price = active?.UnitPrice ?? (catalogPrice.IsSuccess ? catalogPrice.Value : null);
+            var price = first?.UnitPrice ?? (catalogPrice.IsSuccess ? catalogPrice.Value : null);
             var eligibility =
-                active is not null ? AddOnEligibility.Active
+                first is not null ? AddOnEligibility.Active
                 : AddOnEligibilityRules.IsIncludedInPlan(definition, enabledModules) ? AddOnEligibility.Included
+                : AddOnEligibilityRules.BlockedByMutex(definition, owned, mutexGroupByCode) ? AddOnEligibility.Blocked
+                : baseBlocked ? AddOnEligibility.Blocked
                 : AddOnEligibility.Available;
+            // Permitir comprar OTRA instancia del mismo SKU solo cuando: el catálogo lo marca apilable, el
+            // tenant está en estado comprable y, si el SKU tiene mutex group, el tenant no tiene otro tier
+            // del grupo activo (el guard mutex ya protege eso, acá se refleja en el flag UI).
+            var canStack =
+                definition.AllowMultipleInstances
+                && !baseBlocked
+                && !AddOnEligibilityRules.BlockedByMutex(definition, owned, mutexGroupByCode);
 
             views.Add(
                 new AccountAddOnView(
@@ -215,9 +241,11 @@ public static class GetAccountSubscriptionHandler
                     eligibility,
                     price is null ? null : ToCents(price),
                     price?.Currency,
-                    active?.Id,
-                    active?.CurrentPeriodEndUtc,
-                    active?.AutoRenew
+                    first?.Id,
+                    first?.CurrentPeriodEndUtc,
+                    first?.AutoRenew,
+                    activeInstances.Count,
+                    canStack
                 )
             );
         }

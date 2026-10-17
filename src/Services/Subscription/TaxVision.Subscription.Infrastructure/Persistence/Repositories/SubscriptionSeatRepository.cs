@@ -20,25 +20,6 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .Where(seat => seat.TenantId == tenantId)
             .ToListAsync(ct);
 
-    public Task<SubscriptionSeat?> GetByCurrentUserIdAsync(
-        Guid tenantId,
-        Guid userId,
-        CancellationToken ct = default
-    ) =>
-        WithChildren(db.Seats.AsNoTracking())
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(seat => seat.TenantId == tenantId && seat.CurrentUserId == userId, ct);
-
-    // Tracked (sin AsNoTracking): el consumer de retiro/desactivación necesita persistir la liberación.
-    public Task<SubscriptionSeat?> GetTrackedByCurrentUserIdAsync(
-        Guid tenantId,
-        Guid userId,
-        CancellationToken ct = default
-    ) =>
-        WithChildren(db.Seats)
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(seat => seat.TenantId == tenantId && seat.CurrentUserId == userId, ct);
-
     public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) =>
         await db.Seats.AddAsync(seat, ct);
 
@@ -131,5 +112,5 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
     }
 
     private static IQueryable<SubscriptionSeat> WithChildren(IQueryable<SubscriptionSeat> query) =>
-        query.Include(seat => seat.Assignments).Include(seat => seat.Renewals);
+        query.Include(seat => seat.Renewals);
 }

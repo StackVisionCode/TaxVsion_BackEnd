@@ -56,4 +56,12 @@ export interface RealtimeEmitter {
    * de plan afecta tanto al CRM como a las areas del portal.
    */
   emitToTenantMembers<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void;
+
+  /**
+   * CAT-F5.2 — Broadcast platform-wide (tenant-agnostico) a TODOS los sockets conectados. Reservado
+   * para cambios del catalogo global (planes/addons) que afectan a cualquiera que mire la lista:
+   * tenants autenticados y, cuando aplique, visitantes del landing. Si falta el landing, los sockets
+   * autenticados ya cubren el 100% de usuarios con sesion abierta.
+   */
+  emitBroadcast<T>(input: { event: string; envelope: SocketEnvelope<T> }): void;
 }

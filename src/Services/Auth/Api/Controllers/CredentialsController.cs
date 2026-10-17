@@ -43,6 +43,10 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         return Accepted();
     }
 
+    /// <summary><c>Token</c>: el token crudo del enlace emailado. <c>NewPassword</c>: la contraseña nueva. El
+    /// <c>HostTenantId</c> del command se setea aquí desde el <c>IResolvedTenantContext</c>, nunca del body.</summary>
+    public sealed record ResetPasswordRequest(string Token, string NewPassword);
+
     [HttpPost("password/reset")]
     [AllowAnonymous]
     [RateLimitExempt(
@@ -50,29 +54,36 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
     )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> ResetPassword(ResetPasswordCommand command, CancellationToken ct)
+    public async Task<IActionResult> ResetPassword(
+        ResetPasswordRequest request,
+        [FromServices] IResolvedTenantContext tenantContext,
+        CancellationToken ct
+    )
     {
+        var command = new ResetPasswordCommand(request.Token, request.NewPassword, tenantContext.ResolvedTenantId);
         var result = await bus.InvokeAsync<Result>(command, ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record ValidateResetTokenRequest(string Token);
-
-    /// <summary>¿El enlace de reset todavía sirve? 204 si sí; 401 si caducó, ya se usó o fue anulado. No lo consume
-    /// ni cuenta intentos: la página lo consulta al abrirse para avisar antes de pedir la contraseña.</summary>
-    [HttpPost("password/reset/validate")]
+    /// <summary>¿El enlace de reset todavía sirve y a qué oficina pertenece? 200 con <c>{status, tenant}</c>: la
+    /// página consulta al abrirse para pintar el branding correcto y rebotar al subdominio del token si el link
+    /// se abrió en otro host. No consume el token ni cuenta intentos. Espejo semántico de
+    /// <c>GET /auth/invitations/validate</c>: anti-enumeración = siempre 200.</summary>
+    [HttpGet("password/reset/validate")]
     [AllowAnonymous]
     [RateLimitExempt(
         "Anónimo (token de reset por email) — el token es imposible de adivinar y el Gateway acota la ruta por IP (PreAuthByIp)."
     )]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> ValidateResetToken(ValidateResetTokenRequest request, CancellationToken ct)
+    [ProducesResponseType<PasswordResetValidationResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ValidateResetToken([FromQuery] string token, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result>(new ValidatePasswordResetTokenQuery(request.Token), ct);
+        var result = await bus.InvokeAsync<Result<PasswordResetValidationResponse>>(
+            new ValidatePasswordResetTokenQuery(token ?? string.Empty),
+            ct
+        );
 
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);

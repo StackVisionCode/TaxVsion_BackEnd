@@ -116,9 +116,8 @@ public sealed class ModuleGateDeployWiringTests
         // el gate nunca lo habría aplicado. Un módulo que se cobra y no se hace cumplir es peor que no
         // tenerlo: el tenant paga por algo que ya podía usar.
         //
-        // Se excluyen los módulos que a propósito no gatean nada — no tienen endpoints detrás — y que
-        // por eso tampoco se venden (ver ModuleAddOnCatalog.NotBuilt).
-        string[] withoutEndpoints = ["reports", "marketing", "builder", "irs", "miles"];
+        // Estos modulos no tienen endpoints y no se venden.
+        string[] withoutEndpoints = ["marketing", "builder", "irs", "miles"];
 
         var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
         var enforcedSomewhere = Regex

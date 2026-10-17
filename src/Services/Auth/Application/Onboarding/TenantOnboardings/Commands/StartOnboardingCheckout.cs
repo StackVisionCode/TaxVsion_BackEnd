@@ -124,6 +124,10 @@ public static class StartOnboardingCheckoutHandler
         var idempotencyKey = $"onboarding-checkout-{onboarding.Id:N}";
         var primaryReservation = onboarding.CodeReservations.OrderBy(r => r.Order).FirstOrDefault();
 
+        // Nombre comercial del plan para el ChargeConcept del recibo. Si el catálogo no lo entrega
+        // (circuit-breaker, cache miss), PaymentApp cae al genérico "Subscription signup".
+        var planDisplayName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
+
         // Referencia de retorno opaca en el successUrl: permite reconciliar al volver de Stripe aunque
         // falte la cookie (otro navegador/incógnito). No es credencial de registro; TTL corto.
         var returnReference = await returnReferences.IssueAsync(
@@ -148,7 +152,8 @@ public static class StartOnboardingCheckoutHandler
                 DiscountAmountCents: onboarding.TotalDiscountCents,
                 Currency: onboarding.Currency,
                 CodeReservationId: primaryReservation?.CodeReservationId,
-                PromotionSnapshotHash: primaryReservation?.SnapshotHash
+                PromotionSnapshotHash: primaryReservation?.SnapshotHash,
+                PlanDisplayName: planDisplayName
             ),
             ct
         );
