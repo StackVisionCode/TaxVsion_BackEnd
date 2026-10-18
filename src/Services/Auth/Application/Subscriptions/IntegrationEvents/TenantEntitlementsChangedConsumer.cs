@@ -3,6 +3,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.SlotGating.Commands;
 using TaxVision.Auth.Domain.Tenants;
 
 namespace TaxVision.Auth.Application.Subscriptions.IntegrationEvents;
@@ -18,7 +19,7 @@ public static class TenantEntitlementsChangedConsumer
 {
     private const string ModuleFeaturePrefix = "module.";
 
-    public static async Task Handle(
+    public static async Task<RecomputeTenantSeatSlotsCommand> Handle(
         TenantEntitlementsChangedIntegrationEvent evt,
         ITenantPlanLimitsStore planLimits,
         IUnitOfWork unitOfWork,
@@ -31,6 +32,7 @@ public static class TenantEntitlementsChangedConsumer
             var limits = await LoadOrCreateAsync(evt, planLimits, ct);
             ApplyEntitlements(limits, evt);
             await unitOfWork.SaveChangesAsync(ct);
+            return new RecomputeTenantSeatSlotsCommand(evt.TenantId);
         }
     }
 

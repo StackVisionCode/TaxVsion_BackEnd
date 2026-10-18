@@ -22,6 +22,7 @@ using TaxVision.Auth.Application.Onboarding.Sagas.Services;
 using TaxVision.Auth.Application.Onboarding.Sessions;
 using TaxVision.Auth.Application.RateLimiting.Abstractions;
 using TaxVision.Auth.Application.ServiceTokens;
+using TaxVision.Auth.Application.SlotGating.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Terms;
 using TaxVision.Auth.Infrastructure.Cloudflare;
@@ -35,6 +36,7 @@ using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.RateLimiting;
 using TaxVision.Auth.Infrastructure.Security;
+using TaxVision.Auth.Infrastructure.SlotGating;
 using TaxVision.Auth.Infrastructure.Tenancy;
 // BuildingBlocks.Infrastructure.RateLimiting expone otro SubscriptionClientOptions (el del lector
 // de PlanRateLimits). Acá siempre se quiere el de Onboarding, que trae el BaseUrl de los clientes
@@ -85,6 +87,11 @@ public static class DependencyInjection
         services.AddScoped<IMfaRepository, MfaRepository>();
         services.AddScoped<ICredentialTokenRepository, CredentialTokenRepository>();
         services.AddScoped<ITenantPlanLimitsStore, TenantPlanLimitsStore>();
+        services.AddScoped<
+            TaxVision.Auth.Application.SlotGating.Abstractions.ITenantSeatSlotProjectionRepository,
+            TenantSeatSlotProjectionRepository
+        >();
+        services.AddScoped<ISeatSlotRecomputeSerializer, SqlSeatSlotRecomputeSerializer>();
         services.AddScoped<ITenantDomainRepository, TenantDomainRepository>();
         services.AddScoped<ITenantSubdomainReservationRepository, TenantSubdomainReservationRepository>();
         services.AddScoped<ITenantResolutionCache, TenantResolutionCache>();

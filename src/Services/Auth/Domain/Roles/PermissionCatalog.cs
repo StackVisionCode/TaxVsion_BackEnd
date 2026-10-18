@@ -301,6 +301,7 @@ public static class PermissionCatalog
     public const string SubscriptionRenew = SubscriptionPermissions.Renew;
     public const string SubscriptionAdminCrossTenant = SubscriptionPermissions.AdminCrossTenant;
     public const string SeatsManage = SubscriptionPermissions.SeatsManage;
+    public const string SeatSlotGatingManage = SubscriptionPermissions.SeatSlotGatingManage;
     public const string AddOnsManage = SubscriptionPermissions.AddOnsManage;
 
     // Tenant — RBAC Fase 8: TenantController.Get (listado cross-tenant) y ChangeStatus (antes
@@ -1853,6 +1854,15 @@ public static class PermissionCatalog
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000191"),
+            SeatSlotGatingManage,
+            "seats",
+            "Review and reorder the office's deterministic staff seat slots",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin]
         ),
     ];
 

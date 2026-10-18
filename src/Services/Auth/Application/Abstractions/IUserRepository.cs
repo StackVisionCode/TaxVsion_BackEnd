@@ -32,6 +32,9 @@ public interface IUserRepository
     /// Los usuarios de portal (clientes) no cuentan — no consumen asientos del plan.</summary>
     Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default);
 
+    Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<User>>([]);
+
     /// <summary>Admin/owner primario del tenant (TenantAdmin activo más antiguo) — destinatario de las
     /// notificaciones de facturación/ciclo de vida de la suscripción. <c>null</c> si no hay ninguno.</summary>
     Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default);

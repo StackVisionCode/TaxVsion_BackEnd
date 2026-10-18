@@ -60,6 +60,24 @@ public sealed class JwtTokenGeneratorTests
         Assert.Equal(new DateTimeOffset(reauthenticatedAt).ToUnixTimeSeconds().ToString(), claim.Value);
     }
 
+    [Fact]
+    public void Owner_token_carries_the_defensive_owner_claim()
+    {
+        var owner = User.Register(
+            Guid.NewGuid(),
+            "Olivia",
+            "Owner",
+            "owner@example.com",
+            "hash",
+            UserActorType.TenantAdmin,
+            onboardingId: Guid.NewGuid()
+        ).Value;
+
+        var token = Read(Generator().Generate(owner, "UTC", Guid.NewGuid(), [], ["pwd"]).Token);
+
+        Assert.Contains(token.Claims, claim => claim.Type == ClaimNames.IsOwner && claim.Value == "true");
+    }
+
     private static JwtTokenGenerator Generator()
     {
         var options = Options.Create(

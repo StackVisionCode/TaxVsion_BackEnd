@@ -277,6 +277,15 @@ public sealed class PaymentAppSchedulingTests
                 new Dictionary<(SaaSPaymentType, Guid), DateTime>()
             );
 
+        public Task<IReadOnlyDictionary<SaaSPaymentType, DateTime>> GetLatestSucceededCreatedAtByTypesAsync(
+            Guid tenantId,
+            IReadOnlyCollection<SaaSPaymentType> types,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<SaaSPaymentType, DateTime>>(
+                new Dictionary<SaaSPaymentType, DateTime>()
+            );
+
         public Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
             Guid? tenantId,
             PaymentStatus? status,

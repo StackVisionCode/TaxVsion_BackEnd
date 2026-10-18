@@ -14,5 +14,6 @@ public static class SubscriptionPermissions
     public const string Renew = "subscription.renew";
     public const string AdminCrossTenant = "subscription.admin.cross_tenant";
     public const string SeatsManage = "seats.manage";
+    public const string SeatSlotGatingManage = "seats.slot_gating.manage";
     public const string AddOnsManage = "addons.manage";
 }

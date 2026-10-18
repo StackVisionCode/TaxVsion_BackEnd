@@ -151,6 +151,33 @@
             "description": "URL firmada para descargar el recibo en PDF de un cobro confirmado. El archivo no se sirve desde aca: PaymentApp valida que el pago pertenece al tenant autenticado y CloudStorage firma una URL de vida corta. Requiere payment_app.saas_payment.read y esta habilitado en la superficie Account. Respuesta 200: ReceiptDownloadUrlResponse(url, expiresAtUtc). Devuelve 404 si el pago no es del tenant, y 409 si el recibo todavia se esta generando."
           },
           "response": []
+        },
+        {
+          "name": "ReconcileHostedCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/reconcile",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "payments-app",
+                "saas-payments",
+                "{{saaSPaymentId}}",
+                "reconcile"
+              ]
+            },
+            "description": "Reconcilia al instante un hosted checkout al volver del provider (?checkout=success). Lo dispara el Landing en /account/add-ons, /account/plan y /account/seats cuando detecta el flag; dentro, PaymentApp llama a FinalizeHostedCheckout del adapter (Capture Order en PayPal, retrieve+confirm en Stripe), marca el SaaSPayment Succeeded/Failed y publica el integration event correcto segun el type (SubscriptionRenewalCheckoutPaid, AddOnCheckoutPaid, SeatsCheckoutPaid, PlanChangePaymentSucceeded). Idempotente: si el webhook llego antes, devuelve el estado terminal sin tocar al provider. Solo acepta los types hosted-checkout (SubscriptionRenewalCheckout, AddOnPurchaseCharge, SeatsPurchaseCharge, PlanChangeCheckout). Scope Account, TenantAdmin o PlatformAdmin, requiere payment_app.saas_payment.read. Devuelve 200 ReconcileHostedCheckoutResponse, 404 si el pago no es del tenant, 400 si el type no se puede reconciliar."
+          },
+          "response": []
         }
       ]
     },

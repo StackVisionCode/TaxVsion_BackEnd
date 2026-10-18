@@ -1,4 +1,5 @@
-﻿using BuildingBlocks.Common;
+﻿using BuildingBlocks.Authorization.SlotGating;
+using BuildingBlocks.Common;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Results;
 using BuildingBlocks.Web.Tenancy;
@@ -18,6 +19,7 @@ public static class BuildingBlocksRegistration
         services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<CorrelationContext>());
 
         services.Configure<MvcOptions>(options => options.Filters.Add<RetryAfterHeaderFilter>());
+        services.AddOptions<SlotGatingOptions>().BindConfiguration(SlotGatingOptions.SectionName);
 
         return services;
     }

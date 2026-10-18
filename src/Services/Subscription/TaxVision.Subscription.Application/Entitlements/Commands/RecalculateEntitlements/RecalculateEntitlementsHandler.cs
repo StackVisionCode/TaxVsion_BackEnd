@@ -93,12 +93,17 @@ public static class RecalculateEntitlementsHandler
         return ParseIncludedSeats(snapshot) + CountActiveStaffSeats(tenantSeats);
     }
 
-    /// <summary>Asientos STAFF (<see cref="SeatType.Standard"/>) no terminales — los que suman al cupo de
-    /// usuarios del tenant, por encima del <c>seats.max</c> incluido en el plan. Los otros tipos
-    /// (Portal/Signature/ReadOnly/ServiceAccount) son pools aparte y no cuentan.</summary>
+    /// <summary>Asientos STAFF (<see cref="SeatType.Standard"/>) que suman al cupo de usuarios del tenant,
+    /// por encima del <c>seats.max</c> incluido en el plan. Mismo criterio que
+    /// <c>EntitlementSnapshotBuilder.CountSeatsAsync</c>: Cancelled/Expired son terminales y nunca cuentan;
+    /// Suspended tampoco (agotamos reintentos de cobro — hasta ReactivateAfterAdminReview deja de ser cupo
+    /// vendido, si no, el tenant seguiría invitando empleados a asientos que nadie paga). PastDue sí cuenta:
+    /// es la ventana de reintentos (grace natural). Los otros tipos (Portal/Signature/ReadOnly/ServiceAccount)
+    /// son pools aparte y nunca entran al cupo staff.</summary>
     public static int CountActiveStaffSeats(IReadOnlyList<SubscriptionSeat> seats) =>
         seats.Count(seat =>
-            seat.Type == SeatType.Standard && seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired)
+            seat.Type == SeatType.Standard
+            && seat.Status is not (SeatStatus.Cancelled or SeatStatus.Expired or SeatStatus.Suspended)
         );
 
     private static int ParseIncludedSeats(TenantEntitlementSnapshot snapshot)

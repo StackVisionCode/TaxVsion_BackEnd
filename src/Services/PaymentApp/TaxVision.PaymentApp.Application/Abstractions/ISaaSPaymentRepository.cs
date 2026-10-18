@@ -106,4 +106,16 @@ public interface ISaaSPaymentRepository
         IReadOnlyCollection<(SaaSPaymentType Type, Guid TargetAggregateId)> targets,
         CancellationToken ct = default
     );
+
+    /// <summary>Para cada <paramref name="types"/>, el <c>CreatedAtUtc</c> del Succeeded más reciente del
+    /// tenant, ignorando <c>TargetAggregateId</c>. Lo usa el billing history para las familias cuyo
+    /// pago vive a nivel de tenant (p. ej. subscription renewals: un off-session Failed con un
+    /// target A puede quedar saldado por un checkout Succeeded con un target B — ambos pertenecen a
+    /// la única TenantSubscription del tenant, así que agruparlos por target perdería la
+    /// equivalencia y la fila Failed quedaría zombie).</summary>
+    Task<IReadOnlyDictionary<SaaSPaymentType, DateTime>> GetLatestSucceededCreatedAtByTypesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<SaaSPaymentType> types,
+        CancellationToken ct = default
+    );
 }

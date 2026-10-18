@@ -23,9 +23,9 @@ public sealed record MySaaSPaymentResponse(
     DateTime CreatedAtUtc,
     /// <summary>Si ya hay recibo para descargar. El PDF se genera después del cobro.</summary>
     bool HasReceipt,
-    /// <summary>true cuando esta fila sigue siendo pagable: no hay otro pago Succeeded posterior del
-    /// mismo (Type, TargetAggregateId). El UI usa este flag para no mostrar "Pay now" en filas
-    /// Failed que ya quedaron saldadas por una renovación/reintento posterior.</summary>
+    /// <summary>true cuando esta fila sigue siendo pagable: no hay otro pago Succeeded posterior que la
+    /// salde. El UI usa este flag para no mostrar "Pay now" en filas Failed que ya quedaron saldadas por
+    /// una renovación/reintento posterior.</summary>
     bool CanRetry
 );
 
@@ -33,17 +33,38 @@ public sealed record MySaaSPaymentsPage(IReadOnlyList<MySaaSPaymentResponse> Ite
 
 public static class SearchMySaaSPaymentsHandler
 {
-    // Los únicos tipos "pagables" desde el historial. Otros (Refund, ChargeBack, OnboardingInitial,
-    // WalletTopUp) no abren recovery, así que no interrogamos pagos posteriores por ellos.
-    private static readonly HashSet<SaaSPaymentType> RetryableTypes =
+    // Tipos pagables del tenant que viven a nivel de TenantSubscription (hay una por tenant), por lo
+    // que un Succeeded de cualquiera de estos tipos salda un Failed anterior aunque TargetAggregateId
+    // sea distinto (el off-session apunta al TenantSubscriptionRenewal; el self-service apunta al
+    // TenantSubscriptionRenewalCheckout). Comparar por target perdería la equivalencia y la fila
+    // Failed quedaría zombie.
+    private static readonly SaaSPaymentType[] TenantWideSubscriptionTypes =
     [
         SaaSPaymentType.SubscriptionRenewal,
         SaaSPaymentType.SubscriptionRenewalCheckout,
-        SaaSPaymentType.SeatRenewal,
-        SaaSPaymentType.SeatsPurchaseCharge,
-        SaaSPaymentType.AddOnRenewal,
-        SaaSPaymentType.AddOnPurchaseCharge,
     ];
+
+    // Tipos pagables donde el target importa (cada seat / add-on tiene su propio ciclo de vida):
+    // un Succeeded no salda a otro seat/add-on, aunque sean del mismo tenant.
+    private static readonly SaaSPaymentType[][] PerTargetRetryFamilies =
+    [
+        [SaaSPaymentType.AddOnRenewal, SaaSPaymentType.AddOnPurchaseCharge],
+        [SaaSPaymentType.SeatRenewal, SaaSPaymentType.SeatsPurchaseCharge],
+    ];
+
+    private static IEnumerable<SaaSPaymentType> FamilyOf(SaaSPaymentType type)
+    {
+        foreach (var family in PerTargetRetryFamilies)
+            if (Array.IndexOf(family, type) >= 0)
+                return family;
+        return [type];
+    }
+
+    private static bool IsTenantWideSubscription(SaaSPaymentType type) =>
+        Array.IndexOf(TenantWideSubscriptionTypes, type) >= 0;
+
+    private static bool IsRetryable(SaaSPaymentType type) =>
+        IsTenantWideSubscription(type) || PerTargetRetryFamilies.Any(family => Array.IndexOf(family, type) >= 0);
 
     public static async Task<Result<MySaaSPaymentsPage>> Handle(
         SearchMySaaSPaymentsQuery query,
@@ -53,33 +74,42 @@ public static class SearchMySaaSPaymentsHandler
     {
         var (items, total) = await payments.SearchForTenantAsync(query.TenantId, query.Page, query.PageSize, ct);
 
-        // Para las filas Failed/ChargedBack de tipo pagable, preguntamos si ya hay un Succeeded
-        // posterior sobre el mismo target. Si lo hay, la fila es zombi: UI apaga Pay now.
-        var candidates = items
-            .Where(payment =>
-                (payment.Status == PaymentStatus.Failed || payment.Status == PaymentStatus.ChargedBack)
-                && RetryableTypes.Contains(payment.Type)
+        // Dos preguntas al repo: una tenant-wide para la familia subscription (comparte TenantSubscription
+        // entre todos los targets), y otra por (type, target) para las familias seat/add-on.
+        var failedOrChargedBack = items
+            .Where(p =>
+                (p.Status == PaymentStatus.Failed || p.Status == PaymentStatus.ChargedBack) && IsRetryable(p.Type)
             )
-            .Select(payment => (payment.Type, payment.TargetAggregateId))
+            .ToArray();
+
+        var needsTenantWideLookup = failedOrChargedBack.Any(p => IsTenantWideSubscription(p.Type));
+        var latestByType = needsTenantWideLookup
+            ? await payments.GetLatestSucceededCreatedAtByTypesAsync(query.TenantId, TenantWideSubscriptionTypes, ct)
+            : new Dictionary<SaaSPaymentType, DateTime>();
+
+        var perTargetCandidates = failedOrChargedBack
+            .Where(p => !IsTenantWideSubscription(p.Type))
+            .SelectMany(p => FamilyOf(p.Type).Select(familyType => (familyType, p.TargetAggregateId)))
             .Distinct()
             .ToArray();
 
-        var latestSucceeded =
-            candidates.Length == 0
+        var latestByTarget =
+            perTargetCandidates.Length == 0
                 ? new Dictionary<(SaaSPaymentType, Guid), DateTime>()
-                : await payments.GetLatestSucceededCreatedAtByTargetsAsync(query.TenantId, candidates, ct);
+                : await payments.GetLatestSucceededCreatedAtByTargetsAsync(query.TenantId, perTargetCandidates, ct);
 
         return Result.Success(
-            new MySaaSPaymentsPage(items.Select(payment => Map(payment, latestSucceeded)).ToList(), total)
+            new MySaaSPaymentsPage(items.Select(payment => Map(payment, latestByType, latestByTarget)).ToList(), total)
         );
     }
 
     private static MySaaSPaymentResponse Map(
         SaaSPayment payment,
-        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime> latestSucceeded
+        IReadOnlyDictionary<SaaSPaymentType, DateTime> latestByType,
+        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime> latestByTarget
     )
     {
-        var canRetry = ComputeCanRetry(payment, latestSucceeded);
+        var canRetry = ComputeCanRetry(payment, latestByType, latestByTarget);
         return new(
             payment.Id,
             payment.Status.ToString(),
@@ -97,16 +127,31 @@ public static class SearchMySaaSPaymentsHandler
 
     private static bool ComputeCanRetry(
         SaaSPayment payment,
-        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime> latestSucceeded
+        IReadOnlyDictionary<SaaSPaymentType, DateTime> latestByType,
+        IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime> latestByTarget
     )
     {
         if (payment.Status != PaymentStatus.Failed && payment.Status != PaymentStatus.ChargedBack)
             return false;
-        if (!RetryableTypes.Contains(payment.Type))
+        if (!IsRetryable(payment.Type))
             return false;
-        if (!latestSucceeded.TryGetValue((payment.Type, payment.TargetAggregateId), out var latest))
+
+        if (IsTenantWideSubscription(payment.Type))
+        {
+            // Un Succeeded de cualquier type de la familia subscription (sin importar target) salda la fila.
+            foreach (var familyType in TenantWideSubscriptionTypes)
+                if (latestByType.TryGetValue(familyType, out var latest) && latest > payment.CreatedAtUtc)
+                    return false;
             return true;
-        // Hay un Succeeded sobre el mismo target posterior a esta fila: la fila quedó saldada.
-        return latest <= payment.CreatedAtUtc;
+        }
+
+        // Familias seat/add-on: el Succeeded tiene que ser del mismo target (otro seat ≠ este seat).
+        foreach (var familyType in FamilyOf(payment.Type))
+            if (
+                latestByTarget.TryGetValue((familyType, payment.TargetAggregateId), out var latest)
+                && latest > payment.CreatedAtUtc
+            )
+                return false;
+        return true;
     }
 }

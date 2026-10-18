@@ -359,6 +359,17 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 600
     );
 
+    public static readonly RateLimitPolicyDefinition AuthSeatSlotPriorityOverride = Define(
+        "auth.g.seat_slot_priority_override",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 20,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 20
+    );
+
     // UpdateMyProfile — sobre el propio usuario, política propia (cualquier actor autenticado, no
     // requiere UsersManage, a diferencia de auth.g.user_manage).
     public static readonly RateLimitPolicyDefinition AuthUserProfileManage = Define(

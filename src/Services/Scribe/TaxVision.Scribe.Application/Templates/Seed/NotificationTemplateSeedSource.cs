@@ -31,7 +31,8 @@ public sealed record NotificationTemplateSeed(
     //      en vez de "The link expires on  UTC" con la fecha en blanco.
     // v15: la marca sale de {{ product_name }} (PlatformSettings) en vez de "TaxProffice" escrito; los
     //      overrides explícitos subieron uno cada uno por lo mismo.
-    int ContentVersion = 16,
+    // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
+    int ContentVersion = 17,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -84,6 +85,8 @@ public static class NotificationTemplateSeedSource
             SubscriptionRecurringChargeFailed,
             SubscriptionBillingModeChanged,
             SubscriptionMandateCreated,
+            UserSlotGated,
+            UserSlotUnlocked,
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
@@ -133,6 +136,8 @@ public static class NotificationTemplateSeedSource
         ["subscription.recurring_charge_failed"] = "We couldn't charge your saved card — please take a look.",
         ["subscription.billing_mode_changed"] = "Your billing preference was updated.",
         ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
+        ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
+        ["seats.user_unlocked.v1"] = "A team member can access the office again.",
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
@@ -173,6 +178,58 @@ public static class NotificationTemplateSeedSource
             ),
         ];
     }
+
+    private static NotificationTemplateSeed UserSlotGated { get; } =
+        new(
+            EventKey: "seats.user_gated.v1",
+            TemplateKey: "seats.user_gated.v1",
+            Name: "Seats — Team member access blocked",
+            Subject: "A team member lost access to {{ tenantName }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Team access</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#D97706" style="background-color:#D97706;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">A team member lost access</td></tr>
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ userFullName }}</strong> ({{ userEmail }}) can no longer access the office because seat #{{ slotIndex }} is suspended. Pay the add-on seat or deactivate another user to free a slot.</td></tr>
+              <tr>
+                <td align="left" style="padding:12px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ billingUrl }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open billing</a></td></tr></table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("userFullName", VariableType.String, true, null, "Full name of the gated team member."),
+                ("userEmail", VariableType.String, true, null, "Email of the gated team member."),
+                ("slotIndex", VariableType.Number, true, null, "Deterministic seat position."),
+                ("effectiveCap", VariableType.Number, true, null, "Current active seat limit."),
+                ("tenantName", VariableType.String, true, null, "Office name."),
+                ("billingUrl", VariableType.Url, true, null, "Subscription management URL."),
+            ]
+        );
+
+    private static NotificationTemplateSeed UserSlotUnlocked { get; } =
+        new(
+            EventKey: "seats.user_unlocked.v1",
+            TemplateKey: "seats.user_unlocked.v1",
+            Name: "Seats — Team member access restored",
+            Subject: "Access restored for {{ userFullName }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Team access</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#159A72" style="background-color:#159A72;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Access restored</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ userFullName }}</strong> can access {{ tenantName }} again after the seat was reactivated.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("userFullName", VariableType.String, true, null, "Full name of the restored team member."),
+                ("userEmail", VariableType.String, false, null, "Email of the restored team member."),
+                ("tenantName", VariableType.String, true, null, "Office name."),
+            ]
+        );
 
     private static NotificationTemplateSeed Invitation { get; } =
         new(

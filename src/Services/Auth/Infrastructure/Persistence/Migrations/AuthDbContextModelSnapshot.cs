@@ -3499,6 +3499,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "branding",
                             PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000191"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "seats.slot_gating.manage",
+                            Description = "Review and reorder the office's deterministic staff seat slots",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "seats",
+                            PlatformOnly = false
                         });
                 });
 
@@ -3978,6 +3992,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RemovedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("SlotPriorityAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -4015,6 +4032,39 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasFilter("[ActorType] <> N'CustomerPortal'");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Infrastructure.Persistence.Projections.TenantSeatSlotProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ComputedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EffectiveCap")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsGated")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SlotIndex")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "UserId");
+
+                    b.HasIndex("TenantId", "IsGated");
+
+                    b.HasIndex("TenantId", "SlotIndex")
+                        .IsUnique();
+
+                    b.ToTable("TenantSeatSlotProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.EmailVerificationToken", b =>

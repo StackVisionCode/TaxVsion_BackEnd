@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.SlotGating.Abstractions;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Queries;
@@ -20,7 +21,12 @@ public sealed record UserSummaryResponse(
     IReadOnlyList<string> Roles,
     // Solo tiene valor en usuarios de portal de cliente (ActorType CustomerPortal); permite al CRM
     // correlacionar un usuario del portal con el cliente de su perfil. Ver el filtro `CustomerId`.
-    Guid? CustomerId
+    Guid? CustomerId,
+    // Posición del user en el orden del seat slot gating y si quedó por encima del cupo efectivo.
+    // Null para quien no está en el projection (CustomerPortal, usuarios inactivos). El CRM lo usa
+    // para pintar la columna "Slot #" y el badge "Gated" en la pantalla Team members.
+    int? SlotIndex,
+    bool IsGated
 );
 
 public sealed record GetUsersQuery(
@@ -40,6 +46,7 @@ public static class GetUsersHandler
         GetUsersQuery query,
         IUserRepository users,
         IRoleRepository roles,
+        ITenantSeatSlotProjectionRepository slotProjections,
         CancellationToken ct
     )
     {
@@ -61,6 +68,9 @@ public static class GetUsersHandler
             ct
         );
 
+        // Una lectura del projection del tenant alimenta toda la página — más barato que un GET por fila.
+        var slots = (await slotProjections.GetByTenantAsync(query.TenantId, ct)).ToDictionary(row => row.UserId);
+
         var responses = new List<UserSummaryResponse>(items.Count);
         foreach (var user in items)
         {
@@ -70,6 +80,7 @@ public static class GetUsersHandler
             // con el nombre del rol de sistema ("Customer Portal"); el actor_type ya va en ActorType.
             var roleNames = userRoles.Where(role => role.IsActive).Select(role => role.Name).ToList();
 
+            var slot = slots.GetValueOrDefault(user.Id);
             responses.Add(
                 new UserSummaryResponse(
                     user.Id,
@@ -82,7 +93,9 @@ public static class GetUsersHandler
                     user.MfaEnabled,
                     user.CreatedAtUtc,
                     roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                    user.CustomerId
+                    user.CustomerId,
+                    slot?.SlotIndex,
+                    slot?.IsGated ?? false
                 )
             );
         }
@@ -99,6 +112,7 @@ public static class GetUserByIdHandler
         GetUserByIdQuery query,
         IUserRepository users,
         IRoleRepository roles,
+        ITenantSeatSlotProjectionRepository slotProjections,
         CancellationToken ct
     )
     {
@@ -115,6 +129,7 @@ public static class GetUserByIdHandler
         // duplicaría con el rol de sistema; el actor_type ya va en ActorType.
         var roleNames = userRoles.Where(role => role.IsActive).Select(role => role.Name).ToList();
 
+        var slot = await slotProjections.GetAsync(user.TenantId, user.Id, ct);
         return Result.Success(
             new UserSummaryResponse(
                 user.Id,
@@ -127,7 +142,9 @@ public static class GetUserByIdHandler
                 user.MfaEnabled,
                 user.CreatedAtUtc,
                 roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                user.CustomerId
+                user.CustomerId,
+                slot?.SlotIndex,
+                slot?.IsGated ?? false
             )
         );
     }

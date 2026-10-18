@@ -1,4 +1,5 @@
 using System.Net;
+using BuildingBlocks.Infrastructure.SlotGating;
 using BuildingBlocks.Platform;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
@@ -8,6 +9,7 @@ using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
+using BuildingBlocks.Web.Session;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -20,6 +22,7 @@ using Yarp.ReverseProxy.Transforms;
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("gateway");
 builder.Services.AddBuildingBlocks();
+builder.Services.AddSqlSeatSlotGate(builder.Configuration);
 
 // GW-10 — sin override: se deja el default de Kestrel (~28,6 MB). El endpoint con el cuerpo más
 // grande que atraviesa el Gateway es POST signature/documents (25 MB), así que el default cubre
@@ -63,6 +66,7 @@ builder
                             "X-RateLimit-Reset",
                             "X-RateLimit-Policy",
                             "X-RateLimit-Layer",
+                            "X-Seat-Slot-Gated",
                             "ETag"
                         )
             )
@@ -151,6 +155,10 @@ app.UseMiddleware<InternalSurfaceGuardMiddleware>();
 
 app.UseCors("spa");
 app.UseAuthentication();
+
+// Solo acá: Caddy → Gateway → servicios internos; ningún -api expone ports: públicos. Tráfico M2M
+// interno queda exento del gate por ActorType.Service en el propio middleware.
+app.UseMiddleware<SeatSlotGateMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 

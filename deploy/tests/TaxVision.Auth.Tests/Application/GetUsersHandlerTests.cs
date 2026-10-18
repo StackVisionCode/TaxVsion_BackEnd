@@ -1,4 +1,5 @@
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.SlotGating.Abstractions;
 using TaxVision.Auth.Application.Users.Queries;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
@@ -27,7 +28,13 @@ public sealed class GetUsersHandlerTests
         var users = new FakeUserRepository { Page = [user] };
         var roles = new FakeRoleRepository { UserRoles = [systemRole] };
 
-        var result = await GetUsersHandler.Handle(new GetUsersQuery(tenantId), users, roles, CancellationToken.None);
+        var result = await GetUsersHandler.Handle(
+            new GetUsersQuery(tenantId),
+            users,
+            roles,
+            new FakeSlotProjectionRepository(),
+            CancellationToken.None
+        );
 
         Assert.True(result.IsSuccess);
         var row = Assert.Single(result.Value.Items);
@@ -55,7 +62,13 @@ public sealed class GetUsersHandlerTests
         var users = new FakeUserRepository { Page = [user] };
         var roles = new FakeRoleRepository();
 
-        var result = await GetUsersHandler.Handle(new GetUsersQuery(tenantId), users, roles, CancellationToken.None);
+        var result = await GetUsersHandler.Handle(
+            new GetUsersQuery(tenantId),
+            users,
+            roles,
+            new FakeSlotProjectionRepository(),
+            CancellationToken.None
+        );
 
         var row = Assert.Single(result.Value.Items);
         Assert.Equal("Offboarded", row.Status);
@@ -78,6 +91,7 @@ public sealed class GetUsersHandlerTests
             new GetUsersQuery(Guid.NewGuid(), 1, 20, null, null, null, kind),
             users,
             new FakeRoleRepository(),
+            new FakeSlotProjectionRepository(),
             CancellationToken.None
         );
 
@@ -206,5 +220,25 @@ public sealed class GetUsersHandlerTests
 
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class FakeSlotProjectionRepository : ITenantSeatSlotProjectionRepository
+    {
+        public Task<IReadOnlyList<TenantSeatSlotProjectionRecord>> GetByTenantAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TenantSeatSlotProjectionRecord>>([]);
+
+        public Task<TenantSeatSlotProjectionRecord?> GetAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantSeatSlotProjectionRecord?>(null);
+
+        public Task ReplaceAsync(
+            Guid tenantId,
+            IReadOnlyList<TenantSeatSlotProjectionRecord> projections,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 }

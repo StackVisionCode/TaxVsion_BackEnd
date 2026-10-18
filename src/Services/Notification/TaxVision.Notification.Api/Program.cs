@@ -51,6 +51,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddNotificationInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 

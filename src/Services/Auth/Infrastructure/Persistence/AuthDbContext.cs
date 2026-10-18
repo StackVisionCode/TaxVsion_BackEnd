@@ -23,6 +23,7 @@ using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Users;
+using TaxVision.Auth.Infrastructure.Persistence.Projections;
 using Wolverine;
 
 namespace TaxVision.Auth.Infrastructure.Persistence;
@@ -44,6 +45,7 @@ public sealed class AuthDbContext(
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantPlanLimits> TenantPlanLimits => Set<TenantPlanLimits>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<TenantSeatSlotProjection> TenantSeatSlotProjections => Set<TenantSeatSlotProjection>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();

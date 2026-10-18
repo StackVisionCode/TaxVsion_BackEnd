@@ -213,6 +213,31 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
             .ToDictionary(row => (row.Type, row.TargetAggregateId), row => row.LatestCreatedAtUtc);
     }
 
+    public async Task<IReadOnlyDictionary<SaaSPaymentType, DateTime>> GetLatestSucceededCreatedAtByTypesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<SaaSPaymentType> types,
+        CancellationToken ct = default
+    )
+    {
+        if (types.Count == 0)
+            return new Dictionary<SaaSPaymentType, DateTime>();
+
+        var typeArray = types.Distinct().ToArray();
+        var rows = await db
+            .SaaSPayments.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(payment =>
+                payment.TenantId == tenantId
+                && payment.Status == PaymentStatus.Succeeded
+                && typeArray.Contains(payment.Type)
+            )
+            .GroupBy(payment => payment.Type)
+            .Select(group => new { Type = group.Key, LatestCreatedAtUtc = group.Max(payment => payment.CreatedAtUtc) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(row => row.Type, row => row.LatestCreatedAtUtc);
+    }
+
     public async Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
         Guid? tenantId,
         PaymentStatus? status,

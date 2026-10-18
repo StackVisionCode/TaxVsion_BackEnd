@@ -60,6 +60,9 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         if (user.CustomerId is Guid customerId)
             claims.Add(new Claim(ClaimNames.CustomerId, customerId.ToString()));
 
+        if (user.IsOwner)
+            claims.Add(new Claim(ClaimNames.IsOwner, "true"));
+
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(authMethods.Select(method => new Claim(JwtRegisteredClaimNames.Amr, method)));
 

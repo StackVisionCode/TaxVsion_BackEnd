@@ -94,6 +94,20 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
                 ct
             );
 
+    public async Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Users.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(user =>
+                user.TenantId == tenantId
+                && user.IsActive
+                && (user.ActorType == UserActorType.TenantEmployee || user.ActorType == UserActorType.TenantAdmin)
+            )
+            .ToListAsync(ct);
+
     public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
         db
             .Users.IgnoreQueryFilters()

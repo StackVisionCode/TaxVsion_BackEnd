@@ -9,7 +9,7 @@ public interface IJwtTokenGenerator
 {
     /// <summary>
     /// Emite un access token JWT con claims: sub, email, tenant_id, actor_type,
-    /// customer_id, zoneinfo, sid, jti, amr, roles y perm_v. No lleva permisos embebidos
+    /// customer_id, zoneinfo, sid, jti, amr, roles, perm_v e is_owner cuando aplica. No lleva permisos embebidos
     /// (RBAC Fase 7.5.10) — el resolver de permisos consulta la proyección local de
     /// cada servicio via IUserPermissionsSource, usando perm_v para detectar staleness.
     /// <para>El Account del Landing lleva <c>surface=account</c> y su propia audiencia; <paramref name="reauthenticatedAtUtc"/>

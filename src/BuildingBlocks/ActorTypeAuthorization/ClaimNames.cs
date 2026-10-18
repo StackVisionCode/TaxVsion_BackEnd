@@ -10,6 +10,7 @@ public static class ClaimNames
     public const string TenantId = "tenant_id";
     public const string CustomerId = "customer_id";
     public const string Permission = "perm";
+    public const string IsOwner = "is_owner";
 
     /// <summary>Superficie del token (ver <see cref="AccessSurface"/>). Ausente en los tokens del CRM y del portal.</summary>
     public const string Surface = "surface";

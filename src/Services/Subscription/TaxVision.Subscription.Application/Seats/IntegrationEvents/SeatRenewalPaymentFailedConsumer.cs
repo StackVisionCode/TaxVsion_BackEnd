@@ -1,9 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
+using Wolverine;
 
 namespace TaxVision.Subscription.Application.Seats.IntegrationEvents;
 
@@ -13,6 +16,7 @@ public static class SeatRenewalPaymentFailedConsumer
         SeatRenewalPaymentFailedIntegrationEvent evt,
         ISubscriptionSeatRepository seats,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SubscriptionSeat> logger,
         CancellationToken ct
@@ -42,6 +46,8 @@ public static class SeatRenewalPaymentFailedConsumer
                 return;
             }
 
+            var previousStatus = seat.Status;
+            var nowUtc = DateTime.UtcNow;
             var result = seat.FailRenewal(
                 renewal.Id,
                 evt.FailureCode,
@@ -49,7 +55,7 @@ public static class SeatRenewalPaymentFailedConsumer
                 evt.WillRetry,
                 evt.NextRetryAtUtc,
                 actorUserId: Guid.Empty,
-                DateTime.UtcNow
+                nowUtc
             );
             if (result.IsFailure)
             {
@@ -61,7 +67,32 @@ public static class SeatRenewalPaymentFailedConsumer
                 return;
             }
 
+            if (seat.Status == SeatStatus.PastDue && previousStatus != SeatStatus.PastDue)
+            {
+                var suspendResult = seat.SuspendAfterRetriesExhausted(Guid.Empty, nowUtc);
+                if (suspendResult.IsFailure)
+                {
+                    logger.LogWarning(
+                        "Could not suspend seat {SeatId} after retries exhausted: {Code}.",
+                        seat.Id,
+                        suspendResult.Error.Code
+                    );
+                }
+            }
+
             await unitOfWork.SaveChangesAsync(ct);
+            if (seat.Status == SeatStatus.Suspended && previousStatus != SeatStatus.Suspended)
+            {
+                await bus.PublishAsync(
+                    new SubscriptionSeatSuspendedIntegrationEvent
+                    {
+                        TenantId = seat.TenantId,
+                        SeatId = seat.Id,
+                        CorrelationId = correlationId,
+                    }
+                );
+                await bus.RecalculateEntitlementsSafelyAsync(seat.TenantId, logger, ct);
+            }
         }
     }
 
