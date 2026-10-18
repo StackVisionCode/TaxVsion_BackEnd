@@ -805,6 +805,15 @@ public sealed class ProcessProviderWebhookHandlerTests
                 new Dictionary<(SaaSPaymentType, Guid), DateTime>()
             );
 
+        public Task<IReadOnlyDictionary<SaaSPaymentType, DateTime>> GetLatestSucceededCreatedAtByTypesAsync(
+            Guid tenantId,
+            IReadOnlyCollection<SaaSPaymentType> types,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyDictionary<SaaSPaymentType, DateTime>>(
+                new Dictionary<SaaSPaymentType, DateTime>()
+            );
+
         public Task<(IReadOnlyList<SaaSPayment> Items, int TotalCount)> SearchForTenantAsync(
             Guid tenantId,
             int page,

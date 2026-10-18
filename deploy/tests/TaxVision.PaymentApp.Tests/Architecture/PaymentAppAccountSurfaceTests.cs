@@ -30,7 +30,14 @@ public sealed class PaymentAppAccountSurfaceTests
     {
         var allowed = SurfaceActions().Select(method => $"{method.DeclaringType!.Name}.{method.Name}").ToArray();
 
-        Assert.Equal(["SaaSPaymentsController.GetReceipt", "SaaSPaymentsController.SearchMine"], allowed);
+        Assert.Equal(
+            [
+                "SaaSPaymentsController.GetReceipt",
+                "SaaSPaymentsController.SearchMine",
+                "SaaSPaymentsReconcileController.ReconcileHostedCheckout",
+            ],
+            allowed
+        );
     }
 
     /// <summary>

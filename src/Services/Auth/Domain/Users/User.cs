@@ -2,10 +2,11 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.TimeZones;
+using TaxVision.Auth.Domain.Users.Events;
 
 namespace TaxVision.Auth.Domain.Users;
 
-public sealed class User : TenantEntity
+public sealed class User : AggregateRoot
 {
     private readonly List<string> _roles = [];
 
@@ -21,6 +22,8 @@ public sealed class User : TenantEntity
     public UserAccountKind AccountKind => UserAccountKinds.Of(ActorType);
     public Guid? CustomerId { get; private set; }
     public bool IsActive { get; private set; }
+    public DateTime? SlotPriorityAt { get; private set; }
+    public bool IsOwner => ActorType == UserActorType.TenantAdmin && SlotPriorityAt == DateTime.MinValue;
 
     /// <summary>Estado del ciclo de vida. IsActive sigue siendo la compuerta de runtime; esto solo
     /// añade la distinción terminal Offboarded (retirado, no reversible). Invariante: Offboarded ⇒ !IsActive.</summary>
@@ -120,6 +123,7 @@ public sealed class User : TenantEntity
             );
         }
 
+        var nowUtc = DateTime.UtcNow;
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -130,7 +134,8 @@ public sealed class User : TenantEntity
             ActorType = actorType,
             CustomerId = customerId,
             IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow,
+            SlotPriorityAt = ResolveInitialSlotPriority(actorType, onboardingId, nowUtc),
+            CreatedAtUtc = nowUtc,
             OnboardingId = onboardingId,
         };
 
@@ -222,15 +227,17 @@ public sealed class User : TenantEntity
     public void Deactivate(DateTime utcNow)
     {
         IsActive = false;
+        ReleaseSlotPriority();
         DeactivatedAtUtc = utcNow;
         // No degradar un retiro terminal a "desactivado" (Offboarded ya implica inactivo).
         if (Status != UserStatus.Offboarded)
             Status = UserStatus.Deactivated;
     }
 
-    public void Reactivate()
+    public void Reactivate(DateTime? nowUtc = null)
     {
         IsActive = true;
+        AssignSlotPriorityIfMissing(nowUtc ?? DateTime.UtcNow);
         DeactivatedAtUtc = null;
         Status = UserStatus.Active;
     }
@@ -243,8 +250,73 @@ public sealed class User : TenantEntity
 
         Status = UserStatus.Offboarded;
         IsActive = false;
+        ReleaseSlotPriority();
         RemovedAtUtc = utcNow;
         DeactivatedAtUtc ??= utcNow;
         return Result.Success();
     }
+
+    public Result AssignSlotPriorityIfMissing(DateTime nowUtc)
+    {
+        if (ActorType == UserActorType.CustomerPortal)
+        {
+            SlotPriorityAt = null;
+            return Result.Success();
+        }
+
+        if (ActorType is not (UserActorType.TenantAdmin or UserActorType.TenantEmployee))
+            return Result.Success();
+
+        if (SlotPriorityAt.HasValue)
+            return Result.Success();
+
+        SlotPriorityAt = nowUtc;
+        AddDomainEvent(new UserSlotPriorityAssigned(TenantId, Id, nowUtc));
+        return Result.Success();
+    }
+
+    public Result ReleaseSlotPriority()
+    {
+        if (!SlotPriorityAt.HasValue)
+            return Result.Success();
+
+        if (IsOwner)
+            return Result.Failure(new Error("User.OwnerSlot", "The account owner cannot release their slot."));
+
+        SlotPriorityAt = null;
+        AddDomainEvent(new UserSlotPriorityReleased(TenantId, Id));
+        return Result.Success();
+    }
+
+    public Result OverrideSlotPriority(DateTime? value, Guid actorAdminId, string reason)
+    {
+        if (ActorType == UserActorType.CustomerPortal)
+            return Result.Failure(new Error("User.PortalSlot", "Portal users do not occupy staff slots."));
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("User.SlotOverrideReason", "A reason is required."));
+
+        if (actorAdminId == Guid.Empty)
+            return Result.Failure(new Error("User.SlotOverrideActor", "The acting administrator is required."));
+
+        if (IsOwner && value != DateTime.MinValue)
+            return Result.Failure(new Error("User.OwnerSlot", "The account owner must remain in the first slot."));
+
+        var previous = SlotPriorityAt;
+        if (previous == value)
+            return Result.Success();
+
+        SlotPriorityAt = value;
+        AddDomainEvent(new UserSlotPriorityOverridden(TenantId, Id, previous, value, actorAdminId, reason.Trim()));
+        return Result.Success();
+    }
+
+    private static DateTime? ResolveInitialSlotPriority(UserActorType actorType, Guid? onboardingId, DateTime nowUtc) =>
+        actorType switch
+        {
+            UserActorType.CustomerPortal or UserActorType.PlatformAdmin => null,
+            UserActorType.TenantAdmin when onboardingId.HasValue => DateTime.MinValue,
+            UserActorType.TenantAdmin or UserActorType.TenantEmployee => nowUtc,
+            _ => null,
+        };
 }

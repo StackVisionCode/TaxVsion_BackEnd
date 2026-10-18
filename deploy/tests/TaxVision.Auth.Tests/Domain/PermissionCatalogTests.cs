@@ -576,6 +576,7 @@ public sealed class PermissionCatalogTests
     [Theory]
     [InlineData(PermissionCatalog.SubscriptionPlanChange)]
     [InlineData(PermissionCatalog.SeatsManage)]
+    [InlineData(PermissionCatalog.SeatSlotGatingManage)]
     [InlineData(PermissionCatalog.AddOnsManage)]
     public void Subscription_tenant_scoped_permissions_reach_tenant_admin_by_default(string code)
     {
@@ -611,9 +612,8 @@ public sealed class PermissionCatalogTests
             .All.Where(definition => definition.Module is "subscription" or "seats" or "addons")
             .ToArray();
 
-        // 7 nuevas de Subscription (5 "subscription" + seats + addons) — audit.view se reusa,
-        // no agrega fila nueva.
-        Assert.Equal(7, fase8.Length);
+        // Cinco de subscription, dos de seats y uno de addons. audit.view se reutiliza.
+        Assert.Equal(8, fase8.Length);
         Assert.Equal(fase8.Length, fase8.Select(definition => definition.Code).Distinct().Count());
         Assert.Equal(fase8.Length, fase8.Select(definition => definition.Id).Distinct().Count());
 

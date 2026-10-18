@@ -52,6 +52,20 @@ public sealed class RecalculateEntitlementsHandlerTests
     }
 
     [Fact]
+    public void CountActiveStaffSeats_excludes_suspended_seats()
+    {
+        // Suspended = agotamos reintentos de cobro; ya nadie paga ese asiento. Mantenerlo dentro del
+        // cupo dejaría al tenant invitando empleados a un asiento sin pagador — mismo criterio que
+        // EntitlementSnapshotBuilder.CountSeatsAsync (que también lo excluye).
+        var suspended = Seat(SeatType.Standard);
+        Assert.True(suspended.SuspendForPolicyViolation("test", Actor, Now).IsSuccess);
+
+        var seats = new List<SubscriptionSeat> { Seat(SeatType.Standard), suspended };
+
+        Assert.Equal(1, RecalculateEntitlementsHandler.CountActiveStaffSeats(seats));
+    }
+
+    [Fact]
     public void CountActiveStaffSeats_is_zero_when_there_are_no_seats()
     {
         Assert.Equal(0, RecalculateEntitlementsHandler.CountActiveStaffSeats([]));

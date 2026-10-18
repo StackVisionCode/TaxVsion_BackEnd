@@ -342,6 +342,8 @@ services:
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Seats__SlotGating__Mode: ${SEAT_SLOT_GATING_MODE:-Disabled}
+      Seats__SlotGating__EmitNotifications: ${SEAT_SLOT_GATING_EMIT_NOTIFICATIONS:-false}
       # Resolución por Host activa (appsettings.json): apex/www/app/client son hosts de sistema y /internal
       # (M2M por la red interna) queda exento, así que ya no hace falta apagarla en prod.
       # RS256: unico servicio con la clave privada — firma los JWT y publica el
@@ -804,6 +806,7 @@ services:
       # ClientBaseUrl solo es el FALLBACK si no se pudo resolver el host.
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
+      Seats__SlotGating__EmitNotifications: ${SEAT_SLOT_GATING_EMIT_NOTIFICATIONS:-false}
       # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
       # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
@@ -2425,6 +2428,14 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      ConnectionStrings__Auth: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
+      # Gate del asiento del usuario (SeatSlotGateMiddleware, src/BuildingBlocks/.../Session/).
+      # Default Enforce porque es el modo con el que vive el sistema desplegado; dev local corre
+      # fuera de compose (start-fleet.ps1 + appsettings.Development.json). Para apagar temporal-
+      # mente en un incidente, SEAT_SLOT_GATING_MODE=Shadow (o Disabled) en el .env y compose up:
+      # IOptionsMonitor del Gateway re-lee al próximo arranque.
+      Seats__SlotGating__Mode: ${SEAT_SLOT_GATING_MODE:-Enforce}
+      Seats__SlotGating__EmitNotifications: ${SEAT_SLOT_GATING_EMIT_NOTIFICATIONS:-true}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # CORS: los orígenes de las apps de la plataforma (apex, www, app, client) salen del dominio de
       # PlatformSettings en cada preflight; los extra (localhost y apps móviles) están en appsettings.json.

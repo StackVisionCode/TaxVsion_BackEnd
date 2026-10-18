@@ -28,6 +28,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Auth.Api.Bootstrap;
 using TaxVision.Auth.Api.Common;
+using TaxVision.Auth.Api.Health;
 using TaxVision.Auth.Api.Jobs;
 using TaxVision.Auth.Api.Middleware;
 using TaxVision.Auth.Api.RateLimiting;
@@ -49,6 +50,7 @@ using SubscriptionClientOptions = TaxVision.Auth.Infrastructure.Onboarding.HttpC
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
+builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder
     .Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
@@ -111,6 +113,7 @@ builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
 builder.Services.AddPlatformSettings(builder.Configuration);
 builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<PermissionsBackfillService>();
+builder.Services.AddHostedService<SeatSlotProjectionBackfillJob>();
 builder.Services.AddHostedService<PermissionsReconciliationService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();
@@ -161,7 +164,8 @@ builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "auth-service",
     TaxVision.Auth.Infrastructure.Onboarding.Observability.OnboardingMetrics.MeterName,
-    TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics.MeterName
+    TaxVision.Auth.Infrastructure.Subscriptions.Observability.SubscriptionAccessMetrics.MeterName,
+    TaxVision.Auth.Application.SlotGating.SeatSlotProjectionMetrics.MeterName
 );
 
 // Rate limiting para los endpoints públicos de resolución de tenant (Fase A4) —
@@ -448,6 +452,11 @@ var subscriptionHealthUrl = new Uri(
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<AuthDbContext>("sql-server", tags: ["ready"])
+    .AddCheck<SeatSlotProjectionHealthCheck>(
+        "seats-slot-projection",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"]
+    )
     .AddCheck("redis", new TcpEndpointHealthCheck(authRedis.Host, authRedis.Port), tags: ["ready"])
     .AddCheck("rabbitmq", new TcpEndpointHealthCheck(authRabbitUri.Host, authRabbitUri.Port), tags: ["ready"])
     .AddTypeActivatedCheck<HttpEndpointHealthCheck>(
@@ -506,6 +515,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<UserDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserOffboardedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserSlotGatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserSlotUnlockedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserSlotPriorityOverriddenIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserRolesChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<RolePermissionsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PasswordResetRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

@@ -20,6 +20,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
         builder.Property(user => user.ActorType).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
+        builder.Property(user => user.SlotPriorityAt);
         builder.Property(user => user.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(user => user.RemovedAtUtc);
         builder.Property(user => user.TimeZoneId).HasMaxLength(64);
@@ -47,6 +48,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(user => user.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
         builder.Ignore(user => user.Roles);
         builder.Ignore(user => user.AccountKind);
+        builder.Ignore(user => user.IsOwner);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

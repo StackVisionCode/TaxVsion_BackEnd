@@ -167,6 +167,8 @@ builder.Host.UseWolverine(options =>
     // cambió en la suscripción" — reemplaza a los antiguos Activated/PlanChanged/
     // Suspended/SeatsPurchased (retirados en la fase de cleanup).
     options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionSeatSuspendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionSeatReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // CAT-F5.2 — Admin editó el catálogo (plan/add-on). Communication lo relaya como socket broadcast
     // `catalog.changed` a todos los frontends conectados para que refetcheen GET /subscription/plans.
     // Exchange dedicado: observado en vivo que publicar al fanout compartido 'taxvision-events'

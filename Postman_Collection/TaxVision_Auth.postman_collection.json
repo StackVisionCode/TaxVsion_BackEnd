@@ -1880,6 +1880,76 @@
             "description": "Plan, asientos usados/disponibles e invitaciones restantes."
           },
           "response": []
+        },
+        {
+          "name": "GetTenantSeatSlots",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/admin/tenants/me/seat-slots",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "tenants",
+                "me",
+                "seat-slots"
+              ]
+            },
+            "description": "Deterministic seat order and current gated state for the authenticated TenantAdmin. Requires seats.slot_gating.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "OverrideUserSlotPriority",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotPriorityAt\": \"2026-01-15T10:00:00Z\",\n  \"reason\": \"Senior tax lead moved to a paid slot\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/admin/users/{{userId}}/slot-priority",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{userId}}",
+                "slot-priority"
+              ]
+            },
+            "description": "Audit-logged slot reorder for a staff user in the same tenant. TenantAdmin only, 20 requests/minute per tenant."
+          },
+          "response": []
         }
       ]
     },

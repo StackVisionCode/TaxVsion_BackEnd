@@ -134,6 +134,8 @@ public sealed class AccountSessionControllerTests
                 "AuthController.Reauthenticate",
                 "TermsController.Accept",
                 "TermsController.Status",
+                "UserSlotPriorityController.GetReport",
+                "UserSlotPriorityController.Override",
                 "UsersController.GetTenantLimits",
             },
             allowed

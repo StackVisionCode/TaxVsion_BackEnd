@@ -250,6 +250,8 @@ public static class ErrorHttpMapping
             or "Auth.AccountAdminOnly"
             or "Auth.OriginNotAllowed"
             or "Auth.AccountMfaSetupRequired"
+            or "SeatSlots.CrossTenant"
+            or "SeatSlots.AdminRequired"
             or "Subscription.Suspended"
             // Expiración/Dunning (Fase 2): acceso cortado porque la suscripción de la oficina cayó en
             // lapso. Es un bloqueo de autorización (como Tenant.Inactive/Subscription.Suspended), no un

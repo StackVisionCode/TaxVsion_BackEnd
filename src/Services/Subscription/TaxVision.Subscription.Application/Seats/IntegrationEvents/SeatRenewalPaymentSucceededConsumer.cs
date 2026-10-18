@@ -1,9 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
+using Wolverine;
 
 namespace TaxVision.Subscription.Application.Seats.IntegrationEvents;
 
@@ -15,6 +18,7 @@ public static class SeatRenewalPaymentSucceededConsumer
         SeatRenewalPaymentSucceededIntegrationEvent evt,
         ISubscriptionSeatRepository seats,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SubscriptionSeat> logger,
         CancellationToken ct
@@ -75,6 +79,18 @@ public static class SeatRenewalPaymentSucceededConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+            if (isReactivation)
+            {
+                await bus.PublishAsync(
+                    new SubscriptionSeatReactivatedIntegrationEvent
+                    {
+                        TenantId = seat.TenantId,
+                        SeatId = seat.Id,
+                        CorrelationId = correlationId,
+                    }
+                );
+                await bus.RecalculateEntitlementsSafelyAsync(seat.TenantId, logger, ct);
+            }
         }
     }
 

@@ -673,6 +673,38 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("PushDeviceTokens", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Notifications.SeatGateNotificationLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("NotifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique()
+                        .HasFilter("[ResolvedAtUtc] IS NULL");
+
+                    b.HasIndex("TenantId", "UserId", "ResolvedAtUtc");
+
+                    b.ToTable("SeatGateNotificationLogs", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Onboarding.OnboardingReceiptLookup", b =>
                 {
                     b.Property<Guid>("Id")

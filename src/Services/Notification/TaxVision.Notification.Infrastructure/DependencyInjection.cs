@@ -41,6 +41,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+        services.AddScoped<ISeatGateNotificationLogRepository, SeatGateNotificationLogRepository>();
 
         // Fase 4 del plan de notificaciones dinámicas — proyecciones locales de permisos
         // (alimentadas por UserRolesChanged/RolePermissionsChanged de Auth) + el resolver
