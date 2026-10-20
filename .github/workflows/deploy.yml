@@ -10,21 +10,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # Split en dos jobs porque un solo job solo puede referenciar UN environment, y
+  # ya nos quedamos sin cupo en `production` y `production-extra` (100 secrets por
+  # environment, limite duro de GitHub). El Job 1 lee secrets del env `production`
+  # y arma el .env + certificados; el Job 2 lee secrets del env `production-extra`
+  # y hace el deploy real. El `.env` armado por el Job 1 se pasa al Job 2 via un
+  # directorio del self-hosted runner (NO artifacts: los artifacts expondrian los
+  # secrets en la UI de GitHub durante retention-days). concurrency arriba ya
+  # garantiza que solo UN deploy corre a la vez, asi que el staging dir fijo es
+  # seguro contra colisiones.
+  stage:
     runs-on: self-hosted
-    # Repo llego al tope duro de GitHub de 100 secrets a nivel repo (el workflow ya
-    # referencia 114 nombres distintos). Un Environment da OTRO cupo de 100 secrets
-    # propio; un job que apunta a un environment ve automaticamente los secrets de
-    # ESE environment + los del repo al mismo tiempo (no hay que tocar ningun
-    # "secrets.NOMBRE" del workflow, ni mover lo que ya existe a nivel repo).
     environment: production
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       COMPOSE_FILE: deploy/docker/docker-compose.yml
       # Mismo nombre que docker-compose.yml usa vía ${TAXVISION_SECRETS_DIR:-...}
       # (antes se llamaba SECRETS_DIR acá y coincidía con el default del compose
       # solo por casualidad de valor — ahora el nombre es el mismo en los dos lados).
       TAXVISION_SECRETS_DIR: /opt/taxvision/secrets
+      # Directorio del self-hosted runner donde se stagea el .env del Job 1 para
+      # que el Job 2 lo lea. Fuera del workspace de GitHub (que se destruye entre
+      # jobs). El Job 2 lo borra al final (always()).
+      TAXVISION_STAGING_DIR: /opt/taxvision/deploy-staging
       DOTNET_INSTALL_DIR: /srv/docker/actions-runner/.dotnet
     steps:
       - name: Checkout
@@ -554,6 +562,66 @@ jobs:
           echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/firebase-service-account.json"
           chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx "$TAXVISION_SECRETS_DIR"/firebase-service-account.json
 
+      # Pasa el .env (completo, con los secrets del env `production`) al Job 2 via
+      # un directorio del runner self-hosted. NO upload-artifact: expondria los
+      # secrets en la UI de GitHub. El Job 2 lo borra con `always()` al terminar.
+      - name: Stage .env for deploy job
+        run: |
+          mkdir -p "$TAXVISION_STAGING_DIR"
+          chmod 700 "$TAXVISION_STAGING_DIR"
+          cp .env "$TAXVISION_STAGING_DIR/.env"
+          chmod 600 "$TAXVISION_STAGING_DIR/.env"
+
+      # Si el Job 1 falla despues de escribir el .env (ej. "Write JWT keys" rompe),
+      # el `.env` del workspace de este job se destruye con el workspace, pero el
+      # staged en TAXVISION_STAGING_DIR persiste. El cleanup final del Job 2 no corre
+      # porque Job 2 nunca arranca (needs: stage falla). Este step lo borra ante
+      # cualquier fallo del Job 1 — en success no se ejecuta porque Job 2 lo necesita.
+      - name: Cleanup staged .env on stage failure
+        if: failure()
+        run: rm -f "$TAXVISION_STAGING_DIR/.env"
+
+  deploy:
+    runs-on: self-hosted
+    needs: stage
+    environment: production-extra
+    timeout-minutes: 45
+    env:
+      COMPOSE_FILE: deploy/docker/docker-compose.yml
+      TAXVISION_SECRETS_DIR: /opt/taxvision/secrets
+      TAXVISION_STAGING_DIR: /opt/taxvision/deploy-staging
+      DOTNET_INSTALL_DIR: /srv/docker/actions-runner/.dotnet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Toma el .env preparado por el Job 1 (con todos los secrets del env `production`)
+      # y le agrega abajo los del env `production-extra`. Mismo contrato que el .env
+      # original — este job termina con un archivo IDENTICO en forma al que escribia
+      # el job unico de antes, docker compose lo consume igual.
+      - name: Load staged .env from stage job
+        run: |
+          if [ ! -f "$TAXVISION_STAGING_DIR/.env" ]; then
+            echo "::error::No se encontro el .env staged en $TAXVISION_STAGING_DIR/.env — Job 1 (stage) no corrio correctamente."
+            exit 1
+          fi
+          cp "$TAXVISION_STAGING_DIR/.env" .env
+          chmod 600 .env
+
+      # Append de los secrets del env `production-extra`. VACIO al arrancar — este
+      # bloque crece cuando se quede sin cupo el env `production` (hoy ambos envs
+      # llegaron al tope) y el usuario mueva o agregue secrets nuevos en `production-extra`.
+      # Cada entrada que agregues aqui debe tener su contraparte como secret en el env
+      # `production-extra` en Settings → Environments → production-extra.
+      - name: Append production-extra secrets to .env
+        run: |
+          cat >> .env <<EOF
+          # ---------- production-extra environment (secrets nuevos post-cupo) ----------
+          # Ejemplo:
+          # NEW_SECRET_1=${{ secrets.NEW_SECRET_1 }}
+          # NEW_SECRET_2=${{ secrets.NEW_SECRET_2 }}
+          EOF
+
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este
       # build por completo (Compose ignora servicios cuyo profile no está activo, en
       # CUALQUIER comando, no solo `up`). El runner self-hosted conserva el tag
@@ -703,3 +771,12 @@ jobs:
           docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=200 \
             gateway auth-api tenant-api customer-api cloudstorage-api caddy || true
           exit 1
+
+      # Siempre borra el .env staged del runner (success o failure). Los JWT keys
+      # y PFX en $TAXVISION_SECRETS_DIR NO se tocan — el compose los monta y deben
+      # persistir entre deploys.
+      - name: Cleanup staged .env
+        if: always()
+        run: |
+          rm -f "$TAXVISION_STAGING_DIR/.env"
+          rm -f .env
