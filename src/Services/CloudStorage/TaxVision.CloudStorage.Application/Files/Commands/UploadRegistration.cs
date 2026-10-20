@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
@@ -32,6 +33,7 @@ internal static class UploadRegistration
         string correlationId,
         IStorageLimitRepository limits,
         IObjectKeyBuilder keyBuilder,
+        ISystemFolderProvisioner systemFolders,
         CloudStorageOptions config,
         ISystemClock clock,
         IMessageBus bus,
@@ -109,7 +111,24 @@ internal static class UploadRegistration
             clock.UtcNow.AddHours(Math.Clamp(config.UploadReservationHours, 1, 168))
         );
         if (registered.IsFailure)
+        {
             limit.Release(sizeBytes);
+            return registered;
+        }
+
+        if (folderType == FolderType.ClientForms && ownerType == OwnerType.Customer)
+        {
+            var folderId = await systemFolders.ResolveFolderIdAsync(
+                tenantId,
+                ownerType,
+                ownerId,
+                folderType,
+                actorId,
+                clock.UtcNow,
+                ct
+            );
+            registered.Value.MoveToFolder(folderId, clock.UtcNow);
+        }
 
         return registered;
     }

@@ -66,6 +66,7 @@ public static class InitiateUploadHandler
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectKeyBuilder keyBuilder,
+        ISystemFolderProvisioner systemFolders,
         IObjectStorage storage,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
@@ -103,6 +104,7 @@ public static class InitiateUploadHandler
             command.Audit.CorrelationId,
             limits,
             keyBuilder,
+            systemFolders,
             config,
             clock,
             bus,
@@ -365,6 +367,20 @@ public static class ScanFileHandler
                         clock.UtcNow
                     )
                 );
+                await bus.PublishAsync(
+                    new FileScanFailedIntegrationEvent
+                    {
+                        TenantId = command.TenantId,
+                        FileId = file.Id,
+                        ObjectKey = file.ObjectKey,
+                        Reason = "content_type_mismatch",
+                        OwnerType = file.OwnerType.ToString(),
+                        OwnerId = file.OwnerId,
+                        FolderType = file.FolderType.ToString(),
+                        CreatedBy = file.CreatedBy,
+                        CorrelationId = command.CorrelationId,
+                    }
+                );
                 await unitOfWork.SaveChangesAsync(ct);
                 return;
             }
@@ -416,6 +432,9 @@ public static class ScanFileHandler
                                 ObjectKey = file.ObjectKey,
                                 PolicyReason = reason,
                                 CreatedBy = file.CreatedBy,
+                                OwnerType = file.OwnerType.ToString(),
+                                OwnerId = file.OwnerId,
+                                FolderType = file.FolderType.ToString(),
                                 CorrelationId = command.CorrelationId,
                             }
                         );
@@ -490,10 +509,13 @@ public static class ScanFileHandler
                         OwnerType = file.OwnerType.ToString(),
                         OwnerId = file.OwnerId,
                         FolderId = file.FolderId,
+                        FolderType = file.FolderType.ToString(),
+                        OriginalName = file.OriginalName,
+                        TaxYear = file.TaxYear,
                         CorrelationId = command.CorrelationId,
                     }
                 );
-                if (command.PortalCustomerId is { } customerId)
+                if (command.PortalCustomerId is { } customerId && file.FolderType != FolderType.ClientForms)
                 {
                     await bus.PublishAsync(
                         new CustomerDocumentUploadedIntegrationEvent
@@ -534,6 +556,9 @@ public static class ScanFileHandler
                         FileId = file.Id,
                         ObjectKey = file.ObjectKey,
                         ScanReport = scan.Report,
+                        OwnerType = file.OwnerType.ToString(),
+                        OwnerId = file.OwnerId,
+                        FolderType = file.FolderType.ToString(),
                         CorrelationId = command.CorrelationId,
                     }
                 );
@@ -566,6 +591,20 @@ public static class ScanFileHandler
                 var limit = await limits.GetAsync(command.TenantId, CancellationToken.None);
                 limit?.Release(file.SizeBytes);
                 file.MarkScanFailed($"Unexpected error: {ex.GetType().Name}: {ex.Message}", clock.UtcNow);
+                await bus.PublishAsync(
+                    new FileScanFailedIntegrationEvent
+                    {
+                        TenantId = command.TenantId,
+                        FileId = file.Id,
+                        ObjectKey = file.ObjectKey,
+                        Reason = "scan_error",
+                        OwnerType = file.OwnerType.ToString(),
+                        OwnerId = file.OwnerId,
+                        FolderType = file.FolderType.ToString(),
+                        CreatedBy = file.CreatedBy,
+                        CorrelationId = command.CorrelationId,
+                    }
+                );
                 await unitOfWork.SaveChangesAsync(CancellationToken.None);
             }
             catch (Exception recoveryEx)

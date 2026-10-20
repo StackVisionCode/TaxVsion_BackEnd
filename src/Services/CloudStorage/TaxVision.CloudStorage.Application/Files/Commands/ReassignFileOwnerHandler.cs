@@ -41,6 +41,12 @@ public static class ReassignFileOwnerHandler
                 return;
             }
 
+            if (file.FolderType == FolderType.ClientForms)
+            {
+                logger.LogWarning("ReassignFileOwner {FileId}: Client Forms files are exclusive.", evt.FileId);
+                return;
+            }
+
             if (!Enum.TryParse<OwnerType>(evt.NewOwnerType, ignoreCase: true, out var ownerType))
             {
                 logger.LogError(

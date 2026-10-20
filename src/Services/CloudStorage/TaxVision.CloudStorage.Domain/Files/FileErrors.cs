@@ -36,6 +36,10 @@ public static class FileErrors
         "File.UnsupportedType",
         "The file type is not allowed or does not match its content."
     );
+    public static readonly Error ExclusiveToClientForms = new(
+        "File.ExclusiveToClientForms",
+        "Client Forms files cannot be moved or reassigned. Copy the file instead."
+    );
 
     /// <summary>
     /// Antes esto caia en UnsupportedType junto con extension/content-type invalidos —

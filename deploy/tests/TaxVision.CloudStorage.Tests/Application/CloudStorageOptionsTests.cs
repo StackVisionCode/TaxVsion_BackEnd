@@ -196,6 +196,33 @@ public sealed class CloudStorageOptionsTests
     }
 
     [Fact]
+    public void ClientForms_uses_its_restricted_policy_and_plan_limit()
+    {
+        var options = Options();
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".docx", ".zip"],
+            AllowedContentTypes =
+            [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/zip",
+            ],
+        };
+
+        var policy = options.ResolveUploadPolicy("starter", FolderType.ClientForms);
+
+        Assert.Equal(10L * 1024 * 1024, policy.MaxFileSizeBytes);
+        Assert.Contains(".pdf", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(".docx", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".zip", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".exe", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.False(FolderType.ClientForms.RequiresYear());
+        Assert.Equal("client-forms", FolderType.ClientForms.ToSegment());
+    }
+
+    [Fact]
     public void ResolveFolderTypePolicy_falls_back_to_Other_when_a_FolderType_has_no_entry()
     {
         var options = Options();

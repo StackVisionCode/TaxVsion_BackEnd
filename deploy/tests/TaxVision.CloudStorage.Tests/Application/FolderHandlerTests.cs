@@ -413,6 +413,70 @@ public sealed class FolderHandlerTests
     }
 
     [Fact]
+    public async Task MoveFileToFolder_rejects_moving_ClientForms_outside_its_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var file = FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Customer,
+                customerId,
+                FolderType.ClientForms,
+                null,
+                ObjectKey.Create($"tenants/{tenantId:N}/customer/{customerId:N}/client-forms/{Guid.NewGuid():N}.pdf").Value,
+                "form.pdf",
+                "application/pdf",
+                10,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(1)
+            )
+            .Value;
+        var destination = Folder
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Customer,
+                customerId,
+                null,
+                FolderName.Create("Documents").Value,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var folders = new FakeFolderRepository();
+        folders.Seed(destination);
+
+        var result = await MoveFileToFolderHandler.Handle(
+            new MoveFileToFolderCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                file.Id,
+                destination.Id,
+                new RequestAuditContext(null, null, "corr-client-forms")
+            ),
+            files,
+            folders,
+            new FakeShareLinkRepository(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.ExclusiveToClientForms, result.Error);
+        Assert.Null(file.FolderId);
+    }
+
+    [Fact]
     public async Task GetFolderContents_only_returns_the_caller_tenant_s_subfolders_and_files()
     {
         var tenantId = Guid.NewGuid();

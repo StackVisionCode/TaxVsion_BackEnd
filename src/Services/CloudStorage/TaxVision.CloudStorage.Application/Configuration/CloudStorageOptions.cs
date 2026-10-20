@@ -174,6 +174,7 @@ public sealed class CloudStorageOptions
             [FolderType.Branding] = BrandingPolicy(),
             [FolderType.VoiceNotes] = VoiceNotesPolicy(),
             [FolderType.SaaSReceipts] = SaaSReceiptsPolicy(),
+            [FolderType.ClientForms] = ClientFormsPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -429,6 +430,23 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 5L * 1024 * 1024,
             AllowedExtensions = [".pdf"],
             AllowedContentTypes = ["application/pdf"],
+        };
+
+    private static StorageFolderTypePolicy ClientFormsPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 25L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".csv", ".txt"],
+            AllowedContentTypes =
+            [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "text/csv",
+                "text/plain",
+            ],
         };
 
     private static StorageFolderTypePolicy BackupsPolicy() =>

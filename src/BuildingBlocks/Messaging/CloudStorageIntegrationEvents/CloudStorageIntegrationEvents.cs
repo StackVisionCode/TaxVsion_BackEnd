@@ -18,6 +18,9 @@ public sealed record FileAvailableIntegrationEvent : IntegrationEvent
     public Guid? OwnerId { get; init; }
 
     public Guid? FolderId { get; init; }
+    public string? FolderType { get; init; }
+    public string? OriginalName { get; init; }
+    public int? TaxYear { get; init; }
 }
 
 public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
@@ -25,6 +28,9 @@ public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
     public required Guid FileId { get; init; }
     public required string ObjectKey { get; init; }
     public required string ScanReport { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
 }
 
 /// <summary>
@@ -37,6 +43,20 @@ public sealed record FileBlockedByPolicyIntegrationEvent : IntegrationEvent
     public required string ObjectKey { get; init; }
     public required string PolicyReason { get; init; }
     public required Guid CreatedBy { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
+}
+
+public sealed record FileScanFailedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required string ObjectKey { get; init; }
+    public required string Reason { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
+    public Guid? CreatedBy { get; init; }
 }
 
 /// <summary>

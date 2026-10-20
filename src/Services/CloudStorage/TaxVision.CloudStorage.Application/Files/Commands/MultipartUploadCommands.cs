@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
@@ -28,6 +29,7 @@ public static class InitiateMultipartUploadHandler
         IStorageLimitRepository limits,
         IStorageAuditRepository audit,
         IObjectKeyBuilder keyBuilder,
+        ISystemFolderProvisioner systemFolders,
         IMultipartUploadStorage multipartStorage,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
@@ -67,6 +69,7 @@ public static class InitiateMultipartUploadHandler
             command.Audit.CorrelationId,
             limits,
             keyBuilder,
+            systemFolders,
             config,
             clock,
             bus,

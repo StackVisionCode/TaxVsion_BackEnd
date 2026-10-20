@@ -414,21 +414,28 @@ public static class MoveFileToFolderHandler
         if (file is null || !command.Scope.CanAccess(file))
             return Result.Failure(FileErrors.NotFound);
 
+        Folder? destination = null;
         if (command.FolderId is { } folderId)
         {
-            var folder = await folders.GetAsync(command.TenantId, folderId, ct);
-            if (folder is null)
+            destination = await folders.GetAsync(command.TenantId, folderId, ct);
+            if (destination is null)
                 return Result.Failure(FolderErrors.NotFound);
-            if (folder.OwnerType != file.OwnerType || folder.OwnerId != file.OwnerId)
+            if (destination.OwnerType != file.OwnerType || destination.OwnerId != file.OwnerId)
                 return Result.Failure(FolderErrors.OwnerMismatch);
             // Portal con Upload deny en la carpeta destino: 403 con reason.
-            if (command.Scope.IsDeniedForPortal(AccessResourceType.Folder, folder.Id, AccessCapability.Upload))
+            if (command.Scope.IsDeniedForPortal(AccessResourceType.Folder, destination.Id, AccessCapability.Upload))
                 return Result.Failure(
                     CustomerAccessDenied.With(
-                        command.Scope.DenyReasonFor(AccessResourceType.Folder, folder.Id, AccessCapability.Upload)
+                        command.Scope.DenyReasonFor(AccessResourceType.Folder, destination.Id, AccessCapability.Upload)
                     )
                 );
         }
+
+        if (
+            file.FolderType == FolderType.ClientForms
+            && !string.Equals(destination?.Category, "sys.clientforms", StringComparison.Ordinal)
+        )
+            return Result.Failure(FileErrors.ExclusiveToClientForms);
 
         file.MoveToFolder(command.FolderId, clock.UtcNow);
 

@@ -326,6 +326,25 @@ public sealed class FilesController(
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpPost("{fileId:guid}/copies")]
+    [HasPermission(CloudStoragePermissions.FileUpload)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.i.upload")]
+    [ProducesResponseType<CopiedFileResponse>(StatusCodes.Status201Created)]
+    public async Task<IActionResult> Copy(Guid fileId, CopyFileRequest request, CancellationToken ct)
+    {
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CopiedFileResponse>>(
+            new CopyFileCommand(tenantId, actorId, scope, fileId, request, AuditContext()),
+            ct
+        );
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetById), new { fileId = result.Value.FileId }, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record LegalHoldRequest(string Reason);
 
     /// <summary>Fase L1.2 — bloquea purge/hard-delete/soft-delete. Platform-only (cloudstorage.legal.manage).</summary>

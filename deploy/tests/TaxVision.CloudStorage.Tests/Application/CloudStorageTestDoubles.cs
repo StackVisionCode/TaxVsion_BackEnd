@@ -666,6 +666,7 @@ internal sealed class FakeDmcaNoticeRepository : IDmcaNoticeRepository
 internal sealed class FakeObjectStorage : IObjectStorage
 {
     public List<(string Bucket, string ObjectKey)> Deleted { get; } = [];
+    public byte[] DownloadContent { get; set; } = [];
 
     public Task<PresignedUpload> CreateUploadPolicyAsync(
         string bucket,
@@ -710,11 +711,14 @@ internal sealed class FakeObjectStorage : IObjectStorage
                 || Copied.Any(c => c.DestinationBucket == bucket && c.DestinationObjectKey == objectKey)
         );
 
-    public Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>
-        throw new NotImplementedException();
+    public async Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>
+        await destination.WriteAsync(DownloadContent, ct);
 
-    public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct) =>
-        throw new NotImplementedException();
+    public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct)
+    {
+        Copied.Add((sourceBucket, objectKey, destinationBucket, objectKey));
+        return Task.CompletedTask;
+    }
 
     public List<(
         string SourceBucket,

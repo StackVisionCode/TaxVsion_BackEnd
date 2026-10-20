@@ -32,6 +32,7 @@ public static class SystemFolderCatalog
         [FolderType.Tasks] = new("Task Documents", "sys.tasks"),
         [FolderType.Signatures] = new("Signed Documents", "sys.signatures"),
         [FolderType.VoiceNotes] = new("Voice Notes", "sys.voicenotes"),
+        [FolderType.ClientForms] = new("Client Forms", "sys.clientforms"),
     };
 
     /// <summary>Devuelve la carpeta de sistema de un tipo navegable, o false si es interno.</summary>

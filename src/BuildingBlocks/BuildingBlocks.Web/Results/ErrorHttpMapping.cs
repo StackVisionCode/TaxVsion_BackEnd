@@ -363,6 +363,7 @@ public static class ErrorHttpMapping
             "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
                 StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed"
+            or "File.ExclusiveToClientForms"
             or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
             or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
             var code

@@ -214,6 +214,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<FileInfectedDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileBlockedByPolicyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FilePendingReviewIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileScanFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileBlockedByDmcaTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileReinstatedFromTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileDeletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
