@@ -24,6 +24,7 @@ import { getSupportAgentMessages } from '../../../application/use-cases/get-supp
 import { searchSupportAgents } from '../../../application/use-cases/search-support-agents.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
+import { OptionalBooleanQuery } from '../schemas/strict-boolean-query.js';
 
 const OpenBody = z.object({
   subject: z.string().min(1).max(200),
@@ -39,9 +40,9 @@ const ReopenBody = z.object({ reason: z.string().max(500).optional() });
 const ListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
-  includeClosed: z.coerce.boolean().optional(),
+  includeClosed: OptionalBooleanQuery,
   view: z.enum(['customer', 'agent']).optional(),
-  mine: z.coerce.boolean().optional(),
+  mine: OptionalBooleanQuery,
 });
 
 const AgentSearchQuery = z.object({
@@ -60,7 +61,11 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   // POST /communication/support — el customer (o TenantEmployee) abre un ticket.
   app.post('/communication/support', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    const openPermCheck = await checkPermission(principal, CommunicationPermissions.SupportOpen, container.userPermissions);
+    const openPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.SupportOpen,
+      container.userPermissions,
+    );
     if (!openPermCheck.allowed) {
       return reply
         .code(permissionCheckHttpStatus(openPermCheck))
@@ -69,11 +74,18 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     if (principal.tenantId === container.platform.getPlatformTenantId()) {
       return reply
         .code(400)
-        .send({ code: 'Support.PlatformCannotOpen', message: 'Platform users open tickets from a customer tenant only.' });
+        .send({
+          code: 'Support.PlatformCannotOpen',
+          message: 'Platform users open tickets from a customer tenant only.',
+        });
     }
     const body = OpenBody.parse(request.body);
     const openerEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
-    const openerDisplayName = await resolveDisplayName(container.userDirectory, principal.userId, openerEmail);
+    const openerDisplayName = await resolveDisplayName(
+      container.userDirectory,
+      principal.userId,
+      openerEmail,
+    );
     const result = await openSupportTicket(
       {
         tenantId: principal.tenantId,
@@ -101,11 +113,16 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
       await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
     ).allowed;
     const view =
-      query.view ?? (isPlatformTenant && (hasAgentPerm || isPlatformAdminActorType(principal.actorType)) ? 'agent' : 'customer');
+      query.view ??
+      (isPlatformTenant && (hasAgentPerm || isPlatformAdminActorType(principal.actorType))
+        ? 'agent'
+        : 'customer');
 
     if (view === 'agent') {
       if (!isPlatformTenant || (!hasAgentPerm && !isPlatformAdminActorType(principal.actorType))) {
-        return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
+        return reply
+          .code(403)
+          .send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
       }
       const result = await listSupportTicketsForAgent(
         {
@@ -149,7 +166,9 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
       await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
     ).allowed;
     if (!isPlatformTenant || (!hasAgentPerm && !isPlatformAdminActorType(principal.actorType))) {
-      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
+      return reply
+        .code(403)
+        .send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
     }
 
     const query = AgentSearchQuery.parse(request.query);
@@ -185,11 +204,7 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     );
     if (!result.isSuccess) {
       const status =
-        result.error.code === 'Support.NotFound'
-          ? 404
-          : result.error.code === 'Auth.Forbidden'
-            ? 403
-            : 400;
+        result.error.code === 'Support.NotFound' ? 404 : result.error.code === 'Auth.Forbidden' ? 403 : 400;
       return reply.code(status).send({ code: result.error.code, message: result.error.message });
     }
     return reply.send(result.value);
@@ -197,35 +212,39 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
 
   // GET /communication/support/:id/messages — historial del chat del ticket para el AGENTE
   // (la conversación vive en el tenant del cliente; se lee cross-tenant como el placeholder "Support Team").
-  app.get('/communication/support/:id/messages', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const query = MessagesQuery.parse(request.query);
-    const hasAgentPerm = (
-      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
-    ).allowed;
-    const result = await getSupportAgentMessages(
-      {
-        ticketId: params.id,
-        agent: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          hasAgentPermission: hasAgentPerm,
-          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+  app.get(
+    '/communication/support/:id/messages',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const query = MessagesQuery.parse(request.query);
+      const hasAgentPerm = (
+        await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+      ).allowed;
+      const result = await getSupportAgentMessages(
+        {
+          ticketId: params.id,
+          agent: {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            hasAgentPermission: hasAgentPerm,
+            isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+          },
+          take: query.take,
+          ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
         },
-        take: query.take,
-        ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
-        code: result.error.code,
-        message: result.error.message,
-      });
-    }
-    return reply.send(result.value);
-  });
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // POST /communication/support/:id/claim — agente reclama un ticket Open.
   app.post('/communication/support/:id/claim', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -258,124 +277,140 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   });
 
   // POST /communication/support/:id/resolve — cualquiera de las dos partes.
-  app.post('/communication/support/:id/resolve', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const hasAgentPermResolve = (
-      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
-    ).allowed;
-    const result = await resolveSupportTicket(
-      {
-        correlationId: request.id,
-        ticketId: params.id,
-        actor: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          hasAgentPermission: hasAgentPermResolve,
-          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+  app.post(
+    '/communication/support/:id/resolve',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const hasAgentPermResolve = (
+        await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+      ).allowed;
+      const result = await resolveSupportTicket(
+        {
+          correlationId: request.id,
+          ticketId: params.id,
+          actor: {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            hasAgentPermission: hasAgentPermResolve,
+            isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+          },
         },
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
-        code: result.error.code,
-        message: result.error.message,
-      });
-    }
-    return reply.send(result.value);
-  });
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // POST /communication/support/:id/reassign — agente o PlatformAdmin reasigna a otro agente.
-  app.post('/communication/support/:id/reassign', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = ReassignBody.parse(request.body);
-    const hasAgentPerm = (
-      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
-    ).allowed;
-    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
-    const result = await reassignSupportTicket(
-      {
-        correlationId: request.id,
-        ticketId: params.id,
-        actor: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          hasAgentPermission: hasAgentPerm,
-          isPlatformAdmin,
+  app.post(
+    '/communication/support/:id/reassign',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = ReassignBody.parse(request.body);
+      const hasAgentPerm = (
+        await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+      ).allowed;
+      const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
+      const result = await reassignSupportTicket(
+        {
+          correlationId: request.id,
+          ticketId: params.id,
+          actor: {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            hasAgentPermission: hasAgentPerm,
+            isPlatformAdmin,
+          },
+          newAgentUserId: body.newAgentUserId,
         },
-        newAgentUserId: body.newAgentUserId,
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
-        code: result.error.code,
-        message: result.error.message,
-      });
-    }
-    return reply.send(result.value);
-  });
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // POST /communication/support/:id/escalate — agente o PlatformAdmin cambia prioridad.
-  app.post('/communication/support/:id/escalate', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = EscalateBody.parse(request.body);
-    const hasAgentPerm = (
-      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
-    ).allowed;
-    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
-    const result = await escalateSupportTicket(
-      {
-        correlationId: request.id,
-        ticketId: params.id,
-        actor: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          hasAgentPermission: hasAgentPerm,
-          isPlatformAdmin,
+  app.post(
+    '/communication/support/:id/escalate',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = EscalateBody.parse(request.body);
+      const hasAgentPerm = (
+        await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+      ).allowed;
+      const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
+      const result = await escalateSupportTicket(
+        {
+          correlationId: request.id,
+          ticketId: params.id,
+          actor: {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            hasAgentPermission: hasAgentPerm,
+            isPlatformAdmin,
+          },
+          newPriority: body.newPriority,
         },
-        newPriority: body.newPriority,
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
-        code: result.error.code,
-        message: result.error.message,
-      });
-    }
-    return reply.send(result.value);
-  });
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // POST /communication/support/:id/reopen — opener, agente asignado o PlatformAdmin.
-  app.post('/communication/support/:id/reopen', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const principal = request.principal!;
-    const params = IdParams.parse(request.params);
-    const body = ReopenBody.safeParse(request.body);
-    const result = await reopenSupportTicket(
-      {
-        correlationId: request.id,
-        ticketId: params.id,
-        actor: {
-          userId: principal.userId,
-          tenantId: principal.tenantId,
-          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+  app.post(
+    '/communication/support/:id/reopen',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const body = ReopenBody.safeParse(request.body);
+      const result = await reopenSupportTicket(
+        {
+          correlationId: request.id,
+          ticketId: params.id,
+          actor: {
+            userId: principal.userId,
+            tenantId: principal.tenantId,
+            isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+          },
+          reason: body.success ? (body.data.reason ?? null) : null,
         },
-        reason: body.success ? body.data.reason ?? null : null,
-      },
-      container,
-    );
-    if (!result.isSuccess) {
-      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
-        code: result.error.code,
-        message: result.error.message,
-      });
-    }
-    return reply.send(result.value);
-  });
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return reply.send(result.value);
+    },
+  );
 
   // POST /communication/support/:id/close — opener, agente asignado o PlatformAdmin.
   app.post('/communication/support/:id/close', { preHandler: [app.authenticate] }, async (request, reply) => {

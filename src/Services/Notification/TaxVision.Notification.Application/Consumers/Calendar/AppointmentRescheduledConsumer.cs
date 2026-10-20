@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
@@ -32,6 +33,7 @@ public static class AppointmentRescheduledConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         IUserNotificationPreferenceRepository preferences,
+        NotificationDispatcher dispatcher,
         ILogger<AppointmentRescheduledIntegrationEvent> logger,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -51,6 +53,21 @@ public static class AppointmentRescheduledConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            await CalendarRecipients.PublishInAppAsync(
+                dispatcher,
+                evt.Recipients,
+                evt.TenantId,
+                evt.AppointmentId,
+                evt.EventId,
+                NotificationKinds.CalendarAppointmentRescheduled,
+                "calendar.appointment_rescheduled.v1",
+                evt.OccurredOn,
+                "Cita reprogramada",
+                correlation.CorrelationId,
+                customerId: null,
+                ct
+            );
+
             var render = (
                 await scribeClient.RenderAsync(
                     TemplateKey,

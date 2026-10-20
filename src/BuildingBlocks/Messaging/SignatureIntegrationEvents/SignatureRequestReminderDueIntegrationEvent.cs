@@ -22,4 +22,11 @@ public sealed record SignatureRequestReminderDueIntegrationEvent : IntegrationEv
 
     /// <summary>Canal preferido del firmante: "Email" | "Sms". Default "Email".</summary>
     public string PreferredChannel { get; init; } = "Email";
+
+    /// <summary>
+    /// T7.3: si el firmante es un cliente registrado del tenant (no externo), su CustomerId —
+    /// permite a Notification consultar <see cref="CustomerContactPolicyProjection"/> antes de
+    /// enviar el recordatorio por email/SMS. Null = firmante externo (siempre recibe).
+    /// </summary>
+    public Guid? MappedCustomerId { get; init; }
 }

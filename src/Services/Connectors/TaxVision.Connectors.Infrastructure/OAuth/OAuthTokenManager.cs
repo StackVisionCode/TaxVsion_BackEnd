@@ -167,6 +167,8 @@ public sealed class OAuthTokenManager(
                 ErrorCode = error.Code,
                 FailedAtUtc = DateTime.UtcNow,
                 CreatedByUserId = accountResult.IsSuccess ? accountResult.Value.CreatedByUserId : Guid.Empty,
+                IsOfficeMailbox = accountResult.IsSuccess ? accountResult.Value.IsOffice : null,
+                MailboxOwnerUserId = accountResult.IsSuccess ? accountResult.Value.OwnerUserId : null,
             }
         );
     }

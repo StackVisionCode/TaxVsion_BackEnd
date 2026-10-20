@@ -15,7 +15,6 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(c => c.DisplayName).HasMaxLength(200).IsRequired();
         b.Property(c => c.DateOfBirth);
-        b.Property(c => c.PreferredChannel).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(c => c.Language).HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(c => c.ProfilePictureFileId);
         b.Property(c => c.OccupationId);
@@ -77,6 +76,16 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
                 p.Property(x => x.E164Value).HasColumnName("PrimaryPhone").HasMaxLength(20);
             }
         );
+
+        b.OwnsOne(
+            c => c.ContactPolicy,
+            cp =>
+            {
+                cp.Property(x => x.EmailEnabled).HasColumnName("ContactPolicy_EmailEnabled").HasDefaultValue(true);
+                cp.Property(x => x.SmsEnabled).HasColumnName("ContactPolicy_SmsEnabled").HasDefaultValue(true);
+            }
+        );
+        b.Navigation(c => c.ContactPolicy).IsRequired();
 
         // ---- Child entities navigation ----
 

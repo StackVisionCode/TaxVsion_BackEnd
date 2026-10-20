@@ -151,7 +151,6 @@ public sealed class CustomerDuplicateGuardTests
                 email,
                 null,
                 Language.En,
-                PreferredChannel.Email,
                 overwrite
             ),
             repo,
@@ -175,7 +174,6 @@ public sealed class CustomerDuplicateGuardTests
                 CustomerId: customerId,
                 ModifiedByUserId: User,
                 Language: Language.En,
-                PreferredChannel: PreferredChannel.Email,
                 OccupationId: null,
                 ProfilePictureFileId: null,
                 PrimaryEmail: email,

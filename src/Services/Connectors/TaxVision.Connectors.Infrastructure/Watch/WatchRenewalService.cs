@@ -82,12 +82,16 @@ public sealed class WatchRenewalService(
 
         var tenantId = Guid.Empty;
         var createdByUserId = Guid.Empty;
+        bool? isOfficeMailbox = null;
+        Guid? mailboxOwnerUserId = null;
         var accountResult = await accountRepository.GetByIdAsync(subscription.AccountId, ct);
         if (accountResult.IsSuccess)
         {
             accountResult.Value.MarkError(now);
             tenantId = accountResult.Value.TenantId;
             createdByUserId = accountResult.Value.CreatedByUserId;
+            isOfficeMailbox = accountResult.Value.IsOffice;
+            mailboxOwnerUserId = accountResult.Value.OwnerUserId;
         }
 
         await unitOfWork.SaveChangesAsync(ct);
@@ -103,6 +107,8 @@ public sealed class WatchRenewalService(
                 FailureCount = subscription.FailureCount,
                 ExpiredAtUtc = now,
                 CreatedByUserId = createdByUserId,
+                IsOfficeMailbox = isOfficeMailbox,
+                MailboxOwnerUserId = mailboxOwnerUserId,
             }
         );
 

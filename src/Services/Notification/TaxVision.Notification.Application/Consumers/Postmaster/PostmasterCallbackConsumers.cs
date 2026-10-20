@@ -8,11 +8,20 @@ using TaxVision.Notification.Domain.Notifications;
 namespace TaxVision.Notification.Application.Consumers.Postmaster;
 
 /// <summary>
-/// Consumers de callbacks Postmaster → Notification (5 tipos, Fase 4). Cada uno resuelve el
+/// Consumers de callbacks Postmaster -> Notification. Cada uno resuelve el
 /// <see cref="NotificationLog"/> por <c>NotificationLogId</c> y transiciona el
 /// <see cref="NotificationDispatchAttempt"/> correspondiente. Dedup por Wolverine
 /// <c>UseDurableInbox</c> vía <c>MessageId</c> del evento (ya activo a nivel de servicio).
 /// </summary>
+internal static class PostmasterCallbackHandling
+{
+    public const string OrderingPendingCode = "NotificationDispatchAttempt.OrderingPending";
+    public const string AlreadyInStatusCode = "NotificationDispatchAttempt.AlreadyInStatus";
+
+    public static string ResolveCorrelation(string correlationId, Guid eventId) =>
+        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
+}
+
 public static class PostmasterEmailDeliverySucceededConsumer
 {
     public static async Task Handle(
@@ -24,7 +33,7 @@ public static class PostmasterEmailDeliverySucceededConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
             if (log is null)
@@ -44,8 +53,10 @@ public static class PostmasterEmailDeliverySucceededConsumer
             );
             if (result.IsFailure)
             {
-                logger.LogWarning(
-                    "Succeeded callback for log {LogId} attempt {AttemptId} rejected: {Error}",
+                // Succeeded nunca puede estar "pendiente de orden": Sent viene desde Queued, no
+                // depende de ningún otro callback previo. Si falla, es idempotente (ya aplicado o terminal).
+                logger.LogDebug(
+                    "Succeeded callback for log {LogId} attempt {AttemptId} ignored: {Error}",
                     evt.NotificationLogId,
                     evt.DispatchAttemptId,
                     result.Error.Message
@@ -56,9 +67,6 @@ public static class PostmasterEmailDeliverySucceededConsumer
             await uow.SaveChangesAsync(ct);
         }
     }
-
-    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }
 
 public static class PostmasterEmailDeliveryFailedConsumer
@@ -72,7 +80,7 @@ public static class PostmasterEmailDeliveryFailedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
             if (log is null)
@@ -83,20 +91,27 @@ public static class PostmasterEmailDeliveryFailedConsumer
                 );
                 return;
             }
-            log.UpdateAttemptStatus(
+            var result = log.UpdateAttemptStatus(
                 evt.DispatchAttemptId,
                 NotificationDispatchAttemptStatus.Failed,
                 providerMessageId: evt.ProviderMessageId,
                 errorReason: evt.Reason,
                 eventAtUtc: evt.EventAtUtc
             );
+            if (result.IsFailure)
+            {
+                logger.LogDebug(
+                    "Failed callback for log {LogId} attempt {AttemptId} ignored: {Error}",
+                    evt.NotificationLogId,
+                    evt.DispatchAttemptId,
+                    result.Error.Message
+                );
+                return;
+            }
             log.MarkFailed(evt.Reason);
             await uow.SaveChangesAsync(ct);
         }
     }
-
-    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }
 
 public static class PostmasterEmailDeliveryBouncedConsumer
@@ -110,7 +125,7 @@ public static class PostmasterEmailDeliveryBouncedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
             if (log is null)
@@ -118,20 +133,35 @@ public static class PostmasterEmailDeliveryBouncedConsumer
                 logger.LogWarning("Bounced callback for unknown log {LogId}; dropping.", evt.NotificationLogId);
                 return;
             }
-            log.UpdateAttemptStatus(
+            var result = log.UpdateAttemptStatus(
                 evt.DispatchAttemptId,
                 NotificationDispatchAttemptStatus.Bounced,
                 providerMessageId: evt.ProviderMessageId,
                 errorReason: $"{evt.BounceType}: {evt.Reason}",
                 eventAtUtc: evt.EventAtUtc
             );
+            if (result.IsFailure)
+            {
+                if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
+                {
+                    // Bounced llegó antes que Sent; dejar que Wolverine reintente con backoff
+                    // en vez de perder el bounce silenciosamente.
+                    throw new InvalidOperationException(
+                        $"Bounced callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
+                    );
+                }
+                logger.LogDebug(
+                    "Bounced callback for log {LogId} attempt {AttemptId} ignored: {Error}",
+                    evt.NotificationLogId,
+                    evt.DispatchAttemptId,
+                    result.Error.Message
+                );
+                return;
+            }
             log.MarkFailed($"Bounce ({evt.BounceType}): {evt.Reason}");
             await uow.SaveChangesAsync(ct);
         }
     }
-
-    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }
 
 public static class PostmasterEmailDeliverySuppressedConsumer
@@ -145,7 +175,7 @@ public static class PostmasterEmailDeliverySuppressedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
             if (log is null)
@@ -153,19 +183,26 @@ public static class PostmasterEmailDeliverySuppressedConsumer
                 logger.LogWarning("Suppressed callback for unknown log {LogId}; dropping.", evt.NotificationLogId);
                 return;
             }
-            log.UpdateAttemptStatus(
+            var result = log.UpdateAttemptStatus(
                 evt.DispatchAttemptId,
                 NotificationDispatchAttemptStatus.Suppressed,
                 errorReason: evt.SuppressionReason,
                 eventAtUtc: evt.EventAtUtc
             );
+            if (result.IsFailure)
+            {
+                logger.LogDebug(
+                    "Suppressed callback for log {LogId} attempt {AttemptId} ignored: {Error}",
+                    evt.NotificationLogId,
+                    evt.DispatchAttemptId,
+                    result.Error.Message
+                );
+                return;
+            }
             log.MarkFailed($"Suppressed: {evt.SuppressionReason}");
             await uow.SaveChangesAsync(ct);
         }
     }
-
-    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }
 
 public static class PostmasterEmailDeliveryProviderNotConfiguredConsumer
@@ -182,7 +219,7 @@ public static class PostmasterEmailDeliveryProviderNotConfiguredConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
             if (log is null)
@@ -193,12 +230,22 @@ public static class PostmasterEmailDeliveryProviderNotConfiguredConsumer
                 );
                 return;
             }
-            log.UpdateAttemptStatus(
+            var result = log.UpdateAttemptStatus(
                 evt.DispatchAttemptId,
                 NotificationDispatchAttemptStatus.ProviderNotConfigured,
                 errorReason: ReasonMessage,
                 eventAtUtc: evt.EventAtUtc
             );
+            if (result.IsFailure)
+            {
+                logger.LogDebug(
+                    "ProviderNotConfigured callback for log {LogId} attempt {AttemptId} ignored: {Error}",
+                    evt.NotificationLogId,
+                    evt.DispatchAttemptId,
+                    result.Error.Message
+                );
+                return;
+            }
             log.MarkFailed(ReasonMessage);
             await uow.SaveChangesAsync(ct);
             logger.LogWarning(
@@ -209,7 +256,4 @@ public static class PostmasterEmailDeliveryProviderNotConfiguredConsumer
             );
         }
     }
-
-    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }

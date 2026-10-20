@@ -163,6 +163,8 @@ public class OAuthTokenManagerTests
         Assert.Equal(fixture.Account.Id, failedEvent.AccountId);
         Assert.Equal("invalid_grant", failedEvent.Reason);
         Assert.Equal(fixture.Account.CreatedByUserId, failedEvent.CreatedByUserId);
+        Assert.True(failedEvent.IsOfficeMailbox);
+        Assert.Null(failedEvent.MailboxOwnerUserId);
     }
 
     [Fact]

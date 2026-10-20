@@ -259,7 +259,14 @@ public static class SignerVerificationChallengeIssuedConsumer
             evt.SignerLanguage == "Es"
                 ? $"Tu codigo {brand}: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
                 : $"Your {brand} code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
-        return smsSender.SendAsync(evt.DeliveryAddress, body, ct);
+        // El EventId es estable por reintento y no depende del codigo plain-text.
+        return smsSender.SendAsync(
+            evt.DeliveryAddress,
+            body,
+            ct,
+            SignatureTemplateCatalog.VerificationChallengeKey,
+            evt.EventId.ToString("N")
+        );
     }
 
     private static async Task<Result> SendAppPushAsync(

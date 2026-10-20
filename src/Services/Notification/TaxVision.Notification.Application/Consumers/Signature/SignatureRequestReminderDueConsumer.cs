@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -26,6 +27,7 @@ public static class SignatureRequestReminderDueConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
+        ICustomerContactPolicyRepository contactPolicies,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
@@ -41,17 +43,37 @@ public static class SignatureRequestReminderDueConsumer
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var inviteLink = TenantEmailLinks.SigningLink(tenantHost, portal.Value, evt.PublicToken);
 
-            // Canal preferido del firmante: SMS con el enlace si lo eligió y tiene teléfono, si no email.
-            if (
+            var prefersSms =
                 string.Equals(evt.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(evt.PhoneE164)
+                && !string.IsNullOrWhiteSpace(evt.PhoneE164);
+
+            // T7.3: respeta ContactPolicy del cliente si el firmante está mapeado. Externos (sin
+            // MappedCustomerId) siguen recibiendo — es su único canal.
+            if (
+                !await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
+                    evt.TenantId,
+                    evt.MappedCustomerId,
+                    prefersSms ? CustomerContactChannel.Sms : CustomerContactChannel.Email,
+                    contactPolicies,
+                    ct
+                )
             )
+                return;
+
+            // Canal preferido del firmante: SMS con el enlace si lo eligió y tiene teléfono, si no email.
+            if (prefersSms)
             {
                 var body =
                     evt.Language == "Es"
                         ? $"{platform.Current.BrandName}: {evt.FullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {inviteLink}"
                         : $"{platform.Current.BrandName}: {evt.FullName}, you still have a document to sign. Sign it here: {inviteLink}";
-                await smsSender.SendAsync(evt.PhoneE164!, body, ct);
+                await smsSender.SendAsync(
+                    evt.PhoneE164!,
+                    body,
+                    ct,
+                    templateKey: null,
+                    idempotencyToken: evt.EventId.ToString("N")
+                );
                 return;
             }
 

@@ -52,6 +52,11 @@ export const CommunicationPermissions = {
   PortalCallsUse: 'portal.calls.use',
 } as const;
 
+export const ConnectorsPermissions = {
+  AccountsWrite: 'connectors.accounts.write',
+  AccountsOfficeRead: 'connectors.accounts.office.read',
+} as const;
+
 export type CommunicationPermission =
   (typeof CommunicationPermissions)[keyof typeof CommunicationPermissions];
 

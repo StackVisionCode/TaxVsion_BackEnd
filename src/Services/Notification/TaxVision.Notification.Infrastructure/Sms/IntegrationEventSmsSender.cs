@@ -30,7 +30,13 @@ public sealed class IntegrationEventSmsSender(
     ILogger<IntegrationEventSmsSender> logger
 ) : ISmsSender
 {
-    public async Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default)
+    public async Task<Result> SendAsync(
+        string phoneNumber,
+        string text,
+        CancellationToken ct,
+        string? templateKey,
+        string? idempotencyToken
+    )
     {
         if (string.IsNullOrWhiteSpace(phoneNumber))
             return Result.Failure(new Error("Notification.Sms.NoDestination", "SMS destination phone is required."));
@@ -42,16 +48,20 @@ public sealed class IntegrationEventSmsSender(
         }
 
         var tenantId = tenant.TenantId;
+        var trimmedPhone = phoneNumber.Trim();
         await bus.PublishAsync(
             new SmsSendRequestedIntegrationEvent
             {
                 TenantId = tenantId,
                 CorrelationId = correlation.CorrelationId,
-                To = phoneNumber.Trim(),
+                To = trimmedPhone,
                 Body = text,
                 CustomerId = DeterministicCustomerId(phoneNumber),
-                IdempotencyKey = DeriveIdempotencyKey(tenantId, phoneNumber, text),
-                SourceContext = "notification:sms",
+                IdempotencyKey = DeriveIdempotencyKey(tenantId, trimmedPhone, templateKey, idempotencyToken, text),
+                SourceContext = string.IsNullOrWhiteSpace(templateKey)
+                    ? "notification:sms"
+                    : $"notification:sms:{templateKey}",
+                TemplateKey = templateKey,
             }
         );
 
@@ -65,9 +75,20 @@ public sealed class IntegrationEventSmsSender(
         return new Guid(hash.AsSpan(0, 16));
     }
 
-    private static string DeriveIdempotencyKey(Guid tenantId, string phoneNumber, string text)
+    // Material estable de idempotencia: cuando el caller provee un token (p. ej. EventId del
+    // hecho de origen), la clave no depende del texto y no puede usarse para fuerza-bruta sobre
+    // el OTP guardado. Si no hay token, cae al patrón legacy por tenant|phone|text.
+    private static string DeriveIdempotencyKey(
+        Guid tenantId,
+        string phoneNumber,
+        string? templateKey,
+        string? idempotencyToken,
+        string text
+    )
     {
-        var material = $"{tenantId:N}|{phoneNumber.Trim()}|{text}";
+        var material = string.IsNullOrWhiteSpace(idempotencyToken)
+            ? $"{tenantId:N}|{phoneNumber}|{text}"
+            : $"{tenantId:N}|{phoneNumber}|{templateKey ?? string.Empty}|{idempotencyToken}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }

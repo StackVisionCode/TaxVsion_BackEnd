@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -31,6 +32,7 @@ public static class AppointmentAttendeeAddedConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         IUserNotificationPreferenceRepository preferences,
+        NotificationDispatcher dispatcher,
         ILogger<AppointmentAttendeeAddedIntegrationEvent> logger,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -53,6 +55,21 @@ public static class AppointmentAttendeeAddedConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            await CalendarRecipients.PublishInAppAsync(
+                dispatcher,
+                [new AppointmentRecipient(email, evt.UserId)],
+                evt.TenantId,
+                evt.AppointmentId,
+                evt.EventId,
+                NotificationKinds.CalendarAttendeeAdded,
+                "calendar.attendee_added.v1",
+                evt.OccurredOn,
+                $"Te agregaron a una cita: {evt.Title}",
+                correlation.CorrelationId,
+                evt.CustomerId,
+                ct
+            );
+
             var render = (
                 await scribeClient.RenderAsync(
                     TemplateKey,

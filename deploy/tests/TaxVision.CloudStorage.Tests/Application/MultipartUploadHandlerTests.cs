@@ -189,15 +189,15 @@ public sealed class MultipartUploadHandlerTests
         Assert.Empty(multipart.Initiated);
     }
 
-    private static FileObject PendingUploadFile(Guid tenantId, long sizeBytes)
+    private static FileObject PendingUploadFile(Guid tenantId, long sizeBytes, Guid? customerId = null)
     {
         var key = ObjectKey.Create($"tenants/{tenantId:N}/tenant/documents/2025/{Guid.NewGuid():N}.pdf").Value;
         return FileObject
             .Register(
                 Guid.NewGuid(),
                 tenantId,
-                OwnerType.Tenant,
-                null,
+                customerId.HasValue ? OwnerType.Customer : OwnerType.Tenant,
+                customerId,
                 FolderType.Documents,
                 2025,
                 key,
@@ -255,8 +255,50 @@ public sealed class MultipartUploadHandlerTests
             multipart.Completed,
             c => c.UploadId == "upload-abc" && c.ObjectKey == file.ObjectKey && c.Parts.Count == 2
         );
-        Assert.Single(bus.Published.OfType<ScanFileCommand>(), cmd => cmd.FileId == file.Id);
+        Assert.Single(
+            bus.Published.OfType<ScanFileCommand>(),
+            cmd => cmd.FileId == file.Id && cmd.PortalCustomerId is null
+        );
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Complete_from_portal_carries_customer_to_scan_command()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var file = PendingUploadFile(tenantId, sizeBytes: 12L * 1024 * 1024, customerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var storage = new FakeObjectStorage { SizeToReturn = file.SizeBytes };
+        var bus = new FakeMessageBus();
+
+        var result = await CompleteMultipartUploadHandler.Handle(
+            new CompleteMultipartUploadCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(true, customerId),
+                file.Id,
+                new CompleteMultipartUploadRequest("upload-portal", [new MultipartPartCompletion(1, "etag-1")]),
+                Audit()
+            ),
+            files,
+            new FakeStorageLimitRepository(),
+            new FakeStorageAuditRepository(),
+            storage,
+            new FakeMultipartUploadStorage(),
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(
+            bus.Published.OfType<ScanFileCommand>(),
+            cmd => cmd.FileId == file.Id && cmd.PortalCustomerId == customerId
+        );
     }
 
     [Fact]

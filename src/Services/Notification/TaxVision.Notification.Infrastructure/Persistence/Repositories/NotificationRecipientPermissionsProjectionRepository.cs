@@ -44,6 +44,30 @@ public sealed class NotificationRecipientPermissionsProjectionRepository(Notific
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Guid>> FilterActiveWithCapabilityAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> userIds,
+        string? requiredCapability,
+        CancellationToken ct = default
+    )
+    {
+        if (userIds.Count == 0)
+            return [];
+
+        var rows = await db
+            .NotificationRecipientPermissionsProjections.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.IsActive && userIds.Contains(p.UserId))
+            .ToListAsync(ct);
+
+        if (requiredCapability is null)
+            return rows.Select(p => p.UserId).ToList();
+
+        return rows.Where(p => p.PermissionCodes().Contains(requiredCapability, StringComparer.OrdinalIgnoreCase))
+            .Select(p => p.UserId)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<NotificationRecipientPermissionsProjection>> FindActiveByTenantAndRoleIdAsync(
         Guid tenantId,
         Guid roleId,

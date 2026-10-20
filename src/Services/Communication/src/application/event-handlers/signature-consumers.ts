@@ -1,41 +1,22 @@
-import { pushNotification, type PushNotificationCommand } from '../use-cases/push-notification.js';
+import { pushAndEmitNotification, type BellNotificationInput } from '../use-cases/push-notification.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
-import type { NotificationActionMappingRepository } from '../ports/notification-action-mapping-repository.js';
-import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 import { randomUUID } from 'node:crypto';
 
-/**
- * Consumers de Signature -> in-app notifications. Cada handler:
- *   1. Extrae del envelope los IDs relevantes.
- *   2. Determina destinatario (SignerId, HostUserId, etc.).
- *   3. Compone `pushNotification` con kind estable + metadata deep-link.
- *   4. Si created=true, emite `notification.received` al room del user.
- *
- * Cierra pendiente README §29.19: canal push app para SignerVerificationChallengeIssued.
- * Cierra README §29.10: notifs in-app para Signature ciclo de vida.
- *
- * Fase 6 (notificaciones dinamicas): `documentSignedHandler` es el unico migrado a
- * doble audiencia (Preparer + CustomerSigner) resuelta via `NotificationActionMapping`
- * — el resto de los handlers de este archivo ya tenian un destinatario explicito real
- * y quedan sin tocar, por alcance explicito del plan.
- */
+// Consumers de firma -> notificaciones in-app. Resuelven destinatario,
+// componen el payload canonico (resourceType/resourceId/titleKey/action/...)
+// y, cuando el evento cambia la fila de la lista del CRM, emiten tambien
+// un ping por-tenant para refrescar la tabla sin recargar.
 type SignatureConsumerDeps = {
   notifications: NotificationRepository;
   emitter: RealtimeEmitter;
   customerPortalAccounts: CustomerPortalAccountRepository;
-  actionMappings: NotificationActionMappingRepository;
 };
 
-/**
- * Eventos de firma que cambian el ESTADO visible en la lista de solicitudes del CRM (pending →
- * signed/rejected/completed/…). Por cada uno, además de la notificación in-app por-usuario, se emite
- * un `signature.request.changed` por-TENANT para que la lista de CUALQUIER empleado se refresque en
- * vivo (mismo patrón que Correspondence → Mail). Los eventos informativos (reminder, pin_failed,
- * verification_challenge) no cambian la fila, así que no emiten.
- */
+// Eventos de firma que cambian el estado visible en la lista del CRM.
+// Los eventos informativos no estan aqui, por eso no emiten el ping.
 const LIST_CHANGING_EVENTS = new Set<string>([
   'signature.document.signed.v1',
   'signature.signer.rejected.v1',
@@ -43,18 +24,19 @@ const LIST_CHANGING_EVENTS = new Set<string>([
   'signature.request.canceled.v1',
   'signature.request.expired.v1',
   'signature.request.ready_for_sending.v1',
-  'signature.request.sealed.v1',
   'signature.request.expiration_extended.v1',
   'signature.preparer.signed.v1',
 ]);
 
 const SIGNATURE_REQUEST_CHANGED_EVENT = 'signature.request.changed';
 
+const SIGNATURES_CATEGORY = 'Signatures';
+const RESOURCE_SIGNATURE_REQUEST = 'signature_request';
+
 export function bindSignatureConsumers(
   registerRaw: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
   deps: SignatureConsumerDeps,
 ): void {
-  // Envuelve el register: tras el handler original, si el evento cambia la lista, emite el ping por-tenant.
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>): void => {
     registerRaw(eventType, async (env) => {
       await handler(env);
@@ -64,450 +46,324 @@ export function bindSignatureConsumers(
     });
   };
 
-  register('signature.signer.invited.v1', (env) =>
-    signerInvitedHandler(env, deps),
-  );
-  register('signature.document.signed.v1', (env) =>
-    documentSignedHandler(env, deps),
-  );
-  register('signature.request.completed.v1', (env) =>
-    requestCompletedHandler(env, deps),
-  );
-  register('signature.request.canceled.v1', (env) =>
-    requestCanceledHandler(env, deps),
-  );
-  register('signature.request.reminder_due.v1', (env) =>
-    reminderDueHandler(env, deps),
-  );
-  register('signature.request.sealed.v1', (env) =>
-    requestSealedHandler(env, deps),
-  );
-  register('signature.signer.verification.challenge_issued.v1', (env) =>
-    pushChallengeHandler(env, deps),
-  );
-  register('signature.signer.rejected.v1', (env) =>
-    signerRejectedHandler(env, deps),
-  );
-  register('signature.signer.verification.failed.v1', (env) =>
-    verificationFailedHandler(env, deps),
-  );
-  register('signature.request.sealing_failed.v1', (env) =>
-    sealingFailedHandler(env, deps),
-  );
-  register('signature.request.expiration_extended.v1', (env) =>
-    expirationExtendedHandler(env, deps),
-  );
-  register('signature.request.ready_for_sending.v1', (env) =>
-    readyForSendingHandler(env, deps),
-  );
-  register('signature.signer.pin_failed.v1', (env) =>
-    pinFailedHandler(env, deps),
-  );
-  register('signature.preparer.signed.v1', (env) =>
-    preparerSignedHandler(env, deps),
-  );
-  register('signature.request.expired.v1', (env) =>
-    requestExpiredHandler(env, deps),
-  );
+  register('signature.document.signed.v1', (env) => documentSignedHandler(env, deps));
+  register('signature.request.completed.v1', (env) => requestCompletedHandler(env, deps));
+  register('signature.request.canceled.v1', (env) => requestCanceledHandler(env, deps));
+  register('signature.signer.rejected.v1', (env) => signerRejectedHandler(env, deps));
+  register('signature.signer.verification.failed.v1', (env) => verificationFailedHandler(env, deps));
+  register('signature.request.sealing_failed.v1', (env) => sealingFailedHandler(env, deps));
+  register('signature.request.expiration_extended.v1', listOnlyHandler);
+  register('signature.request.ready_for_sending.v1', listOnlyHandler);
+  register('signature.signer.pin_failed.v1', (env) => pinFailedHandler(env, deps));
+  register('signature.preparer.signed.v1', listOnlyHandler);
+  register('signature.request.expired.v1', (env) => requestExpiredHandler(env, deps));
 }
 
-async function signerInvitedHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const signerId = getString(env.payload, 'signerId') ?? getString(env.payload, 'SignerId');
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  if (!signerId || !requestId) return;
-  await push(env, {
-    userId: signerId,
-    kind: 'signature.signer.invited',
-    priority: 'Normal',
-    title: 'Nuevo documento para firmar',
-    body: 'Se te invito a firmar un documento.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-/**
- * Fase 6: la misma "cosa que paso" (un firmante firmo) genera hasta DOS notificaciones
- * independientes, cada una con su propia audiencia y su propia accion — nunca una sola
- * notificacion "compartida". El preparador (createdBy) siempre existe y ya se resolvia
- * antes de esta fase; el cliente-firmante (CustomerSigner) es nuevo y condicional: solo
- * si el Signer esta vinculado a un Customer registrado (MappedCustomerId) Y ese Customer
- * tiene una cuenta de portal activa hoy. Un firmante externo (el caso mas comun) no
- * genera ninguna fila nueva — sigue con su email de siempre, sin error ni intento fallido.
- */
+// La misma firma del documento genera dos filas con audiencias y copys distintos:
+// el preparador (CreatedByUserId, siempre existe) y el firmante-cliente del portal
+// (opcional: solo si MappedCustomerId tiene cuenta de portal activa). Los kinds
+// son distintos para que el front resuelva copy e icono por audiencia; el deep link
+// comun es el mismo (signature_request + id).
 async function documentSignedHandler(env: IncomingEnvelope, deps: SignatureConsumerDeps): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   if (!requestId || !createdBy) return;
 
-  const preparerAction = await resolveAction(env.eventType, 'Preparer', deps.actionMappings, {
-    signatureRequestId: requestId,
-  });
   await push(
     env,
     {
       userId: createdBy,
       kind: 'signature.document.signed',
       priority: 'Normal',
-      title: 'Firma recibida',
-      body: 'Un firmante completo su firma en un documento.',
-      metadata: { signatureRequestId: requestId, ...preparerAction },
+      title: 'A signer completed a document',
+      body: 'A signer finished signing a document on your request.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.document.signed.title',
+      bodyKey: 'notif.signature.document.signed.body',
+      params: { signatureRequestId: requestId },
     },
     deps,
   );
 
-  const mappedCustomerId = getString(env.payload, 'mappedCustomerId') ?? getString(env.payload, 'MappedCustomerId');
+  const mappedCustomerId =
+    getString(env.payload, 'mappedCustomerId') ?? getString(env.payload, 'MappedCustomerId');
   if (!mappedCustomerId) return;
   const portalAccount = await deps.customerPortalAccounts.findActiveByCustomerId(mappedCustomerId);
   if (!portalAccount) return;
 
-  const customerAction = await resolveAction(env.eventType, 'CustomerSigner', deps.actionMappings, {
-    signatureRequestId: requestId,
-  });
   await push(
     env,
     {
       userId: portalAccount.userId,
-      kind: 'signature.document.signed',
+      kind: 'signature.document.signed.customer_signer',
       priority: 'Normal',
-      title: 'Documento firmado',
-      body: 'Tu firma en el documento fue registrada correctamente.',
-      metadata: { signatureRequestId: requestId, ...customerAction },
+      title: 'Your signature was recorded',
+      body: 'Your signature on the document has been recorded.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'open',
+      titleKey: 'notif.signature.document.signed.customer_signer.title',
+      bodyKey: 'notif.signature.document.signed.customer_signer.body',
+      params: { signatureRequestId: requestId },
     },
     deps,
   );
-}
-
-/**
- * Resuelve la accion (deep-link o ninguna) para una combinacion (evento, audiencia) via
- * `NotificationActionMapping`. Sin fila (mapping no seedeado todavia) o ActionType=None:
- * la notificacion se crea igual, solo que sin accion asociada (informativa).
- */
-async function resolveAction(
-  eventKey: string,
-  audienceRole: string,
-  mappings: NotificationActionMappingRepository,
-  placeholders: Readonly<Record<string, string>>,
-): Promise<{ actionType: 'DeepLink' | 'None'; actionUrl?: string }> {
-  const mapping = await mappings.findByEventKeyAndAudienceRole(eventKey, audienceRole);
-  if (!mapping || mapping.actionType === 'None' || !mapping.urlTemplate) {
-    return { actionType: 'None' };
-  }
-  const actionUrl = mapping.urlTemplate.replace(/\{(\w+)\}/g, (match, key: string) => placeholders[key] ?? match);
-  return { actionType: 'DeepLink', actionUrl };
 }
 
 async function requestCompletedHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.completed',
-    priority: 'High',
-    title: 'Solicitud de firma completada',
-    body: 'Todos los firmantes han firmado el documento.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.request.completed',
+      priority: 'High',
+      title: 'Signature request completed',
+      body: 'All signers have signed the document.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.request.completed.title',
+      bodyKey: 'notif.signature.request.completed.body',
+      params: { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
 async function requestCanceledHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-  if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.canceled',
-    priority: 'Normal',
-    title: 'Solicitud de firma cancelada',
-    body: 'La solicitud de firma fue cancelada.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-async function reminderDueHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const signerId = getString(env.payload, 'signerId') ?? getString(env.payload, 'SignerId');
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  if (!signerId || !requestId) return;
-  await push(env, {
-    userId: signerId,
-    kind: 'signature.reminder_due',
-    priority: 'High',
-    title: 'Recordatorio: firma pendiente',
-    body: 'Tienes un documento por firmar que esta por vencer.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-async function requestSealedHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-  if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.sealed',
-    priority: 'Normal',
-    title: 'Documento sellado',
-    body: 'El PDF fue sellado con PAdES-B y esta disponible.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-/**
- * Push app-based challenge — canal `App` de Signature. Cierra pendiente
- * README §29.19 explicito.
- */
-async function pushChallengeHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const method = getString(env.payload, 'method') ?? getString(env.payload, 'Method');
-  if (method !== 'App') return; // solo procesamos App-based; SmsOtp/EmailOtp van por Notification service.
-  const signerId = getString(env.payload, 'signerId') ?? getString(env.payload, 'SignerId');
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  if (!signerId || !requestId) return;
-  await push(env, {
-    userId: signerId,
-    kind: 'signature.push_challenge',
-    priority: 'Urgent',
-    title: 'Verificacion requerida',
-    body: 'Aprueba el reto en la app para continuar con la firma.',
-    metadata: { signatureRequestId: requestId, method: 'App' },
-  }, deps);
+  const canceledBy = getString(env.payload, 'canceledByUserId') ?? getString(env.payload, 'CanceledByUserId');
+  if (!requestId || !createdBy || !canceledBy || createdBy === canceledBy) return;
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.request.canceled_by_another',
+      priority: 'Normal',
+      title: 'Signature request canceled',
+      body: 'Your signature request was canceled.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'open',
+      titleKey: 'notif.signature.request.canceled_by_another.title',
+      bodyKey: 'notif.signature.request.canceled_by_another.body',
+      params: { signatureRequestId: requestId, canceledByUserId: canceledBy },
+      // Único handler del archivo donde el actor es un usuario del tenant
+      // identificable (quién canceló la request). En el resto, el "actor" es
+      // el firmante externo o el sistema (expired/sealing_failed) y queda null.
+      actorUserId: canceledBy,
+    },
+    deps,
+  );
 }
 
 async function signerRejectedHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   if (!requestId || !createdBy) return;
   const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason');
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.signer.rejected',
-    priority: 'High',
-    title: 'Firmante rechazo firmar',
-    body: reason
-      ? `Un firmante rechazo firmar el documento: ${reason}`
-      : 'Un firmante rechazo firmar el documento.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.signer.rejected',
+      priority: 'High',
+      title: 'A signer declined to sign',
+      body: reason ?? 'A signer declined to sign the document.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.signer.rejected.title',
+      bodyKey: 'notif.signature.signer.rejected.body',
+      params: reason ? { signatureRequestId: requestId, reason } : { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
-/**
- * Solo alertamos al preparador cuando el firmante queda bloqueado
- * (`LockedUntilUtc` presente), no en cada intento fallido individual —
- * evita spamear una notificación por cada dígito equivocado de un PIN.
- */
+// Solo alertamos cuando el firmante queda bloqueado (LockedUntilUtc), para no
+// generar una notificacion por cada intento fallido.
 async function verificationFailedHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   const lockedUntil = getString(env.payload, 'lockedUntilUtc') ?? getString(env.payload, 'LockedUntilUtc');
   if (!requestId || !createdBy || !lockedUntil) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.signer.verification_failed',
-    priority: 'High',
-    title: 'Verificacion de firmante bloqueada',
-    body: 'Un firmante supero el limite de intentos de verificacion y quedo bloqueado temporalmente.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.signer.verification_failed',
+      priority: 'High',
+      title: 'Signer verification locked',
+      body: 'A signer exceeded the verification attempts limit and is temporarily locked.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.signer.verification_failed.title',
+      bodyKey: 'notif.signature.signer.verification_failed.body',
+      params: { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
-/**
- * Fase 8 (cierre de la auditoría Fase 1B) — 5 consumers nuevos, todos con destinatario
- * explícito (CreatedByUserId, el preparador), mismo patrón mecánico que
- * signerRejectedHandler/verificationFailedHandler. No requieren fan-out ni resolución de
- * audiencia por permiso: cada evento ya trae un único destinatario obvio.
- */
 async function sealingFailedHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   if (!requestId || !createdBy) return;
   const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason');
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.sealing_failed',
-    priority: 'Urgent',
-    title: 'Sellado del documento fallo',
-    body: reason
-      ? `El sellado PAdES-B fallo tras agotar los reintentos: ${reason}`
-      : 'El sellado PAdES-B fallo tras agotar los reintentos.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.request.sealing_failed',
+      priority: 'Urgent',
+      title: 'Document sealing failed',
+      body: reason ?? 'PAdES-B sealing failed after retries.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.request.sealing_failed.title',
+      bodyKey: 'notif.signature.request.sealing_failed.body',
+      params: reason ? { signatureRequestId: requestId, reason } : { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
-async function expirationExtendedHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-  if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.expiration_extended',
-    priority: 'Normal',
-    title: 'Vencimiento de la solicitud extendido',
-    body: 'Se extendio el vencimiento de una solicitud de firma.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-async function readyForSendingHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-  if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.ready_for_sending',
-    priority: 'Normal',
-    title: 'Solicitud lista para enviar',
-    body: 'El documento ya esta disponible y la solicitud puede enviarse a los firmantes.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
-}
-
-/**
- * Solo alertamos al preparador cuando el firmante queda bloqueado (`LockedUntilUtc`
- * presente) — mismo criterio que verificationFailedHandler, para no spamear una
- * notificación por cada PIN equivocado.
- */
+// Mismo criterio que verificationFailedHandler: solo cuando queda bloqueado.
 async function pinFailedHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   const lockedUntil = getString(env.payload, 'lockedUntilUtc') ?? getString(env.payload, 'LockedUntilUtc');
   if (!requestId || !createdBy || !lockedUntil) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.signer.pin_failed',
-    priority: 'High',
-    title: 'Firmante bloqueado por intentos de PIN',
-    body: 'Un firmante supero el limite de intentos de PIN y quedo bloqueado temporalmente.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.signer.pin_failed',
+      priority: 'High',
+      title: 'Signer locked by PIN attempts',
+      body: 'A signer exceeded the PIN attempts limit and is temporarily locked.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.signer.pin_failed.title',
+      bodyKey: 'notif.signature.signer.pin_failed.body',
+      params: { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
-async function preparerSignedHandler(
-  env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
-  const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-  const preparerName =
-    getString(env.payload, 'preparerDisplayName') ?? getString(env.payload, 'PreparerDisplayName');
-  if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.preparer.signed',
-    priority: 'Normal',
-    title: 'Firma interna del preparador registrada',
-    body: preparerName ? `${preparerName} firmo internamente la solicitud.` : 'Se registro una firma interna del preparador.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+function listOnlyHandler(_env: IncomingEnvelope): Promise<void> {
+  return Promise.resolve();
 }
 
-/**
- * Avisa al preparador (no a los firmantes, esos ya reciben su email desde Notification/.NET
- * vía `SignatureRequestExpiredConsumer`) que su solicitud venció sin completarse.
- */
 async function requestExpiredHandler(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
   if (!requestId || !createdBy) return;
-  await push(env, {
-    userId: createdBy,
-    kind: 'signature.request.expired',
-    priority: 'High',
-    title: 'Solicitud de firma vencida',
-    body: 'La solicitud de firma vencio sin que todos los firmantes completaran.',
-    metadata: { signatureRequestId: requestId },
-  }, deps);
+  await push(
+    env,
+    {
+      userId: createdBy,
+      kind: 'signature.request.expired',
+      priority: 'High',
+      title: 'Signature request expired',
+      body: 'The signature request expired before all signers completed.',
+      resourceType: RESOURCE_SIGNATURE_REQUEST,
+      resourceId: requestId,
+      category: SIGNATURES_CATEGORY,
+      action: 'review',
+      titleKey: 'notif.signature.request.expired.title',
+      bodyKey: 'notif.signature.request.expired.body',
+      params: { signatureRequestId: requestId },
+    },
+    deps,
+  );
 }
 
 async function push(
   env: IncomingEnvelope,
-  input: Pick<PushNotificationCommand, 'userId' | 'kind' | 'priority' | 'title' | 'body' | 'metadata'>,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  input: BellNotificationInput,
+  deps: SignatureConsumerDeps,
 ): Promise<void> {
-  const result = await pushNotification(
+  // Default `actorType` para firma: cuando el caller no lo setea, el signer que
+  // firmó/rechazó/pinchó es externo al tenant (no tiene cuenta Auth); solo
+  // `canceled_by_another` tiene un TenantEmployee identificable (lo setea arriba).
+  // Los eventos de sistema (expired, sealing_failed) son automáticos.
+  const isSystemEvent = /expired|sealing_failed/.test(input.kind);
+  const defaultActorType = isSystemEvent ? 'System' : 'External';
+  await pushAndEmitNotification(
+    env,
     {
-      tenantId: env.tenantId,
-      userId: input.userId,
-      kind: input.kind,
-      ...(input.priority !== undefined ? { priority: input.priority } : {}),
-      title: input.title,
-      body: input.body,
-      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      sourceEventId: env.eventId,
-      sourceEventType: env.eventType,
-      correlationId: env.correlationId ?? null,
+      ...input,
+      occurredAtUtc: input.occurredAtUtc ?? envOccurredAt(env),
+      actorType: input.actorType ?? defaultActorType,
     },
     deps,
   );
-  if (result.isSuccess && result.value.created && result.value.notification) {
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.Received,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: result.value.notification,
-      },
-    });
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.UnreadCountChanged,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: { count: result.value.unreadCount },
-      },
-    });
-  }
 }
 
 /**
- * Ping al personal del tenant de "una solicitud de firma cambió" para que el CRM refresque su lista sin recargar.
- * Payload mínimo (solo el id): el front pide los datos por HTTP como siempre. Puro relay realtime.
+ * `OccurredOn` del envelope .NET: hora REAL del hecho (p.ej. cuándo se firmó),
+ * distinta de `CreatedAtUtc` del repo que es la hora de recepción.
  */
+function envOccurredAt(env: IncomingEnvelope): Date {
+  const raw = getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn');
+  if (!raw) return new Date();
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+}
+
+// Ping por-tenant: el CRM refresca su lista con un GET; aqui solo viaja el id.
 function emitSignatureListChanged(env: IncomingEnvelope, emitter: RealtimeEmitter): void {
-  const requestId = getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
+  const requestId =
+    getString(env.payload, 'signatureRequestId') ?? getString(env.payload, 'SignatureRequestId');
   if (!requestId) return;
   emitter.emitToTenantStaff({
     tenantId: env.tenantId,

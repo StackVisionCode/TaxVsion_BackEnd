@@ -99,6 +99,7 @@ public static class ResendSignerInvitationHandler
             RevocationEpoch = request.RevocationEpoch,
             RequiresConsent = request.RequiresConsent,
             RequiresSequentialSigning = request.RequiresSequentialSigning,
+            MappedCustomerId = signer.MappedCustomerId,
         };
         return bus.PublishAsync(evt).AsTask();
     }

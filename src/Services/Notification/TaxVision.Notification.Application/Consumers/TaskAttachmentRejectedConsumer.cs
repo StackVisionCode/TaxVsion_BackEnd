@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -34,13 +35,28 @@ public static class TaskAttachmentRejectedConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                title,
+                $"user:{evt.AttachedByUserId:N}",
                 title,
                 NotificationCategory.DocumentsAndSignatures,
                 "task.attachment_rejected",
                 evt.EventId,
                 correlation.CorrelationId,
                 recipientUserId: evt.AttachedByUserId,
+                inApp: new InAppNotificationRequest(
+                    NotificationKinds.TasksAttachmentRejected,
+                    evt.AttachedByUserId,
+                    evt.EventId,
+                    "tasks.attachment_rejected.v1",
+                    evt.OccurredOn,
+                    title,
+                    FallbackBody: $"El escaneo lo marcó como «{evt.Reason}» en «{evt.TaskTitle}».",
+                    ResourceId: evt.TaskId.ToString(),
+                    Params: new Dictionary<string, string>
+                    {
+                        ["displayName"] = evt.DisplayName,
+                        ["taskTitle"] = evt.TaskTitle,
+                    }
+                ),
                 ct: ct
             );
 

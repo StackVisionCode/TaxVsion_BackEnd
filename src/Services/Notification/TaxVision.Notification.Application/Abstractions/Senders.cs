@@ -5,7 +5,22 @@ namespace TaxVision.Notification.Application.Abstractions;
 
 public interface ISmsSender
 {
-    Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default);
+    // El idempotencyToken debe ser estable e independiente del texto (ej. EventId
+    // del hecho que originó el SMS). Sin él, la clave se deriva del cuerpo y los
+    // SMS de OTP quedan reversibles por fuerza bruta desde el log.
+    Task<Result> SendAsync(
+        string phoneNumber,
+        string text,
+        CancellationToken ct,
+        string? templateKey,
+        string? idempotencyToken
+    );
+
+    Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
+        SendAsync(phoneNumber, text, ct, templateKey: null, idempotencyToken: null);
+
+    Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct, string? templateKey) =>
+        SendAsync(phoneNumber, text, ct, templateKey, idempotencyToken: null);
 }
 
 public sealed record PushMessage(

@@ -123,6 +123,33 @@ public sealed class SendSmsBatchHandlerTests
     }
 
     [Fact]
+    public async Task Sensitive_sms_sends_original_body_but_persists_redacted_body()
+    {
+        var h = new Harness();
+        SmsSendRequest? providerRequest = null;
+        h.Provider.SendImpl = request =>
+        {
+            providerRequest = request;
+            return new SmsSendResult(true, "provider-1", null, null);
+        };
+        var item = new SmsSendItemDto(
+            Customer,
+            Phone,
+            "Your code is 654321",
+            Media: null,
+            IdempotencyKey: "sensitive-idem",
+            SourceContext: "notification:sms:auth.otp_code",
+            TemplateKey: "auth.otp_code"
+        );
+
+        var result = await h.Run(Batch(item));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Your code is 654321", providerRequest?.Body);
+        Assert.Equal("[redacted]", Assert.Single(h.Messages.Added).Body);
+    }
+
+    [Fact]
     public async Task Charged_batch_reserves_before_sending_and_settles_only_accepted_messages()
     {
         var h = new Harness();

@@ -818,6 +818,63 @@
 			]
 		},
 		{
+			"name": "Campaign Email Webhook",
+			"item": [
+				{
+					"name": "SMTP2GO Delivered",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{campaignEmailWebhookSecret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"event\": \"delivered\",\n  \"message-id\": \"{{campaignMessageId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/notifications/campaign-email/webhooks/smtp2go",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"campaign-email",
+								"webhooks",
+								"smtp2go"
+							]
+						},
+						"description": "Requiere CampaignEmail:WebhookSecret. El Bearer es recomendado; header y query son compatibilidad legacy."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Authenticated webhook accepted\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{

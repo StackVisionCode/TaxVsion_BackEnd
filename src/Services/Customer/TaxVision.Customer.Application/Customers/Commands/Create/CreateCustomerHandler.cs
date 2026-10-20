@@ -131,7 +131,8 @@ public static class CreateCustomerHandler
                 PrimaryEmail = existing.PrimaryEmail.Value,
                 PrimaryPhone = existing.PrimaryPhone?.E164Value,
                 Language = existing.Language.ToString(),
-                PreferredChannel = existing.PreferredChannel.ToString(),
+                EmailEnabled = existing.ContactPolicy.EmailEnabled,
+                SmsEnabled = existing.ContactPolicy.SmsEnabled,
                 OccupationId = existing.OccupationId,
                 ModifiedByUserId = cmd.CreatedByUserId,
             }
@@ -146,7 +147,8 @@ public static class CreateCustomerHandler
         {
             existing.ChangePrimaryEmail(vo.Email, cmd.CreatedByUserId),
             existing.ChangePrimaryPhone(vo.Phone, cmd.CreatedByUserId),
-            existing.ChangePreferences(cmd.Language, cmd.PreferredChannel, cmd.CreatedByUserId),
+            existing.ChangeLanguage(cmd.Language, cmd.CreatedByUserId),
+            existing.ChangeContactPolicy(cmd.EmailEnabled, cmd.SmsEnabled, cmd.CreatedByUserId),
             existing.ChangeOccupation(cmd.OccupationId, cmd.CreatedByUserId),
         };
 
@@ -263,10 +265,10 @@ public static class CreateCustomerHandler
             vo.Email,
             vo.Phone,
             cmd.Language,
-            cmd.PreferredChannel,
             createdByUserId: cmd.CreatedByUserId,
             dateOfBirth: cmd.DateOfBirth,
-            occupationId: cmd.OccupationId
+            occupationId: cmd.OccupationId,
+            contactPolicy: new ContactPolicy(cmd.EmailEnabled, cmd.SmsEnabled)
         );
 
     // ============== Fase 3: persistir en BD ==============
@@ -300,7 +302,8 @@ public static class CreateCustomerHandler
                     PrimaryEmail = customer.PrimaryEmail.Value,
                     PrimaryPhone = customer.PrimaryPhone?.E164Value,
                     Language = customer.Language.ToString(),
-                    PreferredChannel = customer.PreferredChannel.ToString(),
+                    EmailEnabled = customer.ContactPolicy.EmailEnabled,
+                    SmsEnabled = customer.ContactPolicy.SmsEnabled,
                     OccupationId = customer.OccupationId,
                     CreatedByUserId = customer.CreatedByUserId,
                 }
@@ -339,7 +342,6 @@ public static class CreateCustomerHandler
             c.PrimaryEmail.Value,
             c.PrimaryPhone?.E164Value,
             c.Language,
-            c.PreferredChannel,
             c.OccupationId,
             OccupationName: null,
             c.BusinessIdentity?.PrincipalBusinessActivityId,

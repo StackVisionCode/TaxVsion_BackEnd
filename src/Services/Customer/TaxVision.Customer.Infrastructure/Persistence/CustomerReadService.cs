@@ -321,7 +321,6 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 PrimaryEmail = c.PrimaryEmail.Value,
                 PrimaryPhone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.Language,
-                c.PreferredChannel,
                 c.OccupationId,
                 OccupationName = o != null ? o.Name : null,
                 NaicsId = c.BusinessIdentity != null ? c.BusinessIdentity.PrincipalBusinessActivityId : null,
@@ -329,6 +328,8 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.DateOfBirth,
                 c.CreatedAtUtc,
                 c.AssignedPreparerUserId,
+                EmailEnabled = c.ContactPolicy.EmailEnabled,
+                SmsEnabled = c.ContactPolicy.SmsEnabled,
             }
         ).FirstOrDefaultAsync(ct);
 
@@ -483,7 +484,6 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             data.PrimaryEmail,
             data.PrimaryPhone,
             data.Language,
-            data.PreferredChannel,
             data.OccupationId,
             data.OccupationName,
             data.NaicsId,
@@ -495,7 +495,9 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             contactPoints,
             relations,
             fiscalProfile,
-            assignees
+            assignees,
+            data.EmailEnabled,
+            data.SmsEnabled
         );
     }
 

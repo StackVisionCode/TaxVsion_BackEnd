@@ -443,6 +443,43 @@ jobs:
           TAXVISION_BASE_DOMAIN=${{ secrets.TAXVISION_BASE_DOMAIN }}
           CLOUDFLARE_DNS_API_TOKEN=${{ secrets.CLOUDFLARE_DNS_API_TOKEN }}
 
+          # ---------- Notification: wiring del plan de notificaciones dinámicas ----------
+          # Webhook SMTP2GO -> Notification: sin este secret el controller responde 503 (fail-closed
+          # en runtime). CAMPAIGN_EMAIL_WEBHOOK_SECRET se compara en tiempo constante (SHA-256 + FixedTimeEquals)
+          # contra Authorization: Bearer / X-Webhook-Secret / ?key=.
+          CAMPAIGN_EMAIL_WEBHOOK_SECRET=${{ secrets.CAMPAIGN_EMAIL_WEBHOOK_SECRET }}
+
+          # Rollout del puente in-app por grupo. Secret ausente = default "Communication" (compat).
+          # Para pasar un grupo al pipeline nuevo (Notification), setear el secret a "Notification"
+          # tras verificar la cadena en vivo.
+          COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT=${{ secrets.COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT }}
+          COMMUNICATION_INAPP_SOURCE_CONNECTORS=${{ secrets.COMMUNICATION_INAPP_SOURCE_CONNECTORS }}
+          COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL=${{ secrets.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL }}
+          COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
+          COMMUNICATION_INAPP_SOURCE_SIGNATURE=${{ secrets.COMMUNICATION_INAPP_SOURCE_SIGNATURE }}
+          COMMUNICATION_INAPP_SOURCE_SUPPORT=${{ secrets.COMMUNICATION_INAPP_SOURCE_SUPPORT }}
+
+          # Simetrico en Notification. Para que un grupo cambie de fuente ambos secrets se mueven
+          # a la vez: en Communication se apaga (= "Notification") y en Notification se enciende.
+          NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT }}
+          NOTIFICATIONS_INAPP_SOURCE_CONNECTORS=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CONNECTORS }}
+          NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL }}
+          NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
+          NOTIFICATIONS_INAPP_SOURCE_SIGNATURE=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_SIGNATURE }}
+          NOTIFICATIONS_INAPP_SOURCE_SUPPORT=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_SUPPORT }}
+
+          # Retención de NotificationLogs. Secret vacío = defaults del compose (12 meses, batch 500, cada 24h).
+          NOTIFICATION_RETENTION_ENABLED=${{ secrets.NOTIFICATION_RETENTION_ENABLED }}
+          NOTIFICATION_RETENTION_MONTHS=${{ secrets.NOTIFICATION_RETENTION_MONTHS }}
+          NOTIFICATION_RETENTION_BATCH_SIZE=${{ secrets.NOTIFICATION_RETENTION_BATCH_SIZE }}
+          NOTIFICATION_RETENTION_INTERVAL_HOURS=${{ secrets.NOTIFICATION_RETENTION_INTERVAL_HOURS }}
+          NOTIFICATION_RETENTION_LOCK_MINUTES=${{ secrets.NOTIFICATION_RETENTION_LOCK_MINUTES }}
+
+          # Reconciliación de proyecciones de destinatarios (owner/portal). Vacío = defaults del compose.
+          NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_ENABLED=${{ secrets.NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_ENABLED }}
+          NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_INTERVAL_HOURS=${{ secrets.NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_INTERVAL_HOURS }}
+          NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_PAGE_SIZE=${{ secrets.NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_PAGE_SIZE }}
+
           # ---------- Visibilidad por asignación (P2) — flags por servicio ----------
           # Espejo del <Svc>__AssignmentVisibility__Enabled (y COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED)
           # en docker-compose.yml, todos con default false via ${VAR:-false}. Rollout por servicio: P1 se

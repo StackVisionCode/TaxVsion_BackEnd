@@ -225,6 +225,15 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantPaymentSucceededIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.PayoutFailedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountRestrictedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantConnectAccountOnboardingRequiredIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

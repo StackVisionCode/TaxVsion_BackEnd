@@ -120,4 +120,45 @@ public sealed class NotificationDispatchAttemptTests
         Assert.Null(attempt2.ErrorReason);
         Assert.Equal("boom", attempt.ErrorReason); // no se limpia en terminal
     }
+
+    [Fact]
+    public void UpdateAttemptStatus_returns_OrderingPending_when_Delivered_arrives_before_Sent()
+    {
+        var log = CreateLog();
+        var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
+
+        var result = log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Delivered);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("NotificationDispatchAttempt.OrderingPending", result.Error.Code);
+        Assert.Equal(NotificationDispatchAttemptStatus.Queued, attempt.Status);
+    }
+
+    [Fact]
+    public void UpdateAttemptStatus_returns_OrderingPending_when_Bounced_arrives_before_Sent()
+    {
+        var log = CreateLog();
+        var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
+
+        var result = log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Bounced);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("NotificationDispatchAttempt.OrderingPending", result.Error.Code);
+        Assert.Equal(NotificationDispatchAttemptStatus.Queued, attempt.Status);
+    }
+
+    [Fact]
+    public void UpdateAttemptStatus_returns_AlreadyInStatus_on_duplicate_callback()
+    {
+        var log = CreateLog();
+        var attempt = log.AddDispatchAttempt(NotificationChannel.Email);
+        log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Sent);
+        log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Delivered);
+
+        var result = log.UpdateAttemptStatus(attempt.Id, NotificationDispatchAttemptStatus.Delivered);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("NotificationDispatchAttempt.AlreadyInStatus", result.Error.Code);
+        Assert.Equal(NotificationDispatchAttemptStatus.Delivered, attempt.Status);
+    }
 }

@@ -38,7 +38,6 @@ public sealed class CustomerAssignmentTrackingTests
                 EmailAddress.Create($"ada-{Guid.NewGuid():N}@example.com").Value,
                 null,
                 Language.En,
-                PreferredChannel.Email,
                 Guid.NewGuid()
             )
             .Value;

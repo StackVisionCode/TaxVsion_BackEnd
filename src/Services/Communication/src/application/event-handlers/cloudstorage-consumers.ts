@@ -1,27 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { pushNotification, type PushNotificationCommand } from '../use-cases/push-notification.js';
+import { pushAndEmitNotification } from '../use-cases/push-notification.js';
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import { ChatSocketEvents, type AttachmentFlaggedDto } from '../../contracts/socket/chat-socket-events.js';
-import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 
 /**
- * Consumers de CloudStorage -> AttachmentTracking + notificacion al dueño del
- * archivo. Un adjunto de chat (`AttachmentTracking`, registrado en
+ * Consumers de CloudStorage -> AttachmentTracking. Un adjunto de chat
+ * (`AttachmentTracking`, registrado en
  * `sendMessage` con status `Pending`) pasa a `Available` cuando CloudStorage
  * confirma el escaneo AV, o a `Infected`/`Deleted`/`BlockedByPolicy` si fue
  * bloqueado o purgado — en esos casos se notifica al room de la conversacion
  * via `chat.message.attachment_flagged` para que el cliente pueda ocultar/
  * reemplazar el adjunto.
  *
- * `cloudstorage.file.available.v1` y `cloudstorage.file.blocked_by_policy.v1`
- * ADEMAS empujan una notificacion in-app al uploader (`CreatedBy`, Fase 1B del
- * plan de notificaciones) — viven en ESTE archivo, no en
+ * `cloudstorage.file.blocked_by_policy.v1` tambien alerta al uploader. Vive en
+ * ESTE archivo, no en
  * `cloudstorage-notification-consumers.ts`, porque `ConsumerRuntime.register`
  * solo admite un handler por `eventType`: el handler de attachment-tracking ya
- * es dueño de ambos.
+ * es dueño del evento.
  *
  * `cloudstorage.file.pending_review.v1` (verdict Uncertain de IContentScanner)
  * NO se consume aca a proposito — es un estado de compliance interno sin
@@ -35,6 +33,9 @@ export function bindCloudStorageConsumers(
     attachmentTracking: AttachmentTrackingRepository;
     notifications: NotificationRepository;
     emitter: RealtimeEmitter;
+    // C16-b: gate T3.7 por grupo `CloudStoragePolicy`. El attachment-tracking NO se
+    // gatea (es responsabilidad propia de Communication); solo la fila de la campana.
+    inAppSourcePolicy: 'Communication' | 'Notification';
   },
 ): void {
   register('cloudstorage.file.available.v1', async (env) => {
@@ -50,32 +51,16 @@ export function bindCloudStorageConsumers(
     if (tracked) {
       await deps.attachmentTracking.markStatus({ fileId, status: 'Available' });
     }
-    await notifyFileAvailable(env, fileId, deps);
   });
 
   register('cloudstorage.file.infected.v1', (env) => flagAttachment(env, 'Infected', deps));
   register('cloudstorage.file.deleted.v1', (env) => flagAttachment(env, 'Deleted', deps));
   register('cloudstorage.file.blocked_by_policy.v1', async (env) => {
     await flagAttachment(env, 'BlockedByPolicy', deps);
-    await notifyFileBlockedByPolicy(env, deps);
+    if (deps.inAppSourcePolicy === 'Communication') {
+      await notifyFileBlockedByPolicy(env, deps);
+    }
   });
-}
-
-async function notifyFileAvailable(
-  env: IncomingEnvelope,
-  fileId: string,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const createdBy = getString(env.payload, 'createdBy') ?? getString(env.payload, 'CreatedBy');
-  if (!createdBy) return;
-  await pushOwnerNotification(env, {
-    userId: createdBy,
-    kind: 'cloudstorage.file.available',
-    priority: 'Normal',
-    title: 'Archivo listo',
-    body: 'Tu archivo termino de procesarse y ya esta disponible.',
-    metadata: { fileId },
-  }, deps);
 }
 
 async function notifyFileBlockedByPolicy(
@@ -85,60 +70,31 @@ async function notifyFileBlockedByPolicy(
   const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
   const createdBy = getString(env.payload, 'createdBy') ?? getString(env.payload, 'CreatedBy');
   if (!fileId || !createdBy) return;
-  await pushOwnerNotification(env, {
-    userId: createdBy,
-    kind: 'cloudstorage.file.blocked_by_policy',
-    priority: 'High',
-    title: 'Archivo bloqueado por moderacion',
-    body: 'Uno de tus archivos fue bloqueado porque no paso la revision de contenido.',
-    metadata: { fileId },
-  }, deps);
-}
-
-async function pushOwnerNotification(
-  env: IncomingEnvelope,
-  input: Pick<PushNotificationCommand, 'userId' | 'kind' | 'priority' | 'title' | 'body' | 'metadata'>,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
-): Promise<void> {
-  const result = await pushNotification(
+  // Policy B del contrato Actor/Resource/Action: no mandamos actorDisplayName
+  // (el front lo resuelve de su directory cache), ni titleKey/bodyKey (el front
+  // tiene fallback por `kind` en notification-i18n.ts). Sí llenamos los campos
+  // de dato: actor + resource + action + category, para que la fila sepa de qué
+  // habla sin que el front tenga que adivinar desde `metadata`.
+  await pushAndEmitNotification(
+    env,
     {
-      tenantId: env.tenantId,
-      userId: input.userId,
-      kind: input.kind,
-      ...(input.priority !== undefined ? { priority: input.priority } : {}),
-      title: input.title,
-      body: input.body,
-      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      sourceEventId: env.eventId,
-      sourceEventType: env.eventType,
-      correlationId: env.correlationId ?? null,
+      userId: createdBy,
+      kind: 'cloudstorage.file.blocked_by_policy',
+      priority: 'High',
+      title: 'File blocked by moderation',
+      body: 'One of your files was blocked by the content moderation review.',
+      metadata: { fileId },
+      category: 'DocumentsStorage',
+      actorUserId: null,
+      // El motor de moderación es automático — no hay usuario que haya bloqueado el archivo.
+      actorType: 'System',
+      resourceType: 'file',
+      resourceId: fileId,
+      action: 'review',
+      occurredAtUtc: envOccurredAt(env),
     },
     deps,
   );
-  if (result.isSuccess && result.value.created && result.value.notification) {
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.Received,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: result.value.notification,
-      },
-    });
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.UnreadCountChanged,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: { count: result.value.unreadCount },
-      },
-    });
-  }
 }
 
 async function flagAttachment(
@@ -175,4 +131,16 @@ async function flagAttachment(
 function getString(source: Record<string, unknown>, key: string): string | undefined {
   const value = source[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * `OccurredOn` del envelope .NET: hora REAL del hecho (p.ej. cuándo CloudStorage
+ * bloqueó el archivo), distinta de `CreatedAtUtc` del repo que es la hora de
+ * recepción. Fallback a now() si el publisher no lo mandó o es inválido.
+ */
+function envOccurredAt(env: IncomingEnvelope): Date {
+  const raw = getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn');
+  if (!raw) return new Date();
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }

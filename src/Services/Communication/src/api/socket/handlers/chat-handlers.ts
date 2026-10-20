@@ -960,9 +960,21 @@ async function wireSocket(
   socket.on(ChatSocketEvents.PresenceQuery, async (...args: unknown[]) => {
     const parsed = PresenceQueryPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    const online = new Set(await container.presence.listOnline(tenantId, parsed.data.userIds));
+
+    // Para el portal, acotamos los userIds consultados al staff asignado al cliente.
+    // El staff no tiene restricción extra: ya opera dentro del tenant.
+    let allowedUserIds: readonly string[] = parsed.data.userIds;
+    if (principal.actorType === 'CustomerPortal') {
+      const visible = new Set(
+        await container.presenceAudiences.findStaffUserIdsVisibleToPortalUser(tenantId, userId),
+      );
+      allowedUserIds = parsed.data.userIds.filter((id) => visible.has(id));
+      if (allowedUserIds.length === 0) return;
+    }
+
+    const online = new Set(await container.presence.listOnline(tenantId, allowedUserIds));
     const now = new Date().toISOString();
-    for (const targetUserId of parsed.data.userIds) {
+    for (const targetUserId of allowedUserIds) {
       // Solo online/offline (el getter de presencia no expone Busy); una transición Busy posterior la
       // corrige en vivo. Suficiente para que el peer deje de verse "Offline" falso al abrir el chat.
       socket.emit(

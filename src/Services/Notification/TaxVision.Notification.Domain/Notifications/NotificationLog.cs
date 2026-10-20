@@ -19,8 +19,8 @@ public enum NotificationStatus
 }
 
 /// <summary>
-/// Historial de notificaciones por tenant. Nunca almacena el cuerpo completo
-/// (puede contener tokens/OTP): solo canal, destinatario, plantilla y estado.
+/// Historial de notificaciones por tenant. No almacena el cuerpo completo y redacta
+/// asuntos asociados a códigos o tokens sensibles.
 /// </summary>
 public sealed class NotificationLog : TenantEntity
 {

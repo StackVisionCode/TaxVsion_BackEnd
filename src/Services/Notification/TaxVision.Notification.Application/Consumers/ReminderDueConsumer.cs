@@ -4,6 +4,7 @@ using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -60,13 +61,25 @@ public static class ReminderDueConsumer
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                evt.UserId.ToString("N"),
+                $"user:{evt.UserId:N}",
                 title,
                 NotificationCategory.Reminders,
                 TemplateKey,
                 evt.EventId,
                 correlation.CorrelationId,
                 recipientUserId: evt.UserId,
+                inApp: new InAppNotificationRequest(
+                    NotificationKinds.RemindersDue,
+                    evt.UserId,
+                    evt.EventId,
+                    "reminder.due.v1",
+                    evt.OccurredOn,
+                    title,
+                    FallbackBody: body,
+                    ResourceId: evt.ReminderId.ToString(),
+                    ResourceContext: BuildResourceContext(evt),
+                    Params: new Dictionary<string, string> { ["category"] = evt.Category }
+                ),
                 ct: ct
             );
 
@@ -126,6 +139,14 @@ public static class ReminderDueConsumer
             ),
             ct
         );
+    }
+
+    private static Dictionary<string, string> BuildResourceContext(ReminderDueIntegrationEvent evt)
+    {
+        var context = new Dictionary<string, string> { ["sourceType"] = evt.Category };
+        if (evt.TargetId is { } targetId)
+            context["sourceId"] = targetId.ToString();
+        return context;
     }
 
     /// <summary>

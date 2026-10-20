@@ -185,6 +185,10 @@ public static class PermissionCatalog
     public const string NotificationCampaignView = NotificationPermissions.CampaignView;
     public const string NotificationCampaignManage = NotificationPermissions.CampaignManage;
     public const string NotificationLogView = NotificationPermissions.LogView;
+    public const string NotificationsBillingAlerts = NotificationPermissions.BillingAlerts;
+    public const string NotificationsStorageAlerts = NotificationPermissions.StorageAlerts;
+    public const string NotificationsSecurityTenantAlerts = NotificationPermissions.SecurityTenantAlerts;
+    public const string NotificationsMailboxAlerts = NotificationPermissions.MailboxAlerts;
 
     // Notes — notas internas/portal sobre customers y otras entidades (bounded context propio,
     // ver microservicio Notes). Read/Manage son el uso normal de staff (Manage exige además ser
@@ -360,7 +364,14 @@ public static class PermissionCatalog
         bool IsDangerous = false,
         // Declarado pero sin ningún endpoint que lo exija todavía: no se concede a nadie ni se
         // ofrece en el cajón de accesos. Ver Permission.IsReserved.
-        bool IsReserved = false
+        bool IsReserved = false,
+        // D1 (decisión del usuario, 2026-10-19): el permiso puede ser asignado a TenantAdmin
+        // (está en AllowedActorTypes), pero NO entra automáticamente al bundle del rol de
+        // sistema TenantAdmin. Pensado para las 4 suscripciones de alertas de oficina: un
+        // co-TenantAdmin puede suscribirse si quiere, pero no se le suscribe por defecto
+        // (ruido para flotas con varios TenantAdmins). Flag code-only — no se persiste en
+        // Permissions (los filtros corren desde el catálogo en memoria).
+        bool ExcludeFromAdminBundle = false
     )
     {
         // CAT-F1: módulo comercial que gatea este permiso (null = transversal, siempre efectivo).
@@ -1456,6 +1467,47 @@ public static class PermissionCatalog
             "View the notification history (email, SMS and in-app) for audit and support",
             false
         ),
+        // Fase 4 — suscripción a alertas de oficina (segunda llave de las "dos llaves"). Staff delegables,
+        // no peligrosos. D1 (2026-10-19): AllowedActorTypes incluye TenantAdmin para que un co-admin
+        // pueda suscribirse por asignación explícita; ExcludeFromAdminBundle=true evita que entren al
+        // bundle automático del rol de sistema TenantAdmin — el owner recibe lo obligatorio vía
+        // TenantOwnerAudience (hardcode al TenantAdmin más antiguo), no por este permiso.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000192"),
+            NotificationsBillingAlerts,
+            "notification",
+            "Receive office billing alerts (failed payments, payouts, subscription)",
+            false,
+            AllowedActorTypes: [UserActorType.TenantEmployee, UserActorType.TenantAdmin],
+            ExcludeFromAdminBundle: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000193"),
+            NotificationsStorageAlerts,
+            "notification",
+            "Receive office storage alerts (quota, infected files)",
+            false,
+            AllowedActorTypes: [UserActorType.TenantEmployee, UserActorType.TenantAdmin],
+            ExcludeFromAdminBundle: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000194"),
+            NotificationsSecurityTenantAlerts,
+            "notification",
+            "Receive office security alerts",
+            false,
+            AllowedActorTypes: [UserActorType.TenantEmployee, UserActorType.TenantAdmin],
+            ExcludeFromAdminBundle: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000195"),
+            NotificationsMailboxAlerts,
+            "notification",
+            "Receive office mailbox alerts (reconnect, sync issues)",
+            false,
+            AllowedActorTypes: [UserActorType.TenantEmployee, UserActorType.TenantAdmin],
+            ExcludeFromAdminBundle: true
+        ),
         // PaymentApp (ver comentario junto a los const de arriba).
         new(
             new Guid("a1000000-0000-0000-0000-000000000103"),
@@ -1906,6 +1958,11 @@ public static class PermissionCatalog
                     && !definition.PlatformOnly
                     && !definition.IsDangerous
                     && !definition.IsReserved
+                    // D1 — opt-in explícito: un permiso con esta bandera puede asignarse a
+                    // TenantAdmin pero no entra al bundle automático. Evita que un co-admin
+                    // reciba suscripciones de ruido (billing/storage/security/mailbox alerts).
+                    && !definition.ExcludeFromAdminBundle
+                    && definition.EffectiveAllowedActorTypes.Contains(UserActorType.TenantAdmin)
                 )
                 .Select(definition => definition.Code)
                 .Concat(TenantAdminCommunicationExtras)
@@ -2126,7 +2183,13 @@ public static class PermissionCatalog
     /// </summary>
     public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
         All.Where(definition =>
-                definition.EffectiveAllowedActorTypes.Contains(UserActorType.TenantAdmin) && !definition.IsReserved
+                definition.EffectiveAllowedActorTypes.Contains(UserActorType.TenantAdmin)
+                && !definition.IsReserved
+                // D1 — también se excluye del set que recibe el rol de sistema del TenantAdmin
+                // raíz. El owner no NECESITA la suscripción (le llegan las alertas por
+                // TenantOwnerAudience); dejarla fuera del bundle evita que al crear un segundo
+                // TenantAdmin herede el "spam" automáticamente.
+                && !definition.ExcludeFromAdminBundle
             )
             .Select(definition => definition.Code)
             .ToArray();

@@ -1,42 +1,77 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
+import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import { MailSocketEvents } from '../../contracts/socket/mail-socket-events.js';
+import { readDotNetField } from '../../contracts/events/dotnet-payload.js';
+import { ConnectorsPermissions } from '../../domain/shared/permissions.js';
 
-/**
- * Correspondence persistió un correo ENTRANTE que matcheó a un cliente del tenant
- * (`correspondence.customer_email_received.v1`). El inbox es compartido por tenant, así que se
- * avisa a TODO el tenant (`t:{tenantId}`) para que el módulo Mail del front recargue los hilos sin
- * recargar la página. Payload mínimo (solo ids) — sin asunto ni cuerpo: no se filtra contenido, y el
- * front pide los datos por HTTP como siempre. No persiste nada: es puro relay realtime.
- */
-export function bindCorrespondenceConsumers(
-  register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { emitter: RealtimeEmitter },
-): void {
-  register('correspondence.customer_email_received.v1', async (env) => {
-    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
-    const emailThreadId =
-      getString(env.payload, 'emailThreadId') ?? getString(env.payload, 'EmailThreadId');
-    const incomingEmailId =
-      getString(env.payload, 'incomingEmailId') ?? getString(env.payload, 'IncomingEmailId');
-    if (!customerId || !emailThreadId) return;
+const NormalizedPayloadSchema = z.object({
+  customerId: z.string().uuid(),
+  emailThreadId: z.string().uuid(),
+  incomingEmailId: z.string().uuid().optional(),
+  accountId: z.string().uuid().optional(),
+  mailboxOwnerUserId: z.string().uuid().nullable().optional(),
+});
 
-    // Solo personal: el aviso nombra a un cliente y a un hilo de correo de la oficina.
-    deps.emitter.emitToTenantStaff({
-      tenantId: env.tenantId,
-      event: MailSocketEvents.IncomingEmail,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: { customerId, emailThreadId, incomingEmailId: incomingEmailId ?? '' },
-      },
-    });
+export function parseCorrespondenceCustomerEmailReceived(payload: Record<string, unknown>) {
+  return NormalizedPayloadSchema.safeParse({
+    customerId: readDotNetField(payload, 'CustomerId', 'customerId'),
+    emailThreadId: readDotNetField(payload, 'EmailThreadId', 'emailThreadId'),
+    incomingEmailId: readDotNetField(payload, 'IncomingEmailId', 'incomingEmailId'),
+    accountId: readDotNetField(payload, 'AccountId', 'accountId'),
+    mailboxOwnerUserId: readDotNetField(payload, 'MailboxOwnerUserId', 'mailboxOwnerUserId'),
   });
 }
 
-function getString(source: Record<string, unknown>, key: string): string | undefined {
-  const value = source[key];
-  return typeof value === 'string' ? value : undefined;
+export function bindCorrespondenceConsumers(
+  register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
+  deps: {
+    emitter: RealtimeEmitter;
+    userPermissions: UserPermissionsProjectionRepository;
+  },
+): void {
+  register('correspondence.customer_email_received.v1', async (env) => {
+    const parsed = parseCorrespondenceCustomerEmailReceived(env.payload);
+    if (!parsed.success || !parsed.data.accountId) return;
+
+    const envelope = {
+      eventId: randomUUID(),
+      correlationId: env.correlationId ?? '',
+      emittedAtUtc: new Date().toISOString(),
+      payload: {
+        customerId: parsed.data.customerId,
+        emailThreadId: parsed.data.emailThreadId,
+        incomingEmailId: parsed.data.incomingEmailId ?? '',
+      },
+    };
+
+    if (parsed.data.mailboxOwnerUserId) {
+      deps.emitter.emitToUser({
+        tenantId: env.tenantId,
+        userId: parsed.data.mailboxOwnerUserId,
+        event: MailSocketEvents.IncomingEmail,
+        envelope,
+      });
+      return;
+    }
+
+    const [readers, writers] = await Promise.all([
+      deps.userPermissions.findActiveByTenantAndPermission(
+        env.tenantId,
+        ConnectorsPermissions.AccountsOfficeRead,
+      ),
+      deps.userPermissions.findActiveByTenantAndPermission(env.tenantId, ConnectorsPermissions.AccountsWrite),
+    ]);
+    const recipients = new Set([...readers, ...writers].map((user) => user.userId));
+    for (const userId of recipients) {
+      deps.emitter.emitToUser({
+        tenantId: env.tenantId,
+        userId,
+        event: MailSocketEvents.IncomingEmail,
+        envelope,
+      });
+    }
+  });
 }

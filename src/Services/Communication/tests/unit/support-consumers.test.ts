@@ -13,7 +13,7 @@ import { SupportSocketEvents } from '../../src/contracts/socket/support-socket-e
 import { SupportTicket } from '../../src/domain/support/support-ticket.js';
 import type { Notification, NotificationSnapshot } from '../../src/domain/notifications/notification.js';
 
-function setup() {
+function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
     handlers.set(eventType, handler);
@@ -43,9 +43,17 @@ function setup() {
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn().mockResolvedValue([]),
     countUnread: vi.fn().mockResolvedValue(1),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(1),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
   };
   const userPermissions: UserPermissionsProjectionRepository = {
     upsert: vi.fn(),
@@ -58,7 +66,14 @@ function setup() {
     findActiveByTenantAndRoleId: vi.fn().mockResolvedValue([]),
   };
 
-  bindSupportConsumers(register, { emitter, supportTickets, analytics, notifications, userPermissions });
+  bindSupportConsumers(register, {
+    emitter,
+    supportTickets,
+    analytics,
+    notifications,
+    userPermissions,
+    inAppSource,
+  });
   return { handlers, emitter, supportTickets, analytics, notifications, userPermissions };
 }
 
@@ -151,6 +166,26 @@ describe('bindSupportConsumers', () => {
         event: 'notification.received',
       }),
     );
+  });
+
+  it('con inAppSource=Notification emite realtime pero no crea la fila (la crea Notification .NET)', async () => {
+    const { handlers, emitter, notifications } = setup('Notification');
+
+    await handlers.get('communication.support.opened.v1')!(
+      envelope('communication.support.opened.v1', {
+        TicketId: 'ticket-9',
+        AgentTenantId: 'tenant-platform',
+        SupportRecipientUserIds: ['agent-1'],
+        OpenedByUserId: 'user-office',
+        ConversationId: 'conversation-1',
+        Subject: 'App Mobile',
+        Category: 'Technical',
+        Priority: 'Normal',
+      }),
+    );
+
+    expect(emitter.emitToTenantStaff).toHaveBeenCalledTimes(2);
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
   });
 
   it('usa fallback de proyeccion para eventos opened legacy sin destinatarios explicitos', async () => {

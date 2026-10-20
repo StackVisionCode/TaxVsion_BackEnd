@@ -101,9 +101,128 @@
               }
             }
           ]
+        },
+        {
+          "name": "Service token (M2M PlatformTenant)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/auth/service-token",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "auth",
+                "service-token"
+              ]
+            },
+            "description": "Obtiene el token interno de notification-worker bajo PlatformTenant para reconciliar proyecciones cross-tenant.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{serviceClientId}}\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{platformTenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "let t = j.accessToken || j.token || (j.tokens && j.tokens.accessToken);",
+                  "if (t) { pm.collectionVariables.set('servicePlatformToken', t); }",
+                  "pm.test('platform service token saved', () => pm.expect(t).to.be.ok);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Internal reconciliation - tenant owners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{servicePlatformToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{authService}}/internal/users/owners/reconciliation?page=1&size=200",
+              "host": [
+                "{{authService}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "owners",
+                "reconciliation"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "Endpoint interno directo a Auth. Requiere actor Service y PlatformTenant; no pasa por Gateway."
+          },
+          "response": []
+        },
+        {
+          "name": "Internal reconciliation - portal accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{servicePlatformToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{authService}}/internal/users/portal-accounts/reconciliation?page=1&size=200",
+              "host": [
+                "{{authService}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "portal-accounts",
+                "reconciliation"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "Endpoint interno directo a Auth. Requiere actor Service y PlatformTenant; no pasa por Gateway."
+          },
+          "response": []
         }
       ],
-      "description": "Tokens. Ejecutar 'Service token' primero para poblar {{serviceToken}}."
+      "description": "Tokens de usuario/servicio y reconciliacion interna de audiencias. Los endpoints internal usan {{authService}}, nunca el Gateway."
     },
     {
       "name": "SMS",

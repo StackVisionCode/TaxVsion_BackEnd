@@ -4,22 +4,12 @@ import type { NotificationRepository } from '../../src/application/ports/notific
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
 import type { CustomerPortalAccountRepository } from '../../src/application/ports/customer-portal-account-repository.js';
-import type { NotificationActionMappingRepository } from '../../src/application/ports/notification-action-mapping-repository.js';
 
-/**
- * Test de contrato (regla de la Fase 0 del plan de notificaciones): los payloads de
- * abajo usan los nombres de campo EXACTOS que .NET serializa hoy (PascalCase, sin
- * naming policy configurada en Wolverine — copiados literalmente de los records en
- * BuildingBlocks/Messaging/SignatureIntegrationEvents/, no adivinados).
- *
- * documentSignedHandler, requestCompletedHandler, requestCanceledHandler y
- * requestSealedHandler dependen de `createdByUserId` (o, en el caso de
- * documentSignedHandler, `requestCreatedByUserId`) — si Signature deja de publicar
- * ese campo, los 4 handlers descartan el evento en silencio
- * (`if (!requestId || !createdBy) return;`) sin generar ninguna notificación. Este
- * test existe para que, si el nombre del campo vuelve a desalinearse entre .NET y
- * Node, se rompa acá en CI en vez de quedar invisible.
- */
+// Contrato con Signature (.NET): los payloads usan los nombres exactos de los
+// records en BuildingBlocks/Messaging/SignatureIntegrationEvents/. Si el nombre
+// se desalinea, los handlers caen al guard `if (!requestId || !createdBy) return`
+// y la notificacion no se crea. Este test existe para fallar en CI, no en vivo.
+
 function setup() {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
@@ -28,9 +18,17 @@ function setup() {
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn(),
     countUnread: vi.fn().mockResolvedValue(0),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
   };
   const emitter: RealtimeEmitter = {
     emitToUser: vi.fn(),
@@ -51,15 +49,9 @@ function setup() {
     findActiveByCustomerIds: vi.fn().mockResolvedValue([]),
     findActiveByUserId: vi.fn().mockResolvedValue(null),
   };
-  const actionMappings: NotificationActionMappingRepository = {
-    findByEventKeyAndAudienceRole: vi.fn().mockResolvedValue(null),
-    list: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
 
-  bindSignatureConsumers(register, { notifications, emitter, customerPortalAccounts, actionMappings });
-  return { handlers, notifications, emitter, customerPortalAccounts, actionMappings };
+  bindSignatureConsumers(register, { notifications, emitter, customerPortalAccounts });
+  return { handlers, notifications, emitter, customerPortalAccounts };
 }
 
 function envelope(eventType: string, payload: Record<string, unknown>): IncomingEnvelope {
@@ -74,7 +66,7 @@ function envelope(eventType: string, payload: Record<string, unknown>): Incoming
 }
 
 describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', () => {
-  it('document.signed.v1 crea la notificacion para CreatedByUserId, no para un campo inexistente', async () => {
+  it('document.signed.v1 crea la notificacion para CreatedByUserId con resourceType canonico', async () => {
     const { handlers, notifications } = setup();
 
     await handlers.get('signature.document.signed.v1')!(
@@ -90,7 +82,14 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     );
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-1');
+    const snapshot = vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.toSnapshot();
+    expect(snapshot.userId).toBe('preparer-1');
+    expect(snapshot.kind).toBe('signature.document.signed');
+    expect(snapshot.resourceType).toBe('signature_request');
+    expect(snapshot.resourceId).toBe('req-1');
+    expect(snapshot.action).toBe('review');
+    expect(snapshot.titleKey).toBe('notif.signature.document.signed.title');
+    expect(snapshot.category).toBe('Signatures');
   });
 
   it('document.signed.v1 con MappedCustomerId sin cuenta de portal activa NO genera una segunda notificacion', async () => {
@@ -114,31 +113,13 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
   });
 
-  it('document.signed.v1 con cuenta de portal activa notifica a AMBAS audiencias con su propia accion', async () => {
-    const { handlers, notifications, customerPortalAccounts, actionMappings } = setup();
+  it('document.signed.v1 con cuenta de portal activa notifica a AMBAS audiencias con kinds distintos', async () => {
+    const { handlers, notifications, customerPortalAccounts } = setup();
     vi.mocked(customerPortalAccounts.findActiveByCustomerId).mockResolvedValue({
       customerId: 'customer-1',
       tenantId: 'tenant-1',
       userId: 'customer-portal-user-1',
       isActive: true,
-    });
-    vi.mocked(actionMappings.findByEventKeyAndAudienceRole).mockImplementation(async (_eventKey, audienceRole) => {
-      if (audienceRole === 'Preparer') {
-        return {
-          id: 'm1',
-          eventKey: 'signature.document.signed.v1',
-          audienceRole: 'Preparer',
-          actionType: 'DeepLink',
-          urlTemplate: '/crm/firmas/{signatureRequestId}',
-        };
-      }
-      return {
-        id: 'm2',
-        eventKey: 'signature.document.signed.v1',
-        audienceRole: 'CustomerSigner',
-        actionType: 'None',
-        urlTemplate: null,
-      };
     });
 
     await handlers.get('signature.document.signed.v1')!(
@@ -156,13 +137,18 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(notifications.createIfMissing).mock.calls;
-    const preparerCall = calls.find((c) => c[0]!.userId === 'preparer-1c')!;
-    const customerCall = calls.find((c) => c[0]!.userId === 'customer-portal-user-1')!;
-    expect(preparerCall[0]!.toSnapshot().metadata).toMatchObject({
-      actionType: 'DeepLink',
-      actionUrl: '/crm/firmas/req-1c',
-    });
-    expect(customerCall[0]!.toSnapshot().metadata).toMatchObject({ actionType: 'None' });
+    const preparer = calls
+      .map((c) => c[0]!.toSnapshot())
+      .find((s) => s.userId === 'preparer-1c')!;
+    const customer = calls
+      .map((c) => c[0]!.toSnapshot())
+      .find((s) => s.userId === 'customer-portal-user-1')!;
+    expect(preparer.kind).toBe('signature.document.signed');
+    expect(preparer.action).toBe('review');
+    expect(customer.kind).toBe('signature.document.signed.customer_signer');
+    expect(customer.action).toBe('open');
+    expect(customer.titleKey).toBe('notif.signature.document.signed.customer_signer.title');
+    expect(customer.resourceId).toBe('req-1c');
   });
 
   it('request.completed.v1 crea la notificacion para CreatedByUserId', async () => {
@@ -177,10 +163,10 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     );
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-2');
+    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.toSnapshot().userId).toBe('preparer-2');
   });
 
-  it('request.canceled.v1 crea la notificacion para CreatedByUserId, no para CanceledByUserId', async () => {
+  it('request.canceled.v1 notifica al creador cuando otra persona cancela', async () => {
     const { handlers, notifications } = setup();
 
     await handlers.get('signature.request.canceled.v1')!(
@@ -194,24 +180,47 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     );
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-3');
+    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.toSnapshot().userId).toBe('preparer-3');
   });
 
-  it('request.sealed.v1 crea la notificacion para CreatedByUserId', async () => {
+  it('request.canceled.v1 no notifica al creador cuando cancela su propia solicitud', async () => {
     const { handlers, notifications } = setup();
 
-    await handlers.get('signature.request.sealed.v1')!(
-      envelope('signature.request.sealed.v1', {
-        SignatureRequestId: 'req-4',
-        CreatedByUserId: 'preparer-4',
-        SealedFileId: 'file-1',
-        DocumentHashPost: 'abc123',
-        SealedAtUtc: new Date().toISOString(),
+    await handlers.get('signature.request.canceled.v1')!(
+      envelope('signature.request.canceled.v1', {
+        SignatureRequestId: 'req-self-canceled',
+        CreatedByUserId: 'preparer-3',
+        CanceledByUserId: 'preparer-3',
+        CanceledAtUtc: new Date().toISOString(),
+        PendingSignerIds: [],
       }),
     );
 
-    expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-4');
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
+  });
+
+  it('eventos de mantenimiento refrescan la lista sin crear campana', async () => {
+    const { handlers, notifications, emitter } = setup();
+
+    for (const eventType of [
+      'signature.request.expiration_extended.v1',
+      'signature.request.ready_for_sending.v1',
+      'signature.preparer.signed.v1',
+    ]) {
+      await handlers.get(eventType)!(envelope(eventType, { SignatureRequestId: 'req-list-only' }));
+    }
+
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
+    expect(emitter.emitToTenantStaff).toHaveBeenCalledTimes(3);
+  });
+
+  it('no registra handlers de bandeja para ids de firmante ni para el sellado redundante', () => {
+    const { handlers } = setup();
+
+    expect(handlers.has('signature.signer.invited.v1')).toBe(false);
+    expect(handlers.has('signature.request.reminder_due.v1')).toBe(false);
+    expect(handlers.has('signature.signer.verification.challenge_issued.v1')).toBe(false);
+    expect(handlers.has('signature.request.sealed.v1')).toBe(false);
   });
 
   it('no crea ninguna notificacion si CreatedByUserId falta (regresion del bug original)', async () => {
@@ -227,7 +236,7 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     expect(notifications.createIfMissing).not.toHaveBeenCalled();
   });
 
-  it('signer.rejected.v1 crea la notificacion para CreatedByUserId (antes: sin consumer en absoluto)', async () => {
+  it('signer.rejected.v1 crea la notificacion para CreatedByUserId con reason en params', async () => {
     const { handlers, notifications } = setup();
 
     await handlers.get('signature.signer.rejected.v1')!(
@@ -244,7 +253,9 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     );
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-6');
+    const snapshot = vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.toSnapshot();
+    expect(snapshot.userId).toBe('preparer-6');
+    expect(snapshot.params?.['reason']).toBe('No reconozco este documento');
   });
 
   it('signer.verification.failed.v1 crea la notificacion para CreatedByUserId solo cuando LockedUntilUtc esta presente', async () => {
@@ -263,7 +274,7 @@ describe('bindSignatureConsumers — contrato de campos con Signature (.NET)', (
     );
 
     expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('preparer-7');
+    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.toSnapshot().userId).toBe('preparer-7');
   });
 
   it('signer.verification.failed.v1 NO notifica en un intento fallido individual (sin LockedUntilUtc)', async () => {

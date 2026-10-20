@@ -3,6 +3,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -19,6 +20,7 @@ public static class SupportOpenedConsumer
     public static async Task Handle(
         SupportOpenedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
+        IInAppSourceGate inAppSource,
         IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -26,6 +28,9 @@ public static class SupportOpenedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            if (!inAppSource.PublishesInApp(InAppSourceGroup.Support))
+                return;
+
             var recipients =
                 evt.SupportRecipientUserIds.Count > 0
                     ? evt.SupportRecipientUserIds.Distinct().ToArray()
@@ -44,13 +49,28 @@ public static class SupportOpenedConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.AgentTenantId,
-                    userId.ToString("N"),
+                    $"user:{userId:N}",
                     title,
                     NotificationCategory.Collaboration,
                     TemplateKey,
                     evt.EventId,
                     correlation.CorrelationId,
                     recipientUserId: userId,
+                    inApp: new InAppNotificationRequest(
+                        NotificationKinds.CommunicationSupportOpened,
+                        userId,
+                        evt.EventId,
+                        "communication.support.opened.v1",
+                        evt.OccurredOn,
+                        title,
+                        FallbackBody: body,
+                        ResourceId: evt.TicketId.ToString(),
+                        Params: new Dictionary<string, string>
+                        {
+                            ["subject"] = evt.Subject,
+                            ["priority"] = evt.Priority,
+                        }
+                    ),
                     ct: ct
                 );
 

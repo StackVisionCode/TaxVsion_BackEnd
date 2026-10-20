@@ -10,6 +10,7 @@ using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -185,7 +186,9 @@ public sealed class ReminderDueConsumerTests
                 devices,
                 Logs,
                 Preferences,
+                new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
+                new NoOpNotificationDispatchMetrics(),
                 NullLogger<NotificationDispatcher>.Instance
             );
         }
@@ -361,8 +364,13 @@ public sealed class ReminderDueConsumerTests
 
     private sealed class NoOpSmsSender : ISmsSender
     {
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
     }
 
     private sealed class NoOpCorrelationContext : ICorrelationContext

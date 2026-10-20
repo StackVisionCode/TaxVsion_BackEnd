@@ -131,6 +131,7 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
             PublicToken = token,
             PhoneE164 = signer.PhoneNumber?.Value,
             PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
+            MappedCustomerId = signer.MappedCustomerId,
         };
     }
 }

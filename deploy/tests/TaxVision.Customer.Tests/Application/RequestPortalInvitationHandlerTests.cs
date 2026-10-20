@@ -76,7 +76,6 @@ public sealed class RequestPortalInvitationHandlerTests
                 EmailAddress.Create("ana@example.com").Value,
                 null,
                 Language.En,
-                PreferredChannel.Email,
                 Admin
             )
             .Value;

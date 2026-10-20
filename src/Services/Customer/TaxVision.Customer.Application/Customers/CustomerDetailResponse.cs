@@ -24,7 +24,6 @@ public sealed record CustomerDetailResponse(
     string PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
-    PreferredChannel PreferredChannel,
     Guid? OccupationId,
     string? OccupationName,
     Guid? PrincipalBusinessActivityId,
@@ -39,5 +38,8 @@ public sealed record CustomerDetailResponse(
     IReadOnlyList<RelationResponse> Relations,
     CustomerFiscalProfileResponse? FiscalProfile,
     // Staff asignado (M:N) con su rol (IsPrimary = responsable) — para el diálogo de asignación.
-    IReadOnlyList<CustomerAssigneeResponse> Assignees
+    IReadOnlyList<CustomerAssigneeResponse> Assignees,
+    // ContactPolicy T7.2 — default true/true (opt-out). Lo pinta el form de edición del CRM.
+    bool EmailEnabled = true,
+    bool SmsEnabled = true
 );

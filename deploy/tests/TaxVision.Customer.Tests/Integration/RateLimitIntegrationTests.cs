@@ -38,7 +38,6 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
                         LastName = "Tester",
                         PrimaryEmail = "ratelimit.create.test@ratelimit-test.local",
                         Language = "En",
-                        PreferredChannel = "Email",
                     }
                 ),
             maxAttempts: 2 * BaseLimit("customer.g.create")
@@ -94,12 +93,7 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
             () =>
                 client.PatchAsJsonAsync(
                     $"/customers/{randomCustomerId}",
-                    new
-                    {
-                        Language = "En",
-                        PreferredChannel = "Email",
-                        PrimaryEmail = "ratelimit.update.test@ratelimit-test.local",
-                    }
+                    new { Language = "En", PrimaryEmail = "ratelimit.update.test@ratelimit-test.local" }
                 ),
             maxAttempts: 2 * BaseLimit("customer.g.write")
         );

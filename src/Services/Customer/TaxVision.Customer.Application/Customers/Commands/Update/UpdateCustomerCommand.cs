@@ -17,7 +17,6 @@ public sealed record UpdateCustomerCommand(
     Guid ModifiedByUserId,
     // Preferencias y contacto
     Language Language,
-    PreferredChannel PreferredChannel,
     Guid? OccupationId,
     Guid? ProfilePictureFileId,
     string PrimaryEmail,
@@ -36,5 +35,7 @@ public sealed record UpdateCustomerCommand(
     BusinessStructure? BusinessStructure,
     DateOnly? FormationDate,
     Guid? PrincipalBusinessActivityId,
-    bool CallerCanViewAllCustomers
+    bool CallerCanViewAllCustomers,
+    bool? EmailEnabled = null,
+    bool? SmsEnabled = null
 );

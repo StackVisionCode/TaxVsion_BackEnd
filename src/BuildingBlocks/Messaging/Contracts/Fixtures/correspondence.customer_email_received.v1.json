@@ -1,0 +1,12 @@
+{
+  "EventId": "6f1c2a3b-1111-4a2b-9c3d-000000000001",
+  "TenantId": "4c12d117-766d-479c-a7ce-dfb779a1829b",
+  "OccurredOn": "2026-10-17T15:04:05.123Z",
+  "CorrelationId": "corr-123",
+  "CustomerId": "1a2b3c4d-3333-4c4d-9e5f-000000000003",
+  "IncomingEmailId": "7e8f9a0b-4444-4d5e-8f60-000000000004",
+  "EmailThreadId": "9b0d2c4e-2222-4b3c-8d4e-000000000002",
+  "Subject": "Quarterly records",
+  "AccountId": "55bc55cd-5555-4555-8555-000000000005",
+  "MailboxOwnerUserId": "a77d6953-f806-4518-96b7-35734f515e3f"
+}

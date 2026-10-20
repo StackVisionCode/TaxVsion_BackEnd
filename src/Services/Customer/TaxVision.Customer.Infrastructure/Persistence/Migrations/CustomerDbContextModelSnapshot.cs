@@ -7651,11 +7651,6 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OccupationId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("PreferredChannel")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
                     b.Property<Guid?>("ProfilePictureFileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -8327,7 +8322,35 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("CustomerId");
                         });
 
+                    b.OwnsOne("TaxVision.Customer.Domain.Customers.ValueObjects.ContactPolicy", "ContactPolicy", b1 =>
+                        {
+                            b1.Property<Guid>("CustomerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<bool>("EmailEnabled")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("bit")
+                                .HasDefaultValue(true)
+                                .HasColumnName("ContactPolicy_EmailEnabled");
+
+                            b1.Property<bool>("SmsEnabled")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("bit")
+                                .HasDefaultValue(true)
+                                .HasColumnName("ContactPolicy_SmsEnabled");
+
+                            b1.HasKey("CustomerId");
+
+                            b1.ToTable("Customers");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CustomerId");
+                        });
+
                     b.Navigation("BusinessIdentity");
+
+                    b.Navigation("ContactPolicy")
+                        .IsRequired();
 
                     b.Navigation("PersonalName");
 

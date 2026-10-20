@@ -11,11 +11,13 @@ public sealed record CustomerResponse(
     string PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
-    PreferredChannel PreferredChannel,
     Guid? OccupationId,
     string? OccupationName,
     Guid? PrincipalBusinessActivityId,
     string? PrincipalBusinessActivityName,
     DateTime CreatedAtUtc,
-    Guid? AssignedPreparerUserId = null
+    Guid? AssignedPreparerUserId = null,
+    // ContactPolicy T7.2 — default true/true para respuestas de clientes previos a la migración.
+    bool EmailEnabled = true,
+    bool SmsEnabled = true
 );

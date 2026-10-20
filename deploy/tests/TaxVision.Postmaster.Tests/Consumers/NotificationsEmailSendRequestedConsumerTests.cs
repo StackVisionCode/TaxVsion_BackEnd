@@ -288,6 +288,41 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         Assert.Equal("provider-msg-42", succeeded.ProviderMessageId);
     }
 
+    [Fact]
+    public async Task Handle_redacts_sensitive_subject_in_history_but_sends_original_subject()
+    {
+        var evt = CreateEvent() with { Subject = "Your verification code is 654321", TemplateKey = "auth.otp_code" };
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
+        };
+        var emailSender = new FakeEmailSender();
+        var sentMessages = new FakeSentMessageRepository();
+
+        await NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            new FakeIdempotencyGuard(),
+            providerResolver,
+            new FakeConnectedMailboxResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
+            sentMessages,
+            new FakeTenantDirectoryRepository(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal("[redacted]", Assert.Single(sentMessages.Added).Subject);
+        Assert.Equal("Your verification code is 654321", emailSender.LastContent?.Subject);
+    }
+
     /// <summary>
     /// Hardening Fase 9 — el test end-to-end que prueba la conexión real del pipeline de logos CID:
     /// una referencia de logo puesta en <c>evt.InlineAssets</c> (lo que Notification publicaría según

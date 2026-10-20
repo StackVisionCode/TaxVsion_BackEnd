@@ -28,6 +28,9 @@ public sealed record SmsSendRequestedIntegrationEvent : IntegrationEvent
     /// <summary>Opaco para Sms: solo correlación/observabilidad (p. ej. "signature:{requestId}:{signerId}:otp").</summary>
     public string? SourceContext { get; init; }
 
+    /// <summary>Clave de plantilla para aplicar políticas de persistencia sin inspeccionar el cuerpo.</summary>
+    public string? TemplateKey { get; init; }
+
     /// <summary>Proveedor preferido (código); null = default/failover de la plataforma.</summary>
     public string? ProviderPreference { get; init; }
 }

@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { pushNotification } from '../use-cases/push-notification.js';
+import { pushAndEmitNotification } from '../use-cases/push-notification.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
-import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 import {
   CustomerSocketEvents,
   type CustomerChangedDto,
@@ -46,9 +45,11 @@ export function bindCustomerConsumers(
     customerDirectory: CustomerDirectoryRepository;
     customerPreparerAssignments: CustomerPreparerAssignmentRepository;
     customerAssignments: CustomerAssignmentProjectionRepository;
+    inAppSource: 'Communication' | 'Notification';
   },
 ): void {
   register('customer.bulk_imported.v1', async (env) => {
+    if (deps.inAppSource === 'Notification') return;
     const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
     const totalRows = getNumber(env.payload, 'totalRows') ?? getNumber(env.payload, 'TotalRows') ?? 0;
     const successCount =
@@ -57,102 +58,64 @@ export function bindCustomerConsumers(
     const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
     if (!createdBy) return;
 
-    const result = await pushNotification(
+    await pushAndEmitNotification(
+      env,
       {
-        tenantId: env.tenantId,
         userId: createdBy,
-        kind: 'customer.bulk_import_completed',
+        kind: 'customer.bulk_imported',
         priority: failedCount > 0 ? 'High' : 'Normal',
-        title: 'Importacion masiva completada',
-        body: `${successCount}/${totalRows} clientes importados${failedCount > 0 ? `, ${failedCount} con errores` : ''}.`,
+        title: 'Client import completed',
+        body: `${successCount}/${totalRows} clients imported${failedCount > 0 ? `, ${failedCount} with errors` : ''}.`,
         metadata: { importJobId, totalRows, successCount, failedCount },
-        sourceEventId: env.eventId,
-        sourceEventType: env.eventType,
-        correlationId: env.correlationId ?? null,
+        category: 'Clients',
+        actorUserId: createdBy,
+        // El evento se auto-dirige al usuario que lanzó el import; actúa como "tú lo hiciste".
+        // ActorType=TenantEmployee es el default razonable (los imports son de staff del tenant);
+        // si fuera un admin, el front lo diferencia por el matching actorUserId == currentUserId.
+        actorType: 'TenantEmployee',
+        resourceType: 'import_job',
+        resourceId: importJobId || null,
+        action: 'review',
+        occurredAtUtc: envOccurredAt(env),
       },
       deps,
     );
-    if (result.isSuccess && result.value.created && result.value.notification) {
-      deps.emitter.emitToUser({
-        tenantId: env.tenantId,
-        userId: createdBy,
-        event: NotificationSocketEvents.Received,
-        envelope: {
-          eventId: randomUUID(),
-          correlationId: env.correlationId ?? '',
-          emittedAtUtc: new Date().toISOString(),
-          payload: result.value.notification,
-        },
-      });
-      deps.emitter.emitToUser({
-        tenantId: env.tenantId,
-        userId: createdBy,
-        event: NotificationSocketEvents.UnreadCountChanged,
-        envelope: {
-          eventId: randomUUID(),
-          correlationId: env.correlationId ?? '',
-          emittedAtUtc: new Date().toISOString(),
-          payload: { count: result.value.unreadCount },
-        },
-      });
-    }
   });
 
   // Fase 1B — evento hermano de customer.bulk_imported.v1: cubre el camino de
   // Failed (archivo vacio, excede filas, virus, bloqueado por politica, crash
   // del worker), que antes no publicaba nada — el empleado nunca se enteraba.
   register('customer.bulk_import_failed.v1', async (env) => {
+    if (deps.inAppSource === 'Notification') return;
     const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
     const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
     const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason') ?? '';
     if (!createdBy) return;
 
-    const result = await pushNotification(
+    await pushAndEmitNotification(
+      env,
       {
-        tenantId: env.tenantId,
         userId: createdBy,
-        kind: 'customer.bulk_import_failed',
+        kind: 'customer.import_failed',
         priority: 'High',
-        title: 'Importacion masiva fallida',
-        body: reason
-          ? `La importacion no pudo completarse: ${reason}`
-          : 'La importacion no pudo completarse.',
+        title: 'Client import failed',
+        body: reason ? `The import could not complete: ${reason}` : 'The import could not complete.',
         metadata: { importJobId, reason },
-        sourceEventId: env.eventId,
-        sourceEventType: env.eventType,
-        correlationId: env.correlationId ?? null,
+        category: 'Clients',
+        actorUserId: createdBy,
+        actorType: 'TenantEmployee',
+        resourceType: 'import_job',
+        resourceId: importJobId || null,
+        action: 'review',
+        occurredAtUtc: envOccurredAt(env),
       },
       deps,
     );
-    if (result.isSuccess && result.value.created && result.value.notification) {
-      deps.emitter.emitToUser({
-        tenantId: env.tenantId,
-        userId: createdBy,
-        event: NotificationSocketEvents.Received,
-        envelope: {
-          eventId: randomUUID(),
-          correlationId: env.correlationId ?? '',
-          emittedAtUtc: new Date().toISOString(),
-          payload: result.value.notification,
-        },
-      });
-      deps.emitter.emitToUser({
-        tenantId: env.tenantId,
-        userId: createdBy,
-        event: NotificationSocketEvents.UnreadCountChanged,
-        envelope: {
-          eventId: randomUUID(),
-          correlationId: env.correlationId ?? '',
-          emittedAtUtc: new Date().toISOString(),
-          payload: { count: result.value.unreadCount },
-        },
-      });
-    }
   });
 
-  // Fase Backend 10 — CustomerDirectoryEntry. `Kind`/`PreferredChannel` etc no
-  // se proyectan aqui: solo lo que un autocomplete de invitacion necesita
-  // (nombre + email), igual criterio que UserDirectoryEntry para empleados.
+  // Fase Backend 10 — CustomerDirectoryEntry. `Kind` y los otros atributos del
+  // cliente no se proyectan aqui: solo lo que un autocomplete de invitacion
+  // necesita (nombre + email), igual criterio que UserDirectoryEntry para empleados.
   register('customer.created.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
@@ -260,4 +223,15 @@ function getNumber(source: Record<string, unknown>, key: string): number | undef
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+/**
+ * `OccurredOn` del envelope .NET: hora REAL del hecho (p.ej. cuándo terminó el
+ * import), distinta de `CreatedAtUtc` del repo que es la hora de recepción.
+ */
+function envOccurredAt(env: IncomingEnvelope): Date {
+  const raw = getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn');
+  if (!raw) return new Date();
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }

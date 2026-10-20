@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -16,6 +17,7 @@ using TaxVision.Notification.Domain.Onboarding;
 using TaxVision.Notification.Domain.Permissions;
 using TaxVision.Notification.Domain.Preferences;
 using TaxVision.Notification.Domain.RateLimiting;
+using TaxVision.Notification.Domain.Recipients;
 
 namespace TaxVision.Notification.Infrastructure.Persistence;
 
@@ -55,6 +57,10 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     // Hermana de la anterior para los avisos cuyo destinatario es un cliente, no personal de la firma.
     public DbSet<CustomerEmailDirectoryEntry> CustomerEmailDirectoryEntries => Set<CustomerEmailDirectoryEntry>();
 
+    // Proyección por canal (T7.3). Si no hay fila, política efectiva = ambos ON (opt-out).
+    public DbSet<CustomerContactPolicyProjection> CustomerContactPolicyProjections =>
+        Set<CustomerContactPolicyProjection>();
+
     // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
     public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();
 
@@ -72,9 +78,16 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     // EfTenantPlanCodeReader para el rate limiting tiered. Ver TenantPlanCodeProjection.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
+    // Fase 4 — proyecciones locales de audiencia (owner del tenant, cuenta de portal del cliente),
+    // sembradas por reconciliación (pull a Auth) + eventos de ciclo de vida de usuario.
+    public DbSet<TenantOwnerProjection> TenantOwnerProjections => Set<TenantOwnerProjection>();
+    public DbSet<CustomerPortalAccountProjection> CustomerPortalAccountProjections =>
+        Set<CustomerPortalAccountProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

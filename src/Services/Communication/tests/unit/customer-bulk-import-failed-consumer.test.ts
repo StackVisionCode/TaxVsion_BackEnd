@@ -14,7 +14,7 @@ import type { CustomerAssignmentProjectionRepository } from '../../src/applicati
  * BuildingBlocks/Messaging/CustomerIntegrationEvents/ — Fase 1B: antes de esta fase el
  * camino de falla del bulk-import no publicaba ningun evento en absoluto).
  */
-function setup() {
+function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
     handlers.set(eventType, handler);
@@ -22,9 +22,17 @@ function setup() {
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn(),
     countUnread: vi.fn().mockResolvedValue(0),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
   };
   const emitter: RealtimeEmitter = {
     emitToUser: vi.fn(),
@@ -58,6 +66,7 @@ function setup() {
     customerDirectory,
     customerPreparerAssignments,
     customerAssignments,
+    inAppSource,
   });
   return { handlers, notifications, emitter };
 }
@@ -99,6 +108,21 @@ describe('bindCustomerConsumers — customer.bulk_import_failed.v1 (Fase 1B)', (
       envelope('customer.bulk_import_failed.v1', {
         ImportJobId: 'job-2',
         Reason: 'Uploaded file failed the security scan.',
+        FailedAtUtc: new Date().toISOString(),
+      }),
+    );
+
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
+  });
+
+  it('con inAppSource=Notification no crea la fila (la crea Notification .NET)', async () => {
+    const { handlers, notifications } = setup('Notification');
+
+    await handlers.get('customer.bulk_import_failed.v1')!(
+      envelope('customer.bulk_import_failed.v1', {
+        ImportJobId: 'job-3',
+        CreatedByUserId: 'employee-1',
+        Reason: 'File is empty.',
         FailedAtUtc: new Date().toISOString(),
       }),
     );

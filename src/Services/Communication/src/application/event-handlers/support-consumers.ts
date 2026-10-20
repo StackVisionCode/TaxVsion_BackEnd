@@ -4,13 +4,12 @@ import type { NotificationRepository } from '../ports/notification-repository.js
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
-import { pushNotification } from '../use-cases/push-notification.js';
+import { pushAndEmitNotification } from '../use-cases/push-notification.js';
 import { SupportEventTypes } from '../../contracts/events/support-events.js';
 import {
   SupportSocketEvents,
   type SupportTicketRealtimeDto,
 } from '../../contracts/socket/support-socket-events.js';
-import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 import { CommunicationPermissions } from '../../domain/shared/permissions.js';
 import type { AnalyticsRepository } from '../ports/analytics-repository.js';
 
@@ -22,6 +21,7 @@ export function bindSupportConsumers(
     analytics: AnalyticsRepository;
     notifications: NotificationRepository;
     userPermissions: UserPermissionsProjectionRepository;
+    inAppSource: 'Communication' | 'Notification';
   },
 ): void {
   register(SupportEventTypes.Opened, async (env) => {
@@ -30,7 +30,7 @@ export function bindSupportConsumers(
 
     // Realtime primero.
     emitToSupportRooms(env, deps.emitter, payload, SupportSocketEvents.TicketOpened);
-    await notifySupportQueue(env, deps, payload);
+    if (deps.inAppSource === 'Communication') await notifySupportQueue(env, deps, payload);
 
     // Analytics projection from the same lifecycle event.
     await deps.analytics.incrementCounters({
@@ -133,11 +133,17 @@ async function notifySupportQueue(
 
   const title = `New support ticket: ${payload.subject ?? 'Support request'}`;
   const body = `${payload.priority ?? 'Normal'} priority - ${payload.category ?? 'Other'}.`;
+  // El `env` que viene del evento `support.ticket.opened` tiene `tenantId` =
+  // tenant del cliente que abrió el ticket (el pisante). El dispatcher a
+  // notifications usa payload.agentTenantId (soporte). Construimos un envelope
+  // con el agentTenantId para que la fila/socket caiga en el tenant correcto.
+  const agentEnv: IncomingEnvelope = { ...env, tenantId: payload.agentTenantId };
+  const occurredAtUtc = parseIso(env.occurredOnUtc);
 
   for (const userId of recipientUserIds) {
-    const result = await pushNotification(
+    await pushAndEmitNotification(
+      agentEnv,
       {
-        tenantId: payload.agentTenantId,
         userId,
         kind: 'support.ticket.opened',
         priority: payload.priority === 'Urgent' || payload.priority === 'High' ? 'High' : 'Normal',
@@ -148,38 +154,29 @@ async function notifySupportQueue(
           tenantId: payload.tenantId,
           conversationId: payload.conversationId,
         },
-        sourceEventId: env.eventId,
-        sourceEventType: env.eventType,
-        correlationId: env.correlationId ?? null,
+        category: 'Work',
+        // "Actor" útil: el usuario del tenant pisante que abrió el ticket (si
+        // viene). Para support el agentes verán quién lo abrió en el otro lado.
+        actorUserId: payload.changedByUserId ?? null,
+        // Un ticket abierto por un cliente externo al tenant pisante no es ni
+        // Employee ni Admin de este tenant — lo marcamos External para que el
+        // front sepa que no debe buscar un avatar interno.
+        actorType: 'External',
+        resourceType: 'support_ticket',
+        resourceId: payload.ticketId,
+        ...(payload.conversationId ? { resourceContext: { conversationId: payload.conversationId } } : {}),
+        action: 'review',
+        occurredAtUtc,
       },
       deps,
     );
-
-    if (!result.isSuccess || !result.value.created || !result.value.notification) continue;
-
-    deps.emitter.emitToUser({
-      tenantId: payload.agentTenantId,
-      userId,
-      event: NotificationSocketEvents.Received,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: result.value.notification,
-      },
-    });
-    deps.emitter.emitToUser({
-      tenantId: payload.agentTenantId,
-      userId,
-      event: NotificationSocketEvents.UnreadCountChanged,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: { count: result.value.unreadCount },
-      },
-    });
   }
+}
+
+function parseIso(value: string | null | undefined): Date {
+  if (!value) return new Date();
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }
 
 async function emitTicketChanged(

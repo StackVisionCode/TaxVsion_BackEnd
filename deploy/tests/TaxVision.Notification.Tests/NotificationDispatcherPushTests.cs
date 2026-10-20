@@ -5,6 +5,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -141,9 +142,17 @@ public sealed class NotificationDispatcherPushTests
             pushDeviceTokens,
             logs,
             AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new NoOpIntegrationEventPublisher(),
             uow,
+            new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
+
+    private sealed class NoOpIntegrationEventPublisher : IIntegrationEventPublisher
+    {
+        public Task PublishAsync<T>(T message, CancellationToken ct = default)
+            where T : class => Task.CompletedTask;
+    }
 
     // ------------------------------------------------------------------
     // Fakes — mismo estilo hand-rolled que BaselineSmokeTests, sin librería de mocking.
@@ -254,8 +263,13 @@ public sealed class NotificationDispatcherPushTests
     {
         public static readonly NoOpSmsSender Instance = new();
 
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
     }
 
     private sealed class AlwaysEnabledUserNotificationPreferenceRepository : IUserNotificationPreferenceRepository

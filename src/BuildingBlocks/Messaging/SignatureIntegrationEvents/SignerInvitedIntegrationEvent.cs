@@ -31,4 +31,12 @@ public sealed record SignerInvitedIntegrationEvent : IntegrationEvent
     public required int RevocationEpoch { get; init; }
     public required bool RequiresConsent { get; init; }
     public required bool RequiresSequentialSigning { get; init; }
+
+    /// <summary>
+    /// Si el firmante está mapeado a un cliente del tenant (<c>Signer.MappedCustomerId</c>),
+    /// Notification lo usa para resolver la cuenta de portal del cliente y publicar un in-app en el
+    /// portal además del email. Null para firmantes externos sin cuenta en el portal.
+    /// Campo aditivo (T7.4.C): consumers viejos lo ignoran sin romper.
+    /// </summary>
+    public Guid? MappedCustomerId { get; init; }
 }

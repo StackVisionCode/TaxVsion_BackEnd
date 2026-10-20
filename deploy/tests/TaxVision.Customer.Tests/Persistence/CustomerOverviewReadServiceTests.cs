@@ -41,17 +41,7 @@ public sealed class CustomerOverviewReadServiceTests
         var name = PersonalName.Create("Grace", "Hopper").Value;
         var email = EmailAddress.Create($"grace-{Guid.NewGuid():N}@example.com").Value;
         return DomainCustomer
-            .Register(
-                tenantId,
-                CustomerKind.Individual,
-                name,
-                null,
-                email,
-                null,
-                Language.En,
-                PreferredChannel.Email,
-                byUser
-            )
+            .Register(tenantId, CustomerKind.Individual, name, null, email, null, Language.En, byUser)
             .Value;
     }
 

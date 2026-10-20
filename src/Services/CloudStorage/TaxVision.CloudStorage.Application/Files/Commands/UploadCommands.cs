@@ -234,7 +234,14 @@ public static class CompleteUploadHandler
                 clock.UtcNow
             )
         );
-        await bus.PublishAsync(new ScanFileCommand(command.TenantId, file.Id, command.Audit.CorrelationId));
+        await bus.PublishAsync(
+            new ScanFileCommand(
+                command.TenantId,
+                file.Id,
+                command.Audit.CorrelationId,
+                command.Scope.IsCustomerPortal ? command.Scope.CustomerId : null
+            )
+        );
         await bus.PublishAsync(
             new FileAccessAuditedIntegrationEvent
             {
@@ -252,7 +259,7 @@ public static class CompleteUploadHandler
     }
 }
 
-public sealed record ScanFileCommand(Guid TenantId, Guid FileId, string CorrelationId);
+public sealed record ScanFileCommand(Guid TenantId, Guid FileId, string CorrelationId, Guid? PortalCustomerId = null);
 
 public static class ScanFileHandler
 {
@@ -486,6 +493,19 @@ public static class ScanFileHandler
                         CorrelationId = command.CorrelationId,
                     }
                 );
+                if (command.PortalCustomerId is { } customerId)
+                {
+                    await bus.PublishAsync(
+                        new CustomerDocumentUploadedIntegrationEvent
+                        {
+                            TenantId = command.TenantId,
+                            CustomerId = customerId,
+                            FileId = file.Id,
+                            FolderId = file.FolderId,
+                            CorrelationId = command.CorrelationId,
+                        }
+                    );
+                }
             }
             else if (scan.Verdict == VirusScanVerdict.Infected)
             {

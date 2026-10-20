@@ -12,7 +12,7 @@ import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitt
  * 2 eventos tenia consumer en ningun servicio antes de esta fase, ni siquiera el
  * campo CreatedByUserId existia).
  */
-function setup() {
+function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
     handlers.set(eventType, handler);
@@ -20,9 +20,17 @@ function setup() {
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn(),
     countUnread: vi.fn().mockResolvedValue(0),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
   };
   const emitter: RealtimeEmitter = {
     emitToUser: vi.fn(),
@@ -35,7 +43,7 @@ function setup() {
     emitBroadcast: vi.fn(),
   } as unknown as RealtimeEmitter;
 
-  bindConnectorsConsumers(register, { notifications, emitter });
+  bindConnectorsConsumers(register, { notifications, emitter, inAppSource });
   return { handlers, notifications, emitter };
 }
 
@@ -103,5 +111,12 @@ describe('bindConnectorsConsumers — contrato de campos con Connectors (.NET)',
     );
 
     expect(notifications.createIfMissing).not.toHaveBeenCalled();
+  });
+
+  it('con inAppSource=Notification no registra los handlers (los crea Notification .NET)', () => {
+    const { handlers } = setup('Notification');
+
+    expect(handlers.has('connectors.oauth.refresh_failed.v1')).toBe(false);
+    expect(handlers.has('connectors.watch.expired.v1')).toBe(false);
   });
 });

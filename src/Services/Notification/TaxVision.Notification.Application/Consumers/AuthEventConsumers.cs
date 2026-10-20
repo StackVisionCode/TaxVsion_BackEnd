@@ -1,9 +1,11 @@
-﻿using BuildingBlocks.Common;
+﻿using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -330,27 +332,47 @@ public static class SecurityAlertConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
+        IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            // El evento no transporta el email del usuario (dato de Auth); se
-            // registra como notificación in-app dirigida al usuario. Cuando exista
-            // la proyección de usuarios en Notification se enviará también por correo.
             var subject = $"Alerta de seguridad en tu cuenta de {platform.Current.BrandName}";
-            await dispatcher.RecordInAppAsync(
+            var officeRecipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
                 evt.TenantId,
-                $"user:{evt.UserId:N}",
-                subject,
-                NotificationCategory.AccountSecurity,
-                "auth.security_alert",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.UserId,
-                ct: ct
+                NotificationPermissions.SecurityTenantAlerts,
+                new RecipientValidation(RequiredCapability: SubscriptionPermissions.AuditView),
+                recipientResolver,
+                ct
             );
+            var recipients = new[] { evt.UserId }.Concat(officeRecipients).Distinct();
+
+            foreach (var userId in recipients)
+            {
+                await dispatcher.RecordInAppAsync(
+                    evt.TenantId,
+                    $"user:{userId:N}",
+                    subject,
+                    NotificationCategory.AccountSecurity,
+                    "auth.security_alert",
+                    evt.EventId,
+                    correlation.CorrelationId,
+                    recipientUserId: userId,
+                    inApp: new InAppNotificationRequest(
+                        NotificationKinds.AuthSecurityAlert,
+                        userId,
+                        evt.EventId,
+                        "auth.security_alert.v1",
+                        evt.OccurredOn,
+                        subject,
+                        ActorUserId: evt.UserId,
+                        Params: new Dictionary<string, string> { ["alertType"] = evt.AlertType }
+                    ),
+                    ct: ct
+                );
+            }
         }
     }
 }
@@ -409,10 +431,4 @@ public static class UserRegisteredConsumer
         var fullName = $"{evt.Name} {evt.LastName}".Trim();
         return string.IsNullOrWhiteSpace(fullName) ? evt.Email.Split('@')[0] : fullName;
     }
-}
-
-internal static class Correlation
-{
-    public static string From(string correlationId, Guid eventId) =>
-        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
 }

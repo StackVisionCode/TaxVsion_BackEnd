@@ -219,6 +219,8 @@ public static class RawMessageReceivedConsumer
                 IncomingEmailId = email.Id,
                 EmailThreadId = thread.Id,
                 Subject = evt.Subject,
+                AccountId = evt.MailboxOwnershipKnown ? evt.AccountId : null,
+                MailboxOwnerUserId = evt.MailboxOwnershipKnown ? evt.MailboxOwnerUserId : null,
             }
         );
     }

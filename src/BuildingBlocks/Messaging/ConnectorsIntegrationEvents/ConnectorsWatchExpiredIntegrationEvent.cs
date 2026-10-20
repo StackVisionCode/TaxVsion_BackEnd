@@ -14,4 +14,6 @@ public sealed record ConnectorsWatchExpiredIntegrationEvent : IntegrationEvent
     public required int FailureCount { get; init; }
     public required DateTime ExpiredAtUtc { get; init; }
     public required Guid CreatedByUserId { get; init; }
+    public bool? IsOfficeMailbox { get; init; }
+    public Guid? MailboxOwnerUserId { get; init; }
 }

@@ -11,6 +11,9 @@ public sealed class ProviderWatchSubscriptionRepository(ConnectorsDbContext dbCo
     public async Task AddAsync(ProviderWatchSubscription subscription, CancellationToken ct = default) =>
         await dbContext.ProviderWatchSubscriptions.AddAsync(subscription, ct);
 
+    public void Remove(ProviderWatchSubscription subscription) =>
+        dbContext.ProviderWatchSubscriptions.Remove(subscription);
+
     public async Task<Result<ProviderWatchSubscription>> GetByAccountIdAsync(
         Guid accountId,
         CancellationToken ct = default

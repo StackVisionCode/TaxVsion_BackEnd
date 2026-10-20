@@ -161,6 +161,30 @@ const rawEnv = z
       .transform((value) => value === 'true'),
     COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
 
+    COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+    COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
+    COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE: z.coerce.number().int().positive().max(5000).default(500),
+
+    // Puente de in-app por grupo (T3.7): quién crea la fila de la campana para cada grupo de hechos.
+    // `Communication` (default, rollback seguro) = este servicio la crea como hasta ahora; `Notification`
+    // = la crea Notification (.NET) vía notification.inapp.requested.v1 y este servicio solo hace su
+    // realtime propio (proyecciones), sin pushNotification. El dedupe por SourceEventId evita duplicados
+    // si ambos corren un instante durante el cambio.
+    COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT: z
+      .enum(['Communication', 'Notification'])
+      .default('Communication'),
+    COMMUNICATION_INAPP_SOURCE_CONNECTORS: z.enum(['Communication', 'Notification']).default('Communication'),
+    COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL: z
+      .enum(['Communication', 'Notification'])
+      .default('Communication'),
+    // C16-b: `blocked_by_policy` migra a Notification con audiencia ByPermission;
+    // este flag espeja al grupo CloudStoragePolicy del gate .NET.
+    COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY: z
+      .enum(['Communication', 'Notification'])
+      .default('Communication'),
+    COMMUNICATION_INAPP_SOURCE_SIGNATURE: z.enum(['Communication', 'Notification']).default('Communication'),
+    COMMUNICATION_INAPP_SOURCE_SUPPORT: z.enum(['Communication', 'Notification']).default('Communication'),
+
     // Visibilidad por asignacion (P2) — flag GLOBAL de despliegue, espejo del
     // `<Svc>:AssignmentVisibility:Enabled` de los servicios .NET: con ON, un staff
     // que NO ve todo (customers.view_all / PlatformAdmin) solo ve en el picker y en
@@ -305,6 +329,22 @@ export const config = {
   platform: {
     tenantBaseUrl: rawEnv.COMMUNICATION_TENANT_BASE_URL,
     baseDomain: rawEnv.COMMUNICATION_PLATFORM_BASE_DOMAIN,
+  },
+
+  notificationRetention: {
+    readDays: rawEnv.COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS,
+    unreadDays: rawEnv.COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS,
+    batchSize: rawEnv.COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE,
+  },
+
+  // T3.7 — quién crea la fila de la campana por grupo de hechos.
+  inAppSource: {
+    customerImport: rawEnv.COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT,
+    connectors: rawEnv.COMMUNICATION_INAPP_SOURCE_CONNECTORS,
+    cloudStorageLegal: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL,
+    cloudStoragePolicy: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY,
+    signature: rawEnv.COMMUNICATION_INAPP_SOURCE_SIGNATURE,
+    support: rawEnv.COMMUNICATION_INAPP_SOURCE_SUPPORT,
   },
 
   rateLimit: {

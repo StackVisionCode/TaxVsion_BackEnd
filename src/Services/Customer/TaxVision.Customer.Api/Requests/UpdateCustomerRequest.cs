@@ -5,7 +5,6 @@ namespace TaxVision.Customer.Api.Requests;
 public sealed record UpdateCustomerRequest(
     // Preferencias y contacto
     Language Language,
-    PreferredChannel PreferredChannel,
     Guid? OccupationId,
     Guid? ProfilePictureFileId,
     string PrimaryEmail,
@@ -22,5 +21,8 @@ public sealed record UpdateCustomerRequest(
     string? Dba = null,
     BusinessStructure? BusinessStructure = null,
     DateOnly? FormationDate = null,
-    Guid? PrincipalBusinessActivityId = null
+    Guid? PrincipalBusinessActivityId = null,
+    // ContactPolicy T7.2 — null = preservar el valor actual (PATCH-style).
+    bool? EmailEnabled = null,
+    bool? SmsEnabled = null
 );

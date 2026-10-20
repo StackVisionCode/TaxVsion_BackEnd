@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
@@ -40,6 +41,9 @@ public static class CompleteOAuthConnectHandler
         IProviderConnectionAuditLogRepository auditLogRepository,
         IProviderWatchSubscriptionRepository watchSubscriptionRepository,
         IWatchProviderClientFactory watchClientFactory,
+        ISmtpCredentialsRepository smtpCredentialsRepository,
+        IImapCredentialsRepository imapCredentialsRepository,
+        IProviderSyncCursorRepository providerSyncCursorRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -171,6 +175,30 @@ public static class CompleteOAuthConnectHandler
             if (isNewAccount)
                 await accountRepository.AddAsync(account, ct);
             await connectionRepository.AddAsync(connection, ct);
+        }
+
+        // Reconectar sobre un account existente con OTRO proveedor (p.ej. IMAP → Gmail OAuth):
+        // sincroniza el proveedor del aggregate con el de la nueva connection y purga credenciales
+        // obsoletas. Antes se dejaba el ProviderCode viejo + SMTP/IMAP sin borrar, dejando a la UI
+        // mostrando el proveedor incorrecto y las credenciales viejas como "zombies" en la DB.
+        if (!isNewAccount && account.ProviderCode != cmd.ProviderCode)
+        {
+            var changeResult = account.ChangeProvider(cmd.ProviderCode, now);
+            if (changeResult.IsFailure)
+                return Result.Failure<CompleteOAuthConnectResult>(changeResult.Error);
+
+            var staleSmtp = await smtpCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
+            if (staleSmtp.IsSuccess)
+                smtpCredentialsRepository.Remove(staleSmtp.Value);
+            var staleImap = await imapCredentialsRepository.GetByAccountIdAsync(account.Id, ct);
+            if (staleImap.IsSuccess)
+                imapCredentialsRepository.Remove(staleImap.Value);
+            // El cursor stale (formato IMAP UIDVALIDITY:UID) reventaba el history.list de Gmail con
+            // HTTP 400 "invalid history id" y dejaba el ReconciliationJob bloqueado. Purgamos para
+            // que el seeder lo re-cree con el startHistoryId correcto del nuevo watch Gmail.
+            var staleCursor = await providerSyncCursorRepository.GetByAccountIdAsync(account.Id, ct);
+            if (staleCursor.IsSuccess)
+                providerSyncCursorRepository.Remove(staleCursor.Value);
         }
 
         await unitOfWork.SaveChangesAsync(ct);

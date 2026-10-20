@@ -46,7 +46,9 @@ public static class AssignTaskHandler
             return Result.Failure<TaskResponse>(assigned.Error);
 
         if (previousAssigneeUserId != command.AssigneeUserId)
-            await bus.PublishAsync(BuildEvent(task, previousAssigneeUserId, correlation.CorrelationId));
+            await bus.PublishAsync(
+                BuildEvent(task, previousAssigneeUserId, command.ByUserId, correlation.CorrelationId)
+            );
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(TaskResponse.From(task));
@@ -55,6 +57,7 @@ public static class AssignTaskHandler
     private static TaskAssignedIntegrationEvent BuildEvent(
         TaskItem task,
         Guid? previousAssigneeUserId,
+        Guid assignedByUserId,
         string correlationId
     ) =>
         new()
@@ -66,5 +69,6 @@ public static class AssignTaskHandler
             AssigneeUserId = task.AssigneeUserId!.Value,
             PreviousAssigneeUserId = previousAssigneeUserId,
             DueAtUtc = task.Due?.DueAtUtc,
+            AssignedByUserId = assignedByUserId,
         };
 }

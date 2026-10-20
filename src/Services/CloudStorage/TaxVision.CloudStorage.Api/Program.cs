@@ -210,6 +210,7 @@ builder.Host.UseWolverine(options =>
     options.LocalQueueFor<ScanFileCommand>().Sequential();
 
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerDocumentUploadedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileInfectedDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileBlockedByPolicyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FilePendingReviewIntegrationEvent>().ToRabbitExchange("taxvision-events");

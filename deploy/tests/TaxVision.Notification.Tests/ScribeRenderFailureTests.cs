@@ -8,6 +8,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Application.Consumers.Signature;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -117,6 +118,8 @@ public sealed class ScribeRenderFailureTests
                 gateway,
                 scribeClient,
                 new NoOpSmsSender(),
+                new NotificationDispatcherHarness().Dispatcher,
+                NoPortalRecipientResolver.Instance,
                 Options.Create(new PortalOptions()),
                 TestPlatform.Settings,
                 new FakeTenantHostResolver(),

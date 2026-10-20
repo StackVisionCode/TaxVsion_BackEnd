@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
@@ -38,16 +39,31 @@ public static class MeetingInvitationCreatedConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var recipient = evt.InviteeUserId is { } userId ? $"user:{userId:N}" : evt.InviteeEmail ?? "unknown";
+            var title = $"Invitación a meeting ({evt.InviteeKind}) — expira {evt.ExpiresAtUtc:u}";
+
+            // Solo el invitado con cuenta llega a la campana; los externos sin UserId reciben solo el email.
+            var inApp = evt.InviteeUserId is { } inviteeUserId
+                ? new InAppNotificationRequest(
+                    NotificationKinds.CommunicationMeetingInvitationCreated,
+                    inviteeUserId,
+                    evt.EventId,
+                    "communication.meeting.invitation_created.v1",
+                    evt.OccurredOn,
+                    title,
+                    ResourceId: evt.MeetingId.ToString()
+                )
+                : null;
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
                 recipient,
-                $"Invitación a meeting ({evt.InviteeKind}) — expira {evt.ExpiresAtUtc:u}",
+                title,
                 NotificationCategory.Collaboration,
                 "communication.meeting.invitation_created",
                 evt.EventId,
                 correlation.CorrelationId,
                 recipientUserId: evt.InviteeUserId,
+                inApp: inApp,
                 ct: ct
             );
 

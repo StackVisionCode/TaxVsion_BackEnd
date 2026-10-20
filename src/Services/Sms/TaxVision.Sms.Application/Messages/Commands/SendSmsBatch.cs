@@ -3,6 +3,7 @@ using System.Text;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application.Abstractions;
@@ -24,7 +25,8 @@ public sealed record SmsSendItemDto(
     IReadOnlyList<SmsMediaDto>? Media,
     string? IdempotencyKey,
     string? SourceContext,
-    string? RecipientName = null
+    string? RecipientName = null,
+    string? TemplateKey = null
 );
 
 /// <summary>
@@ -217,10 +219,18 @@ public static class SendSmsBatchHandler
         if (bodyResult.IsFailure)
             return Failed(item, SmsErrors.InvalidBody.Code);
         var body = bodyResult.Value;
+        var storedBodyResult = SmsBody.Create(SensitiveNotificationContent.ForStorage(item.TemplateKey, body.Value));
+        if (storedBodyResult.IsFailure)
+            return Failed(item, storedBodyResult.Error.Code);
+        var storedBody = storedBodyResult.Value;
 
         var mediaPayload = (item.Media ?? [])
             .Select(m => new SmsMediaPayload(m.Url, m.ContentType, m.FileName, m.SizeBytes))
             .ToList();
+
+        var idempotencyKey = string.IsNullOrWhiteSpace(item.IdempotencyKey)
+            ? DeriveIdempotencyKey(tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload)
+            : item.IdempotencyKey.Trim();
 
         // 2) Gate opt-out: si el número hizo STOP, se persiste como Suppressed (auditable), no se envía.
         var optOut = await optOuts.GetAsync(tenantId, item.CustomerId, phone.Value, ct);
@@ -230,7 +240,8 @@ public static class SendSmsBatchHandler
                 tenantId,
                 item,
                 phone,
-                body,
+                storedBody,
+                idempotencyKey,
                 correlationId,
                 batchId,
                 primary.Code,
@@ -255,10 +266,6 @@ public static class SendSmsBatchHandler
         }
 
         // 3) Idempotencia: clave explícita o derivada; si ya existe, devuelve el existente sin reenviar.
-        var idempotencyKey = string.IsNullOrWhiteSpace(item.IdempotencyKey)
-            ? DeriveIdempotencyKey(tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload)
-            : item.IdempotencyKey.Trim();
-
         var existing = await messages.GetByIdempotencyKeyAsync(tenantId, idempotencyKey, ct);
         if (existing is not null)
             return ItemResult(existing, item, null);
@@ -344,7 +351,7 @@ public static class SendSmsBatchHandler
             tenantId,
             item.CustomerId,
             phone,
-            body,
+            storedBody,
             idempotencyKey,
             correlationId,
             batchId,
@@ -388,6 +395,7 @@ public static class SendSmsBatchHandler
         SmsSendItemDto item,
         PhoneE164 phone,
         SmsBody body,
+        string idempotencyKey,
         string correlationId,
         Guid batchId,
         string providerCode,
@@ -399,9 +407,7 @@ public static class SendSmsBatchHandler
             item.CustomerId,
             phone,
             body,
-            string.IsNullOrWhiteSpace(item.IdempotencyKey)
-                ? DeriveIdempotencyKey(tenantId, item.CustomerId, phone.Value, body.Value, media)
-                : item.IdempotencyKey.Trim(),
+            idempotencyKey,
             correlationId,
             batchId,
             providerCode,

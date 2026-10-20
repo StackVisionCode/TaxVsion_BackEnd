@@ -91,6 +91,12 @@ public sealed class CustomerAssignmentsProjectionConsumerTests
             Guid userId,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyCollection<Guid>> GetAssignedUserIdsAsync(
+            Guid tenantId,
+            Guid customerId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

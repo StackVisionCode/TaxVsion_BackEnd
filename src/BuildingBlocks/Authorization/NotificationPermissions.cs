@@ -22,4 +22,12 @@ public static class NotificationPermissions
 
     // Auditoría/logs
     public const string LogView = "notification.log.view";
+
+    // Suscripción a alertas de oficina (Fase 4, dos llaves): entre quienes tienen la capacidad,
+    // quiénes reciben esa alerta. Staff delegables, no peligrosos, fuera del bundle automático del
+    // TenantAdmin (AllowedActorTypes = TenantEmployee). El plural es deliberado (ver plan D4/T4.3).
+    public const string BillingAlerts = "notifications.billing.alerts";
+    public const string StorageAlerts = "notifications.storage.alerts";
+    public const string SecurityTenantAlerts = "notifications.security.tenant_alerts";
+    public const string MailboxAlerts = "notifications.mailbox.alerts";
 }

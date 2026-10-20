@@ -23,6 +23,11 @@ public sealed record TaskAssignedIntegrationEvent : IntegrationEvent
     public required Guid AssigneeUserId { get; init; }
     public Guid? PreviousAssigneeUserId { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
+    // Quien hizo la asignación. Permite al consumer de notificaciones excluir al
+    // actor si se asigna la tarea a sí mismo. Nullable para eventos emitidos antes
+    // de este cambio aditivo.
+    public Guid? AssignedByUserId { get; init; }
 }
 
 /// <summary><c>task.completed.v1</c></summary>

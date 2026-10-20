@@ -86,14 +86,24 @@ public static class UpdateCustomerHandler
 
     private static Result ApplyChanges(CustomerEntity customer, UpdateCustomerCommand cmd, ContactValueObjects vo)
     {
-        var results = new[]
+        var results = new List<Result>
         {
-            customer.ChangePreferences(cmd.Language, cmd.PreferredChannel, cmd.ModifiedByUserId),
+            customer.ChangeLanguage(cmd.Language, cmd.ModifiedByUserId),
             customer.ChangeOccupation(cmd.OccupationId, cmd.ModifiedByUserId),
             customer.SetProfilePicture(cmd.ProfilePictureFileId, cmd.ModifiedByUserId),
             customer.ChangePrimaryEmail(vo.Email, cmd.ModifiedByUserId),
             customer.ChangePrimaryPhone(vo.Phone, cmd.ModifiedByUserId),
         };
+
+        // ContactPolicy es aditivo (T7.2): si el request no viene con los flags, se preservan.
+        if (cmd.EmailEnabled.HasValue || cmd.SmsEnabled.HasValue)
+            results.Add(
+                customer.ChangeContactPolicy(
+                    cmd.EmailEnabled ?? customer.ContactPolicy.EmailEnabled,
+                    cmd.SmsEnabled ?? customer.ContactPolicy.SmsEnabled,
+                    cmd.ModifiedByUserId
+                )
+            );
 
         foreach (var r in results)
             if (r.IsFailure)
@@ -187,7 +197,8 @@ public static class UpdateCustomerHandler
                     PrimaryEmail = customer.PrimaryEmail.Value,
                     PrimaryPhone = customer.PrimaryPhone?.E164Value,
                     Language = customer.Language.ToString(),
-                    PreferredChannel = customer.PreferredChannel.ToString(),
+                    EmailEnabled = customer.ContactPolicy.EmailEnabled,
+                    SmsEnabled = customer.ContactPolicy.SmsEnabled,
                     OccupationId = customer.OccupationId,
                     ModifiedByUserId = cmd.ModifiedByUserId,
                 }
@@ -206,7 +217,6 @@ public static class UpdateCustomerHandler
             c.PrimaryEmail.Value,
             c.PrimaryPhone?.E164Value,
             c.Language,
-            c.PreferredChannel,
             c.OccupationId,
             OccupationName: null,
             c.BusinessIdentity?.PrincipalBusinessActivityId,

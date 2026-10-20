@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -36,8 +37,14 @@ public static class FileInfectedDetectedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var recipients = await recipientResolver.ResolveAsync(
-                new ByPermission(evt.TenantId, CloudStoragePermissions.SettingsManage),
+            var recipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
+                evt.TenantId,
+                NotificationPermissions.StorageAlerts,
+                new RecipientValidation(
+                    RequiredCapability: CloudStoragePermissions.SettingsManage,
+                    RequiredModule: PermissionModuleMap.ModuleFor(CloudStoragePermissions.SettingsManage)
+                ),
+                recipientResolver,
                 ct
             );
             var title = $"Archivo malicioso bloqueado ({evt.FileId:N})";
@@ -45,13 +52,22 @@ public static class FileInfectedDetectedConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    userId.ToString("N"),
+                    $"user:{userId:N}",
                     title,
                     NotificationCategory.StorageAndQuota,
                     "cloudstorage.file_infected",
                     evt.EventId,
                     correlation.CorrelationId,
                     recipientUserId: userId,
+                    inApp: new InAppNotificationRequest(
+                        NotificationKinds.CloudStorageFileInfected,
+                        userId,
+                        evt.EventId,
+                        "cloudstorage.file.infected.v1",
+                        evt.OccurredOn,
+                        title,
+                        ResourceId: evt.FileId.ToString()
+                    ),
                     ct: ct
                 );
                 await dispatcher.SendPushAsync(
@@ -149,8 +165,14 @@ public static class StorageLimitExceededConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var recipients = await recipientResolver.ResolveAsync(
-                new ByPermission(evt.TenantId, CloudStoragePermissions.SettingsManage),
+            var recipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
+                evt.TenantId,
+                NotificationPermissions.StorageAlerts,
+                new RecipientValidation(
+                    RequiredCapability: CloudStoragePermissions.SettingsManage,
+                    RequiredModule: PermissionModuleMap.ModuleFor(CloudStoragePermissions.SettingsManage)
+                ),
+                recipientResolver,
                 ct
             );
             const string title = "Límite de almacenamiento alcanzado";
@@ -158,13 +180,21 @@ public static class StorageLimitExceededConsumer
             {
                 await dispatcher.RecordInAppAsync(
                     evt.TenantId,
-                    userId.ToString("N"),
+                    $"user:{userId:N}",
                     title,
                     NotificationCategory.StorageAndQuota,
                     "cloudstorage.quota_exceeded",
                     evt.EventId,
                     correlation.CorrelationId,
                     recipientUserId: userId,
+                    inApp: new InAppNotificationRequest(
+                        NotificationKinds.CloudStorageStorageLimitExceeded,
+                        userId,
+                        evt.EventId,
+                        "cloudstorage.storage_limit_exceeded.v1",
+                        evt.OccurredOn,
+                        title
+                    ),
                     ct: ct
                 );
                 await dispatcher.SendPushAsync(

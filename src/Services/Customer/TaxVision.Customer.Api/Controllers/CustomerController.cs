@@ -82,8 +82,9 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.PrimaryEmail,
             body.PrimaryPhone,
             body.Language,
-            body.PreferredChannel,
-            body.Overwrite
+            body.Overwrite,
+            body.EmailEnabled,
+            body.SmsEnabled
         );
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(cmd, ct);
@@ -272,7 +273,6 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             id,
             userId,
             body.Language,
-            body.PreferredChannel,
             body.OccupationId,
             body.ProfilePictureFileId,
             body.PrimaryEmail,
@@ -288,7 +288,9 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             body.BusinessStructure,
             body.FormationDate,
             body.PrincipalBusinessActivityId,
-            canViewAll
+            canViewAll,
+            body.EmailEnabled,
+            body.SmsEnabled
         );
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(cmd, ct);

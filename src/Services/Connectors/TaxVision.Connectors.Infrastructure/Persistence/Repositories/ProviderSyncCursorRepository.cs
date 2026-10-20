@@ -19,4 +19,6 @@ public sealed class ProviderSyncCursorRepository(ConnectorsDbContext dbContext) 
             )
             : Result.Success(cursor);
     }
+
+    public void Remove(ProviderSyncCursor cursor) => dbContext.ProviderSyncCursors.Remove(cursor);
 }

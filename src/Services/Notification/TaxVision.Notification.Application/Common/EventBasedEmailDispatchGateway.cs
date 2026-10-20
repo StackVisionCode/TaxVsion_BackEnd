@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Domain.Notifications;
@@ -70,7 +71,7 @@ public sealed class EventBasedEmailDispatchGateway(
             request.TenantId,
             NotificationChannel.Email,
             request.To,
-            request.Subject,
+            SensitiveNotificationContent.ForStorage(request.TemplateKey, request.Subject),
             request.TemplateKey,
             request.RelatedEventId,
             request.CorrelationId

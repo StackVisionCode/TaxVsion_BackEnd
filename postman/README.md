@@ -66,9 +66,12 @@ Se guardan a nivel colección; los scripts de test las rellenan solas:
 | Variable | Origen |
 |---|---|
 | `gateway` | `http://localhost:5047` (fijo). |
+| `authService` | `http://localhost:5124`; solo para endpoints internos no publicados por Gateway. |
+| `platformTenantId` | Tenant de plataforma usado por reconciliaciones M2M cross-tenant. |
 | `tenantId` | tu tenant. |
 | `serviceClientId` / `serviceClientSecret` | credencial M2M (del `.env`). |
 | `serviceToken` | lo guarda **Auth → Service token** automáticamente. |
+| `servicePlatformToken` | lo guarda **Auth → Service token (M2M PlatformTenant)**. |
 | `userToken` | lo guarda **Auth → Login** (si no hay MFA de por medio). |
 | `categoryId`, `catalogItemId`, `supplierId`, `itemSupplierId`, `invoiceId` | los guardan los `POST` de creación. |
 

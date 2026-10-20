@@ -4,6 +4,7 @@ using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -22,6 +23,7 @@ public static class SignatureCertificateReadyConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
+        ICustomerContactPolicyRepository contactPolicies,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
@@ -47,12 +49,30 @@ public static class SignatureCertificateReadyConsumer
                     string.Equals(signer.PreferredChannel, "Sms", StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrWhiteSpace(signer.PhoneE164);
 
+                // T7.3: respeta ContactPolicy solo si el firmante está mapeado a un cliente del tenant.
+                var channel =
+                    prefersSms && !string.IsNullOrEmpty(downloadLink)
+                        ? CustomerContactChannel.Sms
+                        : CustomerContactChannel.Email;
+                if (
+                    !await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
+                        evt.TenantId,
+                        signer.MappedCustomerId,
+                        channel,
+                        contactPolicies,
+                        ct
+                    )
+                )
+                    continue;
+
                 if (prefersSms && !string.IsNullOrEmpty(downloadLink))
                 {
                     await smsSender.SendAsync(
                         signer.PhoneE164!,
                         BuildSms(signer, platform.Current.BrandName, downloadLink, evt.DocumentTitle),
-                        ct
+                        ct,
+                        templateKey: null,
+                        idempotencyToken: $"{evt.EventId:N}:{signer.SignerId:N}"
                     );
                     continue;
                 }

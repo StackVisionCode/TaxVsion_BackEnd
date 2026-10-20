@@ -9,6 +9,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Communication;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -61,6 +62,7 @@ public sealed class SupportOpenedConsumerTests
         SupportOpenedConsumer.Handle(
             evt,
             harness.Dispatcher,
+            AlwaysOnInAppSource.Instance,
             harness.Resolver,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -101,7 +103,9 @@ public sealed class SupportOpenedConsumerTests
                 devices,
                 Logs,
                 new AllowAllPreferences(),
+                new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
+                new NoOpNotificationDispatchMetrics(),
                 NullLogger<NotificationDispatcher>.Instance
             );
         }
@@ -116,6 +120,12 @@ public sealed class SupportOpenedConsumerTests
             LastAudience = audience;
             return Task.FromResult(recipients);
         }
+
+        public Task<BuildingBlocks.Results.Result<IReadOnlyList<Guid>>> ResolveAsync(
+            NotificationAudience audience,
+            RecipientValidation validation,
+            CancellationToken ct = default
+        ) => Task.FromResult(BuildingBlocks.Results.Result.Success(recipients));
     }
 
     private sealed class RecordingPushSender : IPushSender
@@ -222,8 +232,13 @@ public sealed class SupportOpenedConsumerTests
 
     private sealed class NoOpSmsSender : ISmsSender
     {
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
     }
 
     private sealed class NoOpCorrelationContext : ICorrelationContext

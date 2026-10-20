@@ -70,7 +70,52 @@ public class ProcessGmailPushNotificationHandlerTests
         var published = Assert.Single(bus.Published);
         var evt = Assert.IsType<ConnectorsRawMessageReceivedIntegrationEvent>(published);
         Assert.Equal(account.Id, evt.AccountId);
+        Assert.True(evt.MailboxOwnershipKnown);
+        Assert.Null(evt.MailboxOwnerUserId);
         Assert.Equal("corr-1", evt.CorrelationId);
+    }
+
+    [Fact]
+    public async Task Handle_PersonalMailbox_PublishesItsOwner()
+    {
+        var ownerUserId = Guid.NewGuid();
+        var account = TenantEmailAccount
+            .Create(TenantId, "owner@gmail.com", ProviderCode.Gmail, ownerUserId, Now, ownerUserId: ownerUserId)
+            .Value;
+        account.MarkConnected(Now);
+        account.Activate(Now);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var watchRepository = new FakeProviderWatchSubscriptionRepository();
+        watchRepository.Subscriptions.Add(
+            ProviderWatchSubscription
+                .Create(account.Id, ProviderCode.Gmail, "watch-history-1", "topic", Now.AddDays(7), Now)
+                .Value
+        );
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["msg1"], "history-2", false),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessGmailPushNotificationHandler.Handle(
+            new ProcessGmailPushNotificationCommand("owner@gmail.com", "push-history-1"),
+            accountRepository,
+            watchRepository,
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var evt = Assert.IsType<ConnectorsRawMessageReceivedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.True(evt.MailboxOwnershipKnown);
+        Assert.Equal(ownerUserId, evt.MailboxOwnerUserId);
     }
 
     [Fact]

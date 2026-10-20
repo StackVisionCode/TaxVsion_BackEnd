@@ -25,7 +25,12 @@ public sealed class Customer : TenantEntity
     public PersonalName? PersonalName { get; private set; }
     public BusinessIdentity? BusinessIdentity { get; private set; }
     public DateOnly? DateOfBirth { get; private set; }
-    public PreferredChannel PreferredChannel { get; private set; }
+
+    /// <summary>
+    /// Política por canal. Default ambos ON (opt-out). Lo lee Notification vía proyección para
+    /// decidir fan-out por canal. OTP/transaccionales siempre salen (no se gatean por esto).
+    /// </summary>
+    public ContactPolicy ContactPolicy { get; private set; } = ContactPolicy.Default;
     public Language Language { get; private set; }
     public EmailAddress PrimaryEmail { get; private set; } = default!;
     public PhoneNumber? PrimaryPhone { get; private set; }
@@ -53,10 +58,10 @@ public sealed class Customer : TenantEntity
         EmailAddress primaryEmail,
         PhoneNumber? primaryPhone,
         Language language,
-        PreferredChannel preferredChannel,
         Guid createdByUserId,
         DateOnly? dateOfBirth = null,
-        Guid? occupationId = null
+        Guid? occupationId = null,
+        ContactPolicy? contactPolicy = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -97,7 +102,7 @@ public sealed class Customer : TenantEntity
             DateOfBirth = dateOfBirth,
             OccupationId = occupationId,
             Language = language,
-            PreferredChannel = preferredChannel,
+            ContactPolicy = contactPolicy ?? ContactPolicy.Default,
             PrimaryEmail = primaryEmail,
             PrimaryPhone = primaryPhone,
             CreatedAtUtc = DateTime.UtcNow,
@@ -129,11 +134,22 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
-    public Result ChangePreferences(Language language, PreferredChannel channel, Guid byUserId)
+    public Result ChangeLanguage(Language language, Guid byUserId)
     {
         EnsureActive();
         Language = language;
-        PreferredChannel = channel;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Cambia la política de contacto por canal. Notification la lee vía proyección para gatear
+    /// email/SMS no-críticos (OTP/transaccionales siempre salen).
+    /// </summary>
+    public Result ChangeContactPolicy(bool emailEnabled, bool smsEnabled, Guid byUserId)
+    {
+        EnsureActive();
+        ContactPolicy = new ContactPolicy(emailEnabled, smsEnabled);
         Touch(byUserId);
         return Result.Success();
     }

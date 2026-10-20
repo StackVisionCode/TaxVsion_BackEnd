@@ -125,6 +125,7 @@ public static class SendSignatureRequestHandler
                 RevocationEpoch = request.RevocationEpoch,
                 RequiresConsent = request.RequiresConsent,
                 RequiresSequentialSigning = request.RequiresSequentialSigning,
+                MappedCustomerId = signer.MappedCustomerId,
             };
             await bus.PublishAsync(evt);
         }
