@@ -6,6 +6,8 @@ using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Providers;
+using TaxVision.Connectors.Tests.Sync;
 using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
@@ -22,6 +24,9 @@ public class CompleteOAuthConnectHandlerTests
         FakeProviderConnectionAuditLogRepository AuditLogRepository,
         FakeProviderWatchSubscriptionRepository WatchSubscriptionRepository,
         FakeWatchProviderClient WatchClient,
+        FakeSmtpCredentialsRepository SmtpCredentials,
+        FakeImapCredentialsRepository ImapCredentials,
+        FakeProviderSyncCursorRepository SyncCursors,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
     );
@@ -37,6 +42,9 @@ public class CompleteOAuthConnectHandlerTests
             new FakeProviderConnectionAuditLogRepository(),
             new FakeProviderWatchSubscriptionRepository(),
             watchClient,
+            new FakeSmtpCredentialsRepository(),
+            new FakeImapCredentialsRepository(),
+            new FakeProviderSyncCursorRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus()
         );
@@ -55,6 +63,9 @@ public class CompleteOAuthConnectHandlerTests
             fixture.AuditLogRepository,
             fixture.WatchSubscriptionRepository,
             new FakeWatchProviderClientFactory(fixture.WatchClient),
+            fixture.SmtpCredentials,
+            fixture.ImapCredentials,
+            fixture.SyncCursors,
             fixture.UnitOfWork,
             fixture.Bus,
             new FakeCorrelationContext(),
@@ -333,5 +344,59 @@ public class CompleteOAuthConnectHandlerTests
         Assert.NotNull(persistedConnection.Token);
         Assert.Equal(token.Id, persistedConnection.Token!.Id);
         Assert.Equal("new-refresh-token", fixture.Protector.Unprotect(persistedConnection.Token.RefreshTokenCipher));
+    }
+
+    /// <summary>
+    /// Reconectar por OAuth sobre un account que estaba en IMAP debe sincronizar el ProviderCode del
+    /// aggregate con el nuevo proveedor y purgar las credenciales IMAP/SMTP viejas. Regresión del bug
+    /// visto en producción el 2026-10-19: el UI quedaba mostrando "Imap" aunque la connection activa
+    /// era Gmail OAuth, porque el handler nunca llamaba <c>account.ChangeProvider</c>.
+    /// </summary>
+    [Fact]
+    public async Task Handle_ReconnectWithDifferentProvider_SwitchesProviderCodeAndPurgesStaleCreds()
+    {
+        var fixture = CreateFixture();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        const string email = "office@example.com";
+
+        // Account previo creado como IMAP, luego desconectado por el usuario.
+        var existingAccount = TenantEmailAccount
+            .Create(tenantId, email, ProviderCode.Imap, userId, Now.AddDays(-10))
+            .Value;
+        existingAccount.MarkConnected(Now.AddDays(-10));
+        existingAccount.Activate(Now.AddDays(-10));
+        existingAccount.Disconnect(Now.AddHours(-1));
+        await fixture.AccountRepository.AddAsync(existingAccount);
+
+        // Credenciales IMAP+SMTP viejas (deben purgarse al switch a OAuth).
+        var passwordCipher = EncryptedSecret.Create(new byte[] { 1 }, new byte[12], new byte[16], 1).Value;
+        var imap = ImapCredentials
+            .Create(existingAccount.Id, "imap.example.com", 993, true, email, passwordCipher)
+            .Value;
+        var smtp = SmtpCredentials
+            .Create(existingAccount.Id, "smtp.example.com", 587, true, email, passwordCipher)
+            .Value;
+        await fixture.ImapCredentials.AddAsync(imap);
+        await fixture.SmtpCredentials.AddAsync(smtp);
+
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => email;
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code", email)
+        );
+
+        Assert.True(result.IsSuccess);
+        var account = Assert.Single(fixture.AccountRepository.Accounts);
+        Assert.Equal(ProviderCode.Gmail, account.ProviderCode);
+        Assert.Empty(fixture.ImapCredentials.Credentials);
+        Assert.Empty(fixture.SmtpCredentials.Credentials);
+
+        // El evento integration lleva el ProviderCode NUEVO para que Postmaster reconcile su proyección.
+        var publishedConnected = fixture
+            .Bus.Published.OfType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>()
+            .Single();
+        Assert.Equal(ProviderCode.Gmail.ToString(), publishedConnected.ProviderCode);
     }
 }

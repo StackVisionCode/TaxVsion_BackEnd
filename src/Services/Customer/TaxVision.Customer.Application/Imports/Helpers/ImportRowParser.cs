@@ -22,11 +22,8 @@ internal static class ImportRowParser
                 new Error("Row.Kind", $"Kind must be Individual or Business. Got '{raw.Kind}'.")
             );
 
-        // Language/Channel con defaults sanos
+        // Language con default sano
         var language = Enum.TryParse<Language>(raw.Language, ignoreCase: true, out var lang) ? lang : Language.En;
-        var channel = Enum.TryParse<PreferredChannel>(raw.PreferredChannel, ignoreCase: true, out var ch)
-            ? ch
-            : PreferredChannel.Email;
 
         // Email obligatorio (Customer.Register lo exige)
         if (string.IsNullOrWhiteSpace(raw.Email))
@@ -250,7 +247,6 @@ internal static class ImportRowParser
                 emailRes.Value,
                 phone,
                 language,
-                channel,
                 dateOfBirth,
                 address,
                 normalizedTaxId,
@@ -273,7 +269,6 @@ internal sealed record ParsedRow(
     EmailAddress Email,
     PhoneNumber? Phone,
     Language Language,
-    PreferredChannel PreferredChannel,
     DateOnly? DateOfBirth,
     AddressValue? Address,
     string NormalizedTaxIdentifier,

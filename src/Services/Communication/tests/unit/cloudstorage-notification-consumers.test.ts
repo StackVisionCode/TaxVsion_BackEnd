@@ -11,7 +11,7 @@ import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitt
  * BuildingBlocks/Messaging/CloudStorageIntegrationEvents/CloudStorageIntegrationEvents.cs
  * — Fase 1B: estos 8 eventos no llevaban ningun actor antes de esta fase).
  */
-function setup() {
+function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
     handlers.set(eventType, handler);
@@ -19,9 +19,17 @@ function setup() {
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn(),
     countUnread: vi.fn().mockResolvedValue(0),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
   };
   const emitter: RealtimeEmitter = {
     emitToUser: vi.fn(),
@@ -34,7 +42,7 @@ function setup() {
     emitBroadcast: vi.fn(),
   } as unknown as RealtimeEmitter;
 
-  bindCloudStorageNotificationConsumers(register, { notifications, emitter });
+  bindCloudStorageNotificationConsumers(register, { notifications, emitter, inAppSource });
   return { handlers, notifications, emitter };
 }
 
@@ -50,18 +58,12 @@ function envelope(eventType: string, payload: Record<string, unknown>): Incoming
 }
 
 describe('bindCloudStorageNotificationConsumers — contrato de campos con CloudStorage (.NET)', () => {
-  it('file.restored.v1 crea la notificacion para CreatedBy', async () => {
-    const { handlers, notifications } = setup();
+  it('con inAppSource=Notification no registra los handlers (los crea Notification .NET)', () => {
+    const { handlers } = setup('Notification');
 
-    await handlers.get('cloudstorage.file.restored.v1')!(
-      envelope('cloudstorage.file.restored.v1', {
-        FileId: 'file-1',
-        CreatedBy: 'owner-1',
-      }),
-    );
-
-    expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('owner-1');
+    expect(handlers.has('cloudstorage.sharelink.folder_item_added.v1')).toBe(false);
+    expect(handlers.has('cloudstorage.file.blocked_by_dmca_takedown.v1')).toBe(false);
+    expect(handlers.has('cloudstorage.file.legal_hold_placed.v1')).toBe(false);
   });
 
   it('sharelink.folder_item_added.v1 crea la notificacion para CreatedByUserId (dueño del archivo, no el creador del link)', async () => {
@@ -81,36 +83,12 @@ describe('bindCloudStorageNotificationConsumers — contrato de campos con Cloud
     expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('owner-2');
   });
 
-  it('sharelink.accessed.v1 crea la notificacion para CreatedByUserId', async () => {
-    const { handlers, notifications } = setup();
+  it('no registra consumers de campana para eventos informativos de bajo valor', () => {
+    const { handlers } = setup();
 
-    await handlers.get('cloudstorage.sharelink.accessed.v1')!(
-      envelope('cloudstorage.sharelink.accessed.v1', {
-        ShareLinkId: 'link-2',
-        FileId: 'file-3',
-        Channel: 'public',
-        CreatedByUserId: 'owner-3',
-      }),
-    );
-
-    expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('owner-3');
-  });
-
-  it('sharelink.expired.v1 crea la notificacion para CreatedByUserId (creador del link, no del recurso)', async () => {
-    const { handlers, notifications } = setup();
-
-    await handlers.get('cloudstorage.sharelink.expired.v1')!(
-      envelope('cloudstorage.sharelink.expired.v1', {
-        ShareLinkId: 'link-3',
-        ResourceId: 'file-4',
-        ExpiresAtUtc: new Date().toISOString(),
-        CreatedByUserId: 'link-creator-1',
-      }),
-    );
-
-    expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('link-creator-1');
+    expect(handlers.has('cloudstorage.file.restored.v1')).toBe(false);
+    expect(handlers.has('cloudstorage.sharelink.accessed.v1')).toBe(false);
+    expect(handlers.has('cloudstorage.sharelink.expired.v1')).toBe(false);
   });
 
   it('file.blocked_by_dmca_takedown.v1 crea la notificacion para CreatedBy', async () => {
@@ -177,8 +155,8 @@ describe('bindCloudStorageNotificationConsumers — contrato de campos con Cloud
   it('no crea ninguna notificacion si CreatedBy/CreatedByUserId falta', async () => {
     const { handlers, notifications } = setup();
 
-    await handlers.get('cloudstorage.file.restored.v1')!(
-      envelope('cloudstorage.file.restored.v1', { FileId: 'file-9' }),
+    await handlers.get('cloudstorage.file.blocked_by_dmca_takedown.v1')!(
+      envelope('cloudstorage.file.blocked_by_dmca_takedown.v1', { FileId: 'file-9' }),
     );
 
     expect(notifications.createIfMissing).not.toHaveBeenCalled();

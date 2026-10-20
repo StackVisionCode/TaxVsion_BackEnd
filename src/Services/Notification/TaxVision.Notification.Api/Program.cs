@@ -4,6 +4,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -184,7 +185,8 @@ builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
 builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "notification-service",
-    TaxVision.Notification.Infrastructure.Observability.SubscriptionEmailMetrics.MeterName
+    TaxVision.Notification.Infrastructure.Observability.SubscriptionEmailMetrics.MeterName,
+    TaxVision.Notification.Infrastructure.Observability.NotificationDispatchMetrics.MeterName
 );
 
 var rabbitUri = new Uri(
@@ -199,6 +201,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InvitationCreatedConsumer).Assembly);
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
@@ -231,6 +234,7 @@ builder.Host.UseWolverine(options =>
     // Puente SMS real: el IntegrationEventSmsSender publica esto y el microservicio Sms lo entrega
     // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
     options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<InAppNotificationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options
@@ -241,9 +245,9 @@ builder.Host.UseWolverine(options =>
                 queue.BindExchange("taxvision-events", string.Empty);
             }
         )
-        // Los eventos de entrega actualizan contadores compartidos de campaña.
-        // Mantener el orden evita carreras y contadores perdidos.
-        .Sequential()
+        // Paralelismo acotado: cada consumer transiciona su propia fila con validación de estado y el
+        // inbox durable deduplica por MessageId, así que el desorden es tolerable y el orden no es un invariante.
+        .MaximumParallelMessages(5)
         .UseDurableInbox();
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine

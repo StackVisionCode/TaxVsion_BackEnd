@@ -149,6 +149,10 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceVoidedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Envío de la factura al cliente → Notification la renderiza con la plantilla de Scribe y la manda.
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>()

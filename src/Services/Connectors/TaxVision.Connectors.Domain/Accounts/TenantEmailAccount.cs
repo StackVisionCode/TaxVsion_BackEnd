@@ -137,6 +137,47 @@ public sealed class TenantEmailAccount : TenantEntity
 
     public void TouchActivity(DateTime activityAtUtc) => LastActivityAtUtc = activityAtUtc;
 
+    /// <summary>
+    /// Cambia el proveedor de la cuenta en el escenario reconectar-con-otro-proveedor (p.ej. una
+    /// cuenta que estaba conectada por IMAP y el usuario la desconecta y reconecta por Gmail OAuth2
+    /// sobre el mismo email). Idempotente — si el proveedor es el mismo, no-op.
+    ///
+    /// Guardrail: solo permitido en estados "no activos" (Draft, Disconnected, Error). Para cambiar
+    /// de proveedor en una cuenta Active/Connected el usuario debe desconectarla primero — así se
+    /// evita que un switch silencioso deje al Watch/subscription activo contra el proveedor viejo
+    /// o que una fila con credenciales de dos proveedores conviva en estado consistente.
+    /// </summary>
+    /// <remarks>
+    /// Las credenciales del proveedor saliente (SMTP/IMAP si pasa a OAuth, o tokens OAuth si pasa a
+    /// IMAP) las purga el handler que llama este método en la misma unidad de trabajo; el aggregate
+    /// no es responsable de ellas (viven en agregados hermanos: SmtpCredentials/ImapCredentials/
+    /// OAuthConnection). Ver <c>CompleteOAuthConnectHandler</c> / <c>ConnectManualAccountHandler</c>.
+    /// </remarks>
+    public Result ChangeProvider(ProviderCode newProvider, DateTime now)
+    {
+        if (ProviderCode == newProvider)
+            return Result.Success();
+
+        if (
+            Status
+            is not (
+                TenantEmailAccountStatus.Draft
+                or TenantEmailAccountStatus.Disconnected
+                or TenantEmailAccountStatus.Error
+            )
+        )
+            return Result.Failure(
+                new Error(
+                    "TenantEmailAccount.CannotChangeProvider",
+                    $"Cannot change provider while account is {Status}; disconnect first."
+                )
+            );
+
+        ProviderCode = newProvider;
+        LastActivityAtUtc = now;
+        return Result.Success();
+    }
+
     private static Result<string> ValidateEmailAddress(string address)
     {
         if (string.IsNullOrWhiteSpace(address))

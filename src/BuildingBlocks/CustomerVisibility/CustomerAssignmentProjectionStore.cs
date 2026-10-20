@@ -30,6 +30,13 @@ public interface ICustomerAssignmentProjectionStore
         CancellationToken ct = default
     );
 
+    /// <summary>El SET de usuarios (staff) asignados a este cliente en el tenant. Para resolver la audiencia de un recurso del cliente.</summary>
+    Task<IReadOnlyCollection<Guid>> GetAssignedUserIdsAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    );
+
     /// <summary>Reemplaza el set de asignados del cliente (borra + inserta) con la versión dada. NO guarda.</summary>
     Task ReplaceAsync(
         Guid tenantId,
@@ -80,6 +87,18 @@ public sealed class CustomerAssignmentProjectionStore(DbContext db) : ICustomerA
             .IgnoreQueryFilters()
             .Where(a => a.TenantId == tenantId && a.UserId == userId)
             .Select(a => a.CustomerId)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyCollection<Guid>> GetAssignedUserIdsAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    ) =>
+        await db.Set<CustomerAssignmentProjection>()
+            .IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.CustomerId == customerId)
+            .Select(a => a.UserId)
             .Distinct()
             .ToListAsync(ct);
 

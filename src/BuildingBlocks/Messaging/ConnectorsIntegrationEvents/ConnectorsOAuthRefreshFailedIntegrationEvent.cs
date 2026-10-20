@@ -14,4 +14,6 @@ public sealed record ConnectorsOAuthRefreshFailedIntegrationEvent : IntegrationE
     public required string ErrorCode { get; init; }
     public required DateTime FailedAtUtc { get; init; }
     public required Guid CreatedByUserId { get; init; }
+    public bool? IsOfficeMailbox { get; init; }
+    public Guid? MailboxOwnerUserId { get; init; }
 }

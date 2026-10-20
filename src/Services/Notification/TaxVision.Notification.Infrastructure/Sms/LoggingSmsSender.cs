@@ -5,16 +5,21 @@ using TaxVision.Notification.Application.Abstractions;
 namespace TaxVision.Notification.Infrastructure.Sms;
 
 /// <summary>
-/// Implementación provisional hasta integrar un proveedor (Twilio/AWS SNS).
-/// Registra el envío sin exponer el contenido (que incluye códigos OTP);
-/// el texto completo solo a nivel Debug para desarrollo.
+/// Stub de desarrollo: registra que un SMS no se envió sin filtrar el contenido
+/// (puede incluir códigos OTP). Siempre devuelve éxito para que el pipeline
+/// continúe sin bloquear al tenant que todavía no configuró un proveedor.
 /// </summary>
 public sealed class LoggingSmsSender(ILogger<LoggingSmsSender> logger) : ISmsSender
 {
-    public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default)
+    public Task<Result> SendAsync(
+        string phoneNumber,
+        string text,
+        CancellationToken ct,
+        string? templateKey,
+        string? idempotencyToken
+    )
     {
         logger.LogWarning("Proveedor SMS no configurado. SMS a {Phone} NO fue enviado.", Mask(phoneNumber));
-        logger.LogDebug("[DEV] Contenido del SMS para {Phone}: {Text}", Mask(phoneNumber), text);
         return Task.FromResult(Result.Success());
     }
 

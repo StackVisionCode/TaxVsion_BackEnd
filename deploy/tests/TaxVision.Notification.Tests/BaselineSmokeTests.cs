@@ -14,6 +14,7 @@ using TaxVision.Notification.Application.Consumers.Communication;
 using TaxVision.Notification.Application.Consumers.Signature;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -114,11 +115,14 @@ public sealed class BaselineSmokeTests
             RequiresSequentialSigning = false,
         };
 
+        var harness = new NotificationDispatcherHarness();
         await SignerInvitedConsumer.Handle(
             evt,
             gateway,
             scribeClient,
             new NoOpSmsSender(),
+            harness.Dispatcher,
+            NoPortalRecipientResolver.Instance,
             Options.Create(new PortalOptions { BaseUrl = "https://app.test" }),
             TestPlatform.Settings,
             new FakeTenantHostResolver(),
@@ -155,7 +159,9 @@ public sealed class BaselineSmokeTests
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
             AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
+            new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -194,7 +200,9 @@ public sealed class BaselineSmokeTests
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
             AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
+            new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -229,7 +237,9 @@ public sealed class BaselineSmokeTests
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
             AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
+            new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -266,7 +276,9 @@ public sealed class BaselineSmokeTests
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
             AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
             uow,
+            new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
 
@@ -360,8 +372,13 @@ public sealed class BaselineSmokeTests
     {
         public static readonly NoOpSmsSender Instance = new();
 
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
     }
 
     private sealed class NoOpPushSender : IPushSender

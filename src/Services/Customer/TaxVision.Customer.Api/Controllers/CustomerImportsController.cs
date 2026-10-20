@@ -226,7 +226,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
         var headers =
             "Kind,FirstName,MiddleName,LastName,Prefix,Suffix,LegalName,Dba,BusinessStructure,"
             + "FormationDate,PrincipalBusinessActivityCode,DateOfBirth,OccupationName,Email,Phone,"
-            + "Language,PreferredChannel,AddressLine1,AddressLine2,City,Region,PostalCode,CountryCode,"
+            + "Language,AddressLine1,AddressLine2,City,Region,PostalCode,CountryCode,"
             + "TaxIdentifier,FilingStatus,PriorYearAgi,IsReturningCustomer,SpouseFirstName,SpouseMiddleName,"
             + "SpouseLastName,SpouseDateOfBirth,SpouseEmail,SpousePhone,SpouseTaxIdentifier";
 

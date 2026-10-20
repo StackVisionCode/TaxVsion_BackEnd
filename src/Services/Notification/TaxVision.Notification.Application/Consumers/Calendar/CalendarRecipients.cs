@@ -1,6 +1,8 @@
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -57,5 +59,57 @@ internal static class CalendarRecipients
         }
 
         return allowed;
+    }
+
+    /// <summary>
+    /// Publica in-app por el puente del catálogo a cada asistente con cuenta. Un asistente sin
+    /// <c>UserId</c> (cliente invitado) no tiene bandeja interna: queda cubierto por el email.
+    /// </summary>
+    public static async Task PublishInAppAsync(
+        NotificationDispatcher dispatcher,
+        IReadOnlyList<AppointmentRecipient> recipients,
+        Guid tenantId,
+        Guid appointmentId,
+        Guid sourceEventId,
+        string kind,
+        string sourceEventType,
+        DateTime occurredAtUtc,
+        string title,
+        string? correlationId,
+        Guid? customerId,
+        CancellationToken ct
+    )
+    {
+        var context = new Dictionary<string, string>();
+        if (customerId is { } cid)
+            context["customerId"] = cid.ToString();
+
+        foreach (var recipient in recipients)
+        {
+            if (recipient.UserId is not { } userId)
+                continue;
+
+            await dispatcher.RecordInAppAsync(
+                tenantId,
+                $"user:{userId:N}",
+                title,
+                NotificationCategory.Calendar,
+                kind,
+                sourceEventId,
+                correlationId,
+                recipientUserId: userId,
+                inApp: new InAppNotificationRequest(
+                    kind,
+                    userId,
+                    sourceEventId,
+                    sourceEventType,
+                    occurredAtUtc,
+                    title,
+                    ResourceId: appointmentId.ToString(),
+                    ResourceContext: context
+                ),
+                ct: ct
+            );
+        }
     }
 }

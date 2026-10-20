@@ -2,6 +2,9 @@
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
+using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -29,45 +32,100 @@ public static class InvoiceSentConsumer
         InvoiceSentToCustomerIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ICustomerContactPolicyRepository contactPolicies,
+        NotificationDispatcher dispatcher,
+        IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            if (string.IsNullOrWhiteSpace(evt.CustomerEmail))
-                return;
-
-            var render = (
-                await scribeClient.RenderAsync(
-                    EventKey,
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["invoice_number"] = evt.InvoiceNumber,
-                        ["customer_name"] = evt.CustomerName,
-                        ["amount_due"] = FormatAmount(evt.AmountDueCents, evt.Currency),
-                        ["due_date"] = evt.DueDateUtc?.ToString("MMM d, yyyy"),
-                        ["payment_link"] = evt.PaymentLink,
-                        ["has_pdf"] = evt.PdfFileId is not null,
-                    },
-                    ct
-                )
-            ).EnsureRendered(EventKey);
-
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    tenantId: evt.TenantId,
-                    to: evt.CustomerEmail,
-                    templateKey: TemplateKey,
-                    relatedEventId: evt.EventId,
-                    correlationId: correlation.CorrelationId
-                ) with
-                {
-                    AttachmentFileIds = evt.PdfFileId is { } pdf ? [pdf] : null,
-                },
+            // T7.3: respeta ContactPolicy.Email del cliente si viene mapeado. Publicaciones
+            // viejas sin CustomerId pasan directo (null → true), igual que un cliente sin fila.
+            var emailAllowed = await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
+                evt.TenantId,
+                evt.CustomerId,
+                CustomerContactChannel.Email,
+                contactPolicies,
                 ct
             );
+            if (emailAllowed && !string.IsNullOrWhiteSpace(evt.CustomerEmail))
+            {
+                var render = (
+                    await scribeClient.RenderAsync(
+                        EventKey,
+                        evt.TenantId,
+                        new Dictionary<string, object?>
+                        {
+                            ["invoice_number"] = evt.InvoiceNumber,
+                            ["customer_name"] = evt.CustomerName,
+                            ["amount_due"] = FormatAmount(evt.AmountDueCents, evt.Currency),
+                            ["due_date"] = evt.DueDateUtc?.ToString("MMM d, yyyy"),
+                            ["payment_link"] = evt.PaymentLink,
+                            ["has_pdf"] = evt.PdfFileId is not null,
+                        },
+                        ct
+                    )
+                ).EnsureRendered(EventKey);
+
+                await gateway.QueueEmailAsync(
+                    render.ToDispatchRequest(
+                        tenantId: evt.TenantId,
+                        to: evt.CustomerEmail,
+                        templateKey: TemplateKey,
+                        relatedEventId: evt.EventId,
+                        correlationId: correlation.CorrelationId
+                    ) with
+                    {
+                        AttachmentFileIds = evt.PdfFileId is { } pdf ? [pdf] : null,
+                    },
+                    ct
+                );
+            }
+
+            // T7.4: fan-out in-app al portal del cliente si tiene cuenta activa. In-app no se filtra
+            // por ContactPolicy (es otro canal). Publicaciones viejas sin CustomerId no entran acá.
+            if (evt.CustomerId is { } customerId)
+            {
+                var portalUserId = await CustomerPortalRecipients.ResolveActivePortalUserAsync(
+                    evt.TenantId,
+                    customerId,
+                    recipientResolver,
+                    ct
+                );
+                if (portalUserId is { } userId)
+                {
+                    var title = $"Factura {evt.InvoiceNumber} enviada";
+                    await dispatcher.RecordInAppAsync(
+                        evt.TenantId,
+                        $"user:{userId:N}",
+                        title,
+                        NotificationCategory.Billing,
+                        "billing.invoice_sent_to_customer",
+                        evt.EventId,
+                        correlation.CorrelationId,
+                        recipientUserId: userId,
+                        inApp: new InAppNotificationRequest(
+                            NotificationKinds.BillingInvoiceSentToCustomer,
+                            userId,
+                            evt.EventId,
+                            EventKey,
+                            evt.OccurredOn,
+                            title,
+                            FallbackBody: $"Tu oficina te envió la factura {evt.InvoiceNumber}.",
+                            ResourceId: evt.InvoiceId.ToString(),
+                            ResourceContext: new Dictionary<string, string>
+                            {
+                                ["customerId"] = customerId.ToString(),
+                                ["invoiceId"] = evt.InvoiceId.ToString(),
+                            },
+                            Params: new Dictionary<string, string> { ["invoiceNumber"] = evt.InvoiceNumber }
+                        ),
+                        ct: ct
+                    );
+                }
+            }
         }
     }
 

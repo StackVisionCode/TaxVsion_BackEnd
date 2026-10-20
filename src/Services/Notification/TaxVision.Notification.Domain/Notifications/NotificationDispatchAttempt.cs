@@ -59,6 +59,24 @@ public sealed class NotificationDispatchAttempt : TenantEntity
         DateTime eventAtUtc
     )
     {
+        if (Status == newStatus)
+        {
+            // Reentrega del mismo callback: idempotente, el caller debe ignorar sin reintentar.
+            return Result.Failure(
+                new Error("NotificationDispatchAttempt.AlreadyInStatus", $"Dispatch attempt already in {newStatus}.")
+            );
+        }
+        if (IsOutOfOrderTransition(Status, newStatus))
+        {
+            // El callback de Delivered/Bounced llegó antes que el de Sent: el caller debe reintentar
+            // con backoff hasta que la transición Queued→Sent se aplique.
+            return Result.Failure(
+                new Error(
+                    "NotificationDispatchAttempt.OrderingPending",
+                    $"Cannot transition dispatch attempt from {Status} to {newStatus} yet; retry."
+                )
+            );
+        }
         if (!IsValidTransition(Status, newStatus))
         {
             return Result.Failure(
@@ -112,6 +130,15 @@ public sealed class NotificationDispatchAttempt : TenantEntity
                     or NotificationDispatchAttemptStatus.Failed,
             _ => false,
         };
+
+    // Delivered/Bounced llegan solo desde Sent. Si el estado actual es Queued, el callback
+    // Sent todavía no se aplicó (orden fuera del happy path); el caller lo reintentará.
+    private static bool IsOutOfOrderTransition(
+        NotificationDispatchAttemptStatus from,
+        NotificationDispatchAttemptStatus to
+    ) =>
+        from == NotificationDispatchAttemptStatus.Queued
+        && to is NotificationDispatchAttemptStatus.Delivered or NotificationDispatchAttemptStatus.Bounced;
 
     private static string? Truncate(string? value, int maxLength) =>
         value is null ? null

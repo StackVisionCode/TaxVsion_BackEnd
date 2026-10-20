@@ -18,7 +18,7 @@ import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
  * patron que outbox-drainer y missed-call-scheduler.
  *
  * NO cubierto todavia (documentado, no silencioso): Call/CallParticipant,
- * Meeting/MeetingParticipant/MeetingInvitation, NotificationEntry,
+ * Meeting/MeetingParticipant/MeetingInvitation,
  * CommunicationAnalyticsSnapshot, AttachmentTracking — ninguno tiene todavia
  * un campo de retencion configurado en el schema.
  */
@@ -29,6 +29,9 @@ const LOCK_KEY = 'comm:lock:purge-scheduler';
 
 export interface PurgeSchedulerConfig {
   readonly intervalHours: number;
+  readonly notificationReadRetentionDays: number;
+  readonly notificationUnreadRetentionDays: number;
+  readonly batchSize: number;
 }
 
 export function startPurgeScheduler(
@@ -65,6 +68,13 @@ export function startPurgeScheduler(
       where: { CreatedAtUtc: { lt: idempotencyCutoff } },
     });
 
+    const purgedNotifications = await purgeNotificationEntries(deps.prisma, {
+      nowUtc: now,
+      readRetentionDays: config.notificationReadRetentionDays,
+      unreadRetentionDays: config.notificationUnreadRetentionDays,
+      batchSize: config.batchSize,
+    });
+
     logger.info(
       {
         tenantsWithPurgeEnabled: purgeEnabledTenants.length,
@@ -72,6 +82,7 @@ export function startPurgeScheduler(
         purgedOutboxMessages: outboxResult.count,
         purgedProcessedEvents: inboxResult.count,
         purgedIdempotencyRecords: idempotencyResult.count,
+        purgedNotifications,
       },
       'PurgeScheduler: tick complete',
     );
@@ -99,4 +110,39 @@ export function startPurgeScheduler(
       clearInterval(handle);
     },
   };
+}
+
+export async function purgeNotificationEntries(
+  prisma: PrismaClient,
+  input: {
+    nowUtc: Date;
+    readRetentionDays: number;
+    unreadRetentionDays: number;
+    batchSize: number;
+  },
+): Promise<number> {
+  const readCutoff = new Date(input.nowUtc.getTime() - input.readRetentionDays * 86_400_000);
+  const unreadCutoff = new Date(input.nowUtc.getTime() - input.unreadRetentionDays * 86_400_000);
+  let total = 0;
+
+  while (true) {
+    const rows = await prisma.notificationEntry.findMany({
+      where: {
+        OR: [
+          { ReadAtUtc: { not: null, lt: readCutoff } },
+          { ReadAtUtc: null, CreatedAtUtc: { lt: unreadCutoff } },
+        ],
+      },
+      select: { Id: true },
+      orderBy: { CreatedAtUtc: 'asc' },
+      take: input.batchSize,
+    });
+    if (rows.length === 0) return total;
+
+    const deleted = await prisma.notificationEntry.deleteMany({
+      where: { Id: { in: rows.map((row) => row.Id) } },
+    });
+    total += deleted.count;
+    if (rows.length < input.batchSize || deleted.count === 0) return total;
+  }
 }

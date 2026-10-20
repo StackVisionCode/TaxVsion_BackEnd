@@ -27,12 +27,31 @@ export interface NotificationDto {
   title: string;
   body: string;
   metadata: Readonly<Record<string, unknown>>;
+  category: string | null;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  /**
+   * "System" | "TenantEmployee" | "TenantAdmin" | "CustomerPortal" | "External".
+   * Permite distinguir "lo hizo el sistema" vs "lo hizo un usuario" sin resolver
+   * actorUserId contra directory. Null para notificaciones legacy pre-contrato.
+   */
+  actorType: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceContext: Readonly<Record<string, string>>;
+  titleKey: string | null;
+  bodyKey: string | null;
+  params: Readonly<Record<string, string>>;
+  action: string | null;
+  groupKey: string | null;
+  occurredAtUtc: string | null;
   createdAtUtc: string;
   readAtUtc: string | null;
 }
 
 export interface NotificationUnreadCountDto {
   count: number;
+  asOfUtc: string;
 }
 
 export interface SessionRevokedDto {
@@ -61,8 +80,10 @@ export const NotificationSocketEvents = {
   Dismiss: 'notification.dismiss',
   // s -> c (business)
   Received: 'notification.received',
+  Updated: 'notification.updated',
   UnreadCountChanged: 'notification.unread_count.changed',
   ReadConfirmed: 'notification.read.confirmed',
+  ReadAllConfirmed: 'notification.read_all.confirmed',
   // s -> c (SESSION — canal propio, jamas mezclado con notifications de negocio)
   SessionRevoked: 'session.revoked',
   // s -> c (ACCESO — mismo criterio: canal propio, sin datos de negocio en el payload)

@@ -19,6 +19,18 @@ public interface INotificationRecipientPermissionsProjectionRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// De <paramref name="userIds"/>, los que están activos y (si <paramref name="requiredCapability"/> no es null)
+    /// tienen esa capacidad — valida destinatarios ya conocidos (Participants/Mailbox/Explicit) por T4.2.
+    /// Un usuario sin fila de proyección no pasa cuando se exige capacidad (fail-closed para el gate de capacidad).
+    /// </summary>
+    Task<IReadOnlyList<Guid>> FilterActiveWithCapabilityAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> userIds,
+        string? requiredCapability,
+        CancellationToken ct = default
+    );
+
     /// <summary>Usuarios activos del tenant que tienen <paramref name="roleId"/> entre sus roles — para recomputar la unión cuando cambia ese rol.</summary>
     Task<IReadOnlyList<NotificationRecipientPermissionsProjection>> FindActiveByTenantAndRoleIdAsync(
         Guid tenantId,

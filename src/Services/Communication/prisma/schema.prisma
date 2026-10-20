@@ -668,27 +668,45 @@ model SupportTicket {
 // en esta tabla — llegan por un evento socket propio (cierre CRIT legacy).
 
 model NotificationEntry {
-  Id              String    @id @default(uuid()) @db.UniqueIdentifier
-  TenantId        String    @db.UniqueIdentifier
-  UserId          String    @db.UniqueIdentifier
+  Id                  String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId            String    @db.UniqueIdentifier
+  UserId              String    @db.UniqueIdentifier
   // "signature.reminder_due" | "signature.completed" | "signature.canceled" |
   // "signature.push_challenge" | "customer.bulk_import_completed" | ...
-  Kind            String    @db.NVarChar(64)
-  Priority        String    @default("Normal") @db.NVarChar(16) // "Low"|"Normal"|"High"|"Urgent"
-  Title           String    @db.NVarChar(200)
-  Body            String    @db.NVarChar(1000)
+  Kind                String    @db.NVarChar(64)
+  Priority            String    @default("Normal") @db.NVarChar(16) // "Low"|"Normal"|"High"|"Urgent"
+  Title               String    @db.NVarChar(200)
+  Body                String    @db.NVarChar(1000)
+  Category            String?   @db.NVarChar(32)
+  ActorUserId         String?   @db.UniqueIdentifier
+  ActorDisplayName    String?   @db.NVarChar(160)
+  // "System" | "TenantEmployee" | "TenantAdmin" | "CustomerPortal" | "External".
+  // Permite al front distinguir "lo hizo el sistema" (expiración automática) de
+  // "lo hizo otro usuario" sin consultar directory por el UUID. Nullable para
+  // notificaciones legacy pre-contrato.
+  ActorType           String?   @db.NVarChar(32)
+  ResourceType        String?   @db.NVarChar(64)
+  ResourceId          String?   @db.NVarChar(128)
+  ResourceContextJson String?   @db.NVarChar(Max)
+  TitleKey            String?   @db.NVarChar(160)
+  BodyKey             String?   @db.NVarChar(160)
+  ParamsJson          String?   @db.NVarChar(Max)
+  Action              String?   @db.NVarChar(32)
+  GroupKey            String?   @db.NVarChar(256)
+  OccurredAtUtc       DateTime? @db.DateTime2
   // JSON con IDs/URLs para deep-link. Nunca PII.
-  MetadataJson    String    @db.NVarChar(Max)
+  MetadataJson        String    @db.NVarChar(Max)
   // Trace del evento originador.
-  SourceEventId   String    @db.UniqueIdentifier
-  SourceEventType String    @db.NVarChar(128)
-  CorrelationId   String?   @db.NVarChar(64)
-  ReadAtUtc       DateTime? @db.DateTime2
-  DismissedAtUtc  DateTime? @db.DateTime2
-  CreatedAtUtc    DateTime  @default(now()) @db.DateTime2
+  SourceEventId       String    @db.UniqueIdentifier
+  SourceEventType     String    @db.NVarChar(128)
+  CorrelationId       String?   @db.NVarChar(64)
+  ReadAtUtc           DateTime? @db.DateTime2
+  DismissedAtUtc      DateTime? @db.DateTime2
+  CreatedAtUtc        DateTime  @default(now()) @db.DateTime2
 
   @@unique([TenantId, SourceEventId, UserId])
   @@index([TenantId, UserId, ReadAtUtc, CreatedAtUtc(sort: Desc)])
+  @@index([TenantId, UserId, GroupKey, ReadAtUtc])
 }
 
 // Invitacion firmada por email/link. Guardamos SOLO SHA-256 del token opaco
@@ -793,24 +811,3 @@ model CustomerPortalAccount {
   @@index([UserId])
 }
 
-// -----------------------------------------------------------------------------
-// NotificationActionMapping — que accion (deep-link o ninguna) lleva una
-// notificacion in-app, indexada por (EventKey, AudienceRole) — NO solo por
-// EventKey, porque la misma "cosa que paso" necesita rutas distintas segun
-// quien la recibe (ej. signature.document.signed.v1 para el Preparer va a
-// /crm/firmas/{id}, para el CustomerSigner es solo informativo). Mismo
-// espiritu que EventTemplateMapping de Scribe: configurable en base de datos,
-// editable por un admin, sin tocar codigo. Sin TenantId a proposito — el plan
-// no pidio personalizacion por tenant, es config de plataforma.
-// @since Fase 6 (notificaciones dinamicas)
-model NotificationActionMapping {
-  Id           String   @id @default(uuid()) @db.UniqueIdentifier
-  EventKey     String   @db.NVarChar(100)
-  AudienceRole String   @db.NVarChar(50)
-  ActionType   String   @db.NVarChar(16) // "DeepLink" | "None"
-  UrlTemplate  String?  @db.NVarChar(500) // solo si ActionType = "DeepLink"; placeholders tipo {signatureRequestId}
-  CreatedAtUtc DateTime @default(now()) @db.DateTime2
-  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
-
-  @@unique([EventKey, AudienceRole])
-}

@@ -64,7 +64,6 @@ internal sealed class CsvCustomerImportReader : ICustomerImportReader
                 Email = GetField(csv, "Email"),
                 Phone = GetField(csv, "Phone"),
                 Language = GetField(csv, "Language"),
-                PreferredChannel = GetField(csv, "PreferredChannel"),
                 AddressLine1 = GetField(csv, "AddressLine1"),
                 AddressLine2 = GetField(csv, "AddressLine2"),
                 City = GetField(csv, "City"),

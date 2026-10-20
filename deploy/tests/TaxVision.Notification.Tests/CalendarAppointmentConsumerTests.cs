@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
+using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -8,6 +9,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Calendar;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -79,6 +81,7 @@ public sealed class CalendarAppointmentConsumerTests
             harness.Render,
             Options.Create(new PortalOptions()),
             harness.Preferences,
+            harness.Dispatcher,
             NullLogger<AppointmentRescheduledIntegrationEvent>.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -107,6 +110,7 @@ public sealed class CalendarAppointmentConsumerTests
             harness.Render,
             Options.Create(new PortalOptions()),
             harness.Preferences,
+            harness.Dispatcher,
             NullLogger<AppointmentScheduledIntegrationEvent>.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -137,6 +141,80 @@ public sealed class CalendarAppointmentConsumerTests
         internal RecordingGateway Gateway { get; } = new();
         internal RecordingRenderClient Render { get; } = new();
         internal SwitchablePreferences Preferences { get; } = new(preferencesEnabled);
+        internal NotificationDispatcher Dispatcher { get; } =
+            new(
+                new NoOpSmsSender(),
+                new NoOpPushSender(),
+                new NoOpPushDeviceTokenRepository(),
+                new NoOpNotificationLogRepository(),
+                new SwitchablePreferences(preferencesEnabled),
+                new CapturingIntegrationEventPublisher(),
+                new NoOpUnitOfWork(),
+                new NoOpNotificationDispatchMetrics(),
+                NullLogger<NotificationDispatcher>.Instance
+            );
+    }
+
+    private sealed class NoOpSmsSender : ISmsSender
+    {
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
+    }
+
+    private sealed class NoOpPushSender : IPushSender
+    {
+        public Task<Result> SendAsync(PushMessage message, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success());
+    }
+
+    private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
+    {
+        public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>
+            Task.FromResult<PushDeviceToken?>(null);
+
+        public Task<PushDeviceToken?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+            Task.FromResult<PushDeviceToken?>(null);
+
+        public Task<IReadOnlyList<PushDeviceToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<PushDeviceToken>>([]);
+
+        public Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpNotificationLogRepository : INotificationLogRepository
+    {
+        public Task AddAsync(NotificationLog log, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<(IReadOnlyList<NotificationLog> Items, int TotalCount)> GetPagedAsync(
+            Guid tenantId,
+            NotificationStatus? status,
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult<(IReadOnlyList<NotificationLog>, int)>(([], 0));
+
+        public Task<NotificationLog?> GetByRelatedEventIdAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string templateKey,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+    }
+
+    private sealed class NoOpUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
     }
 
     private sealed class RecordingGateway : IEmailDispatchGateway

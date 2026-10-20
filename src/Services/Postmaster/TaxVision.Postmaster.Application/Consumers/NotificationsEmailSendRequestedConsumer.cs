@@ -2,6 +2,7 @@
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -501,7 +502,7 @@ public static class NotificationsEmailSendRequestedConsumer
         var queueResult = SentMessage.Queue(
             evt.TenantId,
             evt.IdempotencyKey,
-            evt.Subject,
+            SensitiveNotificationContent.ForStorage(evt.TemplateKey, evt.Subject),
             provider.FromAddress,
             ParseEmailStream(evt.Stream),
             provider.ProviderCode,
@@ -543,7 +544,7 @@ public static class NotificationsEmailSendRequestedConsumer
         var queueResult = SentMessage.Queue(
             evt.TenantId,
             evt.IdempotencyKey,
-            evt.Subject,
+            SensitiveNotificationContent.ForStorage(evt.TemplateKey, evt.Subject),
             provider.FromAddress,
             ParseEmailStream(evt.Stream),
             provider.ProviderCode,

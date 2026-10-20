@@ -206,10 +206,26 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'connectors.watch.expired.v1',
 };
 
+const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.DmcaCounterNoticeSubmittedIntegrationEvent',
+  'cloudstorage.file.restored.v1',
+  'cloudstorage.sharelink.accessed.v1',
+  'cloudstorage.sharelink.expired.v1',
+  // signature.signer.invited.v1 — Notification lo procesa (T7.4.C): email/SMS + in-app al cliente
+  // del portal si MappedCustomerId esta seteado. Lo dejamos fuera del ignore set para que si en el
+  // futuro Communication quisiera hacer algo propio (p.ej. presencia), no quede silenciado.
+  'signature.request.reminder_due.v1',
+  'signature.signer.verification.challenge_issued.v1',
+  'signature.document.sealed.v1',
+  'signature.request.sealing_completed.v1',
+]);
+const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
+
 export type { ConsumerHandler, IncomingEnvelope };
 
 export class ConsumerRuntime {
   private handlers = new Map<string, ConsumerHandler>();
+  private readonly unknownEventLastLoggedAt = new Map<string, number>();
   private consumerTag: string | undefined;
   private inFlightCount = 0;
 
@@ -279,12 +295,13 @@ export class ConsumerRuntime {
     const rabbit = getRabbitContext();
     const raw = msg.content.toString('utf-8');
     let envelope: IncomingEnvelope;
+    let amqpTypeHeader: string | undefined;
     try {
       const parsed = JSON.parse(raw) as Partial<IncomingEnvelope> & { [k: string]: unknown };
       // AMQP `type` property: Wolverine-published .NET messages carry the CLR
       // type name here instead of an `eventType` field in the JSON body. See
       // the module docblock above for why this fallback exists.
-      const amqpTypeHeader = typeof msg.properties.type === 'string' ? msg.properties.type : undefined;
+      amqpTypeHeader = typeof msg.properties.type === 'string' ? msg.properties.type : undefined;
       envelope = this.normalizeEnvelope(parsed, amqpTypeHeader);
     } catch (err) {
       logger.warn({ err: (err as Error).message }, 'consumer: unparseable payload; ack to skip');
@@ -294,6 +311,7 @@ export class ConsumerRuntime {
 
     const handler = this.handlers.get(envelope.eventType);
     if (!handler) {
+      this.logUnknownEvent(envelope, amqpTypeHeader);
       rabbit.channel.ack(msg);
       return;
     }
@@ -357,6 +375,24 @@ export class ConsumerRuntime {
       // main queue has deadLetterExchange:'' + deadLetterRoutingKey:dlq).
       rabbit.channel.nack(msg, false, false);
     }
+  }
+
+  private logUnknownEvent(envelope: IncomingEnvelope, amqpTypeHeader?: string): void {
+    const eventType = envelope.eventType || amqpTypeHeader || 'unknown';
+    if (
+      INTENTIONALLY_IGNORED_EVENT_TYPES.has(eventType) ||
+      (amqpTypeHeader !== undefined && INTENTIONALLY_IGNORED_EVENT_TYPES.has(amqpTypeHeader))
+    ) {
+      return;
+    }
+    const now = Date.now();
+    const lastLoggedAt = this.unknownEventLastLoggedAt.get(eventType) ?? 0;
+    if (now - lastLoggedAt < UNKNOWN_EVENT_LOG_INTERVAL_MS) return;
+    this.unknownEventLastLoggedAt.set(eventType, now);
+    logger.warn(
+      { eventType, amqpType: amqpTypeHeader, eventId: envelope.eventId },
+      'consumer: event type has no registered handler; ack to skip',
+    );
   }
 
   private normalizeEnvelope(

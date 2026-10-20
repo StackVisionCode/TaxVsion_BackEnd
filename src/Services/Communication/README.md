@@ -81,7 +81,7 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/communication/conversations` | Crear conversación (Direct/Group/Support) |
-| `GET` | `/communication/conversations` | Listar conversaciones del usuario |
+| `GET` | `/communication/conversations` | Listar conversaciones; `includeArchived=true|false` es estricto |
 | `GET` | `/communication/conversations/:id` | Detalle + últimos mensajes |
 | `POST` | `/communication/conversations/:id/messages` | Enviar mensaje (fallback HTTP; preferir socket) |
 | `PATCH` | `/communication/conversations/:id/messages/:msgId` | Editar mensaje |
@@ -111,17 +111,19 @@ Salida: HTTP en `http://localhost:5350`, Socket.IO en `ws://localhost:5350/commu
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/communication/notifications` | Listar notificaciones del usuario (paginado) |
-| `GET` | `/communication/notifications/unread-count` | Contador de no leídas |
-| `POST` | `/communication/notifications/:id/read` | Marcar como leída |
-| `POST` | `/communication/notifications/read-all` | Marcar todas como leídas |
+| `GET` | `/communication/notifications` | Listar notificaciones; `unreadOnly=true|false` es estricto |
+| `GET` | `/communication/notifications/unread-count` | Contador de no leídas con `asOfUtc` para descartar respuestas obsoletas |
+| `POST` | `/communication/notifications/:id/read` | Marcar como leída y confirmar por socket |
+| `POST` | `/communication/notifications/read-all` | Marcar atómicamente las creadas hasta `upToCreatedAtUtc` y confirmar por socket |
+
+**Puente de in-app (quién crea la fila).** Communication consume `notification.inapp.requested.v1` (emitido por Notification .NET) y crea/agrupa la fila de la campana. Para los hechos de negocio que históricamente creaba Communication directamente, un flag por grupo decide la fuente: `COMMUNICATION_INAPP_SOURCE_<GRUPO>` = `Communication` (default) o `Notification`. Con `Notification`, el handler de ese grupo deja de llamar `pushNotification` (lo crea el consumer .NET) pero mantiene su realtime propio (proyecciones, pings de lista). El dedupe `(TenantId, SourceEventId, UserId)` evita duplicados si ambos corren un instante. Grupos migrables hoy: `CUSTOMER_IMPORT`, `CONNECTORS`, `CLOUDSTORAGE_LEGAL`, `SUPPORT`. `SIGNATURE` espera a Fase 7 (notifica además al cliente del portal, que requiere la resolución `CustomerPortal → UserId`).
 
 ### Soporte cross-tenant
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/communication/support` | Abrir ticket (desde tenant cliente) |
-| `GET` | `/communication/support` | Listar tickets (cliente ve los suyos; agente ve todos) |
+| `GET` | `/communication/support` | Listar tickets; `includeClosed` y `mine` aceptan `true|false` |
 | `POST` | `/communication/support/:id/claim` | Agente reclama el ticket |
 | `POST` | `/communication/support/:id/reassign` | Agente reasigna (`{ newAgentUserId: UUID }`) |
 | `POST` | `/communication/support/:id/escalate` | Escalar prioridad (`{ newPriority: 'Low'\|'Normal'\|'High'\|'Urgent' }`) |
@@ -169,7 +171,7 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 | `chat.message.read` | S→C | `{ conversationId, readByUserId, untilMessageId }` |
 | `chat.typing.started` | S→C | `{ conversationId, userId }` |
 | `chat.typing.stopped` | S→C | `{ conversationId, userId }` |
-| `chat.presence.changed` | S→C | `{ userId, status: 'Online'\|'Away'\|'Offline' }` |
+| `chat.presence.changed` | S→C | `{ userId, status: 'Online'\|'Busy'\|'Offline' }`; staff y clientes asignados |
 
 ### Llamadas (WebRTC 1:1)
 
@@ -224,7 +226,13 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 
 | Evento | Dirección | Payload |
 |---|---|---|
-| `notification.received` | S→C | `NotificationDto` con `kind`, `priority`, `payload` (deep-link) |
+| `notification.received` | S→C | `NotificationDto` con `kind`, `priority`, `resourceType`/`resourceId`/`action`/`titleKey` para el deep-link del front |
+| `notification.updated` | S→C | `NotificationDto` cuando una fila agrupada por `groupKey` incrementa su contador |
+| `notification.read.confirmed` | S→C | `{ notificationId, asOfUtc }` |
+| `notification.read_all.confirmed` | S→C | `{ cutoffUtc, asOfUtc }` — `cutoffUtc` es la hora de corte que decidió el servidor |
+| `notification.unread_count.changed` | S→C | `{ count, asOfUtc }`; el cliente ignora estados anteriores al último aplicado |
+
+> El deep-link lo construye el front (CRM y Portal) a partir de `resourceType` + `resourceId` + `action`. El backend ya no mantiene un catálogo `NotificationActionMapping` con `urlTemplate`.
 
 ### Soporte
 

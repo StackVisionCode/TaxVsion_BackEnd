@@ -32,6 +32,14 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // Apaga los hosted jobs destructivos antes del arranque del host.
+                        // La factory levanta el Program.cs real contra la base local; sin estos
+                        // flags, NotificationRetentionJob borraba filas antiguas de NotificationLogs
+                        // y los reconciliadores ejecutaban reindex contra la misma base cada vez
+                        // que una suite construía el host.
+                        ["Notification:Retention:Enabled"] = "false",
+                        ["Notification:RecipientProjections:ReconciliationEnabled"] = "false",
+                        ["CustomerVisibility:Reconciliation:ReconciliationEnabled"] = "false",
                     }
                 )
         );

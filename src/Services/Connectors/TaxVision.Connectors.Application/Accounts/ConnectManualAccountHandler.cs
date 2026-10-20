@@ -3,6 +3,8 @@ using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Audit;
+using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
@@ -29,6 +31,8 @@ public static class ConnectManualAccountHandler
         ITenantEmailAccountRepository accountRepository,
         IImapCredentialsRepository imapCredentialsRepository,
         ISmtpCredentialsRepository smtpCredentialsRepository,
+        IOAuthConnectionRepository oauthConnectionRepository,
+        IProviderSyncCursorRepository providerSyncCursorRepository,
         IManualAccountConnectivityValidator connectivityValidator,
         IEncryptedSecretProtector protector,
         IProviderConnectionAuditLogRepository auditLogRepository,
@@ -80,6 +84,28 @@ public static class ConnectManualAccountHandler
                 unitOfWork,
                 ct
             );
+        }
+        else if (existingAccount.ProviderCode != ProviderCode.Imap)
+        {
+            // Switch cross-provider: la fila existe como OAuth (Gmail/Graph) Disconnected y el usuario
+            // ahora reconecta por manual IMAP. Reusamos el Id (paridad con el flujo IMAP→OAuth del
+            // CompleteOAuthConnectHandler): ChangeProvider al aggregate, purga OAuthConnection+Token y
+            // ProviderWatchSubscription que son del proveedor anterior, y crea nuevas IMAP+SMTP creds.
+            var switchResult = await SwitchFromOAuthToManualAsync(
+                existingAccount,
+                cmd,
+                protector,
+                oauthConnectionRepository,
+                watchSubscriptionRepository,
+                providerSyncCursorRepository,
+                imapCredentialsRepository,
+                smtpCredentialsRepository,
+                unitOfWork,
+                ct
+            );
+            if (switchResult.IsFailure)
+                return Result.Failure<ConnectManualAccountResult>(switchResult.Error);
+            account = existingAccount;
         }
         else
         {
@@ -135,7 +161,9 @@ public static class ConnectManualAccountHandler
             return Result.Success<TenantEmailAccount?>(null);
 
         var account = existingResult.Value;
-        if (account.Status == TenantEmailAccountStatus.Disconnected && account.ProviderCode == ProviderCode.Imap)
+        // Disconnected admite reconexión en sitio: mismo proveedor = reusa credenciales,
+        // proveedor distinto (ex-OAuth → manual IMAP) = switch cross-provider con purga.
+        if (account.Status == TenantEmailAccountStatus.Disconnected)
             return Result.Success<TenantEmailAccount?>(account);
 
         return Result.Failure<TenantEmailAccount?>(
@@ -144,6 +172,76 @@ public static class ConnectManualAccountHandler
                 $"'{cmd.EmailAddress}' is already connected. Disconnect it first before reconnecting."
             )
         );
+    }
+
+    /// <summary>
+    /// Cross-provider switch: la fila existe como OAuth Disconnected y el usuario quiere pasar a manual
+    /// IMAP. Simétrico del flujo IMAP→OAuth en <see cref="CompleteOAuthConnectHandler"/>: cambia el
+    /// ProviderCode del aggregate (guardrail de estado dentro), purga OAuthConnection+Token y la
+    /// ProviderWatchSubscription (artefactos específicos del proveedor saliente), y crea nuevas
+    /// credenciales IMAP+SMTP. Todo en la misma unidad de trabajo que luego comitea el caller.
+    /// </summary>
+    private static async Task<Result> SwitchFromOAuthToManualAsync(
+        TenantEmailAccount account,
+        ConnectManualAccountCommand cmd,
+        IEncryptedSecretProtector protector,
+        IOAuthConnectionRepository oauthConnectionRepository,
+        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
+        IProviderSyncCursorRepository providerSyncCursorRepository,
+        IImapCredentialsRepository imapCredentialsRepository,
+        ISmtpCredentialsRepository smtpCredentialsRepository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var changeResult = account.ChangeProvider(ProviderCode.Imap, DateTime.UtcNow);
+        if (changeResult.IsFailure)
+            return changeResult;
+
+        var staleOAuth = await oauthConnectionRepository.GetByAccountIdAsync(account.Id, ct);
+        if (staleOAuth.IsSuccess)
+            oauthConnectionRepository.Remove(staleOAuth.Value);
+        var staleWatch = await watchSubscriptionRepository.GetByAccountIdAsync(account.Id, ct);
+        if (staleWatch.IsSuccess)
+            watchSubscriptionRepository.Remove(staleWatch.Value);
+        // El cursor del proveedor saliente (historyId Gmail / deltaLink Graph) explota si lo mandas a
+        // IMAP: el ReconciliationJob lo re-seedea con el formato correcto cuando no encuentra fila.
+        var staleCursor = await providerSyncCursorRepository.GetByAccountIdAsync(account.Id, ct);
+        if (staleCursor.IsSuccess)
+            providerSyncCursorRepository.Remove(staleCursor.Value);
+
+        var imapCipher = EncryptedSecret.Create(cmd.ImapPassword, protector);
+        if (imapCipher.IsFailure)
+            return Result.Failure(imapCipher.Error);
+        var smtpCipher = EncryptedSecret.Create(cmd.SmtpPassword, protector);
+        if (smtpCipher.IsFailure)
+            return Result.Failure(smtpCipher.Error);
+
+        var imapResult = ImapCredentials.Create(
+            account.Id,
+            cmd.ImapHost,
+            cmd.ImapPort,
+            cmd.ImapUseSsl,
+            cmd.ImapUsername,
+            imapCipher.Value
+        );
+        if (imapResult.IsFailure)
+            return Result.Failure(imapResult.Error);
+        var smtpResult = SmtpCredentials.Create(
+            account.Id,
+            cmd.SmtpHost,
+            cmd.SmtpPort,
+            cmd.SmtpUseStartTls,
+            cmd.SmtpUsername,
+            smtpCipher.Value
+        );
+        if (smtpResult.IsFailure)
+            return Result.Failure(smtpResult.Error);
+
+        await imapCredentialsRepository.AddAsync(imapResult.Value, ct);
+        await smtpCredentialsRepository.AddAsync(smtpResult.Value, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     /// <summary>

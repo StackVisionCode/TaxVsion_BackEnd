@@ -82,6 +82,8 @@ internal static class RawMessageSyncOrchestrator
             TenantId = account.TenantId,
             CorrelationId = correlationId,
             AccountId = account.Id,
+            MailboxOwnerUserId = account.OwnerUserId,
+            MailboxOwnershipKnown = true,
             ProviderCode = account.ProviderCode.ToString(),
             ProviderMessageId = message.ProviderMessageId,
             ProviderThreadId = message.ProviderThreadId,

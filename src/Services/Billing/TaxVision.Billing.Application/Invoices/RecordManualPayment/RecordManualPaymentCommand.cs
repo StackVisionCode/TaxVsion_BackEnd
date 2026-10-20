@@ -1,8 +1,10 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.GenerateInvoicePdf;
+using TaxVision.Billing.Application.Invoices.IntegrationEvents;
 using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
@@ -31,6 +33,7 @@ public static class RecordManualPaymentHandler
         IOptions<BillingVisibilityOptions> visibility,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -62,6 +65,7 @@ public static class RecordManualPaymentHandler
         if (invoice.Status == InvoiceStatus.Paid && !wasPaid)
         {
             bus.TenantId = command.TenantId.ToString();
+            await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
             await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, command.InvoiceId));
         }
 

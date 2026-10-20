@@ -32,17 +32,7 @@ public sealed class TenantIsolationTests
         var name = PersonalName.Create("Ada", "Lovelace").Value;
         var email = EmailAddress.Create($"ada-{Guid.NewGuid():N}@example.com").Value;
         return DomainCustomer
-            .Register(
-                tenantId,
-                CustomerKind.Individual,
-                name,
-                null,
-                email,
-                null,
-                Language.En,
-                PreferredChannel.Email,
-                Guid.NewGuid()
-            )
+            .Register(tenantId, CustomerKind.Individual, name, null, email, null, Language.En, Guid.NewGuid())
             .Value;
     }
 

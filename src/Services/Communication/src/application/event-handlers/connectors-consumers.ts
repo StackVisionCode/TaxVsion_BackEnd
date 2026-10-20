@@ -1,9 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { pushNotification, type PushNotificationCommand } from '../use-cases/push-notification.js';
+import { pushAndEmitNotification, type BellNotificationInput } from '../use-cases/push-notification.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
-import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 
 /**
  * Consumers de Connectors -> notificaciones in-app. Fase 1B del plan de
@@ -14,8 +12,13 @@ import { NotificationSocketEvents } from '../../contracts/socket/notification-so
  */
 export function bindConnectorsConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: {
+    notifications: NotificationRepository;
+    emitter: RealtimeEmitter;
+    inAppSource: 'Communication' | 'Notification';
+  },
 ): void {
+  if (deps.inAppSource === 'Notification') return;
   register('connectors.oauth.refresh_failed.v1', (env) => oauthRefreshFailedHandler(env, deps));
   register('connectors.watch.expired.v1', (env) => watchExpiredHandler(env, deps));
 }
@@ -32,9 +35,18 @@ async function oauthRefreshFailedHandler(
     userId: createdBy,
     kind: 'connectors.oauth.refresh_failed',
     priority: 'High',
-    title: 'Tu cuenta de correo necesita reconexion',
-    body: `No pudimos renovar el acceso a tu cuenta ${providerCode}. Reconectala para seguir recibiendo correo.`,
+    title: `Reconnect ${providerCode}`,
+    body: `We could not renew access to your ${providerCode} mailbox. Reconnect it to keep receiving mail.`,
     metadata: { accountId, providerCode },
+    category: 'Work',
+    actorUserId: null,
+    // El refresh del OAuth corre en background sin usuario — es el scheduler/token manager.
+    actorType: 'System',
+    resourceType: 'mailbox',
+    resourceId: accountId,
+    ...(providerCode ? { resourceContext: { providerCode } } : {}),
+    action: 'reconnect',
+    occurredAtUtc: envOccurredAt(env),
   }, deps);
 }
 
@@ -50,59 +62,41 @@ async function watchExpiredHandler(
     userId: createdBy,
     kind: 'connectors.watch.expired',
     priority: 'High',
-    title: 'Tu cuenta de correo necesita reconexion',
-    body: `Dejamos de recibir correo nuevo de tu cuenta ${providerCode}. Reconectala para reanudar la sincronizacion.`,
+    title: 'Mailbox connection expired',
+    body: `We stopped receiving new mail from your ${providerCode} mailbox. Reconnect it to resume syncing.`,
     metadata: { accountId, providerCode },
+    category: 'Work',
+    actorUserId: null,
+    actorType: 'System',
+    resourceType: 'mailbox',
+    resourceId: accountId,
+    ...(providerCode ? { resourceContext: { providerCode } } : {}),
+    action: 'reconnect',
+    occurredAtUtc: envOccurredAt(env),
   }, deps);
 }
 
 async function push(
   env: IncomingEnvelope,
-  input: Pick<PushNotificationCommand, 'userId' | 'kind' | 'priority' | 'title' | 'body' | 'metadata'>,
+  input: BellNotificationInput,
   deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
 ): Promise<void> {
-  const result = await pushNotification(
-    {
-      tenantId: env.tenantId,
-      userId: input.userId,
-      kind: input.kind,
-      ...(input.priority !== undefined ? { priority: input.priority } : {}),
-      title: input.title,
-      body: input.body,
-      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      sourceEventId: env.eventId,
-      sourceEventType: env.eventType,
-      correlationId: env.correlationId ?? null,
-    },
-    deps,
-  );
-  if (result.isSuccess && result.value.created && result.value.notification) {
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.Received,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: result.value.notification,
-      },
-    });
-    deps.emitter.emitToUser({
-      tenantId: env.tenantId,
-      userId: input.userId,
-      event: NotificationSocketEvents.UnreadCountChanged,
-      envelope: {
-        eventId: randomUUID(),
-        correlationId: env.correlationId ?? '',
-        emittedAtUtc: new Date().toISOString(),
-        payload: { count: result.value.unreadCount },
-      },
-    });
-  }
+  await pushAndEmitNotification(env, input, deps);
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {
   const value = source[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * `OccurredOn` del envelope .NET: hora REAL del hecho (p.ej. cuándo el watch
+ * expiró en Google/Microsoft), distinta de `CreatedAtUtc` del repo que es la
+ * hora de recepción.
+ */
+function envOccurredAt(env: IncomingEnvelope): Date {
+  const raw = getString(env.payload, 'occurredOn') ?? getString(env.payload, 'OccurredOn');
+  if (!raw) return new Date();
+  const parsed = new Date(raw);
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }

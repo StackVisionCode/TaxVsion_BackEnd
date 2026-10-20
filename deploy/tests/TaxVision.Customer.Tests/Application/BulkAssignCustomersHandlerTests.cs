@@ -100,17 +100,7 @@ public sealed class BulkAssignCustomersHandlerTests
         var name = PersonalName.Create("Test", "Client").Value;
         var email = EmailAddress.Create($"c-{Guid.NewGuid():N}@example.com").Value;
         return DomainCustomer
-            .Register(
-                TenantId,
-                CustomerKind.Individual,
-                name,
-                null,
-                email,
-                null,
-                Language.En,
-                PreferredChannel.Email,
-                Admin
-            )
+            .Register(TenantId, CustomerKind.Individual, name, null, email, null, Language.En, Admin)
             .Value;
     }
 

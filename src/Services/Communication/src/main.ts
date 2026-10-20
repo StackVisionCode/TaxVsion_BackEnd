@@ -45,11 +45,11 @@ import { configureModuleGate } from './domain/shared/permissions.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
 import { bindCalendarConsumers } from './application/event-handlers/calendar-consumers.js';
 import { bindSupportConsumers } from './application/event-handlers/support-consumers.js';
+import { bindInAppNotificationConsumers } from './application/event-handlers/notification-inapp-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
 import { redisSub } from './infrastructure/redis/redis-client.js';
-import { seedDefaultNotificationActionMappings } from './infrastructure/seed/seed-notification-action-mappings.js';
 import { platformSettings } from './infrastructure/platform/platform-settings-source.js';
 
 /**
@@ -93,7 +93,6 @@ async function main(): Promise<void> {
   await connectPrisma();
 
   const container = buildContainer();
-  await seedDefaultNotificationActionMappings(container.notificationActionMappings);
   await container.sfu.start();
   const app = await buildHttpServer(container);
   const io = buildSocketServer(app.server);
@@ -119,7 +118,12 @@ async function main(): Promise<void> {
   );
   const outbox = startOutboxDrainer({ intervalMs: 2000 }, { lock: container.distributedLock });
   const purge = startPurgeScheduler(
-    { intervalHours: 24 },
+    {
+      intervalHours: 24,
+      notificationReadRetentionDays: config.notificationRetention.readDays,
+      notificationUnreadRetentionDays: config.notificationRetention.unreadDays,
+      batchSize: config.notificationRetention.batchSize,
+    },
     { prisma, settings: container.tenantSettings, lock: container.distributedLock },
   );
   const recordingConsentTimeout = startRecordingConsentTimeoutScheduler(
@@ -155,11 +159,14 @@ async function main(): Promise<void> {
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
+  bindInAppNotificationConsumers(consumers.register.bind(consumers), {
+    notifications: container.inAppNotifications,
+    emitter,
+  });
   bindSignatureConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
     emitter,
     customerPortalAccounts: container.customerPortalAccounts,
-    actionMappings: container.notificationActionMappings,
   });
   bindCustomerConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
@@ -167,6 +174,7 @@ async function main(): Promise<void> {
     customerDirectory: container.customerDirectory,
     customerPreparerAssignments: container.customerPreparerAssignments,
     customerAssignments: container.customerAssignments,
+    inAppSource: config.inAppSource.customerImport,
   });
   bindAuthConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
@@ -245,16 +253,22 @@ async function main(): Promise<void> {
     attachmentTracking: container.attachmentTracking,
     notifications: container.notifications,
     emitter,
+    inAppSourcePolicy: config.inAppSource.cloudStoragePolicy,
   });
   bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
     emitter,
+    inAppSource: config.inAppSource.cloudStorageLegal,
   });
   bindConnectorsConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
     emitter,
+    inAppSource: config.inAppSource.connectors,
   });
-  bindCorrespondenceConsumers(consumers.register.bind(consumers), { emitter });
+  bindCorrespondenceConsumers(consumers.register.bind(consumers), {
+    emitter,
+    userPermissions: container.userPermissions,
+  });
   bindCampaignConsumers(consumers.register.bind(consumers), { emitter });
   bindWalletConsumers(consumers.register.bind(consumers), { emitter });
   bindSmsConsumers(consumers.register.bind(consumers), { emitter });
@@ -271,6 +285,7 @@ async function main(): Promise<void> {
     notifications: container.notifications,
     userPermissions: container.userPermissions,
     emitter,
+    inAppSource: config.inAppSource.support,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });
   bindTranscriptConsumers(consumers.register.bind(consumers), {
@@ -295,7 +310,7 @@ async function main(): Promise<void> {
   // Presence transitions online/offline: RedisPresenceService publica en
   // comm:presence:changed:{tenantId}; el watcher se suscribe con PSUBSCRIBE
   // y emite `chat.presence.changed` al room del tenant.
-  const presenceWatcher = startPresenceChangedWatcher(redisSub, emitter);
+  const presenceWatcher = startPresenceChangedWatcher(redisSub, emitter, container.presenceAudiences);
 
   await app.listen({ host: config.http.host, port: config.http.port });
   logger.info({ host: config.http.host, port: config.http.port }, 'Communication service listening');

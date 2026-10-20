@@ -10,45 +10,92 @@ using FcmNotification = FirebaseAdmin.Messaging.Notification;
 namespace TaxVision.Notification.Infrastructure.Push;
 
 /// <summary>
-/// Fase 7 del plan de notificaciones dinámicas — reemplaza <see cref="LoggingPushSender"/> con
-/// un envío real vía Firebase Admin SDK (FCM HTTP v1 API). Cubre Android/iOS/Web con un único
-/// pipeline: iOS se registra hoy con el SDK de Firebase (no APNs directo), así que
-/// <see cref="TaxVision.Notification.Domain.Notifications.PushPlatform.Apns"/> también trae un
-/// token FCM válido para <see cref="FirebaseMessaging.SendAsync(Message, System.Threading.CancellationToken)"/>
-/// — no hace falta una rama separada por plataforma.
+/// Envía push via Firebase Admin SDK (FCM HTTP v1). Cubre Android/iOS/Web con un único
+/// pipeline — iOS usa token FCM (no APNs directo).
 /// </summary>
+/// <remarks>
+/// La inicialización de Firebase es perezosa y tolerante: si la credencial falla o no
+/// existe, el sender degrada a un no-op con logging para no tumbar el dispatcher al
+/// arrancar. Un arranque con <c>UseFcmPush=true</c> y <c>FIREBASE_SERVICE_ACCOUNT_JSON_B64</c>
+/// vacío debe seguir despachando notificaciones in-app y por email aunque las push
+/// terminen en el log.
+/// </remarks>
 public sealed class FcmPushSender : IPushSender
 {
     private static readonly object InitLock = new();
+    private static bool _initializationFailed;
+    private static string? _initializationError;
+    private readonly FcmOptions _options;
     private readonly ILogger<FcmPushSender> _logger;
 
     public FcmPushSender(IOptions<FcmOptions> options, ILogger<FcmPushSender> logger)
     {
+        _options = options.Value;
         _logger = logger;
-        EnsureInitialized(options.Value);
     }
 
-    // FirebaseApp.Create solo puede llamarse una vez por proceso para la app default — esta
-    // clase se registra AddScoped (una instancia por request), así que la inicialización real
-    // tiene que ser idempotente y compartida entre instancias.
-    private static void EnsureInitialized(FcmOptions options)
+    // FirebaseApp.Create corre una vez por proceso. Si falla (credencial faltante o
+    // inválida), marcamos el estado permanente del proceso y caemos a un no-op: no
+    // intentamos de nuevo porque el error es de configuración, no transitorio.
+    private bool TryEnsureInitialized()
     {
+        if (_initializationFailed)
+            return false;
         if (FirebaseApp.DefaultInstance is not null)
-            return;
+            return true;
 
         lock (InitLock)
         {
+            if (_initializationFailed)
+                return false;
             if (FirebaseApp.DefaultInstance is not null)
-                return;
+                return true;
 
-            FirebaseApp.Create(
-                new AppOptions { Credential = GoogleCredential.FromFile(options.ServiceAccountJsonPath) }
-            );
+            try
+            {
+                if (
+                    string.IsNullOrWhiteSpace(_options.ServiceAccountJsonPath)
+                    || !File.Exists(_options.ServiceAccountJsonPath)
+                )
+                {
+                    _initializationFailed = true;
+                    _initializationError =
+                        $"Firebase service account JSON not found at '{_options.ServiceAccountJsonPath}'.";
+                    _logger.LogError(
+                        "FCM disabled at startup: {Reason} Push notifications will be logged, not delivered.",
+                        _initializationError
+                    );
+                    return false;
+                }
+
+                FirebaseApp.Create(
+                    new AppOptions { Credential = GoogleCredential.FromFile(_options.ServiceAccountJsonPath) }
+                );
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _initializationFailed = true;
+                _initializationError = ex.Message;
+                _logger.LogError(ex, "FCM initialization failed. Push notifications will be logged, not delivered.");
+                return false;
+            }
         }
     }
 
     public async Task<Result> SendAsync(PushMessage message, CancellationToken ct = default)
     {
+        if (!TryEnsureInitialized())
+        {
+            _logger.LogInformation(
+                "FCM no inicializado ({Reason}); push a {Platform} descartado para {Token}.",
+                _initializationError ?? "unknown",
+                message.Platform,
+                Mask(message.Token)
+            );
+            return Result.Success();
+        }
+
         var fcmMessage = new Message
         {
             Token = message.Token,
@@ -63,9 +110,7 @@ public sealed class FcmPushSender : IPushSender
         }
         catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode == MessagingErrorCode.Unregistered)
         {
-            // Token muerto (app desinstalada / token expirado) — el caller (NotificationDispatcher,
-            // SignerVerificationChallengeIssuedConsumer) revoca el PushDeviceToken correspondiente
-            // al ver este código, para no seguir reintentando contra un dispositivo fantasma.
+            // Token muerto: el caller revoca el PushDeviceToken para no reintentar sobre un dispositivo fantasma.
             _logger.LogInformation("FCM token ya no registrado: {Token}", Mask(message.Token));
             return Result.Failure(new Error(PushErrorCodes.TokenInvalid, "FCM token is no longer registered."));
         }

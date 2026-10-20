@@ -63,6 +63,37 @@ public sealed class EventBasedEmailDispatchGatewayTests
         Assert.Equal(1, uow.SaveCount);
     }
 
+    [Fact]
+    public async Task QueueEmailAsync_redacts_sensitive_subject_only_in_persistence()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var logRepo = new RecordingNotificationLogRepository();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            logRepo,
+            new NoOpUnitOfWork(),
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var request = new EmailDispatchRequest(
+            Guid.NewGuid(),
+            "customer@test.com",
+            "Your verification code is 654321",
+            "<p>654321</p>",
+            "654321",
+            "auth.otp_code",
+            Guid.NewGuid(),
+            "corr-sensitive"
+        );
+
+        await gateway.QueueEmailAsync(request, CancellationToken.None);
+
+        Assert.Equal("[redacted]", Assert.Single(logRepo.Logs).Subject);
+        var published = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
+            Assert.Single(publisher.Published)
+        );
+        Assert.Equal("Your verification code is 654321", published.Subject);
+    }
+
     /// <summary>
     /// Hardening Fase 9 — prueba el segundo eslabón de la cadena: lo que un consumer pone en
     /// <c>EmailDispatchRequest.InlineAssets</c> (tomado de <c>ScribeRenderedEmail.InlineAssets</c>)

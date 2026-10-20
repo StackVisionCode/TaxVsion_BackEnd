@@ -60,7 +60,6 @@ internal sealed class XlsxCustomerImportReader : ICustomerImportReader
                 Email = GetCell(row, headers, "Email"),
                 Phone = GetCell(row, headers, "Phone"),
                 Language = GetCell(row, headers, "Language"),
-                PreferredChannel = GetCell(row, headers, "PreferredChannel"),
                 AddressLine1 = GetCell(row, headers, "AddressLine1"),
                 AddressLine2 = GetCell(row, headers, "AddressLine2"),
                 City = GetCell(row, headers, "City"),

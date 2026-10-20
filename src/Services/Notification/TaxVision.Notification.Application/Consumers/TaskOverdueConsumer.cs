@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -34,15 +35,35 @@ public static class TaskOverdueConsumer
         {
             var title = evt.IsStatutory ? $"Venció una fecha legal: {evt.Title}" : $"Tarea vencida: {evt.Title}";
 
+            var resourceContext = new Dictionary<string, string>();
+            if (evt.CustomerId is { } customerId)
+                resourceContext["customerId"] = customerId.ToString();
+
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                title,
+                $"user:{assignee:N}",
                 title,
                 NotificationCategory.Collaboration,
                 "task.overdue",
                 evt.EventId,
                 correlation.CorrelationId,
                 recipientUserId: assignee,
+                inApp: new InAppNotificationRequest(
+                    NotificationKinds.TasksTaskOverdue,
+                    assignee,
+                    evt.EventId,
+                    "tasks.task_overdue.v1",
+                    evt.OccurredOn,
+                    title,
+                    FallbackBody: $"Vencía el {evt.DueAtUtc:yyyy-MM-dd} y sigue abierta.",
+                    ResourceId: evt.TaskId.ToString(),
+                    ResourceContext: resourceContext,
+                    Params: new Dictionary<string, string>
+                    {
+                        ["taskTitle"] = evt.Title,
+                        ["dueAtUtc"] = evt.DueAtUtc.ToString("O"),
+                    }
+                ),
                 ct: ct
             );
 

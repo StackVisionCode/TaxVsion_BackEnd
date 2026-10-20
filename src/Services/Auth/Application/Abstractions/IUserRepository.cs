@@ -1,3 +1,5 @@
+using BuildingBlocks.Common;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Abstractions;
@@ -59,4 +61,20 @@ public interface IUserRepository
         UserAccountKind? accountKind = null,
         CancellationToken ct = default
     );
+
+    /// <summary>Backfill cross-tenant de owners (TenantAdmin activo) — siembra la proyección local de Notification.
+    /// Default vacío para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<TenantOwnerReconciliationResponse>([], page, size, 0));
+
+    /// <summary>Backfill cross-tenant de cuentas de portal activas — siembra la proyección local de Notification.
+    /// Default vacío para no forzar a los fakes de tests; el repositorio real lo implementa con una query.</summary>
+    Task<PagedResult<CustomerPortalAccountReconciliationResponse>> ListPortalAccountsForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
 }

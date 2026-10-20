@@ -49,6 +49,7 @@ public static class SendInvoiceToCustomerHandler
                 DueDateUtc = invoice.DueDateUtc,
                 PaymentLink = invoice.ActivePaymentLink?.CheckoutUrl,
                 PdfFileId = invoice.PdfFileId,
+                CustomerId = invoice.Customer.CustomerId,
             }
         );
 

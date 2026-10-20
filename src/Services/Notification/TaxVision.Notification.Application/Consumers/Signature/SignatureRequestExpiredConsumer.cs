@@ -1,6 +1,8 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -17,6 +19,7 @@ public static class SignatureRequestExpiredConsumer
         SignatureRequestExpiredIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        ICustomerContactPolicyRepository contactPolicies,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -28,6 +31,19 @@ public static class SignatureRequestExpiredConsumer
             // reemplaza el log+continue que dejaba firmantes sin notificar en silencio.
             foreach (var signer in evt.PendingSigners)
             {
+                // T7.3: cliente del tenant con ContactPolicy.Email = false → se omite.
+                // Externos sin MappedCustomerId siguen recibiendo (es su único canal).
+                if (
+                    !await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
+                        evt.TenantId,
+                        signer.MappedCustomerId,
+                        CustomerContactChannel.Email,
+                        contactPolicies,
+                        ct
+                    )
+                )
+                    continue;
+
                 var render = (
                     await scribeClient.RenderAsync(
                         "sig.request_expired.v1",

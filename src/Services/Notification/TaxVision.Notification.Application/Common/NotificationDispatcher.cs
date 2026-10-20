@@ -1,7 +1,9 @@
+using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -26,7 +28,9 @@ public sealed class NotificationDispatcher(
     IPushDeviceTokenRepository pushDeviceTokens,
     INotificationLogRepository logs,
     IUserNotificationPreferenceRepository preferences,
+    IIntegrationEventPublisher publisher,
     IUnitOfWork unitOfWork,
+    INotificationDispatchMetrics metrics,
     ILogger<NotificationDispatcher> logger
 )
 {
@@ -39,11 +43,15 @@ public sealed class NotificationDispatcher(
         Guid? relatedEventId,
         string? correlationId,
         Guid? recipientUserId = null,
+        string? idempotencyToken = null,
         CancellationToken ct = default
     )
     {
-        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Sms, ct))
+        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Sms, ct, templateKey))
+        {
+            metrics.RecordSuppressedByPreference(templateKey, "Sms");
             return;
+        }
 
         var logResult = NotificationLog.Create(
             tenantId,
@@ -60,13 +68,39 @@ public sealed class NotificationDispatcher(
         var log = logResult.Value;
         await logs.AddAsync(log, ct);
 
-        var sendResult = await smsSender.SendAsync(phoneNumber, text, ct);
+        // El idempotencyToken debe ser estable e independiente del texto cuando el caller
+        // trabaja con contenido sensible (OTP). Si no viene, derivamos uno del relatedEventId
+        // o del par (templateKey|recipientUserId) para no caer al patrón legacy por texto.
+        var effectiveToken = ResolveIdempotencyToken(idempotencyToken, relatedEventId, templateKey, recipientUserId);
+        var sendResult = await smsSender.SendAsync(phoneNumber, text, ct, templateKey, effectiveToken);
         if (sendResult.IsSuccess)
+        {
             log.MarkSent();
+            metrics.RecordSent(templateKey, "Sms");
+        }
         else
+        {
             log.MarkFailed(sendResult.Error.Message);
+            metrics.RecordFailed(templateKey, "Sms");
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    private static string? ResolveIdempotencyToken(
+        string? explicitToken,
+        Guid? relatedEventId,
+        string? templateKey,
+        Guid? recipientUserId
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(explicitToken))
+            return explicitToken;
+        if (relatedEventId is { } eventId && eventId != Guid.Empty)
+            return eventId.ToString("N");
+        if (!string.IsNullOrWhiteSpace(templateKey) && recipientUserId is { } user && user != Guid.Empty)
+            return $"{templateKey}:{user:N}";
+        return null;
     }
 
     /// <summary>
@@ -88,8 +122,11 @@ public sealed class NotificationDispatcher(
         CancellationToken ct = default
     )
     {
-        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Push, ct))
+        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Push, ct, templateKey))
+        {
+            metrics.RecordSuppressedByPreference(templateKey, "Push");
             return Result.Success();
+        }
 
         var logResult = NotificationLog.Create(
             tenantId,
@@ -118,6 +155,7 @@ public sealed class NotificationDispatcher(
         {
             var error = new Error("Notification.NoPushDevices", "Recipient has no registered push devices.");
             log.MarkFailed(error.Message);
+            metrics.RecordNoRecipient(templateKey, "Push");
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure(error);
         }
@@ -155,11 +193,13 @@ public sealed class NotificationDispatcher(
         if (anySucceeded)
         {
             log.MarkSent();
+            metrics.RecordSent(templateKey, "Push");
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Success();
         }
 
         log.MarkFailed(lastError);
+        metrics.RecordFailed(templateKey, "Push");
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Failure(new Error("Notification.PushFailed", lastError));
     }
@@ -179,11 +219,16 @@ public sealed class NotificationDispatcher(
         Guid? relatedEventId,
         string? correlationId,
         Guid? recipientUserId = null,
+        InAppNotificationRequest? inApp = null,
         CancellationToken ct = default
     )
     {
-        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.InApp, ct))
+        var inAppKind = inApp?.Kind ?? templateKey;
+        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.InApp, ct, inAppKind))
+        {
+            metrics.RecordSuppressedByPreference(inAppKind, "InApp");
             return;
+        }
 
         var logResult = NotificationLog.Create(
             tenantId,
@@ -199,7 +244,80 @@ public sealed class NotificationDispatcher(
 
         logResult.Value.MarkSent();
         await logs.AddAsync(logResult.Value, ct);
+
+        if (TryBuildInAppEvent(tenantId, correlationId, inApp, out var evt))
+            await publisher.PublishAsync(evt!, ct);
+
         await unitOfWork.SaveChangesAsync(ct);
+        // InApp considerado "sent" al publicar el integration event — el consumer Node persistirá la
+        // fila y emitirá el socket. Un fallo real de Node queda fuera del scope de este contador
+        // (sería un contador propio en Communication).
+        metrics.RecordSent(inAppKind, "InApp");
+    }
+
+    private bool TryBuildInAppEvent(
+        Guid tenantId,
+        string? correlationId,
+        InAppNotificationRequest? inApp,
+        out InAppNotificationRequestedIntegrationEvent? evt
+    )
+    {
+        evt = null;
+        if (inApp is null)
+            return false;
+        if (!NotificationCatalog.TryGet(inApp.Kind, out var entry) || entry is null)
+        {
+            logger.LogWarning("In-app notification kind {Kind} is not in the catalog; nothing published.", inApp.Kind);
+            return false;
+        }
+
+        // Trunca antes de publicar: el consumer Node acepta hasta estos limites
+        // tras trim; pasar un string mas largo o un cuerpo vacio mandaba la fila
+        // directo a DLQ y se perdia la notificacion.
+        var fallbackBody = NormalizeOrNull(inApp.FallbackBody, maxLength: 1000);
+        evt = new InAppNotificationRequestedIntegrationEvent
+        {
+            TenantId = tenantId,
+            CorrelationId = Truncate(correlationId, 64) ?? string.Empty,
+            OccurredOn = DateTime.UtcNow,
+            RecipientUserId = inApp.RecipientUserId,
+            Category = NotificationContractNames.For(entry.Category),
+            Kind = Truncate(entry.Kind, 64) ?? entry.Kind,
+            Priority = NotificationContractNames.For(entry.DefaultPriority),
+            TitleKey = Truncate(entry.TitleKey, 160) ?? entry.TitleKey,
+            BodyKey = Truncate(entry.BodyKey, 160),
+            Params = new Dictionary<string, string>(inApp.Params ?? EmptyMap),
+            FallbackTitle = Truncate(inApp.FallbackTitle, 200) ?? inApp.FallbackTitle,
+            FallbackBody = fallbackBody,
+            ActorUserId = inApp.ActorUserId,
+            ActorDisplayName = Truncate(inApp.ActorDisplayName, 160),
+            ResourceType = NotificationContractNames.For(entry.ResourceType),
+            ResourceId = Truncate(inApp.ResourceId, 128),
+            ResourceContext = new Dictionary<string, string>(inApp.ResourceContext ?? EmptyMap),
+            Action = NotificationContractNames.For(entry.Action),
+            SourceEventId = inApp.SourceEventId,
+            SourceEventType = Truncate(inApp.SourceEventType, 128) ?? inApp.SourceEventType,
+            GroupKey = Truncate(inApp.GroupKey, 256),
+            OccurredAtUtc = DateTime.SpecifyKind(inApp.OccurredAtUtc, DateTimeKind.Utc),
+        };
+        return true;
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyMap = new Dictionary<string, string>();
+
+    private static string? Truncate(string? value, int maxLength) =>
+        value is null ? null
+        : value.Length <= maxLength ? value
+        : value[..maxLength];
+
+    // Cuerpo vacio tras trim equivale a "no body": el consumer caera a fallbackTitle
+    // y Notification.create no fallara por MissingBody.
+    private static string? NormalizeOrNull(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     /// <summary>
@@ -220,10 +338,20 @@ public sealed class NotificationDispatcher(
         Guid? recipientUserId,
         NotificationCategory category,
         NotificationChannel channel,
-        CancellationToken ct
+        CancellationToken ct,
+        string? templateKey = null
     )
     {
         if (NotificationCategoryRules.IsLocked(category))
+            return true;
+        // D2: lo marcado IsMandatory en el catálogo nunca lo apaga la preferencia del
+        // usuario — la capacidad (resolver de audiencia) ya se validó aguas arriba.
+        if (
+            !string.IsNullOrWhiteSpace(templateKey)
+            && NotificationCatalog.TryGet(templateKey, out var catalogEntry)
+            && catalogEntry is { IsMandatory: true, AllowedChannels: var allowed }
+            && allowed.Contains(channel)
+        )
             return true;
         if (recipientUserId is null)
             return true;

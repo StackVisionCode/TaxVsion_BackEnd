@@ -19,9 +19,16 @@ function setup() {
   const notifications = {
     createIfMissing: vi.fn().mockResolvedValue(true),
     findById: vi.fn(),
-    update: vi.fn(),
+    markRead: vi.fn().mockResolvedValue(true),
+    dismiss: vi.fn().mockResolvedValue(true),
+    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
     listForUser: vi.fn(),
     countUnread: vi.fn().mockResolvedValue(0),
+    markUnread: vi.fn().mockResolvedValue(true),
+    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+    countForUser: vi.fn().mockResolvedValue(0),
   } as unknown as NotificationRepository;
   const emitter = {
     emitToUser: vi.fn(),
@@ -55,6 +62,7 @@ function setup() {
     customerDirectory,
     customerPreparerAssignments,
     customerAssignments,
+    inAppSource: 'Communication',
   });
   return { handlers, emitter, customerAssignments };
 }

@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
@@ -27,12 +28,35 @@ public static class AppointmentStartingSoonConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            const string title = "Tu cita empieza pronto";
             foreach (var userId in evt.AttendeeUserIds)
             {
+                await dispatcher.RecordInAppAsync(
+                    evt.TenantId,
+                    $"user:{userId:N}",
+                    title,
+                    NotificationCategory.Calendar,
+                    "calendar.appointment_starting_soon",
+                    evt.EventId,
+                    correlation.CorrelationId,
+                    recipientUserId: userId,
+                    inApp: new InAppNotificationRequest(
+                        NotificationKinds.CalendarAppointmentStartingSoon,
+                        userId,
+                        evt.EventId,
+                        "calendar.appointment_starting_soon.v1",
+                        evt.OccurredOn,
+                        title,
+                        FallbackBody: "Empieza en unos minutos.",
+                        ResourceId: evt.AppointmentId.ToString()
+                    ),
+                    ct: ct
+                );
+
                 await dispatcher.SendPushAsync(
                     evt.TenantId,
                     userId,
-                    "Tu cita empieza pronto",
+                    title,
                     "Empieza en unos minutos.",
                     NotificationCategory.Calendar,
                     "calendar.appointment_starting_soon",

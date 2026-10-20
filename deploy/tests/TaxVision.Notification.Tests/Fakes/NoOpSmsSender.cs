@@ -10,7 +10,13 @@ internal sealed class NoOpSmsSender : ISmsSender
     public string? LastPhone { get; private set; }
     public string? LastText { get; private set; }
 
-    public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default)
+    public Task<Result> SendAsync(
+        string phoneNumber,
+        string text,
+        CancellationToken ct,
+        string? templateKey,
+        string? idempotencyToken
+    )
     {
         Sent++;
         LastPhone = phoneNumber;

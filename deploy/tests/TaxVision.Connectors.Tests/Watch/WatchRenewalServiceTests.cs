@@ -121,6 +121,8 @@ public class WatchRenewalServiceTests
         Assert.Equal(fixture.Subscription.AccountId, expiredEvent.AccountId);
         Assert.Equal(3, expiredEvent.FailureCount);
         Assert.Equal(fixture.Account.CreatedByUserId, expiredEvent.CreatedByUserId);
+        Assert.True(expiredEvent.IsOfficeMailbox);
+        Assert.Null(expiredEvent.MailboxOwnerUserId);
     }
 
     [Fact]

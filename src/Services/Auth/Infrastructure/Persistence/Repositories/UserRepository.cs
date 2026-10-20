@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
+using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
@@ -191,4 +193,62 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         kind == UserAccountKind.Portal
             ? user => user.ActorType == UserActorType.CustomerPortal
             : user => user.ActorType != UserActorType.CustomerPortal;
+
+    // The controller restricts this cross-tenant query to the platform service.
+    public async Task<PagedResult<TenantOwnerReconciliationResponse>> ListTenantOwnersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        if (page < 1)
+            page = 1;
+        if (size < 1)
+            size = 200;
+
+        var query = db.Users.AsNoTracking().IgnoreQueryFilters().Where(u => u.ActorType == UserActorType.TenantAdmin);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(u => u.TenantId)
+            .ThenBy(u => u.CreatedAtUtc)
+            .ThenBy(u => u.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(u => new TenantOwnerReconciliationResponse(u.TenantId, u.Id, u.CreatedAtUtc, u.IsActive))
+            .ToListAsync(ct);
+
+        return new PagedResult<TenantOwnerReconciliationResponse>(items, page, size, total);
+    }
+
+    public async Task<
+        PagedResult<CustomerPortalAccountReconciliationResponse>
+    > ListPortalAccountsForReconciliationAsync(int page, int size, CancellationToken ct = default)
+    {
+        if (page < 1)
+            page = 1;
+        if (size < 1)
+            size = 200;
+
+        var query = db
+            .Users.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(u => u.ActorType == UserActorType.CustomerPortal && u.CustomerId != null);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(u => u.TenantId)
+            .ThenBy(u => u.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(u => new CustomerPortalAccountReconciliationResponse(
+                u.TenantId,
+                u.CustomerId!.Value,
+                u.Id,
+                u.IsActive
+            ))
+            .ToListAsync(ct);
+
+        return new PagedResult<CustomerPortalAccountReconciliationResponse>(items, page, size, total);
+    }
 }

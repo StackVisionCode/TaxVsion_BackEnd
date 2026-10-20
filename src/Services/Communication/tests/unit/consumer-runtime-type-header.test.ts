@@ -40,6 +40,7 @@ vi.mock('../../src/infrastructure/logger/logger.js', () => ({
 }));
 
 const { ConsumerRuntime } = await import('../../src/infrastructure/rabbit/consumer-runtime.js');
+const { logger } = await import('../../src/infrastructure/logger/logger.js');
 
 /** Mensaje estilo Wolverine .NET: el tipo va SOLO en el header AMQP `type`, no en el body. */
 function message(amqpType: string | undefined, body: Record<string, unknown>): ConsumeMessage {
@@ -77,6 +78,7 @@ beforeEach(() => {
   channel.ack.mockClear();
   channel.nack.mockClear();
   channel.consume.mockReset();
+  vi.mocked(logger.warn).mockClear();
 });
 
 describe('ConsumerRuntime — resolución del header AMQP `type`', () => {
@@ -98,14 +100,36 @@ describe('ConsumerRuntime — resolución del header AMQP `type`', () => {
     expect(channel.ack).toHaveBeenCalledTimes(1);
   });
 
-  it('un header sin handler registrado se ackea y se descarta sin invocar nada', async () => {
+  it('un header sin handler registrado se advierte una vez por ventana y se ackea', async () => {
     const { dispatch, handler } = await startRuntime();
 
     await dispatch(message('cloudstorage.file_available.v1', { EventId: 'evt-2', TenantId: 'tenant-1' }));
+    await dispatch(message('cloudstorage.file_available.v1', { EventId: 'evt-3', TenantId: 'tenant-1' }));
 
     expect(handler).not.toHaveBeenCalled();
-    expect(channel.ack).toHaveBeenCalledTimes(1);
+    expect(channel.ack).toHaveBeenCalledTimes(2);
     expect(channel.nack).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        eventType: 'cloudstorage.file_available.v1',
+        amqpType: 'cloudstorage.file_available.v1',
+        eventId: 'evt-2',
+      },
+      'consumer: event type has no registered handler; ack to skip',
+    );
+  });
+
+  it('no advierte por un alias ignorado explicitamente', async () => {
+    const { dispatch } = await startRuntime();
+
+    // signature.signer.invited.v1 salió del ignore set en T7.4.C — Notification
+    // ahora lo procesa. Usamos signature.request.reminder_due.v1 que sigue
+    // ignorado para probar el camino de alias explícitamente excluido.
+    await dispatch(message('signature.request.reminder_due.v1', { EventId: 'evt-ignored', TenantId: 'tenant-1' }));
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(channel.ack).toHaveBeenCalledTimes(1);
   });
 
   it('mapea ModuleCategoryChanged de Wolverine al alias del consumer', async () => {

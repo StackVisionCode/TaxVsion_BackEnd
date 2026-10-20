@@ -61,6 +61,7 @@ public static class CancelSignatureRequestHandler
                     SignatureRequestId = request.Id,
                     CreatedByUserId = request.CreatedByUserId,
                     CanceledByUserId = cmd.CanceledByUserId,
+                    CanceledByUserDisplayName = cmd.CanceledByUserDisplayName,
                     CanceledAtUtc = canceledAtUtc,
                     Reason = cmd.Reason,
                     PendingSignerIds = pendingSignerIds,

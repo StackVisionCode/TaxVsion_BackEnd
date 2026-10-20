@@ -43,7 +43,6 @@ public sealed class CustomerDirectoryClient(HttpClient http, ILogger<CustomerDir
             PrimaryEmail: email.Trim(),
             PrimaryPhone: string.IsNullOrWhiteSpace(phoneE164) ? null : phoneE164,
             Language: "Es",
-            PreferredChannel: "Email",
             Overwrite: false
         );
 
@@ -131,7 +130,6 @@ public sealed class CustomerDirectoryClient(HttpClient http, ILogger<CustomerDir
         string PrimaryEmail,
         string? PrimaryPhone,
         string Language,
-        string PreferredChannel,
         bool Overwrite
     );
 

@@ -5,6 +5,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Providers;
+using TaxVision.Connectors.Tests.Sync;
 using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
@@ -17,6 +18,8 @@ public class ConnectManualAccountHandlerTests
         FakeTenantEmailAccountRepository AccountRepository,
         FakeImapCredentialsRepository ImapCredentialsRepository,
         FakeSmtpCredentialsRepository SmtpCredentialsRepository,
+        FakeOAuthConnectionRepository OAuthConnectionRepository,
+        FakeProviderSyncCursorRepository ProviderSyncCursorRepository,
         FakeManualAccountConnectivityValidator ConnectivityValidator,
         FakeEncryptedSecretProtector Protector,
         FakeProviderConnectionAuditLogRepository AuditLogRepository,
@@ -31,6 +34,8 @@ public class ConnectManualAccountHandlerTests
             new FakeTenantEmailAccountRepository(),
             new FakeImapCredentialsRepository(),
             new FakeSmtpCredentialsRepository(),
+            new FakeOAuthConnectionRepository(),
+            new FakeProviderSyncCursorRepository(),
             new FakeManualAccountConnectivityValidator(),
             new FakeEncryptedSecretProtector(),
             new FakeProviderConnectionAuditLogRepository(),
@@ -70,6 +75,8 @@ public class ConnectManualAccountHandlerTests
             fixture.AccountRepository,
             fixture.ImapCredentialsRepository,
             fixture.SmtpCredentialsRepository,
+            fixture.OAuthConnectionRepository,
+            fixture.ProviderSyncCursorRepository,
             fixture.ConnectivityValidator,
             fixture.Protector,
             fixture.AuditLogRepository,

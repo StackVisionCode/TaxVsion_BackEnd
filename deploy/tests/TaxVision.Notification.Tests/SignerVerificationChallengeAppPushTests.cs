@@ -234,8 +234,13 @@ public sealed class SignerVerificationChallengeAppPushTests
     {
         public static readonly NoOpSmsSender Instance = new();
 
-        public Task<Result> SendAsync(string phoneNumber, string text, CancellationToken ct = default) =>
-            Task.FromResult(Result.Success());
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        ) => Task.FromResult(Result.Success());
     }
 
     private sealed class NoOpEmailDispatchGateway : IEmailDispatchGateway

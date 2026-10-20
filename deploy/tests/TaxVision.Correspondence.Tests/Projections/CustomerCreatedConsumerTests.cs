@@ -22,7 +22,6 @@ public sealed class CustomerCreatedConsumerTests
             DisplayName = "Jane Doe",
             PrimaryEmail = "Jane.Doe@Example.com",
             Language = "en",
-            PreferredChannel = "Email",
             CreatedByUserId = Guid.NewGuid(),
         };
 
@@ -60,7 +59,6 @@ public sealed class CustomerCreatedConsumerTests
             DisplayName = "Jane Doe",
             PrimaryEmail = "jane.doe@example.com",
             Language = "en",
-            PreferredChannel = "Email",
             CreatedByUserId = Guid.NewGuid(),
         };
 
@@ -99,7 +97,6 @@ public sealed class CustomerCreatedConsumerTests
             DisplayName = "No Email",
             PrimaryEmail = "not-an-email",
             Language = "en",
-            PreferredChannel = "Email",
             CreatedByUserId = Guid.NewGuid(),
         };
 

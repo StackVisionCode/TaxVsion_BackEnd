@@ -654,8 +654,14 @@ public sealed class SignatureRequestsController(
         if (forbidden is not null)
             return forbidden;
 
+        // CanceledByUserDisplayName=null: scaffolding del contrato Actor del notifications MD.
+        // El JWT actual no emite claim `name` (ver JwtTokenGenerator en Auth: solo sub/email/
+        // tenant_id/actor_type/perm_v/…). Agregar FirstName al dominio User + emitir el claim
+        // es una fase propia; mientras no exista, el consumer de Communication seguirá
+        // mostrando "Signature request canceled" sin el autor nominal — comportamiento idéntico
+        // al previo a este scaffolding.
         var result = await bus.InvokeAsync<Result>(
-            new CancelSignatureRequestCommand(tenantId, id, userId, body.Reason),
+            new CancelSignatureRequestCommand(tenantId, id, userId, CanceledByUserDisplayName: null, body.Reason),
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

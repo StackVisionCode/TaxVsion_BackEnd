@@ -29,7 +29,6 @@ public sealed class ImportCustomerRow
     public string? Email { get; init; }
     public string? Phone { get; init; }
     public string? Language { get; init; } // "Es" | "En"
-    public string? PreferredChannel { get; init; } // "Email" | "Sms" | "Call"
 
     // ----- Direccion primaria (Home por defecto) -----
     public string? AddressLine1 { get; init; }

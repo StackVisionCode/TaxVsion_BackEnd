@@ -107,11 +107,14 @@ export async function processMissedCalls(
       ).catch(() => undefined);
     }
 
+    // G15: el evento sale desde un job periódico sin envelope entrante, así que
+    // el correlation-id es el callId mismo (estable y único por llamada), para
+    // enlazar los logs del job con el consumer en Notification.
     const missedEvent: CallMissedEvent = {
       eventId: randomUUID(),
       eventType: CallEventTypes.Missed,
       tenantId: snapshot.tenantId,
-      correlationId: undefined,
+      correlationId: snapshot.id,
       occurredOnUtc: now.toISOString(),
       callId: snapshot.id,
       callerUserId: snapshot.callerUserId,

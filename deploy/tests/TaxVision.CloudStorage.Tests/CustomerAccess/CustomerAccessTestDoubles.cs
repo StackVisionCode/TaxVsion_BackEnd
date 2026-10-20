@@ -78,6 +78,15 @@ internal sealed class FakeCustomerAssignmentProjectionStore : ICustomerAssignmen
             _assignments.Where(a => a.tenantId == tenantId && a.userId == userId).Select(a => a.customerId).ToList()
         );
 
+    public Task<IReadOnlyCollection<Guid>> GetAssignedUserIdsAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyCollection<Guid>>(
+            _assignments.Where(a => a.tenantId == tenantId && a.customerId == customerId).Select(a => a.userId).ToList()
+        );
+
     public Task ReplaceAsync(
         Guid tenantId,
         Guid customerId,

@@ -11,6 +11,7 @@ import { completeAttachmentUpload } from '../../../application/use-cases/complet
 import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
 import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import { requirePermission } from '../plugins/require-permission.js';
+import { OptionalBooleanQuery } from '../schemas/strict-boolean-query.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
@@ -43,7 +44,7 @@ function attachmentHttpStatus(code: string): number {
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
-  includeArchived: z.coerce.boolean().optional(),
+  includeArchived: OptionalBooleanQuery,
 });
 
 const GetMessagesQuerySchema = z.object({

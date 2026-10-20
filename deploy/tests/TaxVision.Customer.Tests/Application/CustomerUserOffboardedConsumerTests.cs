@@ -195,17 +195,7 @@ public sealed class CustomerUserOffboardedConsumerTests
                 var name = PersonalName.Create("Client", $"Number{i}").Value;
                 var email = EmailAddress.Create($"client-{Guid.NewGuid():N}@example.com").Value;
                 var customer = DomainCustomer
-                    .Register(
-                        tenantId,
-                        CustomerKind.Individual,
-                        name,
-                        null,
-                        email,
-                        null,
-                        Language.En,
-                        PreferredChannel.Email,
-                        Guid.NewGuid()
-                    )
+                    .Register(tenantId, CustomerKind.Individual, name, null, email, null, Language.En, Guid.NewGuid())
                     .Value;
                 customer.AssignPreparer(preparerUserId, Guid.NewGuid());
                 All.Add(customer);
@@ -218,17 +208,7 @@ public sealed class CustomerUserOffboardedConsumerTests
             var name = PersonalName.Create("Shared", "Client").Value;
             var email = EmailAddress.Create($"shared-{Guid.NewGuid():N}@example.com").Value;
             var customer = DomainCustomer
-                .Register(
-                    tenantId,
-                    CustomerKind.Individual,
-                    name,
-                    null,
-                    email,
-                    null,
-                    Language.En,
-                    PreferredChannel.Email,
-                    Guid.NewGuid()
-                )
+                .Register(tenantId, CustomerKind.Individual, name, null, email, null, Language.En, Guid.NewGuid())
                 .Value;
             customer.AssignPreparer(primaryUserId, Guid.NewGuid());
             customer.GrantAccess(extraUserId, Guid.NewGuid());

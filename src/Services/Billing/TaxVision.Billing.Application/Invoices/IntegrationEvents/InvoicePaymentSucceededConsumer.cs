@@ -42,11 +42,11 @@ public static class InvoicePaymentSucceededConsumer
             return;
         }
 
-        using (
-            correlation.Push(
-                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
-            )
-        )
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
+
+        using (correlation.Push(correlationId))
         {
             var invoice = await invoices.GetByIdAsync(evt.TenantId, invoiceId, ct);
             if (invoice is null)
@@ -80,6 +80,7 @@ public static class InvoicePaymentSucceededConsumer
             if (invoice.Status == InvoiceStatus.Paid)
             {
                 bus.TenantId = evt.TenantId.ToString();
+                await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlationId));
                 await bus.PublishAsync(new GenerateInvoicePdfCommand(evt.TenantId, invoiceId));
             }
 

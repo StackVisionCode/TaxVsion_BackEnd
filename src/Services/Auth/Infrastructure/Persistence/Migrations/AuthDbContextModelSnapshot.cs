@@ -2743,6 +2743,62 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000192"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin",
+                            Code = "notifications.billing.alerts",
+                            Description = "Receive office billing alerts (failed payments, payouts, subscription)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000193"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin",
+                            Code = "notifications.storage.alerts",
+                            Description = "Receive office storage alerts (quota, infected files)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000194"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin",
+                            Code = "notifications.security.tenant_alerts",
+                            Description = "Receive office security alerts",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000195"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin",
+                            Code = "notifications.mailbox.alerts",
+                            Description = "Receive office mailbox alerts (reconnect, sync issues)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000103"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_app.saas_payment.read",

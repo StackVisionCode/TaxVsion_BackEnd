@@ -192,6 +192,7 @@ internal sealed class FakeEmailSender : IEmailSender
 {
     public SendResult SendReturnValue { get; set; } = new(true, "provider-msg-1", null, []);
     public SentMessage? LastMessage { get; private set; }
+    public RenderedContent? LastContent { get; private set; }
 
     /// <summary>Hardening Fase 9 — captura lo que el consumer realmente pasó, para probar que las
     /// referencias del evento efectivamente llegan como bytes hasta acá.</summary>
@@ -208,6 +209,7 @@ internal sealed class FakeEmailSender : IEmailSender
     )
     {
         LastMessage = message;
+        LastContent = content;
         LastInlineAssets = inlineAssets;
         LastAttachments = attachments;
         return Task.FromResult(SendReturnValue);

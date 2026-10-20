@@ -19,17 +19,7 @@ public sealed class CustomerFiscalProfileUpdateTests
         var name = PersonalName.Create("Grace", "Hopper").Value;
         var email = EmailAddress.Create($"grace-{Guid.NewGuid():N}@example.com").Value;
         var customer = DomainCustomer
-            .Register(
-                Guid.NewGuid(),
-                CustomerKind.Individual,
-                name,
-                null,
-                email,
-                null,
-                Language.En,
-                PreferredChannel.Email,
-                ByUser
-            )
+            .Register(Guid.NewGuid(), CustomerKind.Individual, name, null, email, null, Language.En, ByUser)
             .Value;
 
         customer.SetFiscalProfile(
@@ -99,17 +89,7 @@ public sealed class CustomerFiscalProfileUpdateTests
         var name = PersonalName.Create("New", "Client").Value;
         var email = EmailAddress.Create($"new-{Guid.NewGuid():N}@example.com").Value;
         var customer = DomainCustomer
-            .Register(
-                Guid.NewGuid(),
-                CustomerKind.Individual,
-                name,
-                null,
-                email,
-                null,
-                Language.En,
-                PreferredChannel.Email,
-                ByUser
-            )
+            .Register(Guid.NewGuid(), CustomerKind.Individual, name, null, email, null, Language.En, ByUser)
             .Value;
 
         var result = customer.UpdateFiscalProfile(FilingStatus.Single, null, false, null, null, ByUser);

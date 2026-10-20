@@ -25,6 +25,11 @@ public sealed record ConnectorsRawMessageAttachmentMetadata(
 public sealed record ConnectorsRawMessageReceivedIntegrationEvent : IntegrationEvent
 {
     public required Guid AccountId { get; init; }
+    public Guid? MailboxOwnerUserId { get; init; }
+
+    /// <summary>False en eventos antiguos que no informaban la titularidad del buzón.</summary>
+    public bool MailboxOwnershipKnown { get; init; }
+
     public required string ProviderCode { get; init; }
     public required string ProviderMessageId { get; init; }
     public string? ProviderThreadId { get; init; }

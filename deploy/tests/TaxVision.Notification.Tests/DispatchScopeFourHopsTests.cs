@@ -9,6 +9,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Infrastructure.Scribe;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -72,6 +73,9 @@ public sealed class DispatchScopeFourHopsTests
             Invoice(),
             gateway,
             new StubRenderClient(render),
+            AllowAllContactPolicyRepository.Instance,
+            new NotificationDispatcherHarness().Dispatcher,
+            NoPortalRecipientResolver.Instance,
             new NoOpCorrelation(),
             CancellationToken.None
         );
@@ -91,6 +95,9 @@ public sealed class DispatchScopeFourHopsTests
             Invoice(),
             gateway,
             new StubRenderClient(render),
+            AllowAllContactPolicyRepository.Instance,
+            new NotificationDispatcherHarness().Dispatcher,
+            NoPortalRecipientResolver.Instance,
             new NoOpCorrelation(),
             CancellationToken.None
         );

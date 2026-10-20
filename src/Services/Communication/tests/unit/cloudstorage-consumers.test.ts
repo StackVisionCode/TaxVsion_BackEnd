@@ -41,9 +41,17 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
     const notifications: NotificationRepository = {
       createIfMissing: vi.fn().mockResolvedValue(true),
       findById: vi.fn(),
-      update: vi.fn(),
+      markRead: vi.fn().mockResolvedValue(true),
+      dismiss: vi.fn().mockResolvedValue(true),
+      markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
       listForUser: vi.fn(),
       countUnread: vi.fn().mockResolvedValue(0),
+      markUnread: vi.fn().mockResolvedValue(true),
+      markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+      markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+      dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+      countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
     };
     const emitter: RealtimeEmitter = {
       emitToConversation: vi.fn(),
@@ -52,7 +60,12 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
       emitToUser: vi.fn(),
     } as unknown as RealtimeEmitter;
 
-    bindCloudStorageConsumers(register, { attachmentTracking, notifications, emitter });
+    bindCloudStorageConsumers(register, {
+      attachmentTracking,
+      notifications,
+      emitter,
+      inAppSourcePolicy: 'Communication',
+    });
     return { handlers, attachmentTracking, notifications, emitter };
   }
 
@@ -88,15 +101,8 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
   });
 });
 
-/**
- * Fase 1B — cloudstorage.file.available.v1 y cloudstorage.file.blocked_by_policy.v1
- * ADEMAS notifican al uploader (CreatedBy). Estos 2 eventos ya tenian un
- * handler registrado (attachment-tracking arriba), asi que la notificacion
- * vive en el MISMO callback — ConsumerRuntime.register solo admite un handler
- * por eventType.
- */
-describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () => {
-  function setupWithNotifications() {
+describe('bindCloudStorageConsumers — notificacion al uploader', () => {
+  function setupWithNotifications(inAppSourcePolicy: 'Communication' | 'Notification' = 'Communication') {
     const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
     const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
       handlers.set(eventType, handler);
@@ -109,9 +115,17 @@ describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () 
     const notifications: NotificationRepository = {
       createIfMissing: vi.fn().mockResolvedValue(true),
       findById: vi.fn(),
-      update: vi.fn(),
+      markRead: vi.fn().mockResolvedValue(true),
+      dismiss: vi.fn().mockResolvedValue(true),
+      markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
       listForUser: vi.fn(),
       countUnread: vi.fn().mockResolvedValue(0),
+      markUnread: vi.fn().mockResolvedValue(true),
+      markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
+      markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
+      dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
+      countForUser: vi.fn().mockResolvedValue(0),
+    listSinceForUser: vi.fn().mockResolvedValue([]),
     };
     const emitter: RealtimeEmitter = {
       emitToConversation: vi.fn(),
@@ -120,7 +134,12 @@ describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () 
       emitToUser: vi.fn(),
     } as unknown as RealtimeEmitter;
 
-    bindCloudStorageConsumers(register, { attachmentTracking, notifications, emitter });
+    bindCloudStorageConsumers(register, {
+      attachmentTracking,
+      notifications,
+      emitter,
+      inAppSourcePolicy,
+    });
     return { handlers, notifications };
   }
 
@@ -135,7 +154,7 @@ describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () 
     };
   }
 
-  it('file.available.v1 crea la notificacion para CreatedBy', async () => {
+  it('file.available.v1 actualiza tracking sin crear ruido en la campana', async () => {
     const { handlers, notifications } = setupWithNotifications();
 
     await handlers.get('cloudstorage.file.available.v1')!(
@@ -149,8 +168,7 @@ describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () 
       }),
     );
 
-    expect(notifications.createIfMissing).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('uploader-1');
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
   });
 
   it('file.blocked_by_policy.v1 crea la notificacion para CreatedBy', async () => {
@@ -169,7 +187,25 @@ describe('bindCloudStorageConsumers — notificacion al uploader (Fase 1B)', () 
     expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('uploader-2');
   });
 
-  it('no crea ninguna notificacion si CreatedBy falta (regresion)', async () => {
+  // C16-b: con el grupo CloudStoragePolicy apuntando a Notification, el handler Node
+  // ya no crea la fila (lo hace Notification con audiencia ByPermission). El
+  // attachment-tracking tiene que seguir funcionando aunque la notificacion se apague.
+  it('file.blocked_by_policy.v1 NO notifica cuando el flag apunta a Notification', async () => {
+    const { handlers, notifications } = setupWithNotifications('Notification');
+
+    await handlers.get('cloudstorage.file.blocked_by_policy.v1')!(
+      envelopeWithCreatedBy('cloudstorage.file.blocked_by_policy.v1', {
+        FileId: 'file-2b',
+        ObjectKey: 'k',
+        PolicyReason: 'nudity',
+        CreatedBy: 'uploader-2b',
+      }),
+    );
+
+    expect(notifications.createIfMissing).not.toHaveBeenCalled();
+  });
+
+  it('file.available.v1 tampoco notifica cuando CreatedBy falta', async () => {
     const { handlers, notifications } = setupWithNotifications();
 
     await handlers.get('cloudstorage.file.available.v1')!(

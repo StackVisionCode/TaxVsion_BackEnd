@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Infrastructure.Sms;
 using Wolverine;
 using Wolverine.Runtime;
@@ -20,7 +21,7 @@ public sealed class IntegrationEventSmsSenderTests
     {
         var tenantId = Guid.NewGuid();
         var bus = new CapturingBus();
-        var sender = new IntegrationEventSmsSender(
+        ISmsSender sender = new IntegrationEventSmsSender(
             bus,
             new StubTenant(tenantId),
             new NoOpCorrelation(),
@@ -45,7 +46,7 @@ public sealed class IntegrationEventSmsSenderTests
         SmsSendRequestedIntegrationEvent Send()
         {
             var bus = new CapturingBus();
-            var sender = new IntegrationEventSmsSender(
+            ISmsSender sender = new IntegrationEventSmsSender(
                 bus,
                 new StubTenant(tenantId),
                 new NoOpCorrelation(),
@@ -62,9 +63,38 @@ public sealed class IntegrationEventSmsSenderTests
     }
 
     [Fact]
+    public async Task Idempotency_key_with_token_is_independent_of_text()
+    {
+        var tenantId = Guid.NewGuid();
+        SmsSendRequestedIntegrationEvent Send(string text, string token)
+        {
+            var bus = new CapturingBus();
+            ISmsSender sender = new IntegrationEventSmsSender(
+                bus,
+                new StubTenant(tenantId),
+                new NoOpCorrelation(),
+                NullLogger<IntegrationEventSmsSender>.Instance
+            );
+            sender
+                .SendAsync("+17865550123", text, CancellationToken.None, "auth.otp_code", token)
+                .GetAwaiter()
+                .GetResult();
+            return Assert.IsType<SmsSendRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        }
+
+        var token = Guid.NewGuid().ToString("N");
+        var a = Send("Your code: 123456", token);
+        var b = Send("Your code: 999999", token);
+        Assert.Equal(a.IdempotencyKey, b.IdempotencyKey);
+
+        var c = Send("Your code: 123456", Guid.NewGuid().ToString("N"));
+        Assert.NotEqual(a.IdempotencyKey, c.IdempotencyKey);
+    }
+
+    [Fact]
     public async Task Fails_when_no_destination()
     {
-        var sender = new IntegrationEventSmsSender(
+        ISmsSender sender = new IntegrationEventSmsSender(
             new CapturingBus(),
             new StubTenant(Guid.NewGuid()),
             new NoOpCorrelation(),
@@ -81,7 +111,7 @@ public sealed class IntegrationEventSmsSenderTests
     public async Task Fails_when_no_tenant_context()
     {
         var bus = new CapturingBus();
-        var sender = new IntegrationEventSmsSender(
+        ISmsSender sender = new IntegrationEventSmsSender(
             bus,
             new StubTenant(hasTenant: false),
             new NoOpCorrelation(),

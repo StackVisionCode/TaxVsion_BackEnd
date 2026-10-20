@@ -5,6 +5,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -53,7 +54,17 @@ public sealed class InvoiceSentConsumerTests
         RecordingRenderClient render,
         RecordingEmailGateway gateway,
         InvoiceSentToCustomerIntegrationEvent evt
-    ) => InvoiceSentConsumer.Handle(evt, gateway, render, new NoOpCorrelationContext(), CancellationToken.None);
+    ) =>
+        InvoiceSentConsumer.Handle(
+            evt,
+            gateway,
+            render,
+            AllowAllContactPolicyRepository.Instance,
+            new NotificationDispatcherHarness().Dispatcher,
+            NoPortalRecipientResolver.Instance,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
 
     private static InvoiceSentToCustomerIntegrationEvent Invoice(string email, Guid? pdfFileId) =>
         new()

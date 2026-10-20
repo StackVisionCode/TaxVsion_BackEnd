@@ -276,6 +276,34 @@ public sealed class PermissionCatalogTests
     }
 
     [Fact]
+    public void Alert_subscriptions_allow_tenant_admin_but_are_excluded_from_admin_bundle()
+    {
+        // D1 (2026-10-19): un co-TenantAdmin puede recibir estos 4 permisos por asignacion
+        // explicita, pero no se les otorga por defecto en el bundle del rol de sistema
+        // ni en el set root del admin principal. El owner sigue recibiendo lo obligatorio
+        // via TenantOwnerAudience (hardcode al TenantAdmin mas antiguo).
+        var alertCodes = new[]
+        {
+            PermissionCatalog.NotificationsBillingAlerts,
+            PermissionCatalog.NotificationsStorageAlerts,
+            PermissionCatalog.NotificationsSecurityTenantAlerts,
+            PermissionCatalog.NotificationsMailboxAlerts,
+        };
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+        var tenantAdminRoot = PermissionCatalog.SystemTenantAdminRootPermissions();
+
+        foreach (var code in alertCodes)
+        {
+            var definition = PermissionCatalog.All.Single(d => d.Code == code);
+            Assert.True(definition.ExcludeFromAdminBundle, $"{code}: ExcludeFromAdminBundle debe ser true");
+            Assert.Contains(UserActorType.TenantAdmin, definition.EffectiveAllowedActorTypes);
+            Assert.Contains(UserActorType.TenantEmployee, definition.EffectiveAllowedActorTypes);
+            Assert.DoesNotContain(code, tenantAdminDefaults);
+            Assert.DoesNotContain(code, tenantAdminRoot);
+        }
+    }
+
+    [Fact]
     public void Tenant_branding_permission_stays_assignable_to_the_tenant()
     {
         // Contraparte: la marca PROPIA del tenant sí es del TenantAdmin (no PlatformOnly).

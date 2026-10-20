@@ -690,7 +690,6 @@ public static class RunCustomerImportHandler
             primaryEmail: pr.Email,
             primaryPhone: pr.Phone,
             language: pr.Language,
-            preferredChannel: pr.PreferredChannel,
             createdByUserId: info.CreatedByUserId,
             dateOfBirth: pr.DateOfBirth,
             occupationId: occupationId
@@ -891,7 +890,7 @@ public static class RunCustomerImportHandler
         // Overwrite: pisa todo
         if (strategy == DuplicateStrategy.Overwrite)
         {
-            existing.ChangePreferences(pr.Language, pr.PreferredChannel, byUserId);
+            existing.ChangeLanguage(pr.Language, byUserId);
             existing.ChangeOccupation(occupationId, byUserId);
             existing.ChangePrimaryEmail(pr.Email, byUserId);
             if (pr.Phone is not null)

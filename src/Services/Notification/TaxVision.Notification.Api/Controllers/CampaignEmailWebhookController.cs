@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 using BuildingBlocks.Web.RateLimiting;
@@ -11,10 +13,10 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Webhook de estado del proveedor de email de CAMPAÑA (SMTP2GO y cualquier proveedor que haga POST de
 /// eventos). Anónimo — lo firma/llama el proveedor, no pasa por el JWT; se protege con un secreto
-/// compartido opcional (header <c>X-Webhook-Secret</c> o <c>?key=</c>). Correlaciona por el Message-Id
+/// compartido obligatorio (Bearer, header <c>X-Webhook-Secret</c> o <c>?key=</c>). Correlaciona por el Message-Id
 /// (SMTP2GO devuelve el del remitente) que el adapter codificó con tenant/campaign/run/dispatch, y
 /// publica un <c>campaign.dispatch.result.v1</c> de Delivered/Failed que el consumer de Campaigns aplica
-/// (refinamiento tardío Accepted→Delivered). Siempre responde 200 para no inducir reintentos del proveedor.
+/// (refinamiento tardío Accepted→Delivered). Solo los eventos autenticados se procesan.
 /// </summary>
 [ApiController]
 [Route("notifications/campaign-email/webhooks")]
@@ -32,7 +34,17 @@ public sealed class CampaignEmailWebhookController(
     public async Task<IActionResult> Smtp2Go(CancellationToken ct)
     {
         var expectedSecret = configuration["CampaignEmail:WebhookSecret"];
-        if (!string.IsNullOrWhiteSpace(expectedSecret) && !SecretMatches(expectedSecret))
+        if (string.IsNullOrWhiteSpace(expectedSecret))
+        {
+            logger.LogError("SMTP2GO webhook rejected because CampaignEmail:WebhookSecret is not configured.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var (providedSecret, source) = ReadProvidedSecret();
+        if (source == WebhookSecretSource.Query)
+            logger.LogWarning("SMTP2GO webhook used the legacy query-string secret. Prefer Authorization bearer.");
+
+        if (!CampaignWebhookSecretVerifier.Matches(expectedSecret, providedSecret))
             return Unauthorized();
 
         var (eventType, messageId, reasonDetail) = await ReadPayloadAsync(ct);
@@ -87,22 +99,20 @@ public sealed class CampaignEmailWebhookController(
         return Ok();
     }
 
-    /// <summary>Valida el secreto compartido. SMTP2GO lo manda como <c>Authorization: Bearer &lt;token&gt;</c>
-    /// (ver panel del webhook); se aceptan además <c>X-Webhook-Secret</c> y <c>?key=</c> como alternativas.</summary>
-    private bool SecretMatches(string expected)
+    /// <summary>Lee el secreto compartido sin escribir su valor en logs.</summary>
+    private (string? Secret, WebhookSecretSource Source) ReadProvidedSecret()
     {
         var auth = Request.Headers.Authorization.ToString();
         const string bearer = "Bearer ";
-        if (
-            auth.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(auth[bearer.Length..].Trim(), expected, StringComparison.Ordinal)
-        )
-            return true;
+        if (auth.StartsWith(bearer, StringComparison.OrdinalIgnoreCase))
+            return (auth[bearer.Length..].Trim(), WebhookSecretSource.Bearer);
 
-        if (string.Equals(Request.Headers["X-Webhook-Secret"].ToString().Trim(), expected, StringComparison.Ordinal))
-            return true;
+        var header = Request.Headers["X-Webhook-Secret"].ToString().Trim();
+        if (!string.IsNullOrEmpty(header))
+            return (header, WebhookSecretSource.Header);
 
-        return string.Equals(Request.Query["key"].ToString().Trim(), expected, StringComparison.Ordinal);
+        var query = Request.Query["key"].ToString().Trim();
+        return string.IsNullOrEmpty(query) ? (null, WebhookSecretSource.None) : (query, WebhookSecretSource.Query);
     }
 
     /// <summary>Lee el payload sea form-encoded o JSON (SMTP2GO lo manda en cualquiera de los dos según config).</summary>
@@ -155,4 +165,25 @@ public sealed class CampaignEmailWebhookController(
                 return el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
         return null;
     }
+}
+
+public static class CampaignWebhookSecretVerifier
+{
+    public static bool Matches(string expected, string? provided)
+    {
+        if (string.IsNullOrEmpty(provided))
+            return false;
+
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expected));
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(provided));
+        return CryptographicOperations.FixedTimeEquals(expectedHash, providedHash);
+    }
+}
+
+internal enum WebhookSecretSource
+{
+    None,
+    Bearer,
+    Header,
+    Query,
 }

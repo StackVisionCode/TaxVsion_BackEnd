@@ -31,6 +31,7 @@ public sealed class SmsSendRequestedConsumerTests
             CustomerId = customerId,
             IdempotencyKey = "idem-key-1",
             SourceContext = "signature:req:signer:otp",
+            TemplateKey = "sig.verification-challenge.v1",
         };
 
         await SmsSendRequestedConsumer.Handle(evt, bus, CancellationToken.None);
@@ -44,6 +45,7 @@ public sealed class SmsSendRequestedConsumerTests
         Assert.Equal("Your code: 654321", item.Message);
         Assert.Equal("idem-key-1", item.IdempotencyKey);
         Assert.Equal("signature:req:signer:otp", item.SourceContext);
+        Assert.Equal("sig.verification-challenge.v1", item.TemplateKey);
         Assert.Null(item.Media);
     }
 

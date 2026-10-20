@@ -25,13 +25,18 @@ public sealed class RawMessageReceivedConsumerTests
         string dmarc = "Pass",
         string subject = "Subject",
         DateTime? receivedAtUtc = null,
-        string? fromDisplayName = null
+        string? fromDisplayName = null,
+        Guid? accountId = null,
+        Guid? mailboxOwnerUserId = null,
+        bool mailboxOwnershipKnown = true
     ) =>
         new()
         {
             TenantId = tenantId,
             CorrelationId = Guid.NewGuid().ToString(),
-            AccountId = Guid.NewGuid(),
+            AccountId = accountId ?? Guid.NewGuid(),
+            MailboxOwnerUserId = mailboxOwnerUserId,
+            MailboxOwnershipKnown = mailboxOwnershipKnown,
             ProviderCode = "gmail",
             ProviderMessageId = providerMessageId ?? Guid.NewGuid().ToString(),
             ProviderThreadId = providerThreadId,
@@ -127,6 +132,62 @@ public sealed class RawMessageReceivedConsumerTests
         var published = Assert.Single(bus.Published);
         var integrationEvent = Assert.IsType<CorrespondenceCustomerEmailReceivedIntegrationEvent>(published);
         Assert.Equal(email.Id, integrationEvent.IncomingEmailId);
+        Assert.Equal(evt.AccountId, integrationEvent.AccountId);
+        Assert.Null(integrationEvent.MailboxOwnerUserId);
+    }
+
+    [Fact]
+    public async Task Handle_propagates_personal_mailbox_ownership()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+        var accountId = Guid.NewGuid();
+        var ownerUserId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+        var evt = NewEvent(tenantId, "customer@example.com", accountId: accountId, mailboxOwnerUserId: ownerUserId);
+
+        await HandleAsync(
+            evt,
+            new FakeIncomingEmailRepository(),
+            new FakeEmailThreadRepository(),
+            customerEmails,
+            new FakeUnmatchedIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        var published = Assert.IsType<CorrespondenceCustomerEmailReceivedIntegrationEvent>(
+            Assert.Single(bus.Published)
+        );
+        Assert.Equal(accountId, published.AccountId);
+        Assert.Equal(ownerUserId, published.MailboxOwnerUserId);
+    }
+
+    [Fact]
+    public async Task Handle_legacy_raw_event_does_not_claim_office_visibility()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+        var bus = new FakeMessageBus();
+        var evt = NewEvent(tenantId, "customer@example.com", mailboxOwnershipKnown: false);
+
+        await HandleAsync(
+            evt,
+            new FakeIncomingEmailRepository(),
+            new FakeEmailThreadRepository(),
+            customerEmails,
+            new FakeUnmatchedIncomingEmailRepository(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        var published = Assert.IsType<CorrespondenceCustomerEmailReceivedIntegrationEvent>(
+            Assert.Single(bus.Published)
+        );
+        Assert.Null(published.AccountId);
+        Assert.Null(published.MailboxOwnerUserId);
     }
 
     [Fact]

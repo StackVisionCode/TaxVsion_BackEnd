@@ -1,9 +1,12 @@
 using System.Globalization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
+using TaxVision.Billing.Application.Invoices.IntegrationEvents;
+using TaxVision.Billing.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Billing.Application.Invoices.IssueInvoice;
@@ -20,6 +23,7 @@ public static class IssueInvoiceHandler
         IInventoryStockClient inventory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -70,6 +74,8 @@ public static class IssueInvoiceHandler
         // su propia transacción con retry propio (punto 7 del review). Sellar el tenant para que
         // LocalCommandTenantMiddleware lo restaure.
         bus.TenantId = command.TenantId.ToString();
+        if (invoice.Status == InvoiceStatus.Paid)
+            await bus.PublishAsync(InvoicePaidEventFactory.Create(invoice, correlation.CorrelationId));
         await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, command.InvoiceId));
 
         return Result.Success(new IssueInvoiceResult(invoice.Id, invoiceNumber, invoice.Status.ToString()));

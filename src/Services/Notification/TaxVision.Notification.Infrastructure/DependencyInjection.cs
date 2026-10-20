@@ -1,4 +1,5 @@
-﻿using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using BuildingBlocks.CustomerVisibility;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -18,6 +19,8 @@ using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
 using TaxVision.Notification.Infrastructure.Push;
 using TaxVision.Notification.Infrastructure.RateLimiting;
+using TaxVision.Notification.Infrastructure.Reconciliation;
+using TaxVision.Notification.Infrastructure.Retention;
 using TaxVision.Notification.Infrastructure.Sms;
 using TaxVision.Notification.Infrastructure.Storage;
 using TaxVision.Notification.Infrastructure.Templates;
@@ -39,9 +42,25 @@ public static class DependencyInjection
 
         services.Configure<PortalOptions>(configuration.GetSection(PortalOptions.SectionName));
 
+        // Espejo simétrico del flag COMMUNICATION_INAPP_SOURCE_* para que el rollback
+        // (volver al legacy Node) apague también la publicación desde Notification.
+        services.Configure<InAppRoutingOptions>(configuration.GetSection(InAppRoutingOptions.SectionName));
+        services.AddSingleton<IInAppSourceGate, InAppSourceGate>();
+
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
         services.AddScoped<ISeatGateNotificationLogRepository, SeatGateNotificationLogRepository>();
+        services
+            .AddOptions<NotificationRetentionOptions>()
+            .Bind(configuration.GetSection(NotificationRetentionOptions.SectionName))
+            .Validate(options => options.RetentionMonths > 0, "RetentionMonths must be positive.")
+            .Validate(options => options.BatchSize is > 0 and <= 5000, "BatchSize must be between 1 and 5000.")
+            .Validate(options => options.IntervalHours > 0, "IntervalHours must be positive.")
+            .Validate(options => options.LockMinutes > 0, "LockMinutes must be positive.")
+            .ValidateOnStart();
+        services.AddScoped<NotificationLogRetentionPurger>();
+        services.AddSingleton<INotificationRetentionLock, NotificationRetentionLock>();
+        services.AddHostedService<NotificationRetentionJob>();
 
         // Fase 4 del plan de notificaciones dinámicas — proyecciones locales de permisos
         // (alimentadas por UserRolesChanged/RolePermissionsChanged de Auth) + el resolver
@@ -54,9 +73,19 @@ public static class DependencyInjection
             INotificationRecipientRolePermissionsProjectionRepository,
             NotificationRecipientRolePermissionsProjectionRepository
         >();
+        services.AddScoped<ITenantOwnerProjectionRepository, TenantOwnerProjectionRepository>();
+        services.AddScoped<ICustomerPortalAccountProjectionRepository, CustomerPortalAccountProjectionRepository>();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
+        services.AddScoped<ICustomerAssignmentAudienceRepository, CustomerAssignmentAudienceRepository>();
+
+        // Fase 4 — proyección compartida de asignaciones cliente↔preparador (kit CustomerVisibility):
+        // alimenta MailboxAudience de oficina y la validación ABAC por cliente. Se siembra por el job de
+        // reconciliación (pull cross-tenant a Customer) + el consumer compartido de eventos en vivo.
+        services.AddCustomerVisibilityProjection<NotificationDbContext>();
+        services.AddCustomerVisibilityReconciliation<Reconciliation.NotificationPlatformTokenProvider>(configuration);
 
         AddCustomerDirectoryReconciliation(services, configuration);
+        AddRecipientProjectionReconciliation(services, configuration);
 
         // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady
         // (ver OnboardingReceiptLookup). El cliente M2M al endpoint one-shot de tokens de Auth se
@@ -86,6 +115,7 @@ public static class DependencyInjection
         // con la recuperación pull contra Auth, que se registra en Program.cs por ser un HttpClient.
         services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();
         services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
+        services.AddScoped<ICustomerContactPolicyRepository, CustomerContactPolicyRepository>();
         services.AddScoped<UserEmailResolver>();
 
         // SMS: por defecto se usa el puente real al microservicio Sms (Infobip resuelve proveedor,
@@ -198,6 +228,13 @@ public static class DependencyInjection
             Observability.SubscriptionEmailMetrics
         >();
 
+        // Observabilidad del dispatcher (Fase 11 del plan de notificaciones) — counter
+        // notification.dispatched_total by (kind, channel, outcome).
+        services.AddSingleton<
+            TaxVision.Notification.Application.Abstractions.INotificationDispatchMetrics,
+            Observability.NotificationDispatchMetrics
+        >();
+
         AddRateLimitTierQuotas(services, configuration);
 
         return services;
@@ -232,6 +269,38 @@ public static class DependencyInjection
         );
 
         services.AddHostedService<CustomerDirectoryReconciliationJob>();
+    }
+
+    private static void AddRecipientProjectionReconciliation(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<RecipientProjectionReconciliationOptions>()
+            .Bind(configuration.GetSection(RecipientProjectionReconciliationOptions.SectionName))
+            .Validate(
+                options =>
+                    Uri.TryCreate(options.AuthBaseUrl, UriKind.Absolute, out var uri)
+                    && uri.Scheme is "http" or "https",
+                "AuthBaseUrl must be an absolute HTTP URL."
+            )
+            .Validate(
+                options => options.ReconciliationIntervalHours > 0,
+                "ReconciliationIntervalHours must be positive."
+            )
+            .Validate(
+                options => options.ReconciliationPageSize is > 0 and <= 1000,
+                "ReconciliationPageSize must be between 1 and 1000."
+            )
+            .ValidateOnStart();
+
+        services.AddHttpClient<INotificationAuthReconciliationClient, NotificationAuthReconciliationClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<RecipientProjectionReconciliationOptions>>().Value;
+                http.BaseAddress = new Uri($"{options.AuthBaseUrl.TrimEnd('/')}/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<RecipientProjectionReconciliationJob>();
     }
 
     private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)

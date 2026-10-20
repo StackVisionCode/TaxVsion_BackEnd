@@ -4,6 +4,7 @@ using BuildingBlocks.Platform;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -24,6 +25,7 @@ public static class SignatureReadyForDownloadConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
+        ICustomerContactPolicyRepository contactPolicies,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
@@ -55,12 +57,35 @@ public static class SignatureReadyForDownloadConsumer
                     ))
                     .ToList();
 
+                // T7.3: si el firmante es un cliente del tenant con ContactPolicy, respétala.
+                // Externos (MappedCustomerId null) nunca se filtran — es su único canal.
+                var channel =
+                    PrefersSms(signer) && downloads.Count > 0
+                        ? CustomerContactChannel.Sms
+                        : CustomerContactChannel.Email;
+                if (
+                    !await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
+                        evt.TenantId,
+                        signer.MappedCustomerId,
+                        channel,
+                        contactPolicies,
+                        ct
+                    )
+                )
+                    continue;
+
                 // Canal preferido del firmante: SMS con el enlace de descarga si lo eligió y hay teléfono;
                 // si no, el correo de siempre. Sin link (share-token vacío) no tiene sentido el SMS → email.
                 if (PrefersSms(signer) && downloads.Count > 0)
                 {
                     var smsBody = BuildReadySms(signer, downloads, platform.Current.BrandName);
-                    await smsSender.SendAsync(signer.PhoneE164!, smsBody, ct);
+                    await smsSender.SendAsync(
+                        signer.PhoneE164!,
+                        smsBody,
+                        ct,
+                        templateKey: null,
+                        idempotencyToken: $"{evt.EventId:N}:{signer.SignerId:N}"
+                    );
                     continue;
                 }
 

@@ -812,7 +812,12 @@ services:
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
       # README §Push notifications). El path solo se lee si el flag está en true — FcmPushSender
       # nunca se registra en false, así que un JSON ausente/vacío no rompe el arranque.
-      Notification__UseFcmPush: ${NOTIFICATION_USE_FCM_PUSH:-false}
+      Notification__UseFcmPush: ${NOTIFICATION_USE_FCM_PUSH:-true}
+      Notification__Retention__Enabled: ${NOTIFICATION_RETENTION_ENABLED:-true}
+      Notification__Retention__RetentionMonths: ${NOTIFICATION_RETENTION_MONTHS:-12}
+      Notification__Retention__BatchSize: ${NOTIFICATION_RETENTION_BATCH_SIZE:-500}
+      Notification__Retention__IntervalHours: ${NOTIFICATION_RETENTION_INTERVAL_HOURS:-24}
+      Notification__Retention__LockMinutes: ${NOTIFICATION_RETENTION_LOCK_MINUTES:-30}
       Notification__Push__Fcm__ServiceAccountJsonPath: /run/secrets/firebase-service-account.json
       Smtp__Host: ${SMTP_HOST:-}
       Smtp__Port: ${SMTP_PORT:-587}
@@ -837,7 +842,7 @@ services:
       CampaignEmail__Api__FromName: ${CAMPAIGN_EMAIL_API_FROM_NAME:-TaxOffix}
       # Throttle: correos/min del ejecutor de campaña (0 = sin límite). Respeta el límite de la cuenta.
       CampaignEmail__MaxPerMinute: ${CAMPAIGN_EMAIL_MAX_PER_MIN:-0}
-      # Secreto opcional del webhook de estado (X-Webhook-Secret / ?key=). Vacío en dev = sin exigir.
+      # Obligatorio en producción (Authorization Bearer recomendado). Vacío = el webhook responde 503 en runtime.
       CampaignEmail__WebhookSecret: ${CAMPAIGN_EMAIL_WEBHOOK_SECRET:-}
       # Clave de cifrado de secretos del módulo email (config SMTP/API).
       # Base64 de 32 bytes; requerida para los endpoints de configuración de correo.
@@ -848,6 +853,25 @@ services:
       # NotificationCustomerClient (directorio de clientes / reconciliacion). Sin esto caia al
       # default de dev http://localhost:5263 -> Connection refused en prod.
       Notification__Customer__BaseUrl: http://customer-api:8080
+      # Backfill de owners y cuentas de portal desde Auth para resolver audiencias localmente.
+      Notification__RecipientProjections__AuthBaseUrl: http://auth-api:8080
+      Notification__RecipientProjections__ReconciliationEnabled: ${NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_ENABLED:-true}
+      Notification__RecipientProjections__ReconciliationIntervalHours: ${NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_INTERVAL_HOURS:-12}
+      Notification__RecipientProjections__ReconciliationPageSize: ${NOTIFICATION_RECIPIENT_PROJECTIONS_RECONCILE_PAGE_SIZE:-200}
+      # Espejo simetrico de COMMUNICATION_INAPP_SOURCE_* para apagar la publicacion desde Notification
+      # cuando el rollback deja al grupo en Communication (Node legacy). Default "Communication" = no publica.
+      # Encender un grupo = setear a "Notification" tras verificar en vivo.
+      Notifications__InApp__CustomerImport__Source: ${NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT:-Communication}
+      Notifications__InApp__Connectors__Source: ${NOTIFICATIONS_INAPP_SOURCE_CONNECTORS:-Communication}
+      Notifications__InApp__CloudStorageLegal__Source: ${NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL:-Communication}
+      Notifications__InApp__CloudStoragePolicy__Source: ${NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY:-Communication}
+      Notifications__InApp__Support__Source: ${NOTIFICATIONS_INAPP_SOURCE_SUPPORT:-Communication}
+      Notifications__InApp__Signature__Source: ${NOTIFICATIONS_INAPP_SOURCE_SIGNATURE:-Communication}
+      # Fase 4 — proyeccion de asignaciones cliente/preparador (kit CustomerVisibility): pull cross-tenant
+      # a Customer.Api para sembrar y auto-curar la tabla. Default 12h; apagar solo para debug.
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
+      CustomerVisibility__Reconciliation__ReconciliationEnabled: ${NOTIFICATION_CUSTOMER_VISIBILITY_RECONCILE_ENABLED:-true}
+      CustomerVisibility__Reconciliation__ReconciliationIntervalHours: ${NOTIFICATION_CUSTOMER_VISIBILITY_RECONCILE_INTERVAL_HOURS:-12}
       # Microservicio Scribe — IScribeRenderClient le pega a esto para renderizar plantillas
       # (path de dispatch basado en render). Sin esta linea, ScribeRenderClient no tiene forma
       # de alcanzar scribe-api dentro de docker y el render en vivo falla.
@@ -2166,6 +2190,17 @@ services:
       SERVICE_NAME: communication-service
       COMMUNICATION_HTTP_HOST: 0.0.0.0
       COMMUNICATION_HTTP_PORT: "5350"
+      COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: ${COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS:-90}
+      COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: ${COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS:-180}
+      COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE: ${COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE:-500}
+      # T3.7 — quién crea la fila de la campana por grupo: Communication (default) o Notification (.NET).
+      # Cambiar a Notification tras desplegar el consumer .NET del grupo; rollback = volver a Communication.
+      COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT: ${COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT:-Communication}
+      COMMUNICATION_INAPP_SOURCE_CONNECTORS: ${COMMUNICATION_INAPP_SOURCE_CONNECTORS:-Communication}
+      COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL: ${COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL:-Communication}
+      COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY: ${COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY:-Communication}
+      COMMUNICATION_INAPP_SOURCE_SIGNATURE: ${COMMUNICATION_INAPP_SOURCE_SIGNATURE:-Communication}
+      COMMUNICATION_INAPP_SOURCE_SUPPORT: ${COMMUNICATION_INAPP_SOURCE_SUPPORT:-Communication}
       COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
       COMMUNICATION_REDIS_URI: redis://redis:6379/0
       COMMUNICATION_SESSION_DENYLIST_PREFIX: taxvision:auth:denylist

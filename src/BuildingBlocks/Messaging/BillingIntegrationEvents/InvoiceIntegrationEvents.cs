@@ -23,7 +23,7 @@ public sealed record InvoicePaidIntegrationEvent : BillingIntegrationEvent
     public required string Currency { get; init; }
     public required string PaymentMethod { get; init; }
     public required DateTime PaidAtUtc { get; init; }
-    public required Guid ReceiptId { get; init; }
+    public Guid? ReceiptId { get; init; }
     public Guid? PaidPdfFileId { get; init; }
 }
 
@@ -86,6 +86,13 @@ public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationE
 
     /// <summary>PDF en CloudStorage para adjuntar. Null si todavía no se generó.</summary>
     public Guid? PdfFileId { get; init; }
+
+    /// <summary>
+    /// T7.4: CustomerId del maestro Customer para que Notification pueda (1) hacer fan-out in-app
+    /// al portal del cliente si tiene cuenta activa y (2) consultar <c>ContactPolicy</c> antes de
+    /// enviar email. Nullable + default null para zero-break con publicaciones previas a 2026-10-19.
+    /// </summary>
+    public Guid? CustomerId { get; init; }
 }
 
 /// <summary>Publicado cuando una factura se anula.</summary>
