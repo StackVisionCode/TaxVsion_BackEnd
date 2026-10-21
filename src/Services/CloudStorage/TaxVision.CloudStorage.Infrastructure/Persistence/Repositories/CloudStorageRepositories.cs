@@ -7,6 +7,7 @@ using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Quotas;
+using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
@@ -612,6 +613,18 @@ public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageL
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
         db.StorageLimits.IgnoreQueryFilters().SingleOrDefaultAsync(limit => limit.TenantId == tenantId, ct);
+}
+
+public sealed class StoragePolicyRepository(CloudStorageDbContext db) : IStoragePolicyRepository
+{
+    public void Add(TenantStoragePolicy policy) => db.StoragePolicies.Add(policy);
+
+    public Task<TenantStoragePolicy?> GetAsync(Guid tenantId, CancellationToken ct) =>
+        db.StoragePolicies.IgnoreQueryFilters().SingleOrDefaultAsync(policy => policy.TenantId == tenantId, ct);
+
+    public async Task<IReadOnlyList<string>> ListConnectedProviderIdsAsync(Guid tenantId, CancellationToken ct) =>
+        await db.CloudConnections.IgnoreQueryFilters().Where(connection => connection.TenantId == tenantId)
+            .Select(connection => connection.Provider).Distinct().ToListAsync(ct);
 }
 
 /// <summary>Fase C3 — links de compartir. GetByTokenHashAsync siempre trae los Recipients: la resolucion de acceso los necesita.</summary>

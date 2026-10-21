@@ -14,6 +14,7 @@ using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Permissions;
 using TaxVision.CloudStorage.Domain.Quotas;
+using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Domain.RateLimiting;
 using TaxVision.CloudStorage.Domain.Sharing;
 
@@ -30,6 +31,10 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
 {
     public DbSet<FileObject> Files => Set<FileObject>();
     public DbSet<TenantStorageLimit> StorageLimits => Set<TenantStorageLimit>();
+    public DbSet<TenantCloudConnection> CloudConnections => Set<TenantCloudConnection>();
+    public DbSet<TenantStoragePolicy> StoragePolicies => Set<TenantStoragePolicy>();
+    public DbSet<CloudProviderOAuthState> CloudProviderOAuthStates => Set<CloudProviderOAuthState>();
+    public DbSet<TenantCloudFileCopy> CloudFileCopies => Set<TenantCloudFileCopy>();
     public DbSet<StorageAccessLog> AccessLogs => Set<StorageAccessLog>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();

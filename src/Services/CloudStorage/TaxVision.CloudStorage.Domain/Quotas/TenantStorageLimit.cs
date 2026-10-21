@@ -14,6 +14,9 @@ public sealed class TenantStorageLimit : TenantEntity
     public long MaxFileSizeBytes { get; private set; }
     public bool IsSuspended { get; private set; }
 
+    /// <summary>Destino activo para archivos del tenant. CRM mantiene MinIO como destino predeterminado.</summary>
+    public string StorageProvider { get; private set; } = "internal";
+
     /// <summary>Habilitado por defecto; un Tenant Admin lo puede desactivar explicitamente desde Settings.</summary>
     public bool AllowPublicShareLinks { get; private set; } = true;
 
@@ -84,6 +87,9 @@ public sealed class TenantStorageLimit : TenantEntity
     public void EnablePublicSharing() => AllowPublicShareLinks = true;
 
     public void DisablePublicSharing() => AllowPublicShareLinks = false;
+
+    /// <summary>Solo se permite activar proveedores externos tras registrar una conexión válida.</summary>
+    public void SetStorageProvider(string provider) => StorageProvider = provider;
 
     /// <summary>Política de links externos sin email (settings de oficina). maxLifetimeDays se acota a 1..3650.</summary>
     public void SetLinkSharingPolicy(bool allow, bool requirePassword, int maxLifetimeDays)

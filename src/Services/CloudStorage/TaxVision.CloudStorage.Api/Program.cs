@@ -191,6 +191,10 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
+    // The mirror consumer lives in the API assembly, outside the Application assembly above.
+    // Without explicit discovery, FileAvailableIntegrationEvent is received by this service's
+    // cloudstorage-events queue but no handler applies the selected cloud provider copy policy.
+    options.Discovery.IncludeType(typeof(TaxVision.CloudStorage.Api.Consumers.CloudStorageFileMirrorConsumer));
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
