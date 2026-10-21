@@ -17,17 +17,10 @@ public static class ListTrashHandler
     )
     {
         var take = query.Page * query.Size;
-        var incoming = await incomingEmails.ListTrashedByCustomerAsync(
-            query.TenantId,
-            query.CustomerId,
-            1,
-            take,
-            query.VisibleAccountIds,
-            ct
-        );
+        var incoming = await ListTrashedIncomingAsync(query, incomingEmails, take, ct);
         var sent = await drafts.ListTrashedSentByCustomerAsync(
             query.TenantId,
-            query.CustomerId,
+            query.Customer,
             1,
             take,
             query.VisibleAccountIds,
@@ -43,6 +36,24 @@ public static class ListTrashHandler
         var pageItems = merged.Skip((query.Page - 1) * query.Size).Take(query.Size).ToList();
         return new PagedResult<TrashItem>(pageItems, query.Page, query.Size, incoming.TotalCount + sent.TotalCount);
     }
+
+    // Solo entra correo de clientes: sin cliente no hay entrantes, solo enviados.
+    private static Task<PagedResult<IncomingEmail>> ListTrashedIncomingAsync(
+        ListTrashQuery query,
+        IIncomingEmailRepository incomingEmails,
+        int take,
+        CancellationToken ct
+    ) =>
+        query.Customer.CustomerId is { } customerId
+            ? incomingEmails.ListTrashedByCustomerAsync(
+                query.TenantId,
+                customerId,
+                1,
+                take,
+                query.VisibleAccountIds,
+                ct
+            )
+            : Task.FromResult(new PagedResult<IncomingEmail>([], 1, take, 0));
 
     private static TrashItem ToItem(IncomingEmail email) =>
         new(

@@ -36,6 +36,22 @@ public sealed class CreateDraftHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithoutCustomer_PersistsADraftNotFiledUnderAnyClient()
+    {
+        var drafts = new FakeDraftRepository();
+
+        var result = await CreateDraftHandler.Handle(
+            new CreateDraftCommand(Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid()),
+            drafts,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(Assert.Single(drafts.All).CustomerId);
+    }
+
+    [Fact]
     public async Task Handle_WithEmptyCustomerId_FailsAndDoesNotPersist()
     {
         var drafts = new FakeDraftRepository();
@@ -49,7 +65,7 @@ public sealed class CreateDraftHandlerTests
         );
 
         Assert.True(result.IsFailure);
-        Assert.Equal("Draft.CustomerIdRequired", result.Error.Code);
+        Assert.Equal("Draft.CustomerIdInvalid", result.Error.Code);
         Assert.Empty(drafts.All);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }

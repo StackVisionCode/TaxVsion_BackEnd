@@ -185,6 +185,17 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ConnectorsRawMessageReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ConnectorsMessageBodyFetchedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // Webhook de Graph: el controller encola y responde (Graph exige respuesta en ~3 s). Cola local
+    // DURABLE: el mensaje queda guardado en SQL antes del 200, así que un reinicio no pierde avisos.
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.GraphNotificationReceived>()
+        .ToLocalQueue("graph-webhook")
+        .UseDurableInbox();
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Watch.GraphLifecycleNotificationReceived>()
+        .ToLocalQueue("graph-webhook")
+        .UseDurableInbox();
+
     // Cola propia desde el arranque (Fase 1) aunque todavía no haya ningún consumer — mismo
     // patrón que Postmaster/Scribe: el binding queda listo en Rabbit antes de que exista lógica.
     options

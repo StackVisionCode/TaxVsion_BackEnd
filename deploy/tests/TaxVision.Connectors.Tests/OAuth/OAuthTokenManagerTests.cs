@@ -1,9 +1,14 @@
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
+using Polly.CircuitBreaker;
+using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
+using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Infrastructure.OAuth;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.OAuth;
 
@@ -18,7 +23,8 @@ public class OAuthTokenManagerTests
         FakeOAuthProviderClient ProviderClient,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus,
-        TaxVision.Connectors.Domain.Accounts.TenantEmailAccount Account
+        TaxVision.Connectors.Domain.Accounts.TenantEmailAccount Account,
+        ProviderWatchSubscription Watch
     );
 
     private static Fixture CreateFixture(DateTime accessTokenExpiresAtUtc, InMemoryDistributedLock? sharedLock = null)
@@ -49,6 +55,11 @@ public class OAuthTokenManagerTests
         accountRepository.Accounts.Add(account);
         var connectionRepository = new FakeOAuthConnectionRepository();
         connectionRepository.Connections.Add(connection);
+        var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
+        var watch = ProviderWatchSubscription
+            .Create(account.Id, ProviderCode.Gmail, "history-1", "topic", Now.AddDays(7), Now)
+            .Value;
+        subscriptionRepository.Subscriptions.Add(watch);
 
         var providerClient = new FakeOAuthProviderClient(ProviderCode.Gmail);
         var unitOfWork = new FakeUnitOfWork();
@@ -59,6 +70,7 @@ public class OAuthTokenManagerTests
         var manager = new OAuthTokenManager(
             accountRepository,
             connectionRepository,
+            subscriptionRepository,
             new FakeOAuthProviderClientFactory(providerClient),
             new HttpResiliencePipelineRegistry(),
             protector,
@@ -69,7 +81,16 @@ public class OAuthTokenManagerTests
             NullLogger<OAuthTokenManager>.Instance
         );
 
-        return new Fixture(manager, accountRepository, connectionRepository, providerClient, unitOfWork, bus, account);
+        return new Fixture(
+            manager,
+            accountRepository,
+            connectionRepository,
+            providerClient,
+            unitOfWork,
+            bus,
+            account,
+            watch
+        );
     }
 
     [Fact]
@@ -149,9 +170,7 @@ public class OAuthTokenManagerTests
     public async Task GetValidAccessTokenAsync_WhenProviderThrows_MarksAccountErrorAndPublishesFailureEvent()
     {
         var fixture = CreateFixture(Now.AddMinutes(-5));
-        fixture.ProviderClient.ThrowOnRefresh = new TaxVision.Connectors.Application.OAuth.OAuthProviderException(
-            "invalid_grant"
-        );
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
 
         var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
 
@@ -165,6 +184,99 @@ public class OAuthTokenManagerTests
         Assert.Equal(fixture.Account.CreatedByUserId, failedEvent.CreatedByUserId);
         Assert.True(failedEvent.IsOfficeMailbox);
         Assert.Null(failedEvent.MailboxOwnerUserId);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenRefreshFails_MarksWatchFailedSoItStopsRenewing()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(OAuthTokenErrorCodes.RefreshFailed, result.Error.Code);
+        Assert.Equal(ProviderWatchStatus.Failed, fixture.Watch.Status);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenRefreshKeepsFailing_PublishesOnlyOnTransitionToError()
+    {
+        // Cada push de Gmail volvía a pedir el token: antes salía un evento (y una notificación) por intento.
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+            await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        // El rechazo de la cuenta no abre el breaker del proveedor: los 5 intentos llegan a Google.
+        Assert.Equal(5, fixture.ProviderClient.CallCount);
+        Assert.Single(fixture.Bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        Assert.Equal(TenantEmailAccountStatus.Error, fixture.Account.Status);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenAccountIsDisconnected_DoesNotMarkErrorNorPublish()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.Account.Disconnect(Now);
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("invalid_grant", requiresReconnect: true);
+
+        var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(TenantEmailAccountStatus.Disconnected, fixture.Account.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(ProviderWatchStatus.Active, fixture.Watch.Status);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenCircuitIsOpen_ReturnsTransientFailureWithoutMarkingErrorNorPublishing()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new BrokenCircuitException("open");
+
+        var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(OAuthTokenErrorCodes.CircuitOpen, result.Error.Code);
+        Assert.False(OAuthTokenErrorCodes.RequiresReconnect(result.Error.Code));
+        Assert.Equal(TenantEmailAccountStatus.Active, fixture.Account.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(ProviderWatchStatus.Active, fixture.Watch.Status);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenProviderIsDown_ReturnsTransientFailureWithoutMarkingErrorNorPublishing()
+    {
+        // Un 503 o un corte de red no es de la cuenta: antes la dejaba en Error y, con los guards de
+        // los webhooks, la cuenta dejaba de sincronizar hasta que el usuario reconectara.
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException(
+            "Google OAuth token request returned HTTP 503."
+        );
+
+        var result = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(OAuthTokenErrorCodes.ProviderUnavailable, result.Error.Code);
+        Assert.False(OAuthTokenErrorCodes.RequiresReconnect(result.Error.Code));
+        Assert.Equal(TenantEmailAccountStatus.Active, fixture.Account.Status);
+        Assert.Empty(fixture.Bus.Published);
+        Assert.Equal(ProviderWatchStatus.Active, fixture.Watch.Status);
+    }
+
+    [Fact]
+    public async Task GetValidAccessTokenAsync_WhenProviderKeepsFailing_OpensTheBreakerAndStopsCallingIt()
+    {
+        var fixture = CreateFixture(Now.AddMinutes(-5));
+        fixture.ProviderClient.ThrowOnRefresh = new OAuthProviderException("HTTP 503.");
+
+        Result<string>? last = null;
+        for (var attempt = 0; attempt < 4; attempt++)
+            last = await fixture.Manager.GetValidAccessTokenAsync(fixture.Account.Id);
+
+        Assert.Equal(3, fixture.ProviderClient.CallCount);
+        Assert.Equal(OAuthTokenErrorCodes.CircuitOpen, last!.Error.Code);
+        Assert.Equal(TenantEmailAccountStatus.Active, fixture.Account.Status);
     }
 
     [Fact]

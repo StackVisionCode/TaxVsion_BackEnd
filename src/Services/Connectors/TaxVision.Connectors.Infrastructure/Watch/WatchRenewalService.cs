@@ -57,6 +57,31 @@ public sealed class WatchRenewalService(
         }
     }
 
+    public async Task<Result> RecreateAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var subscriptionResult = await subscriptionRepository.GetByIdAsync(subscriptionId, ct);
+        if (subscriptionResult.IsFailure)
+            return Result.Failure(subscriptionResult.Error);
+
+        var subscription = subscriptionResult.Value;
+        var clientResult = watchClientFactory.Resolve(subscription.ProviderCode);
+        if (clientResult.IsFailure)
+            return Result.Failure(clientResult.Error);
+
+        var now = DateTime.UtcNow;
+        try
+        {
+            var created = await clientResult.Value.SetupWatchAsync(subscription.AccountId, ct);
+            subscription.Renew(created.SubscriptionRef, created.ExpiresAtUtc, now);
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+        catch (WatchProviderException ex)
+        {
+            return await RecordFailureAsync(subscription, ex, now, ct);
+        }
+    }
+
     private async Task<Result> RecordFailureAsync(
         ProviderWatchSubscription subscription,
         WatchProviderException ex,

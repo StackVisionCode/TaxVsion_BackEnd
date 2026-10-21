@@ -22,7 +22,7 @@ public static class ListDraftsHandler
     {
         var page = await drafts.ListOpenByCustomerAsync(
             query.TenantId,
-            query.CustomerId,
+            query.Customer,
             query.Page,
             query.Size,
             query.OwnerUserId,

@@ -22,6 +22,7 @@ public sealed class ConnectorsDeployConfigWiringTests
         "CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI",
         "CONNECTORS_GMAIL_WATCH_TOPIC",
         "CONNECTORS_GRAPH_NOTIFICATION_URL",
+        "CONNECTORS_GRAPH_LIFECYCLE_NOTIFICATION_URL",
         "CONNECTORS_GRAPH_WATCH_CLIENT_STATE",
         "CONNECTORS_GMAIL_PUSH_AUDIENCE",
     ];
@@ -57,6 +58,7 @@ public sealed class ConnectorsDeployConfigWiringTests
     [InlineData("CONNECTORS_MICROSOFT_REDIRECT_URI", "/connectors/oauth/callback/graph")]
     [InlineData("CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI", "/connectors/oauth/admin-consent-callback")]
     [InlineData("CONNECTORS_GRAPH_NOTIFICATION_URL", "/connectors/webhooks/graph-notification")]
+    [InlineData("CONNECTORS_GRAPH_LIFECYCLE_NOTIFICATION_URL", "/connectors/webhooks/graph-lifecycle")]
     public void PublicUrlVar_IsDerivedFromApiHost(string varName, string routePath)
     {
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");

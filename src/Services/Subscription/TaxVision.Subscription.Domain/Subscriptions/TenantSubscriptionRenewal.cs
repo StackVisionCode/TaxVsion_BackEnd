@@ -89,6 +89,21 @@ public sealed class TenantSubscriptionRenewal : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Todavía puede cobrarse: está agendada, en curso o esperando reintento.</summary>
+    public bool IsAwaitingPayment =>
+        Status is RenewalStatus.Scheduled or RenewalStatus.Processing or RenewalStatus.RetryScheduled;
+
+    /// <summary>La renovación automática ya no se cobra: se pagó a mano o la cuenta se suspendió.</summary>
+    public Result CancelAutomaticCharge()
+    {
+        if (!IsAwaitingPayment)
+            return Result.Failure(new Error("SubscriptionRenewal.InvalidTransition", $"Cannot cancel from {Status}."));
+
+        Status = RenewalStatus.Cancelled;
+        NextRetryAtUtc = null;
+        return Result.Success();
+    }
+
     public Result MarkFailed(
         string failureCode,
         string failureReason,

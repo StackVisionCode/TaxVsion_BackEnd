@@ -14,6 +14,20 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 /// </summary>
 public static class SaaSPaymentChargeOutcome
 {
+    /// <summary>Mismo código que usa Stripe: Subscription ya lo trata como fallo permanente.</summary>
+    public const string MissingPaymentMethodCode = "requires_payment_method";
+
+    /// <summary>Fallos que no se arreglan reintentando: el tenant tiene que pagar a mano ("Pay now").</summary>
+    private static readonly HashSet<string> PermanentFailureCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        MissingPaymentMethodCode,
+        // PayPal no tiene cobro directo: un reintento automático nunca puede cobrar.
+        "PayPal.Authorize.NotImplemented",
+    };
+
+    public static bool IsPermanentFailure(string? failureCode) =>
+        failureCode is not null && PermanentFailureCodes.Contains(failureCode);
+
     /// <summary>Solo las renovaciones en background tienen dunning. El cambio de plan es un cargo
     /// interactivo (el fallo se reporta en el acto) y los checkouts hosteados los reintenta el
     /// propio usuario.</summary>
@@ -42,35 +56,30 @@ public static class SaaSPaymentChargeOutcome
         };
     }
 
-    /// <summary>Resuelve con qué customer y método de pago cargar. Si el tenant ya tiene un
-    /// <c>TenantProviderCustomer</c> con un método default (§D), un cobro automático puede
-    /// correr sin interacción — esto es lo que cierra el gap de "no hay tarjeta guardada"
-    /// que Fase A/B/C dejaron documentado. Si no existe todavía, cae al mismo
-    /// GetOrCreateCustomerAsync con email sintético que Fase A usaba (el cobro fallará si el
-    /// provider exige un payment method explícito, igual que antes — comportamiento sin
-    /// regresión).</summary>
-    public static async Task<Result<(ProviderCustomerToken Customer, PaymentMethodToken? Method)>> ResolvePayerAsync(
+    /// <summary>
+    /// Customer y tarjeta guardada con los que cobrar. Sin tarjeta guardada no hay cobro automático
+    /// posible: se devuelve <see cref="MissingPaymentMethodCode"/> y no se llama al provider (antes se
+    /// creaba un PaymentIntent sin tarjeta que quedaba "Incomplete" para siempre).
+    /// </summary>
+    public static async Task<Result<(ProviderCustomerToken Customer, PaymentMethodToken Method)>> ResolvePayerAsync(
         Guid tenantId,
-        string fallbackEmail,
-        string? fallbackName,
         ITenantProviderCustomerRepository customers,
         IPaymentProvider adapter,
         CancellationToken ct
     )
     {
         var savedCustomer = await customers.GetByTenantAndProviderAsync(tenantId, adapter.Code, ct);
-        if (savedCustomer is not null)
-        {
-            var token = new ProviderCustomerToken(savedCustomer.CustomerReference.Value, savedCustomer.ProviderCode);
-            var defaultMethod = savedCustomer.GetDefaultMethod();
-            var methodToken = defaultMethod is null ? null : new PaymentMethodToken(defaultMethod.MethodReference);
-            return Result.Success((token, methodToken));
-        }
+        var defaultMethod = savedCustomer?.GetDefaultMethod();
+        if (savedCustomer is null || defaultMethod is null)
+            return Result.Failure<(ProviderCustomerToken, PaymentMethodToken)>(
+                new Error(
+                    MissingPaymentMethodCode,
+                    "No saved payment method; the office has to pay from the billing page."
+                )
+            );
 
-        var tokenResult = await adapter.GetOrCreateCustomerAsync(tenantId, fallbackEmail, fallbackName, ct);
-        return tokenResult.IsFailure
-            ? Result.Failure<(ProviderCustomerToken, PaymentMethodToken?)>(tokenResult.Error)
-            : Result.Success((tokenResult.Value, (PaymentMethodToken?)null));
+        var token = new ProviderCustomerToken(savedCustomer.CustomerReference.Value, savedCustomer.ProviderCode);
+        return Result.Success((token, new PaymentMethodToken(defaultMethod.MethodReference)));
     }
 
     public static void ApplyChargeOutcome(
@@ -152,7 +161,8 @@ public static class SaaSPaymentChargeOutcome
     )
     {
         var nowUtc = DateTime.UtcNow;
-        payment.MarkFailed(code, message, willRetry: nextRetryAtUtc is not null, nextRetryAtUtc, actorUserId, nowUtc);
+        var retryAtUtc = IsPermanentFailure(code) ? null : nextRetryAtUtc;
+        payment.MarkFailed(code, message, willRetry: retryAtUtc is not null, retryAtUtc, actorUserId, nowUtc);
         metrics.RecordFailed(payment.ProviderCode.ToString(), payment.Type.ToString(), code);
     }
 

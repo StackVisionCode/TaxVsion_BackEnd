@@ -139,8 +139,6 @@ public static class ChargeSaaSPaymentHandler
 
         var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
             command.TenantId,
-            command.PayerEmail,
-            command.PayerName,
             providerCustomers,
             adapter,
             ct
@@ -160,7 +158,7 @@ public static class ChargeSaaSPaymentHandler
         var chargeRequest = new ChargeAuthorizationRequest(
             Customer: payerResult.Value.Customer,
             Amount: payment.Amount,
-            IdempotencyKey: payment.IdempotencyKey,
+            IdempotencyKey: payment.ProviderIdempotencyKeyForNextAttempt(),
             Descriptor: payment.StatementDescriptor,
             Metadata: new Dictionary<string, string>
             {

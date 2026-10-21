@@ -3,8 +3,15 @@ using TaxVision.Connectors.Domain.Shared;
 namespace TaxVision.Connectors.Application.Providers;
 
 /// <summary>Lanzada por <see cref="IEmailProviderClient"/> ante cualquier fallo — igual criterio que OAuthProviderException (Fase 4): permite envolver la llamada en circuit breaker.</summary>
-public sealed class EmailProviderException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class EmailProviderException(
+    string message,
+    Exception? innerException = null,
+    bool requiresReconnect = false
+) : Exception(message, innerException)
+{
+    /// <summary>No se pudo obtener un access token porque la cuenta necesita reconectarse (ver <c>OAuthTokenErrorCodes.RequiresReconnect</c>).</summary>
+    public bool RequiresReconnect { get; } = requiresReconnect;
+}
 
 /// <summary>
 /// Un client por proveedor (Gmail, Graph) para leer el mailbox — nunca decide guardar nada,

@@ -42,6 +42,11 @@ public sealed class DraftsController(
 {
     private const int DefaultSize = 20;
 
+    private static readonly Error CustomerScopeRequired = new(
+        "Correspondence.CustomerScopeRequired",
+        "Pass either customerId or unlinked=true."
+    );
+
     /// <summary>
     /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — chequeo de ownership tras flag, compartido por
     /// AutoSave/Discard/AttachFile/RemoveAttachment/Send. Sin permiso "manage" de override para
@@ -99,12 +104,16 @@ public sealed class DraftsController(
     [HasPermission(CorrespondencePermissions.Compose)]
     [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> List(
-        [FromQuery] Guid customerId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] bool unlinked,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
+        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+            return BadRequest(CustomerScopeRequired);
+
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
@@ -114,7 +123,7 @@ public sealed class DraftsController(
         var result = await bus.InvokeAsync<PagedResult<DraftListItem>>(
             new ListDraftsQuery(
                 tenantId,
-                customerId,
+                scope,
                 NormalizePage(page),
                 NormalizeSize(size),
                 canSeeOthers ? null : userId
@@ -133,18 +142,22 @@ public sealed class DraftsController(
     [HasPermission(CorrespondencePermissions.Read)]
     [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> ListSent(
-        [FromQuery] Guid customerId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] bool unlinked,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
+        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+            return BadRequest(CustomerScopeRequired);
+
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<PagedResult<SentMessageListItem>>(
-            new ListSentMessagesQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size), visible),
+            new ListSentMessagesQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible),
             ct
         );
         return Ok(result);
@@ -155,18 +168,22 @@ public sealed class DraftsController(
     [HasPermission(CorrespondencePermissions.Read)]
     [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> ListTrash(
-        [FromQuery] Guid customerId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] bool unlinked,
         [FromQuery] int page,
         [FromQuery] int size,
         CancellationToken ct
     )
     {
+        if (!TryResolveCustomerScope(customerId, unlinked, out var scope))
+            return BadRequest(CustomerScopeRequired);
+
         if (!User.TryGetTenantId(out var tenantId))
             return Forbid();
 
         var visible = await visibility.ResolveVisibleAccountIdsAsync(User, tenantId, ct);
         var result = await bus.InvokeAsync<PagedResult<TrashItem>>(
-            new ListTrashQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size), visible),
+            new ListTrashQuery(tenantId, scope, NormalizePage(page), NormalizeSize(size), visible),
             ct
         );
         return Ok(result);
@@ -367,4 +384,22 @@ public sealed class DraftsController(
     private static int NormalizePage(int page) => page < 1 ? 1 : page;
 
     private static int NormalizeSize(int size) => size < 1 ? DefaultSize : size;
+
+    /// <summary>
+    /// Los listados de borradores, enviados y papelera piden el alcance explícito: el correo de un
+    /// cliente (<c>customerId</c>) o el que no se archivó en ninguno (<c>unlinked=true</c>). Sin
+    /// ninguno de los dos, 400: un <c>customerId</c> olvidado no debe leerse como "sin cliente".
+    /// </summary>
+    private static bool TryResolveCustomerScope(Guid? customerId, bool unlinked, out DraftCustomerScope scope)
+    {
+        scope = DraftCustomerScope.Unlinked;
+        if (unlinked)
+            return customerId is null;
+
+        if (customerId is not { } id || id == Guid.Empty)
+            return false;
+
+        scope = DraftCustomerScope.ForCustomer(id);
+        return true;
+    }
 }

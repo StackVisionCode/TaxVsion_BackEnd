@@ -1,3 +1,4 @@
+using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Application.Threads;
@@ -40,9 +41,11 @@ public sealed class SoftDeleteHandlersTests
         return email;
     }
 
-    private static Draft NewSent()
+    private static Draft NewSent(Guid? customerId = null, bool unlinked = false)
     {
-        var draft = Draft.CreateNew(Tenant, Customer, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft
+            .CreateNew(Tenant, unlinked ? null : customerId ?? Customer, Guid.NewGuid(), Guid.NewGuid())
+            .Value;
         draft.AutoSave(
             "Sent subj",
             "<p>x</p>",
@@ -235,5 +238,35 @@ public sealed class SoftDeleteHandlersTests
         Assert.Equal(2, result.TotalCount);
         Assert.Equal("Sent", result.Items[0].Kind); // más reciente primero
         Assert.Equal("Incoming", result.Items[1].Kind);
+    }
+
+    [Fact]
+    public async Task ListTrash_unlinked_shows_only_sent_mail_without_customer()
+    {
+        // Sin cliente no hay entrantes (solo entra correo de clientes): ni se consultan.
+        var incoming = new FakeIncomingEmailRepository();
+        var email = NewIncoming(Guid.NewGuid());
+        email.SoftDelete(DateTime.UtcNow);
+        await incoming.AddAsync(email);
+
+        var drafts = new FakeDraftRepository();
+        var unlinked = NewSent(unlinked: true);
+        unlinked.SoftDelete(DateTime.UtcNow);
+        await drafts.AddAsync(unlinked);
+        var filed = NewSent();
+        filed.SoftDelete(DateTime.UtcNow);
+        await drafts.AddAsync(filed);
+
+        var result = await ListTrashHandler.Handle(
+            new ListTrashQuery(Tenant, DraftCustomerScope.Unlinked, 1, 20),
+            incoming,
+            drafts,
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, result.TotalCount);
+        var item = Assert.Single(result.Items);
+        Assert.Equal(unlinked.Id, item.MessageId);
+        Assert.Equal("Sent", item.Kind);
     }
 }

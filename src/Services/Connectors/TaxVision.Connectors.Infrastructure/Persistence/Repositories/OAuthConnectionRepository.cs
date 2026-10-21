@@ -28,11 +28,16 @@ public sealed class OAuthConnectionRepository(ConnectorsDbContext dbContext) : I
         CancellationToken ct = default
     )
     {
+        // Job sin tenant en contexto: IgnoreQueryFilters explícito, igual que TenantEmailAccountRepository.
+        var refreshableAccounts = dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.Status == TenantEmailAccountStatus.Active || a.Status == TenantEmailAccountStatus.Connected);
+
         return await dbContext
             .OAuthConnections.Where(c =>
                 c.Status == OAuthConnectionStatus.Active && c.Token!.AccessTokenExpiresAtUtc < thresholdUtc
             )
-            .Select(c => c.AccountId)
+            .Join(refreshableAccounts, c => c.AccountId, a => a.Id, (c, _) => c.AccountId)
             .ToListAsync(ct);
     }
 

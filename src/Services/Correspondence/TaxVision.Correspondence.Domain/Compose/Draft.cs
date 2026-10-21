@@ -31,7 +31,14 @@ public sealed class Draft : IHasOwner, ITenantOwned
 
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
-    public Guid CustomerId { get; private set; }
+
+    /// <summary>
+    /// Cliente en cuya ficha queda archivado el correo. Null = correo nuevo a alguien que no es
+    /// cliente (proveedor, IRS, colega): sale igual, pero no se archiva en ningún cliente y solo lo
+    /// ven quienes ven su buzón de envío. Un reply siempre tiene cliente: nace de un correo entrante,
+    /// y solo entran correos de clientes.
+    /// </summary>
+    public Guid? CustomerId { get; private set; }
 
     /// <summary>
     /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — quién creó este draft, para el chequeo de resource
@@ -90,10 +97,19 @@ public sealed class Draft : IHasOwner, ITenantOwned
     /// </summary>
     public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
-    /// <summary>Correspondencia nueva desde cero — subject/body vacíos, el autoguardado los llena a medida que el usuario escribe.</summary>
-    public static Result<Draft> CreateNew(Guid tenantId, Guid customerId, Guid accountId, Guid createdByUserId)
+    /// <summary>
+    /// Correspondencia nueva desde cero — subject/body vacíos, el autoguardado los llena a medida que
+    /// el usuario escribe. <paramref name="customerId"/> null = no se archiva en ningún cliente.
+    /// </summary>
+    public static Result<Draft> CreateNew(Guid tenantId, Guid? customerId, Guid accountId, Guid createdByUserId)
     {
-        var validationError = ValidateIds(tenantId, customerId, accountId, createdByUserId);
+        // Guid.Empty no es "sin cliente": es un id mal armado. Sin cliente se pide con null explícito.
+        if (customerId == Guid.Empty)
+            return Result.Failure<Draft>(
+                new Error("Draft.CustomerIdInvalid", "CustomerId must be a valid id or null.")
+            );
+
+        var validationError = ValidateIds(tenantId, accountId, createdByUserId);
         if (validationError is not null)
             return Result.Failure<Draft>(validationError);
 
@@ -130,7 +146,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
     {
         ArgumentNullException.ThrowIfNull(replyContext);
 
-        var validationError = ValidateIds(tenantId, customerId, accountId, createdByUserId);
+        if (customerId == Guid.Empty)
+            return Result.Failure<Draft>(new Error("Draft.CustomerIdRequired", "CustomerId is required."));
+
+        var validationError = ValidateIds(tenantId, accountId, createdByUserId);
         if (validationError is not null)
             return Result.Failure<Draft>(validationError);
 
@@ -349,12 +368,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
         return trimmed.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? trimmed : "Re: " + trimmed;
     }
 
-    private static Error? ValidateIds(Guid tenantId, Guid customerId, Guid accountId, Guid createdByUserId)
+    private static Error? ValidateIds(Guid tenantId, Guid accountId, Guid createdByUserId)
     {
         if (tenantId == Guid.Empty)
             return new Error("Draft.TenantIdRequired", "TenantId is required.");
-        if (customerId == Guid.Empty)
-            return new Error("Draft.CustomerIdRequired", "CustomerId is required.");
         if (accountId == Guid.Empty)
             return new Error("Draft.AccountIdRequired", "AccountId is required.");
         if (createdByUserId == Guid.Empty)

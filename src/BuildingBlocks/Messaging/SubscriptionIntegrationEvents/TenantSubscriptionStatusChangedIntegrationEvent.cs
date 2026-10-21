@@ -60,6 +60,9 @@ public enum SubscriptionChangeReason
     /// <summary>El user eligió Automatic por primera vez y guardó un método; se emitió un
     /// mandate. Acompaña a BillingModeChanged cuando el cambio es Manual→Automatic.</summary>
     MandateCreated,
+
+    /// <summary>El período venció hace días y el cobro de la renovación nunca salió: se suspende.</summary>
+    RenewalOverdue,
 }
 
 /// <summary>

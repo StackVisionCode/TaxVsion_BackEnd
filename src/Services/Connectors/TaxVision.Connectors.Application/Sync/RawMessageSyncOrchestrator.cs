@@ -20,6 +20,9 @@ internal static class RawMessageSyncOrchestrator
 {
     private const int MaxSnippetLength = 500;
 
+    /// <summary>La cuenta necesita reconectarse: reintentar el sync no lo arregla.</summary>
+    public const string ReconnectRequiredCode = "RawMessageSync.ReconnectRequired";
+
     /// <summary>Devuelve, en éxito, la cantidad de mensajes efectivamente publicados en esta corrida — ReconcileAccountHandler la usa para distinguir "no encontró nada nuevo" de "encontró mensajes que el push no había entregado" (ver ReconciliationOutcome).</summary>
     public static async Task<Result<int>> SyncAndPublishAsync(
         TenantEmailAccount account,
@@ -39,7 +42,8 @@ internal static class RawMessageSyncOrchestrator
         }
         catch (EmailProviderException ex)
         {
-            return Result.Failure<int>(new Error("RawMessageSync.HistoryFetchFailed", ex.Message));
+            var code = ex.RequiresReconnect ? ReconnectRequiredCode : "RawMessageSync.HistoryFetchFailed";
+            return Result.Failure<int>(new Error(code, ex.Message));
         }
 
         var publishedCount = 0;

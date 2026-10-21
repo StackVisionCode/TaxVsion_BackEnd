@@ -46,6 +46,12 @@ public sealed class FakeSubscriptionRepo(TenantSubscription? subscription) : ISu
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
+    public Task<IReadOnlyList<TenantSubscription>> GetActiveWithPeriodEndedBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TenantSubscription>>([]);
+
     public Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
         DateTime n,
         int b,

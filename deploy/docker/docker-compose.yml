@@ -1111,6 +1111,8 @@ services:
       # (Graph). Sin esto SetupWatchHandler falla al conectar una cuenta Gmail/Graph.
       Connectors__Watch__Gmail__TopicName: ${CONNECTORS_GMAIL_WATCH_TOPIC:-}
       Connectors__Watch__Graph__NotificationUrl: ${CONNECTORS_GRAPH_NOTIFICATION_URL:-}
+      # Avisos de ciclo de vida de Graph (reautorizar / subscription borrada / perdidas). Opcional.
+      Connectors__Watch__Graph__LifecycleNotificationUrl: ${CONNECTORS_GRAPH_LIFECYCLE_NOTIFICATION_URL:-}
       Connectors__Watch__Graph__ClientState: ${CONNECTORS_GRAPH_WATCH_CLIENT_STATE:-}
       # Webhooks públicos (Fase 7) — audiencia esperada del JWT OIDC de Pub/Sub.
       Connectors__Webhooks__GmailPush__ExpectedAudience: ${CONNECTORS_GMAIL_PUSH_AUDIENCE:-}

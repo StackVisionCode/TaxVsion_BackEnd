@@ -8,6 +8,7 @@ using Polly.CircuitBreaker;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using Wolverine;
@@ -23,6 +24,7 @@ namespace TaxVision.Connectors.Infrastructure.OAuth;
 public sealed class OAuthTokenManager(
     ITenantEmailAccountRepository accountRepository,
     IOAuthConnectionRepository connectionRepository,
+    IProviderWatchSubscriptionRepository subscriptionRepository,
     IOAuthProviderClientFactory providerClientFactory,
     HttpResiliencePipelineRegistry circuitBreakers,
     IEncryptedSecretProtector protector,
@@ -52,7 +54,7 @@ public sealed class OAuthTokenManager(
         if (lockHandle is null)
             return Result.Failure<string>(
                 new Error(
-                    "OAuthTokenManager.LockTimeout",
+                    OAuthTokenErrorCodes.LockTimeout,
                     $"Timed out waiting for the refresh lock on account {accountId}."
                 )
             );
@@ -74,7 +76,7 @@ public sealed class OAuthTokenManager(
     {
         if (connection.Token is null)
             return Result.Failure<string>(
-                new Error("OAuthTokenManager.NoToken", $"OAuthConnection {connection.Id} has no token attached.")
+                new Error(OAuthTokenErrorCodes.NoToken, $"OAuthConnection {connection.Id} has no token attached.")
             );
 
         if (connection.Token.AccessTokenExpiresAtUtc > DateTime.UtcNow.Add(RefreshBuffer))
@@ -106,32 +108,73 @@ public sealed class OAuthTokenManager(
         var refreshTokenPlaintext = connection.Token!.RefreshTokenCipher.Decrypt(protector);
         var breaker = circuitBreakers.GetOrCreate($"{connection.ProviderCode}:oauth-refresh");
 
-        OAuthTokenGrant grant;
+        OAuthTokenGrant? grant;
+        OAuthProviderException? rejection;
         try
         {
-            grant = await breaker.ExecuteAsync(
-                token => clientResult.Value.RefreshAccessTokenAsync(refreshTokenPlaintext, token),
+            (grant, rejection) = await breaker.ExecuteAsync(
+                async token =>
+                {
+                    // El rechazo de una cuenta se devuelve en vez de lanzarse: el breaker es del
+                    // proveedor y solo debe abrirse por caídas. Antes, una cuenta muerta lo abría a
+                    // los 3 intentos y bloqueaba el refresh de las cuentas sanas durante 60 s.
+                    try
+                    {
+                        return (
+                            await clientResult.Value.RefreshAccessTokenAsync(refreshTokenPlaintext, token),
+                            (OAuthProviderException?)null
+                        );
+                    }
+                    catch (OAuthProviderException ex) when (ex.RequiresReconnect)
+                    {
+                        return ((OAuthTokenGrant?)null, ex);
+                    }
+                },
                 ct
             );
         }
-        catch (Exception ex) when (ex is OAuthProviderException or BrokenCircuitException)
+        catch (BrokenCircuitException ex)
         {
-            var error = new Error("OAuthTokenManager.RefreshFailed", ex.Message);
+            // El breaker es por proveedor y lo comparten todas las cuentas: estar abierto no dice
+            // nada de ESTA cuenta. Es transitorio, así que no se marca Error ni se avisa al usuario.
+            logger.LogWarning(
+                "OAuth refresh skipped for account {AccountId} — {Provider} circuit breaker is open.",
+                accountId,
+                connection.ProviderCode
+            );
+            return Result.Failure<string>(new Error(OAuthTokenErrorCodes.CircuitOpen, ex.Message));
+        }
+        catch (OAuthProviderException ex)
+        {
+            // Caída del proveedor (5xx, 429, red) o credenciales de la app: no es culpa de la cuenta
+            // ni se arregla reconectando. Se reintenta en el próximo push o en la próxima corrida del job.
+            logger.LogWarning(
+                "OAuth refresh for account {AccountId} failed transiently: {Message}",
+                accountId,
+                ex.Message
+            );
+            return Result.Failure<string>(new Error(OAuthTokenErrorCodes.ProviderUnavailable, ex.Message));
+        }
+
+        if (rejection is not null)
+        {
+            var error = new Error(OAuthTokenErrorCodes.RefreshFailed, rejection.Message);
             await MarkAccountErrorAndPublishAsync(accountId, connection, error, ct);
             return Result.Failure<string>(error);
         }
 
+        var granted = grant!;
         var now = DateTime.UtcNow;
         connection.Token.UpdateAccessToken(
-            protector.Protect(grant.AccessToken),
-            now.AddSeconds(grant.ExpiresInSeconds),
+            protector.Protect(granted.AccessToken),
+            now.AddSeconds(granted.ExpiresInSeconds),
             now
         );
-        if (grant.RefreshToken is not null)
-            connection.Token.UpdateRefreshToken(protector.Protect(grant.RefreshToken));
+        if (granted.RefreshToken is not null)
+            connection.Token.UpdateRefreshToken(protector.Protect(granted.RefreshToken));
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(grant.AccessToken);
+        return Result.Success(granted.AccessToken);
     }
 
     private async Task MarkAccountErrorAndPublishAsync(
@@ -151,7 +194,13 @@ public sealed class OAuthTokenManager(
         var accountResult = await accountRepository.GetByIdAsync(accountId, ct);
         if (accountResult.IsSuccess)
         {
+            // Se avisa solo al pasar a Error. Si ya estaba en Error (o la desconectaron), el usuario
+            // ya fue avisado: publicar en cada intento creaba una notificación por intento.
+            if (accountResult.Value.Status is TenantEmailAccountStatus.Error or TenantEmailAccountStatus.Disconnected)
+                return;
+
             accountResult.Value.MarkError(DateTime.UtcNow);
+            await StopWatchRenewalAsync(accountId, ct);
             await unitOfWork.SaveChangesAsync(ct);
         }
 
@@ -171,5 +220,17 @@ public sealed class OAuthTokenManager(
                 MailboxOwnerUserId = accountResult.IsSuccess ? accountResult.Value.OwnerUserId : null,
             }
         );
+    }
+
+    /// <summary>
+    /// Sin token no se puede llamar a <c>users.stop</c> de Gmail. Marcar el watch como Failed corta
+    /// las renovaciones (WatchRenewalJob ignora Failed), así que Google deja de mandar pushes cuando
+    /// el watch vence. Reconectar la cuenta lo reactiva (WatchActivationService → Renew).
+    /// </summary>
+    private async Task StopWatchRenewalAsync(Guid accountId, CancellationToken ct)
+    {
+        var subscriptionResult = await subscriptionRepository.GetByAccountIdAsync(accountId, ct);
+        if (subscriptionResult.IsSuccess)
+            subscriptionResult.Value.MarkFailed();
     }
 }

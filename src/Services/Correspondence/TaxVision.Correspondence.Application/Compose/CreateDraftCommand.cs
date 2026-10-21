@@ -5,13 +5,14 @@ namespace TaxVision.Correspondence.Application.Compose;
 /// de <see cref="StartReplyCommand"/>, que arranca desde un <see cref="Domain.Inbox.IncomingEmail"/>
 /// existente).
 /// </summary>
+/// <param name="CustomerId">Cliente en cuya ficha se archiva el correo. Null = correo a alguien que no es cliente.</param>
 /// <param name="VisibleAccountIds">
 /// Buzones que el caller puede usar para redactar. <c>null</c> = todos los de la oficina. Ver
 /// <see cref="SendingAccountGuard"/>.
 /// </param>
 public sealed record CreateDraftCommand(
     Guid TenantId,
-    Guid CustomerId,
+    Guid? CustomerId,
     Guid AccountId,
     Guid ActorId,
     IReadOnlyCollection<Guid>? VisibleAccountIds = null

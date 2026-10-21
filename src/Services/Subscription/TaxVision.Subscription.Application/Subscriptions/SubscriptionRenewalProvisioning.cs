@@ -7,11 +7,17 @@ namespace TaxVision.Subscription.Application.Subscriptions;
 /// <param name="Provisioned">La intención quedó en estado <c>Provisioned</c> (o ya lo estaba): éxito idempotente.</param>
 /// <param name="StatusChanged">La suscripción transicionó a Active en ESTA llamada (hay que publicar el evento).</param>
 /// <param name="PreviousStatus">Estado de la suscripción antes de la reactivación (para el evento).</param>
+/// <param name="SupersededChargeKeys">Cobros automáticos que este pago dejó sin efecto: el caller avisa a PaymentApp.</param>
 public readonly record struct RenewalProvisioningOutcome(
     bool Provisioned,
     bool StatusChanged,
-    SubscriptionStatus PreviousStatus
-);
+    SubscriptionStatus PreviousStatus,
+    IReadOnlyList<string> SupersededChargeKeys
+)
+{
+    public RenewalProvisioningOutcome(bool Provisioned, bool StatusChanged, SubscriptionStatus PreviousStatus)
+        : this(Provisioned, StatusChanged, PreviousStatus, []) { }
+}
 
 /// <summary>
 /// Aplicación idempotente de un pago de renovación self-service. Dos rutas:
@@ -62,8 +68,9 @@ public static class SubscriptionRenewalProvisioning
             }
 
             intent.MarkProvisioned(nowUtc);
+            var prepaidKeys = subscription.SettleUnpaidRenewals(idempotencyKey, intent.RequestedByUserId, nowUtc);
             // Prepago no transiciona el status: el banner lo detecta por el nuevo nextRenewalAtUtc.
-            return new RenewalProvisioningOutcome(Provisioned: true, StatusChanged: false, previousStatus);
+            return new RenewalProvisioningOutcome(Provisioned: true, StatusChanged: false, previousStatus, prepaidKeys);
         }
 
         // Ruta recuperación: la sub estaba en lapso, el pago la reactiva con un nuevo ciclo desde ahora.
@@ -76,6 +83,8 @@ public static class SubscriptionRenewalProvisioning
         );
 
         intent.MarkProvisioned(nowUtc);
-        return new RenewalProvisioningOutcome(Provisioned: true, reactivated.IsSuccess, previousStatus);
+        // El pago ya entró: los cobros automáticos que quedaron colgados no se reintentan más.
+        var lapsedKeys = subscription.SettleUnpaidRenewals(null, intent.RequestedByUserId, nowUtc);
+        return new RenewalProvisioningOutcome(Provisioned: true, reactivated.IsSuccess, previousStatus, lapsedKeys);
     }
 }

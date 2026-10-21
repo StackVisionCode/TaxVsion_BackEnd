@@ -69,6 +69,7 @@ builder.Services.AddHostedService<SeatRenewalJob>();
 builder.Services.AddHostedService<AddOnRenewalJob>();
 builder.Services.AddHostedService<TrialExpirationJob>();
 builder.Services.AddHostedService<SubscriptionExpirationJob>();
+builder.Services.AddHostedService<OverdueRenewalSuspensionJob>();
 builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
@@ -194,6 +195,7 @@ builder.Host.UseWolverine(options =>
     // esta ruta Wolverine lo entregaría solo in-process y Auth nunca se enteraría — el bloqueo y los
     // emails quedarían muertos en silencio en producción.
     options.PublishMessage<TenantSubscriptionStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<RenewalChargesSupersededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Cancelación y expiración de intents hosted-checkout. Sin esta ruta los consumidores (notificación,
     // audit, reconcile cross-service) nunca se enteran y las compras canceladas quedan huérfanas.

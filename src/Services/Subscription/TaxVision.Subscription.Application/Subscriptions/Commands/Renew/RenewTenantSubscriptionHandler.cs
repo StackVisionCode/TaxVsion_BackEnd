@@ -1,9 +1,11 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -16,6 +18,7 @@ public static class RenewTenantSubscriptionHandler
         ISubscriptionRepository subscriptions,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
         CancellationToken ct
     )
@@ -24,11 +27,18 @@ public static class RenewTenantSubscriptionHandler
         if (subscription is null)
             return Result.Failure(new Error("Subscription.NotFound", "Subscription does not exist."));
 
-        var completeResult = BeginAndCompleteRenewal(subscription, command.RequestedByUserId);
+        var nowUtc = DateTime.UtcNow;
+        var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewalFor(subscription);
+        var completeResult = BeginAndCompleteRenewal(subscription, idempotencyKey, command.RequestedByUserId, nowUtc);
         if (completeResult.IsFailure)
             return completeResult;
 
+        // Soporte dio el período por pagado: PaymentApp no debe seguir cobrando esa renovación ni las colgadas.
+        var supersededKeys = new List<string> { idempotencyKey };
+        supersededKeys.AddRange(subscription.SettleUnpaidRenewals(idempotencyKey, command.RequestedByUserId, nowUtc));
+
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishRenewalChargesSupersededAsync(command.TenantId, supersededKeys, correlation.CorrelationId);
         await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
@@ -39,14 +49,13 @@ public static class RenewTenantSubscriptionHandler
         return Result.Success();
     }
 
-    private static Result BeginAndCompleteRenewal(TenantSubscription subscription, Guid actorUserId)
+    private static Result BeginAndCompleteRenewal(
+        TenantSubscription subscription,
+        string idempotencyKey,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
-        var nowUtc = DateTime.UtcNow;
-        var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(
-            subscription.Id,
-            subscription.CurrentPeriodEndUtc
-        );
-
         var beginResult = subscription.BeginRenewal(idempotencyKey, actorUserId, nowUtc);
         if (beginResult.IsFailure)
             return beginResult;

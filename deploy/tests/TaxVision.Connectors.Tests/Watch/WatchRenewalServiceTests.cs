@@ -135,4 +135,34 @@ public class WatchRenewalServiceTests
         Assert.True(result.IsFailure);
         Assert.Equal("ProviderWatchSubscription.NotFound", result.Error.Code);
     }
+
+    [Fact]
+    public async Task RecreateAsync_CreatesANewSubscriptionAndKeepsTheSameRow()
+    {
+        // Graph subscriptionRemoved: la vieja ya no existe, renovarla daría 404.
+        var fixture = CreateFixture();
+        fixture.Subscription.RecordRenewalFailure();
+        fixture.WatchClient.OnSetup = _ => new WatchSetupResult("sub-new", null, Now.AddHours(70));
+
+        var result = await fixture.Service.RecreateAsync(fixture.Subscription.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("sub-new", fixture.Subscription.SubscriptionRef);
+        Assert.Equal(ProviderWatchStatus.Active, fixture.Subscription.Status);
+        Assert.Equal(0, fixture.Subscription.FailureCount);
+        Assert.Single(fixture.SubscriptionRepository.Subscriptions);
+    }
+
+    [Fact]
+    public async Task RecreateAsync_WhenTheProviderFails_CountsLikeARenewalFailure()
+    {
+        var fixture = CreateFixture();
+        fixture.WatchClient.ThrowOnSetup = new WatchProviderException("Graph subscription request returned HTTP 503.");
+
+        var result = await fixture.Service.RecreateAsync(fixture.Subscription.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(1, fixture.Subscription.FailureCount);
+        Assert.Equal(ProviderWatchStatus.Active, fixture.Subscription.Status);
+    }
 }
