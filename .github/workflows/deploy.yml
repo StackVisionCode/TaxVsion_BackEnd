@@ -220,6 +220,7 @@ jobs:
           CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/oauth/admin-consent-callback
           CONNECTORS_GMAIL_WATCH_TOPIC=${{ secrets.CONNECTORS_GMAIL_WATCH_TOPIC }}
           CONNECTORS_GRAPH_NOTIFICATION_URL=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/webhooks/graph-notification
+          CONNECTORS_GRAPH_LIFECYCLE_NOTIFICATION_URL=https://${{ secrets.TAXVISION_DOMAIN }}/connectors/webhooks/graph-lifecycle
           CONNECTORS_GRAPH_WATCH_CLIENT_STATE=${{ secrets.CONNECTORS_GRAPH_WATCH_CLIENT_STATE }}
           CONNECTORS_GMAIL_PUSH_AUDIENCE=${{ secrets.CONNECTORS_GMAIL_PUSH_AUDIENCE }}
 

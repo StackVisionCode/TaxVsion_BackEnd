@@ -381,18 +381,22 @@ public sealed class SubscriptionSeat : TenantEntity
         if (renewal is null)
             return Result.Failure(new Error("Seat.RenewalNotFound", "Renewal does not exist."));
 
+        // Mismo freno que la suscripción base: sin esto un seat/add-on sin tarjeta quedaba activo sin pagar.
+        var effectiveWillRetry = RenewalRetryPolicy.ShouldRetry(willRetry, renewal.RetryCount, failureCode);
         var markResult = MarkRenewalAttemptFailed(
             renewal,
             failureCode,
             failureReason,
-            willRetry,
-            nextRetryAtUtc,
+            effectiveWillRetry,
+            effectiveWillRetry ? nextRetryAtUtc : null,
             nowUtc
         );
         if (markResult.IsFailure)
             return markResult;
 
-        return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+        return effectiveWillRetry
+            ? Result.Success()
+            : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
     }
 
     private static Result CompleteRenewalAttempt(

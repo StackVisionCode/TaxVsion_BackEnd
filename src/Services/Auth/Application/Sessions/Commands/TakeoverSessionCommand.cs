@@ -59,6 +59,10 @@ public static class TakeoverSessionHandler
         if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
             return Result.Failure<LoginResponse>(invalid);
 
+        // Tomar la sesión tampoco abre una oficina sin pagar.
+        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+            return Result.Failure<LoginResponse>(BillingAccessPolicy.SubscriptionInactive);
+
         if (
             payload.Surface == SessionSurface.Account
             && AccountSurfacePolicy.Check(user, payload.MustEnrollMfa) is { } denied

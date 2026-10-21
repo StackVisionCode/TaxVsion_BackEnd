@@ -35,7 +35,8 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
         builder.Property(d => d.Id).ValueGeneratedNever();
 
         builder.Property(d => d.TenantId).IsRequired();
-        builder.Property(d => d.CustomerId).IsRequired();
+        // Opcional: null = correo nuevo a alguien que no es cliente (ver Draft.CustomerId).
+        builder.Property(d => d.CustomerId);
 
         // RBAC Fase 4 (RBAC_Hardening_Plan.md) — additive, default Guid.Empty para las filas
         // previas a esta columna (ver doc-comment de Draft.CreatedByUserId).

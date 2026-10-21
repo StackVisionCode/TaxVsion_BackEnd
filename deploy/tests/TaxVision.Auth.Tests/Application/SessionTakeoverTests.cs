@@ -216,6 +216,48 @@ public sealed class SessionTakeoverTests
         Assert.Equal(2, publisher.Published.Count); // aviso en tiempo real a ambas
     }
 
+    [Fact]
+    public async Task Takeover_does_not_open_an_office_that_did_not_pay()
+    {
+        var user = User.Register(
+            TenantId,
+            "Test",
+            "User",
+            "user@example.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        var tenant = BuildTenant();
+        tenant.SetBillingAccess(true, "Suspended");
+        var issuer = new FakeIssuer();
+
+        var result = await TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid()),
+            new FakeTakeoverStore
+            {
+                ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd"], null, MustEnrollMfa: false),
+            },
+            new StubUsers(user),
+            new StubTenants(tenant),
+            new FakeRoles(),
+            issuer,
+            new FakeSessions(),
+            new FakeMfa(),
+            new FakeSecureTokens(),
+            new RecordingDenylist(),
+            new RecordingRevocationPublisher(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.SubscriptionInactive", result.Error.Code);
+        Assert.Equal(0, issuer.StartCount);
+    }
+
     // ---- "no volver a pedirme el código" cuando hubo interstitial ----
 
     [Fact]

@@ -387,7 +387,10 @@ public sealed class GraphApiClient(
 
         var tokenResult = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
         if (tokenResult.IsFailure)
-            throw new EmailProviderException($"Could not obtain a valid access token: {tokenResult.Error.Message}");
+            throw new EmailProviderException(
+                $"Could not obtain a valid access token: {tokenResult.Error.Message}",
+                requiresReconnect: OAuthTokenErrorCodes.RequiresReconnect(tokenResult.Error.Code)
+            );
 
         var breaker = circuitBreakers.GetOrCreate("Graph:messages");
         HttpResponseMessage response;

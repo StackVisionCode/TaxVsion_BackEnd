@@ -206,6 +206,81 @@ public class ProcessGmailPushNotificationHandlerTests
         Assert.Equal("RawMessageSync.HistoryFetchFailed", result.Error.Code);
     }
 
+    [Theory]
+    [InlineData(TenantEmailAccountStatus.Error)]
+    [InlineData(TenantEmailAccountStatus.Disconnected)]
+    [InlineData(TenantEmailAccountStatus.Draft)]
+    public async Task Handle_WhenAccountCannotSync_AcknowledgesWithoutCallingTheProvider(
+        TenantEmailAccountStatus status
+    )
+    {
+        // Devolver fallo hacía que el webhook respondiera 500 y Pub/Sub reintentara cada segundo.
+        var account = TenantEmailAccount
+            .Create(TenantId, "office@gmail.com", ProviderCode.Gmail, Guid.NewGuid(), Now)
+            .Value;
+        if (status != TenantEmailAccountStatus.Draft)
+            account.MarkConnected(Now);
+        if (status == TenantEmailAccountStatus.Error)
+            account.MarkError(Now);
+        if (status == TenantEmailAccountStatus.Disconnected)
+            account.Disconnect(Now);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail);
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessGmailPushNotificationHandler.Handle(
+            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(client.ReceivedCursors);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTheAccountNeedsReconnect_AcknowledgesSoPubSubStopsRetrying()
+    {
+        var account = CreateActiveAccount();
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            ThrowOnGetHistory = new EmailProviderException(
+                "Could not obtain a valid access token: invalid_grant",
+                requiresReconnect: true
+            ),
+        };
+
+        var result = await ProcessGmailPushNotificationHandler.Handle(
+            new ProcessGmailPushNotificationCommand("office@gmail.com", "history-1"),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(client.ReceivedCursors);
+    }
+
     [Fact]
     public async Task Handle_WhenOneMessageFetchFails_SkipsItAndPublishesTheRest()
     {

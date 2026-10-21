@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Catalogs;
+using TaxVision.Customer.Domain.Customers;
 
 namespace TaxVision.Customer.Application.Abstractions;
 
@@ -19,6 +20,7 @@ public interface ICustomerReadService
     /// (visibilidad por asignación). null = sin restricción (admin/view_all o flag apagado).</param>
     /// <param name="includeAssignees">Solo si es true se devuelven los AssigneeUserIds (roster de asignados,
     /// solo para admin/view_all). Un no-admin NO recibe el roster (need-to-know).</param>
+    /// <param name="kind">Solo individuos o solo empresas; null = ambos.</param>
     Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         Guid tenantId,
         string? term,
@@ -27,6 +29,9 @@ public interface ICustomerReadService
         int size,
         Guid? assignedToUserId = null,
         bool includeAssignees = false,
+        CustomerKind? kind = null,
+        CustomerSortField sort = CustomerSortField.Name,
+        CustomerSortDirection direction = CustomerSortDirection.Asc,
         CancellationToken ct = default
     );
 

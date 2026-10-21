@@ -6,6 +6,8 @@ using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
+using TaxVision.Connectors.Domain.Accounts;
+using TaxVision.Connectors.Domain.Watch;
 using Wolverine;
 
 namespace TaxVision.Connectors.Application.Sync;
@@ -33,11 +35,38 @@ public static class ProcessGraphNotificationHandler
         if (subscriptionResult.IsFailure)
             return Result.Failure(subscriptionResult.Error);
 
-        var accountResult = await accountRepository.GetByIdAsync(subscriptionResult.Value.AccountId, ct);
+        // A diferencia de Gmail, Graph identifica la notificación por subscription y no por buzón.
+        // Una subscription que ya dimos por perdida (Failed: el refresh o la renovación fallaron) sigue
+        // notificando hasta que vence en Microsoft (máx. ~70 h): se descarta sin cargar la cuenta ni
+        // pedir token. Al reconectar se crea una subscription nueva con otro id.
+        var subscription = subscriptionResult.Value;
+        if (subscription.Status != ProviderWatchStatus.Active)
+        {
+            logger.LogInformation(
+                "Graph notification for subscription {SubscriptionId} ignored — subscription is {Status}.",
+                subscription.Id,
+                subscription.Status
+            );
+            return Result.Success();
+        }
+
+        var accountResult = await accountRepository.GetByIdAsync(subscription.AccountId, ct);
         if (accountResult.IsFailure)
             return Result.Failure(accountResult.Error);
 
         var account = accountResult.Value;
+
+        // Mismo criterio que Gmail: sin reconectar no hay token con qué sincronizar. Responder rápido
+        // también importa acá: Graph espera la respuesta en ~3 s y degrada los endpoints lentos.
+        if (account.Status is not (TenantEmailAccountStatus.Active or TenantEmailAccountStatus.Connected))
+        {
+            logger.LogInformation(
+                "Graph notification for account {AccountId} ignored — account is {Status}.",
+                account.Id,
+                account.Status
+            );
+            return Result.Success();
+        }
         var clientResult = emailClientFactory.Resolve(account.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure(clientResult.Error);
@@ -80,6 +109,17 @@ public static class ProcessGraphNotificationHandler
             logger,
             ct
         );
+
+        // El controller de Graph responde 200 siempre (Graph no reintenta como Pub/Sub); esto solo
+        // evita registrar como fallo cada notificación de una cuenta que necesita reconectarse.
+        if (syncResult.IsFailure && syncResult.Error.Code == RawMessageSyncOrchestrator.ReconnectRequiredCode)
+        {
+            logger.LogWarning(
+                "Graph notification for account {AccountId} acknowledged without sync — the account needs to be reconnected.",
+                account.Id
+            );
+            return Result.Success();
+        }
 
         return syncResult.IsFailure ? Result.Failure(syncResult.Error) : Result.Success();
     }

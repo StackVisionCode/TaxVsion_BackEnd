@@ -94,6 +94,31 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
         Assert.Equal(SubscriptionRenewalIntentStatus.Pending, intent.Status);
     }
 
+    [Fact]
+    public async Task Paying_by_hand_tells_payments_to_stop_retrying_the_automatic_charge()
+    {
+        var subscription = ExpiredSubscription(out var tenantId);
+        var intent = PendingIntent(tenantId);
+        var bus = new CapturingMessageBus();
+        var unpaidKey = subscription.Renewals.Single().IdempotencyKey;
+
+        await SubscriptionRenewalCheckoutPaidConsumer.Handle(
+            PaidEvent(tenantId, intent.Id),
+            new FakeRenewalCheckoutIntentRepository(intent),
+            new FakeSubscriptionRepo(subscription),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            new FakeSubscriptionMetrics(),
+            NullLogger<SubscriptionRenewalIntent>.Instance,
+            CancellationToken.None
+        );
+
+        var superseded = Assert.Single(bus.Published.OfType<RenewalChargesSupersededIntegrationEvent>());
+        Assert.Equal(tenantId, superseded.TenantId);
+        Assert.Equal([unpaidKey], superseded.IdempotencyKeys);
+    }
+
     private static SubscriptionRenewalCheckoutPaidIntegrationEvent PaidEvent(Guid tenantId, Guid intentId) =>
         new()
         {
@@ -138,7 +163,17 @@ public sealed class SubscriptionRenewalCheckoutPaidConsumerTests
                 now
             )
             .Value;
-        subscription.MarkPastDueBecauseRenewalFailed("card_declined", Guid.Empty, now);
+        // Renovación automática que falló: es la que PaymentApp seguía reintentando.
+        subscription.BeginRenewal("subscription-renewal-unpaid", Guid.Empty, now);
+        subscription.FailRenewal(
+            subscription.Renewals.Single().Id,
+            "card_declined",
+            "Declined",
+            false,
+            null,
+            Guid.Empty,
+            now
+        );
         subscription.SuspendAfterRetriesExhausted(Guid.Empty, now.AddDays(8));
         subscription.ExpireAfterSuspensionTimeout(Guid.Empty, now.AddDays(40));
         tenantId = subscription.TenantId;

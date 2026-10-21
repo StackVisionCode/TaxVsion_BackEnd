@@ -138,12 +138,7 @@ public sealed class MicrosoftOAuthClient(
         }
 
         if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Microsoft OAuth token request returned HTTP {Status}.", (int)response.StatusCode);
-            throw new OAuthProviderException(
-                $"Microsoft OAuth token request returned HTTP {(int)response.StatusCode}."
-            );
-        }
+            throw await BuildTokenErrorAsync(response, ct);
 
         MicrosoftTokenResponse? payload;
         try
@@ -159,6 +154,59 @@ public sealed class MicrosoftOAuthClient(
             throw new OAuthProviderException("Microsoft OAuth token response was missing access_token.");
 
         return new OAuthTokenGrant(payload.AccessToken, payload.RefreshToken, payload.ExpiresInSeconds);
+    }
+
+    /// <summary>
+    /// Entra devuelve <c>invalid_grant</c> (refresh token vencido por inactividad AADSTS700082,
+    /// revocado por cambio de contraseña AADSTS50173, consentimiento retirado AADSTS65001) y, cuando
+    /// Conditional Access o MFA exigen al usuario, <c>interaction_required</c>/<c>consent_required</c>/
+    /// <c>login_required</c>. Todos se arreglan reconectando.
+    /// </summary>
+    private static readonly HashSet<string> ReconnectErrors =
+    [
+        "invalid_grant",
+        "interaction_required",
+        "consent_required",
+        "login_required",
+    ];
+
+    /// <summary>
+    /// Problema de la app registration, no de la cuenta: el caso típico es el client secret vencido
+    /// en Entra (AADSTS7000222). Reconectar no lo arregla, así que no se pide al usuario.
+    /// </summary>
+    private static readonly HashSet<string> AppConfigurationErrors = ["invalid_client", "unauthorized_client"];
+
+    private async Task<OAuthProviderException> BuildTokenErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var status = (int)response.StatusCode;
+        var error = await OAuthTokenErrorResponse.TryReadAsync(response, ct);
+        var code = error?.Error;
+        // "AADSTS700082: The refresh token has expired…": solo el código, sin el texto ni los trace ids.
+        var aadsts = error?.ErrorDescription?.Split(':', 2)[0].Trim();
+        var detail =
+            code is null ? ""
+            : aadsts is { Length: > 0 } ? $" ({code}, {aadsts})"
+            : $" ({code})";
+        var message = $"Microsoft OAuth token request returned HTTP {status}{detail}.";
+
+        if (code is not null && AppConfigurationErrors.Contains(code))
+            logger.LogError(
+                "Microsoft OAuth token request rejected the app credentials ({Error}, {Aadsts}) — check the client id/secret of the Entra app registration.",
+                code,
+                aadsts
+            );
+        else
+            logger.LogWarning(
+                "Microsoft OAuth token request returned HTTP {Status} ({Error}, {Aadsts}).",
+                status,
+                code,
+                aadsts
+            );
+
+        return new OAuthProviderException(
+            message,
+            requiresReconnect: code is not null && ReconnectErrors.Contains(code)
+        );
     }
 
     private sealed record MicrosoftTokenResponse

@@ -24,6 +24,9 @@ public static class SearchCustomersHandler
             query.Size,
             assignedTo,
             query.CanViewAll,
+            query.Kind,
+            query.Sort,
+            query.Direction,
             ct
         );
     }

@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Infrastructure.Providers.OAuth;
 using TaxVision.Connectors.Tests.Providers;
 
@@ -65,5 +66,72 @@ public class MicrosoftOAuthClientTests
         await Assert.ThrowsAsync<TaxVision.Connectors.Application.OAuth.OAuthProviderException>(() =>
             CreateClient(handler).ExchangeAuthorizationCodeAsync("bad-code", "https://redirect")
         );
+    }
+
+    [Theory]
+    [InlineData(
+        HttpStatusCode.BadRequest,
+        "invalid_grant",
+        "AADSTS700082: The refresh token has expired due to inactivity."
+    )]
+    [InlineData(
+        HttpStatusCode.BadRequest,
+        "invalid_grant",
+        "AADSTS50173: The provided grant has expired due to it being revoked."
+    )]
+    [InlineData(
+        HttpStatusCode.BadRequest,
+        "interaction_required",
+        "AADSTS50076: Due to a configuration change made by your administrator, you must use multi-factor authentication."
+    )]
+    [InlineData(
+        HttpStatusCode.BadRequest,
+        "consent_required",
+        "AADSTS65001: The user or administrator has not consented to use the application."
+    )]
+    public async Task RefreshAccessTokenAsync_WhenEntraRejectsTheUserGrant_RequiresReconnect(
+        HttpStatusCode status,
+        string error,
+        string description
+    )
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(status, $$"""{ "error": "{{error}}", "error_description": "{{description}}" }""");
+
+        var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+        );
+
+        Assert.True(ex.RequiresReconnect);
+        Assert.Contains(error, ex.Message);
+        Assert.Contains(description.Split(':')[0], ex.Message);
+    }
+
+    [Theory]
+    // Client secret vencido en Entra: es de la app, no de la cuenta. Reconectar no lo arregla.
+    [InlineData(
+        HttpStatusCode.Unauthorized,
+        """{ "error": "invalid_client", "error_description": "AADSTS7000222: The provided client secret keys are expired." }"""
+    )]
+    [InlineData(
+        HttpStatusCode.BadRequest,
+        """{ "error": "unauthorized_client", "error_description": "AADSTS700016: Application not found in the directory." }"""
+    )]
+    [InlineData(HttpStatusCode.TooManyRequests, """{ "error": "temporarily_unavailable" }""")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "")]
+    [InlineData(HttpStatusCode.BadRequest, "<html>gateway error</html>")]
+    public async Task RefreshAccessTokenAsync_WhenTheFailureIsNotTheAccounts_DoesNotRequireReconnect(
+        HttpStatusCode status,
+        string body
+    )
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(status, body);
+
+        var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+        );
+
+        Assert.False(ex.RequiresReconnect);
     }
 }

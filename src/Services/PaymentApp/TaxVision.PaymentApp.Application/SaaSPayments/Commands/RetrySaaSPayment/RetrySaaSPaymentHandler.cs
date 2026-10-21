@@ -89,8 +89,6 @@ public static class RetrySaaSPaymentHandler
 
         var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
             payment.TenantId,
-            SyntheticPayer.EmailFor(payment.TenantId),
-            null,
             providerCustomers,
             adapter,
             ct
@@ -104,13 +102,13 @@ public static class RetrySaaSPaymentHandler
         var chargeRequest = new ChargeAuthorizationRequest(
             Customer: payerResult.Value.Customer,
             Amount: payment.Amount,
-            IdempotencyKey: payment.IdempotencyKey,
+            IdempotencyKey: payment.ProviderIdempotencyKeyForNextAttempt(),
             Descriptor: payment.StatementDescriptor,
             Metadata: new Dictionary<string, string>
             {
                 ["tenantId"] = payment.TenantId.ToString("N"),
+                // Mismos datos que el primer cobro: con otra metadata, Stripe rechaza la clave reusada.
                 ["saaSPaymentId"] = payment.Id.ToString("N"),
-                ["retry"] = "true",
             },
             SpecificPaymentMethod: payerResult.Value.Method
         );

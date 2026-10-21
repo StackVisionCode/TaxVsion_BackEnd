@@ -1,3 +1,5 @@
+using TaxVision.Subscription.Domain.Subscriptions;
+
 namespace TaxVision.Subscription.Application.Common;
 
 /// <summary>
@@ -9,6 +11,24 @@ public static class IdempotencyKeyFactory
 {
     public static string SubscriptionRenewal(Guid tenantSubscriptionId, DateTime periodEndUtc) =>
         $"subscription-renewal-{tenantSubscriptionId:N}-{periodEndUtc:yyyyMMdd}";
+
+    /// <summary>Primer cobro al activar desde el trial. Prefijo propio: con la clave de renovación, la primera
+    /// renovación caía en el mismo cobro y nunca se cobraba.</summary>
+    public static string SubscriptionActivation(Guid tenantSubscriptionId, DateTime periodEndUtc) =>
+        $"subscription-activation-{tenantSubscriptionId:N}-{periodEndUtc:yyyyMMdd}";
+
+    /// <summary>Renovación de una suscripción activada antes del arreglo, cuya clave normal ya la usó la activación.</summary>
+    public static string SubscriptionRenewalAfterLegacyActivation(Guid tenantSubscriptionId, DateTime periodEndUtc) =>
+        $"subscription-renewal-next-{tenantSubscriptionId:N}-{periodEndUtc:yyyyMMdd}";
+
+    /// <summary>Clave de la renovación del período que empieza en <c>CurrentPeriodEndUtc</c>.</summary>
+    public static string SubscriptionRenewalFor(TenantSubscription subscription)
+    {
+        var key = SubscriptionRenewal(subscription.Id, subscription.CurrentPeriodEndUtc);
+        return subscription.IsRenewalKeyUsedByAnotherPeriod(key)
+            ? SubscriptionRenewalAfterLegacyActivation(subscription.Id, subscription.CurrentPeriodEndUtc)
+            : key;
+    }
 
     public static string SeatRenewal(Guid seatId, DateTime periodEndUtc) =>
         $"seat-renewal-{seatId:N}-{periodEndUtc:yyyyMMdd}";

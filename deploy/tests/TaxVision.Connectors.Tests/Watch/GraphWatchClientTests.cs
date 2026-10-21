@@ -12,12 +12,20 @@ public class GraphWatchClientTests
     private static GraphWatchClient CreateClient(
         FakeHttpMessageHandler handler,
         string notificationUrl = "https://api.taxproffice.com/connectors/webhooks/graph-notification",
-        string clientState = "shared-secret"
+        string clientState = "shared-secret",
+        string lifecycleNotificationUrl = ""
     ) =>
         new(
             new HttpClient(handler),
             new FakeOAuthTokenManager(),
-            Options.Create(new GraphWatchOptions { NotificationUrl = notificationUrl, ClientState = clientState }),
+            Options.Create(
+                new GraphWatchOptions
+                {
+                    NotificationUrl = notificationUrl,
+                    ClientState = clientState,
+                    LifecycleNotificationUrl = lifecycleNotificationUrl,
+                }
+            ),
             NullLogger<GraphWatchClient>.Instance
         );
 
@@ -67,5 +75,49 @@ public class GraphWatchClientTests
         handler.Enqueue(HttpStatusCode.BadRequest, "");
 
         await Assert.ThrowsAsync<WatchProviderException>(() => CreateClient(handler).SetupWatchAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task SetupWatchAsync_WithLifecycleUrl_SendsIt()
+    {
+        var handler = new FakeHttpMessageHandler();
+        var body = CaptureCreateBody(handler);
+
+        await CreateClient(
+                handler,
+                lifecycleNotificationUrl: "https://api.taxoffix.io/connectors/webhooks/graph-lifecycle"
+            )
+            .SetupWatchAsync(Guid.NewGuid());
+
+        Assert.Contains(
+            "\"lifecycleNotificationUrl\":\"https://api.taxoffix.io/connectors/webhooks/graph-lifecycle\"",
+            body()
+        );
+    }
+
+    [Fact]
+    public async Task SetupWatchAsync_WithoutLifecycleUrl_OmitsTheField()
+    {
+        // Graph rechaza una lifecycleNotificationUrl vacía: sin configurar, el campo no se manda.
+        var handler = new FakeHttpMessageHandler();
+        var body = CaptureCreateBody(handler);
+
+        await CreateClient(handler).SetupWatchAsync(Guid.NewGuid());
+
+        Assert.DoesNotContain("lifecycleNotificationUrl", body());
+    }
+
+    private static Func<string> CaptureCreateBody(FakeHttpMessageHandler handler)
+    {
+        string? captured = null;
+        handler.Enqueue(request =>
+        {
+            captured = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent("""{ "id": "sub-123", "expirationDateTime": "2026-10-23T12:00:00Z" }"""),
+            };
+        });
+        return () => captured ?? throw new InvalidOperationException("No request was sent.");
     }
 }

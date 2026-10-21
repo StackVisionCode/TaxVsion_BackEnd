@@ -71,7 +71,8 @@ public sealed class GraphWatchClient(
                     config.NotificationUrl,
                     "me/mailFolders('inbox')/messages",
                     expiration,
-                    config.ClientState
+                    config.ClientState,
+                    string.IsNullOrWhiteSpace(config.LifecycleNotificationUrl) ? null : config.LifecycleNotificationUrl
                 )
             ),
         };
@@ -121,7 +122,10 @@ public sealed class GraphWatchClient(
         [property: JsonPropertyName("notificationUrl")] string NotificationUrl,
         [property: JsonPropertyName("resource")] string Resource,
         [property: JsonPropertyName("expirationDateTime")] DateTime ExpirationDateTime,
-        [property: JsonPropertyName("clientState")] string ClientState
+        [property: JsonPropertyName("clientState")] string ClientState,
+        [property: JsonPropertyName("lifecycleNotificationUrl")]
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            string? LifecycleNotificationUrl
     );
 
     private sealed record GraphSubscriptionPatchRequest(

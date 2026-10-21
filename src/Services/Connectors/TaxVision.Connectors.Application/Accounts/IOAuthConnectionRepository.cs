@@ -13,7 +13,8 @@ public interface IOAuthConnectionRepository
     /// <summary>
     /// AccountIds cuyo AccessToken expira antes de <paramref name="thresholdUtc"/> y cuya connection
     /// sigue Active — usado por ProactiveTokenRefreshJob (Fase 4) para no cargar aggregates completos
-    /// de cuentas que no lo necesitan.
+    /// de cuentas que no lo necesitan. Excluye las cuentas en Error, Disconnected o Draft: su refresh
+    /// token ya falló o no aplica, y reintentarlo solo vuelve a fallar.
     /// </summary>
     Task<IReadOnlyList<Guid>> ListAccountIdsWithTokenExpiringBeforeAsync(
         DateTime thresholdUtc,

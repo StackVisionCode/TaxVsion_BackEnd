@@ -370,6 +370,11 @@ public sealed class SaaSPayment : TenantEntity
         if (string.IsNullOrWhiteSpace(failureCode))
             return Result.Failure(new Error("SaaSPayment.InvalidFailureCode", "FailureCode is required."));
 
+        // Un cobro que falla antes de llegar a Processing también es un intento: sin contarlo,
+        // el backoff de dunning nunca avanzaba y el reintento no terminaba nunca.
+        if (Status == PaymentStatus.Pending)
+            _attempts.Add(SaaSPaymentAttempt.Record(Id, TenantId, _attempts.Count + 1, failureCode, null, nowUtc));
+
         Status = PaymentStatus.Failed;
         FailureCode = failureCode;
         FailureReason = failureReason;
@@ -378,6 +383,21 @@ public sealed class SaaSPayment : TenantEntity
         NextActionUrl = null;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Clave que se manda al provider en el próximo intento. El primero usa la clave del pago; los
+    /// reintentos le suman el número: Stripe rechaza una clave reusada con otros datos y, pasadas 24 h,
+    /// la olvida y crea un cobro nuevo.
+    /// </summary>
+    public IdempotencyKey ProviderIdempotencyKeyForNextAttempt()
+    {
+        var attemptNumber = _attempts.Count + 1;
+        if (attemptNumber == 1)
+            return IdempotencyKey;
+
+        var perAttempt = ValueObjects.IdempotencyKey.Create($"{IdempotencyKey.Value}-attempt-{attemptNumber}");
+        return perAttempt.IsSuccess ? perAttempt.Value : IdempotencyKey;
     }
 
     /// <summary>Reabre un pago Failed para un nuevo intento — lo usa

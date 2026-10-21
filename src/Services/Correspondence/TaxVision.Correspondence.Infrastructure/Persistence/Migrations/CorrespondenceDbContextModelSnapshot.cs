@@ -96,7 +96,7 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValue(new Guid("00000000-0000-0000-0000-000000000000"));
 
-                    b.Property<Guid>("CustomerId")
+                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("DeletedAtUtc")

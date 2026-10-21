@@ -11,8 +11,20 @@ public sealed record OAuthTokenGrant(string AccessToken, string? RefreshToken, i
 /// llamada en un circuit breaker Polly, que solo cuenta fallos vía excepción (mismo patrón que
 /// SmtpEmailSender en Postmaster).
 /// </summary>
-public sealed class OAuthProviderException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class OAuthProviderException(
+    string message,
+    Exception? innerException = null,
+    bool requiresReconnect = false
+) : Exception(message, innerException)
+{
+    /// <summary>
+    /// El proveedor rechazó el grant de ESTA cuenta (revocado, vencido, consentimiento o MFA): solo
+    /// lo arregla el usuario reconectando. Falso para caídas del proveedor (5xx, 429, red) y para
+    /// errores de configuración de la app (client secret inválido o vencido), que no son de la cuenta.
+    /// Cada client decide según los códigos de su proveedor.
+    /// </summary>
+    public bool RequiresReconnect { get; } = requiresReconnect;
+}
 
 /// <summary>
 /// Un client por proveedor OAuth2 (Google, Microsoft) que sabe hacer el refresh_token grant.

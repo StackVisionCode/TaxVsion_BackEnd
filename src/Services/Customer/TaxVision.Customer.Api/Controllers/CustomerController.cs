@@ -42,6 +42,7 @@ using TaxVision.Customer.Application.Customers.Queries.GetById;
 using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Application.Customers.Queries.Overview;
 using TaxVision.Customer.Application.Customers.Queries.Search;
+using TaxVision.Customer.Domain.Customers;
 using Wolverine;
 
 namespace TaxVision.Customer.Api.Controllers;
@@ -105,6 +106,9 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         [FromQuery] CustomerStatusFilter status = CustomerStatusFilter.Active,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
+        [FromQuery] CustomerKind? kind = null,
+        [FromQuery] CustomerSortField sort = CustomerSortField.Name,
+        [FromQuery] CustomerSortDirection dir = CustomerSortDirection.Asc,
         CancellationToken ct = default
     )
     {
@@ -113,7 +117,7 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(tenantId, term, status, page, size, userId, canViewAll),
+            new SearchCustomersQuery(tenantId, term, status, page, size, userId, canViewAll, kind, sort, dir),
             ct
         );
 

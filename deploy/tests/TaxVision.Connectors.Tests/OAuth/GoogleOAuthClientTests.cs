@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Infrastructure.Providers.OAuth;
 using TaxVision.Connectors.Tests.Providers;
 
@@ -69,5 +70,47 @@ public class GoogleOAuthClientTests
         await Assert.ThrowsAsync<TaxVision.Connectors.Application.OAuth.OAuthProviderException>(() =>
             CreateClient(handler).ExchangeAuthorizationCodeAsync("bad-code", "https://redirect")
         );
+    }
+
+    [Fact]
+    public async Task RefreshAccessTokenAsync_WhenGoogleRevokedOrExpiredTheGrant_RequiresReconnect()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.BadRequest,
+            """{ "error": "invalid_grant", "error_description": "Token has been expired or revoked." }"""
+        );
+
+        var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+        );
+
+        Assert.True(ex.RequiresReconnect);
+        Assert.Contains("invalid_grant", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(
+        HttpStatusCode.Unauthorized,
+        """{ "error": "invalid_client", "error_description": "The OAuth client was not found." }"""
+    )]
+    [InlineData(HttpStatusCode.BadRequest, """{ "error": "unauthorized_client" }""")]
+    // Google no usa los códigos de interacción de Entra: si apareciera uno, no se trata como de la cuenta.
+    [InlineData(HttpStatusCode.BadRequest, """{ "error": "interaction_required" }""")]
+    [InlineData(HttpStatusCode.TooManyRequests, """{ "error": "rate_limit_exceeded" }""")]
+    [InlineData(HttpStatusCode.InternalServerError, "")]
+    public async Task RefreshAccessTokenAsync_WhenTheFailureIsNotTheAccounts_DoesNotRequireReconnect(
+        HttpStatusCode status,
+        string body
+    )
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(status, body);
+
+        var ex = await Assert.ThrowsAsync<OAuthProviderException>(() =>
+            CreateClient(handler).RefreshAccessTokenAsync("refresh-token")
+        );
+
+        Assert.False(ex.RequiresReconnect);
     }
 }

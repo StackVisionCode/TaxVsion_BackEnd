@@ -71,7 +71,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc.
     public async Task<PagedResult<Draft>> ListOpenByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         Guid? ownerUserId = null,
@@ -81,10 +81,8 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         var normalizedPage = page < 1 ? 1 : page;
         var normalizedSize = ClampPageSize(size);
 
-        var query = db
-            .Drafts.AsNoTracking()
-            .IgnoreQueryFilters()
-            .Where(d => d.TenantId == tenantId && d.CustomerId == customerId && d.Status == DraftStatus.Draft);
+        var query = InScope(db.Drafts.AsNoTracking().IgnoreQueryFilters().Where(d => d.TenantId == tenantId), scope)
+            .Where(d => d.Status == DraftStatus.Draft);
 
         // A1 — el filtro va en la consulta, no después de paginar: filtrar en memoria dejaría los
         // totales y las páginas mintiendo.
@@ -106,7 +104,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // ListOpenByCustomerAsync pero Status=Sent, más reciente primero (UpdatedAtUtc = envío).
     public async Task<PagedResult<Draft>> ListSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -116,15 +114,8 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         var normalizedPage = page < 1 ? 1 : page;
         var normalizedSize = ClampPageSize(size);
 
-        var query = db
-            .Drafts.AsNoTracking()
-            .IgnoreQueryFilters()
-            .Where(d =>
-                d.TenantId == tenantId
-                && d.CustomerId == customerId
-                && d.Status == DraftStatus.Sent
-                && d.DeletedAtUtc == null
-            );
+        var query = InScope(db.Drafts.AsNoTracking().IgnoreQueryFilters().Where(d => d.TenantId == tenantId), scope)
+            .Where(d => d.Status == DraftStatus.Sent && d.DeletedAtUtc == null);
 
         // Gate de buzón de oficina: oculta enviados desde buzones no visibles.
         if (visibleAccountIds is not null)
@@ -168,7 +159,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // Papelera: enviados borrados de un customer, más reciente primero.
     public async Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -178,15 +169,8 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         var normalizedPage = page < 1 ? 1 : page;
         var normalizedSize = ClampPageSize(size);
 
-        var query = db
-            .Drafts.AsNoTracking()
-            .IgnoreQueryFilters()
-            .Where(d =>
-                d.TenantId == tenantId
-                && d.CustomerId == customerId
-                && d.Status == DraftStatus.Sent
-                && d.DeletedAtUtc != null
-            );
+        var query = InScope(db.Drafts.AsNoTracking().IgnoreQueryFilters().Where(d => d.TenantId == tenantId), scope)
+            .Where(d => d.Status == DraftStatus.Sent && d.DeletedAtUtc != null);
 
         // Gate de buzón de oficina: oculta enviados borrados desde buzones no visibles.
         if (visibleAccountIds is not null)
@@ -208,6 +192,14 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     }
 
     public void Remove(Draft entity) => db.Drafts.Remove(entity);
+
+    // IS NULL explícito y no "CustomerId == @p" con un parámetro nullable: EF traduciría esa
+    // comparación con la semántica de null de C# (un OR) y SQL Server dejaría de buscar por
+    // IX_Drafts_TenantId_CustomerId_Status_UpdatedAtUtc.
+    private static IQueryable<Draft> InScope(IQueryable<Draft> drafts, DraftCustomerScope scope) =>
+        scope.CustomerId is { } customerId
+            ? drafts.Where(d => d.CustomerId == customerId)
+            : drafts.Where(d => d.CustomerId == null);
 
     // Tracked (sin AsNoTracking): DraftCleanupJob muta cada fila (Draft.Discard()) y guarda por el
     // mismo UnitOfWork/DbContext del scope — a diferencia de los listados de solo lectura de arriba.

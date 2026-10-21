@@ -21,7 +21,7 @@ public static class ListSentMessagesHandler
     {
         var page = await drafts.ListSentByCustomerAsync(
             query.TenantId,
-            query.CustomerId,
+            query.Customer,
             query.Page,
             query.Size,
             query.VisibleAccountIds,

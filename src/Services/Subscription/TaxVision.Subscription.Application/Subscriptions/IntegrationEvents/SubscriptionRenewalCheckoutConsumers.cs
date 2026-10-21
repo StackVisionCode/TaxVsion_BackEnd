@@ -86,6 +86,7 @@ public static class SubscriptionRenewalCheckoutPaidConsumer
                 );
             }
 
+            await bus.PublishRenewalChargesSupersededAsync(evt.TenantId, outcome.SupersededChargeKeys, correlationId);
             await bus.RecalculateEntitlementsSafelyAsync(evt.TenantId, logger, ct);
             metrics.RecordSelfServiceRenewal("succeeded");
 

@@ -86,7 +86,7 @@ public static class ActivateSubscriptionHandler
         if (convertResult.IsFailure)
             return convertResult;
 
-        var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(subscription.Id, periodEndUtc);
+        var idempotencyKey = IdempotencyKeyFactory.SubscriptionActivation(subscription.Id, periodEndUtc);
         var chargeResult = subscription.BeginActivationCharge(idempotencyKey, command.ActorUserId, nowUtc);
         if (chargeResult.IsFailure)
             return chargeResult;
