@@ -134,7 +134,7 @@ public sealed class ReassignFileOwnerHandlerTests
             .Register(
                 Guid.NewGuid(),
                 tenantId,
-                OwnerType.Task,
+                OwnerType.Signature,
                 participantId,
                 FolderType.ClientForms,
                 null,
@@ -163,7 +163,7 @@ public sealed class ReassignFileOwnerHandlerTests
             CancellationToken.None
         );
 
-        Assert.Equal(OwnerType.Task, file.OwnerType);
+        Assert.Equal(OwnerType.Signature, file.OwnerType);
         Assert.Equal(participantId, file.OwnerId);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }

@@ -2,11 +2,14 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using NetArchTest.Rules;
+using TaxVision.DataCollection.Engine;
 using TaxVision.Tasks.Application;
+using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Tests.Architecture;
@@ -27,6 +30,11 @@ public sealed class TasksArchitectureTests
     private static readonly Assembly ApiAssembly = typeof(Program).Assembly;
     private static readonly Assembly ApplicationAssembly = typeof(AssemblyMarker).Assembly;
     private static readonly Assembly DomainAssembly = typeof(TaskItem).Assembly;
+    private static readonly Assembly ClientFormsApplicationAssembly = typeof(
+        TaxVision.Tasks.ClientForms.Application.Templates.Commands.CreateFormTemplateHandler
+    ).Assembly;
+    private static readonly Assembly ClientFormsDomainAssembly = typeof(FormTemplate).Assembly;
+    private static readonly Assembly EngineAssembly = typeof(IFormEngine).Assembly;
 
     [Fact]
     public void Controller_actions_should_declare_AllowActorTypes()
@@ -88,6 +96,119 @@ public sealed class TasksArchitectureTests
             .GetResult();
 
         Assert.True(result.IsSuccessful, "Application types depending on Infrastructure: " + Describe(result));
+    }
+
+    [Theory]
+    [InlineData("Microsoft.EntityFrameworkCore")]
+    [InlineData("Wolverine")]
+    [InlineData("TaxVision.Tasks.Domain")]
+    [InlineData("TaxVision.Tasks.Application")]
+    [InlineData("TaxVision.Tasks.ClientForms.Application")]
+    public void Client_forms_domain_should_stay_isolated(string forbiddenNamespace)
+    {
+        var result = Types
+            .InAssembly(ClientFormsDomainAssembly)
+            .ShouldNot()
+            .HaveDependencyOn(forbiddenNamespace)
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, $"Client Forms Domain depends on {forbiddenNamespace}: " + Describe(result));
+    }
+
+    [Theory]
+    [InlineData("Microsoft.EntityFrameworkCore")]
+    [InlineData("TaxVision.Tasks.Infrastructure")]
+    [InlineData("TaxVision.Tasks.Domain")]
+    [InlineData("TaxVision.Tasks.Application")]
+    public void Client_forms_application_should_stay_isolated(string forbiddenNamespace)
+    {
+        var result = Types
+            .InAssembly(ClientFormsApplicationAssembly)
+            .ShouldNot()
+            .HaveDependencyOn(forbiddenNamespace)
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, $"Client Forms Application depends on {forbiddenNamespace}: " + Describe(result));
+    }
+
+    [Theory]
+    [InlineData("TaxVision.Tasks.ClientForms.Domain")]
+    [InlineData("TaxVision.Tasks.ClientForms.Application")]
+    public void Existing_tasks_layers_should_not_depend_on_client_forms(string forbiddenNamespace)
+    {
+        var domain = Types.InAssembly(DomainAssembly).ShouldNot().HaveDependencyOn(forbiddenNamespace).GetResult();
+        var application = Types
+            .InAssembly(ApplicationAssembly)
+            .ShouldNot()
+            .HaveDependencyOn(forbiddenNamespace)
+            .GetResult();
+
+        Assert.True(domain.IsSuccessful, $"Tasks Domain depends on {forbiddenNamespace}: " + Describe(domain));
+        Assert.True(application.IsSuccessful, $"Tasks Application depends on {forbiddenNamespace}: " + Describe(application));
+    }
+
+    [Theory]
+    [InlineData("Microsoft.EntityFrameworkCore")]
+    [InlineData("Wolverine")]
+    [InlineData("Microsoft.AspNetCore")]
+    [InlineData("TaxVision.Tasks")]
+    public void Engine_should_stay_framework_and_service_agnostic(string forbiddenNamespace)
+    {
+        var result = Types.InAssembly(EngineAssembly).ShouldNot().HaveDependencyOn(forbiddenNamespace).GetResult();
+
+        Assert.True(result.IsSuccessful, $"Engine depends on {forbiddenNamespace}: " + Describe(result));
+    }
+
+    [Fact]
+    public void Client_forms_domain_should_not_use_linq_or_status_shortcuts()
+    {
+        var forbidden = new Regex(@"\.(Where|Select|Any|All|First|FirstOrDefault|Single|OrderBy|Sum|ToList|ToArray|Count)\s*\(|\bChangeStatus\s*\(");
+        var violations = SourceFiles("TaxVision.Tasks.ClientForms.Domain")
+            .SelectMany(file => File.ReadAllLines(file).Index().Where(line => forbidden.IsMatch(line.Item)).Select(line => $"{Path.GetFileName(file)}:{line.Index + 1}"))
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void Logs_should_never_name_sensitive_form_values()
+    {
+        var sensitiveTemplate = new Regex(
+            @"Log(?:Trace|Debug|Information|Warning|Error|Critical)\s*\([^\r\n]*(Answers?|TaxIdentifier|Ssn|Plain|RawValue)",
+            RegexOptions.IgnoreCase
+        );
+        var violations = ServiceSourceFiles()
+            .SelectMany(file => File.ReadAllLines(file).Index().Where(line => sensitiveTemplate.IsMatch(line.Item)).Select(line => $"{Path.GetFileName(file)}:{line.Index + 1}"))
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void Client_form_integration_events_should_not_expose_sensitive_values()
+    {
+        var sensitive = new Regex("answers?|ssn|taxidentifier|cipher|plaintext|rawvalue", RegexOptions.IgnoreCase);
+        var violations = typeof(IntegrationEvent)
+            .Assembly.GetTypes()
+            .Where(type => type.Namespace?.StartsWith("BuildingBlocks.Messaging.ClientForms", StringComparison.Ordinal) == true)
+            .Where(type => typeof(IntegrationEvent).IsAssignableFrom(type))
+            .SelectMany(type => type.GetProperties().Where(property => sensitive.IsMatch(property.Name)).Select(property => $"{type.Name}.{property.Name}"))
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void Client_form_list_dtos_should_not_expose_answers()
+    {
+        var violations = ClientFormsApplicationAssembly
+            .GetTypes()
+            .Where(type => type.Namespace?.Contains(".Responses", StringComparison.Ordinal) == true)
+            .Where(type => type.Name.Contains("Summary", StringComparison.Ordinal) || type.Name.Contains("List", StringComparison.Ordinal))
+            .SelectMany(type => type.GetProperties().Where(property => property.Name.Contains("Answers", StringComparison.OrdinalIgnoreCase)).Select(property => $"{type.Name}.{property.Name}"))
+            .ToArray();
+
+        Assert.Empty(violations);
     }
 
     /// <summary>
@@ -330,12 +451,22 @@ public sealed class TasksArchitectureTests
     );
 
     private static IEnumerable<string> ServiceSourceFiles() =>
-        new[] { "TaxVision.Tasks.Domain", "TaxVision.Tasks.Application", "TaxVision.Tasks.Infrastructure" }
-            .Select(project => Path.Combine(ServiceRoot, project))
-            .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+        new[]
+        {
+            "TaxVision.Tasks.Domain",
+            "TaxVision.Tasks.Application",
+            "TaxVision.Tasks.ClientForms.Domain",
+            "TaxVision.Tasks.ClientForms.Application",
+            "TaxVision.DataCollection.Engine",
+            "TaxVision.Tasks.Infrastructure",
+        }
+            .SelectMany(SourceFiles)
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}"));
+
+    private static IEnumerable<string> SourceFiles(string project) =>
+        Directory.EnumerateFiles(Path.Combine(ServiceRoot, project), "*.cs", SearchOption.AllDirectories);
 
     private static IEnumerable<string> AllServiceSourceFiles() =>
         Directory
@@ -349,10 +480,13 @@ public sealed class TasksArchitectureTests
     private static string ServiceRoot => Directory.GetParent(ApplicationSourceDirectory)!.FullName;
 
     private static IEnumerable<string> ApplicationSourceFiles() =>
-        Directory
-            .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
+        new[] { ApplicationSourceDirectory, ClientFormsApplicationSourceDirectory }
+            .SelectMany(directory => Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
+
+    private static string ClientFormsApplicationSourceDirectory =>
+        Path.Combine(ServiceRoot, "TaxVision.Tasks.ClientForms.Application");
 
     /// <summary>
     /// Esas dos reglas miran el texto fuente —nombre de archivo y largo de método no sobreviven a la

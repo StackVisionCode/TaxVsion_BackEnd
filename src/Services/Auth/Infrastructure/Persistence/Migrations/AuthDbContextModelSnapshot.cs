@@ -3544,6 +3544,246 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000196"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_templates.read",
+                            Description = "View client form templates, versions and the template library.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000197"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_templates.manage",
+                            Description = "Create and edit client form templates.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000198"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_templates.publish",
+                            Description = "Publish new versions of client form templates.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000199"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.read",
+                            Description = "View client form requests and the answers of assigned clients.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000200"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.manage",
+                            Description = "Assign, cancel and remind client forms.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000201"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.review",
+                            Description = "Review submitted client forms, request changes and complete them.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000202"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.export",
+                            Description = "Run reports and export client form answers.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000203"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.apply_profile",
+                            Description = "Apply approved client form answers to the client profile.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000204"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_submissions.reveal",
+                            Description = "Reveal sensitive tax identifiers submitted in client forms.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000205"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "tasks.forms.library.manage",
+                            Description = "Manage the TaxVision client form library.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000206"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "tasks.forms.platform.manage",
+                            Description = "Enable client forms for tenants.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000207"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "tasks.portal.forms",
+                            Description = "Complete forms requested by the tax office in the client portal.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000208"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_templates.configure_actions",
+                            Description = "Configure data mapping and post-submission actions for client form templates.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000209"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_requests.send_external",
+                            Description = "Send client forms to people who are not registered clients yet.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000210"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_intake_links.manage",
+                            Description = "Manage public intake links for client forms.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000211"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.form_consents.manage",
+                            Description = "Manage consent notices used in client forms.",
+                            GatedModule = "planner",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = true,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000179"),
                             AllowedActorTypes = "PlatformAdmin",
                             Code = "platform.branding.manage",

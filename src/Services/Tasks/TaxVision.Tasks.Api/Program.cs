@@ -23,6 +23,7 @@ using TaxVision.Tasks.Application;
 using TaxVision.Tasks.Infrastructure;
 using TaxVision.Tasks.Infrastructure.Observability;
 using TaxVision.Tasks.Infrastructure.Persistence;
+using TaxVision.Tasks.Api.Filters;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -36,12 +37,13 @@ builder.Host.UseTaxVisionSerilog("tasks-service");
 
 // ---------- MVC + JSON ----------
 builder
-    .Services.AddControllers()
+    .Services.AddControllers(options => options.Filters.Add<ClientFormsAccessFilter>())
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
     .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<ClientFormsAccessFilter>();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
@@ -105,6 +107,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+    options.Discovery.IncludeAssembly(typeof(TaxVision.Tasks.ClientForms.Application.AssemblyMarker).Assembly);
 
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
     // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.

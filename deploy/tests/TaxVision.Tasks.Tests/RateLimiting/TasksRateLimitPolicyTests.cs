@@ -29,6 +29,29 @@ public sealed class TasksRateLimitPolicyTests
         "task.h.templates_apply",
         "task.h.graph",
         "task.i.template_apply",
+        "task.f.form_read",
+        "task.h.form_templates_write",
+        "task.h.form_draft_write",
+        "task.h.form_requests_write",
+        "task.f.portal_form_read",
+        "task.h.portal_form_draft",
+        "task.h.portal_form_attachment",
+        "task.h.portal_form_sensitive",
+        "task.h.portal_form_submit",
+        "task.n.form_sensitive_reveal",
+        "task.h.form_report_export",
+    ];
+
+    private static readonly string[] UserOnlyPolicies =
+    [
+        "task.h.form_draft_write",
+        "task.f.portal_form_read",
+        "task.h.portal_form_draft",
+        "task.h.portal_form_attachment",
+        "task.h.portal_form_sensitive",
+        "task.h.portal_form_submit",
+        "task.n.form_sensitive_reveal",
+        "task.h.form_report_export",
     ];
 
     [Fact]
@@ -60,12 +83,28 @@ public sealed class TasksRateLimitPolicyTests
         {
             var policy = RateLimitPolicyCatalog.GetByName(name);
 
+            if (UserOnlyPolicies.Contains(name))
+                continue;
+
             Assert.Equal(
                 RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
                 policy.PrimaryPartition
             );
             Assert.Equal([RateLimitPartitionDimension.Tenant], policy.OverlayLayers);
             Assert.NotNull(policy.OverlayQuotaPerMinute);
+        }
+    }
+
+    [Fact]
+    public void Sensitive_and_portal_form_policies_are_isolated_by_user()
+    {
+        foreach (var name in UserOnlyPolicies)
+        {
+            var policy = RateLimitPolicyCatalog.GetByName(name);
+
+            Assert.Equal(RateLimitPartitionDimension.User, policy.PrimaryPartition);
+            Assert.Empty(policy.OverlayLayers);
+            Assert.Null(policy.OverlayQuotaPerMinute);
         }
     }
 

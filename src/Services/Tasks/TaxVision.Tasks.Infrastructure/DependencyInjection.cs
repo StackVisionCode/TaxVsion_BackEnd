@@ -40,6 +40,7 @@ using TaxVision.Tasks.Infrastructure.Permissions;
 using TaxVision.Tasks.Infrastructure.Persistence;
 using TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 using TaxVision.Tasks.Infrastructure.RateLimiting;
+using TaxVision.Tasks.Infrastructure.ClientForms;
 
 namespace TaxVision.Tasks.Infrastructure;
 
@@ -91,6 +92,7 @@ public static class DependencyInjection
         AddRateLimitTierQuotas(services, configuration);
         AddPermissionsPullRecovery(services);
         AddCustomerDirectory(services, configuration);
+        services.AddClientForms(configuration);
 
         return services;
     }

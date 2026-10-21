@@ -1,20 +1,34 @@
+using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Roles;
 using Xunit;
 
 namespace TaxVision.Auth.Tests.Domain;
 
-/// <summary>CAT-F0.6 — guard que impide reintroducir el patrón "declarar un permiso IsReserved para
-/// 'tenerlo listo'". Un permiso reservado se cobraba como accesos en pantallas de roles sin gatear
-/// nada; se vendía por nada hasta que lo barrimos en Fase 0 del rediseño de catálogo.
-/// Si vuelve a hacer falta un permiso que todavía no tiene endpoint real, se agrega cuando el endpoint
-/// exista — no antes.</summary>
+/// <summary>CAT-F0.6. Solo permite los contratos reservados aprobados para Client Forms.</summary>
 public sealed class ReservedPermissionsFitnessTests
 {
     [Fact]
-    public void No_permission_in_catalog_is_marked_IsReserved()
+    public void Only_approved_client_form_contracts_are_reserved()
     {
-        var reserved = PermissionCatalog.All.Where(definition => definition.IsReserved).ToArray();
+        string[] approved =
+        [
+            TasksPermissions.FormRequestsRead,
+            TasksPermissions.FormRequestsReview,
+            TasksPermissions.FormRequestsExport,
+            TasksPermissions.FormRequestsApplyProfile,
+            TasksPermissions.FormSubmissionsReveal,
+            TasksPermissions.FormsLibraryManage,
+            TasksPermissions.FormTemplatesConfigureActions,
+            TasksPermissions.FormRequestsSendExternal,
+            TasksPermissions.FormIntakeLinksManage,
+            TasksPermissions.FormConsentsManage,
+        ];
+        var reserved = PermissionCatalog.All
+            .Where(definition => definition.IsReserved)
+            .Select(definition => definition.Code)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        Assert.Empty(reserved);
+        Assert.Equal(approved.Order(StringComparer.Ordinal), reserved);
     }
 }

@@ -18,6 +18,11 @@ using TaxVision.Tasks.Domain.RateLimiting;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
+using TaxVision.Tasks.ClientForms.Domain.Audit;
+using TaxVision.Tasks.ClientForms.Domain.Templates;
+using TaxVision.Tasks.ClientForms.Domain.Settings;
+using TaxVision.Tasks.ClientForms.Domain.Versions;
+using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence;
 
@@ -41,6 +46,26 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<TaskTemplate> TaskTemplates => Set<TaskTemplate>();
 
     public DbSet<ClientRequest> ClientRequests => Set<ClientRequest>();
+
+    public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
+
+    public DbSet<FormTemplateVersion> FormTemplateVersions => Set<FormTemplateVersion>();
+
+    public DbSet<FormAuditEntry> FormAuditEntries => Set<FormAuditEntry>();
+
+    public DbSet<FormModuleSettings> FormModuleSettings => Set<FormModuleSettings>();
+
+    public DbSet<FormRequest> FormRequests => Set<FormRequest>();
+
+    public DbSet<FormSubmission> FormSubmissions => Set<FormSubmission>();
+
+    public DbSet<FormSubmissionRevision> FormSubmissionRevisions => Set<FormSubmissionRevision>();
+
+    public DbSet<FormAttachment> FormAttachments => Set<FormAttachment>();
+
+    public DbSet<FormSensitiveAnswer> FormSensitiveAnswers => Set<FormSensitiveAnswer>();
+
+    public DbSet<FormFileScanVerdict> FormFileScanVerdicts => Set<FormFileScanVerdict>();
 
     // Nadie las escribe desde Task: las mantiene el bus y las lee ProjectionPermissionsSource.
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
@@ -124,6 +149,14 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
         try
         {
             return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The resource was modified by someone else. Reload and try again.",
+                ex
+            );
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {

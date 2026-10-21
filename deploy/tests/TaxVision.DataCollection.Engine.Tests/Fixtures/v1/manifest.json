@@ -1,0 +1,9 @@
+{
+  "fixtureSetVersion": 1,
+  "files": [
+    "structure/cases.json",
+    "answers/cases.json",
+    "conditions/cases.json",
+    "progress/cases.json"
+  ]
+}

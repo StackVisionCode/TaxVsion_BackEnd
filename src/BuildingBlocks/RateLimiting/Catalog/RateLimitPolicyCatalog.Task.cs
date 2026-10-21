@@ -228,4 +228,117 @@ public static partial class RateLimitPolicyCatalog
         RateLimitAlgorithm.SlidingWindow,
         overlayQuota: 300
     );
+
+    public static readonly RateLimitPolicyDefinition TaskFormRead = Define(
+        "task.f.form_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskFormTemplatesWrite = Define(
+        "task.h.form_templates_write",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.SlidingWindow,
+        overlayQuota: 300
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskFormDraftWrite = Define(
+        "task.h.form_draft_write",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 120,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskFormRequestsWrite = Define(
+        "task.h.form_requests_write",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.SlidingWindow,
+        overlayQuota: 300
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskPortalFormRead = Define(
+        "task.f.portal_form_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 120,
+        windowSeconds: 60,
+        RateLimitAlgorithm.SlidingWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskPortalFormDraft = Define(
+        "task.h.portal_form_draft",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskPortalFormAttachment = Define(
+        "task.h.portal_form_attachment",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskPortalFormSensitive = Define(
+        "task.h.portal_form_sensitive",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 30,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskPortalFormSubmit = Define(
+        "task.h.portal_form_submit",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 30,
+        windowSeconds: 60,
+        RateLimitAlgorithm.SlidingWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskFormSensitiveReveal = Define(
+        "task.n.form_sensitive_reveal",
+        RateLimitCategory.N,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 20,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    public static readonly RateLimitPolicyDefinition TaskFormReportExport = Define(
+        "task.h.form_report_export",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 10,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow
+    );
 }

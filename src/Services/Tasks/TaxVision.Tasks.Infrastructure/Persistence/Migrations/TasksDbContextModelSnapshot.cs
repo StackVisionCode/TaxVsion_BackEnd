@@ -50,6 +50,713 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAssignmentProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Audit.FormAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("ActorParticipantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ActorSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("FormRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "FormRequestId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_FormAuditEntries_TenantId_Request_OccurredAt");
+
+                    b.HasIndex("TenantId", "FormTemplateId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_FormAuditEntries_TenantId_Template_OccurredAt");
+
+                    b.ToTable("FormAuditEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ComponentId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("DetachedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RegisteredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RejectionCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RowId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId")
+                        .HasDatabaseName("IX_FormAttachments_FileId");
+
+                    b.HasIndex("FormSubmissionId");
+
+                    b.HasIndex("TenantId", "FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormAttachments_Tenant_File_Active")
+                        .HasFilter("[Status] <> 4");
+
+                    b.ToTable("FormAttachments", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormFieldComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Comment")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ComponentId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RowId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RevisionId");
+
+                    b.ToTable("FormFieldComments", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormFileScanVerdict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("FolderType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("LastEventOccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OriginalName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OwnerType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_FormFileScanVerdicts_TenantId");
+
+                    b.ToTable("FormFileScanVerdicts", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancelNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("CancelReason")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CompletedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CompletionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("CurrentRevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CustomerLinkStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DraftProgressPercent")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DueAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FirstOpenedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormTemplateVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("IntakeLinkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LastActivityAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastReminderAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastSubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LinkBlockedCustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LinkBlockedReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("LinkConflictingRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MessageToClient")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ParticipantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ParticipantKind")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PrefillSourceRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ProfileUpdateStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReminderCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ResponsibleUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("TaxYear")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormTemplateVersionId");
+
+                    b.HasIndex("TenantId", "FormTemplateId")
+                        .HasDatabaseName("IX_FormRequests_TenantId_FormTemplateId");
+
+                    b.HasIndex("TenantId", "CustomerId", "FormTemplateId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormRequests_OpenPerCustomerTemplate")
+                        .HasFilter("[Status] IN (1, 2, 3) AND [CustomerId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "CustomerId", "Status")
+                        .HasDatabaseName("IX_FormRequests_TenantId_CustomerId_Status")
+                        .HasFilter("[CustomerId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "ParticipantId", "FormTemplateId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormRequests_OpenPerParticipantTemplate")
+                        .HasFilter("[Status] IN (1, 2, 3) AND [CustomerId] IS NULL AND [ParticipantId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "ParticipantId", "Status")
+                        .HasDatabaseName("IX_FormRequests_TenantId_ParticipantId_Status")
+                        .HasFilter("[ParticipantId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "ResponsibleUserId", "Status")
+                        .HasDatabaseName("IX_FormRequests_TenantId_ResponsibleUserId_Status");
+
+                    b.HasIndex("TenantId", "Status", "DueAtUtc")
+                        .HasDatabaseName("IX_FormRequests_TenantId_Status_DueAtUtc");
+
+                    b.ToTable("FormRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormRequests_CustomerLink", "([ParticipantKind] = 1 AND [CustomerLinkStatus] = 0 AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 0 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 1 AND [CustomerId] IS NOT NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 2 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_FormRequests_Participant", "([ParticipantKind] = 1 AND [CustomerId] IS NOT NULL AND [ParticipantId] IS NULL) OR ([ParticipantKind] = 2 AND [ParticipantId] IS NOT NULL AND [ResponsibleUserId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSensitiveAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CapturedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ComponentId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("FormSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RowId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("SupersededAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormSubmissionId", "ComponentId", "RowId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormSensitiveAnswers_Active")
+                        .HasFilter("[SupersededAtUtc] IS NULL");
+
+                    b.ToTable("FormSensitiveAnswers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormSensitiveAnswers_CapturedBy", "([CapturedByKind] = 1 AND [CapturedByPortalUserId] IS NOT NULL AND [CapturedByParticipantId] IS NULL AND [CapturedBySessionId] IS NULL) OR ([CapturedByKind] = 2 AND [CapturedByPortalUserId] IS NULL AND [CapturedByParticipantId] IS NOT NULL AND [CapturedBySessionId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DraftUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FormRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormSubmissions_FormRequestId");
+
+                    b.ToTable("FormSubmissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormSubmissions_DraftUpdatedBy", "[DraftUpdatedByKind] IS NULL OR ([DraftUpdatedByKind] = 1 AND [DraftUpdatedByPortalUserId] IS NOT NULL AND [DraftUpdatedByParticipantId] IS NULL AND [DraftUpdatedBySessionId] IS NULL) OR ([DraftUpdatedByKind] = 2 AND [DraftUpdatedByPortalUserId] IS NULL AND [DraftUpdatedByParticipantId] IS NOT NULL AND [DraftUpdatedBySessionId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmissionRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CompletionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("FormSubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PdfFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PdfGenerationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PdfStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PdfGenerationId")
+                        .HasDatabaseName("IX_FormSubmissionRevisions_PdfGenerationId");
+
+                    b.HasIndex("FormSubmissionId", "RevisionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormSubmissionRevisions_SubmissionId_Number");
+
+                    b.ToTable("FormSubmissionRevisions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormSubmissionRevisions_SubmittedBy", "([SubmittedByKind] = 1 AND [SubmittedByPortalUserId] IS NOT NULL AND [SubmittedByParticipantId] IS NULL AND [SubmittedBySessionId] IS NULL) OR ([SubmittedByKind] = 2 AND [SubmittedByPortalUserId] IS NULL AND [SubmittedByParticipantId] IS NOT NULL AND [SubmittedBySessionId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Settings.FormModuleSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AutoCustomerCreationEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("EnabledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("EnabledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("ExternalParticipantsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IntakeLinksEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("PushNotificationsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("SignatureStepEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("FormModuleSettings", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ArchivedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Draft")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("DraftDefinitionJson");
+
+                    b.Property<string>("DraftHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("DraftHash");
+
+                    b.Property<DateTime>("DraftUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("DraftUpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsLibraryListed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LatestPublishedHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("LatestPublishedHash");
+
+                    b.Property<Guid?>("LatestVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LatestVersionNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("LibraryKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibraryKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormTemplates_LibraryKey")
+                        .HasFilter("[LibraryKey] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Status", "Name")
+                        .HasDatabaseName("IX_FormTemplates_TenantId_Status_Name");
+
+                    b.ToTable("FormTemplates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormTemplates_Draft_IsJson", "ISJSON([DraftDefinitionJson]) = 1");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ComponentCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("ContentHash");
+
+                    b.Property<string>("Definition")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("DefinitionJson");
+
+                    b.Property<Guid>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Presentation")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PublishedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormTemplateId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormTemplateVersions_TemplateId_VersionNumber");
+
+                    b.HasIndex("TenantId", "FormTemplateId")
+                        .HasDatabaseName("IX_FormTemplateVersions_TenantId_TemplateId");
+
+                    b.ToTable("FormTemplateVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormTemplateVersions_Definition_IsJson", "ISJSON([DefinitionJson]) = 1");
+                        });
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.Domain.Backfill.TenantBackfillState", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -769,6 +1476,277 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.ToView(null, (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormAttachment", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("FormSubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormFieldComment", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmissionRevision", null)
+                        .WithMany("FieldComments")
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion", null)
+                        .WithMany()
+                        .HasForeignKey("FormTemplateVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSensitiveAnswer", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", null)
+                        .WithMany("SensitiveAnswers")
+                        .HasForeignKey("FormSubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormActor", "CapturedBy", b1 =>
+                        {
+                            b1.Property<Guid>("FormSensitiveAnswerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Kind")
+                                .HasColumnType("int")
+                                .HasColumnName("CapturedByKind");
+
+                            b1.Property<Guid?>("ParticipantId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("CapturedByParticipantId");
+
+                            b1.Property<Guid?>("PortalUserId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("CapturedByPortalUserId");
+
+                            b1.Property<Guid?>("SessionId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("CapturedBySessionId");
+
+                            b1.HasKey("FormSensitiveAnswerId");
+
+                            b1.ToTable("FormSensitiveAnswers");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSensitiveAnswerId");
+                        });
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.ProtectedTaxIdentifier", "Protected", b1 =>
+                        {
+                            b1.Property<Guid>("FormSensitiveAnswerId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Cipher")
+                                .IsRequired()
+                                .HasMaxLength(1024)
+                                .HasColumnType("nvarchar(1024)")
+                                .HasColumnName("Cipher");
+
+                            b1.Property<short>("KeyVersion")
+                                .HasColumnType("smallint")
+                                .HasColumnName("KeyVersion");
+
+                            b1.Property<string>("Last4")
+                                .IsRequired()
+                                .HasMaxLength(4)
+                                .HasColumnType("nvarchar(4)")
+                                .HasColumnName("Last4");
+
+                            b1.HasKey("FormSensitiveAnswerId");
+
+                            b1.ToTable("FormSensitiveAnswers");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSensitiveAnswerId");
+                        });
+
+                    b.Navigation("CapturedBy")
+                        .IsRequired();
+
+                    b.Navigation("Protected")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", null)
+                        .WithOne("Submission")
+                        .HasForeignKey("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", "FormRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.ProtectedAnswers", "DraftAnswers", b1 =>
+                        {
+                            b1.Property<Guid>("FormSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Cipher")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("DraftAnswersCipher");
+
+                            b1.Property<short>("KeyVersion")
+                                .HasColumnType("smallint")
+                                .HasColumnName("DraftAnswersKeyVersion");
+
+                            b1.HasKey("FormSubmissionId");
+
+                            b1.ToTable("FormSubmissions");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSubmissionId");
+                        });
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormActor", "DraftUpdatedBy", b1 =>
+                        {
+                            b1.Property<Guid>("FormSubmissionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Kind")
+                                .HasColumnType("int")
+                                .HasColumnName("DraftUpdatedByKind");
+
+                            b1.Property<Guid?>("ParticipantId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("DraftUpdatedByParticipantId");
+
+                            b1.Property<Guid?>("PortalUserId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("DraftUpdatedByPortalUserId");
+
+                            b1.Property<Guid?>("SessionId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("DraftUpdatedBySessionId");
+
+                            b1.HasKey("FormSubmissionId");
+
+                            b1.ToTable("FormSubmissions");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSubmissionId");
+                        });
+
+                    b.Navigation("DraftAnswers");
+
+                    b.Navigation("DraftUpdatedBy");
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmissionRevision", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", null)
+                        .WithMany("Revisions")
+                        .HasForeignKey("FormSubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.ProtectedAnswers", "Answers", b1 =>
+                        {
+                            b1.Property<Guid>("FormSubmissionRevisionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Cipher")
+                                .IsRequired()
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("AnswersCipher");
+
+                            b1.Property<short>("KeyVersion")
+                                .HasColumnType("smallint")
+                                .HasColumnName("AnswersKeyVersion");
+
+                            b1.HasKey("FormSubmissionRevisionId");
+
+                            b1.ToTable("FormSubmissionRevisions");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSubmissionRevisionId");
+                        });
+
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormActor", "SubmittedBy", b1 =>
+                        {
+                            b1.Property<Guid>("FormSubmissionRevisionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Kind")
+                                .HasColumnType("int")
+                                .HasColumnName("SubmittedByKind");
+
+                            b1.Property<Guid?>("ParticipantId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("SubmittedByParticipantId");
+
+                            b1.Property<Guid?>("PortalUserId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("SubmittedByPortalUserId");
+
+                            b1.Property<Guid?>("SessionId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("SubmittedBySessionId");
+
+                            b1.HasKey("FormSubmissionRevisionId");
+
+                            b1.ToTable("FormSubmissionRevisions");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormSubmissionRevisionId");
+                        });
+
+                    b.Navigation("Answers")
+                        .IsRequired();
+
+                    b.Navigation("SubmittedBy")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", b =>
+                {
+                    b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Templates.LibraryOrigin", "LibraryOrigin", b1 =>
+                        {
+                            b1.Property<Guid>("FormTemplateId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("LibraryKey")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("nvarchar(100)")
+                                .HasColumnName("LibraryOriginKey");
+
+                            b1.Property<Guid>("SourceTemplateId")
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("LibrarySourceTemplateId");
+
+                            b1.Property<int>("SourceVersionNumber")
+                                .HasColumnType("int")
+                                .HasColumnName("LibrarySourceVersionNumber");
+
+                            b1.HasKey("FormTemplateId");
+
+                            b1.ToTable("FormTemplates");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FormTemplateId");
+                        });
+
+                    b.Navigation("LibraryOrigin");
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("FormTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.Domain.ClientRequests.ClientRequestDocument", b =>
                 {
                     b.HasOne("TaxVision.Tasks.Domain.ClientRequests.ClientRequest", null)
@@ -1081,6 +2059,25 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Title")
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", b =>
+                {
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Revisions");
+
+                    b.Navigation("SensitiveAnswers");
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmissionRevision", b =>
+                {
+                    b.Navigation("FieldComments");
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.ClientRequests.ClientRequest", b =>

@@ -1651,6 +1651,8 @@ services:
       ConnectionStrings__Default: ${TASKS_DB_CONNECTION:?Set TASKS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:?Set ENCRYPTION_MASTER_KEY}
+      Encryption__MasterKeyVersion: "1"
       # M2M: catalogo de plan-rate-limits (Subscription) + recuperacion pull de permisos (Auth).
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${TASKS_SERVICE_CLIENT_ID:-tasks-worker}
@@ -1664,6 +1666,8 @@ services:
       # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
       Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       Tasks__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Rollout de Client Forms. El filtro valida tambien tenant y modulo planner.
+      ClientForms__Enabled: ${TASKS_CLIENT_FORMS_ENABLED:-false}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
