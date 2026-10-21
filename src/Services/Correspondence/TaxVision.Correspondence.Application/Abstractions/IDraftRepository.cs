@@ -41,7 +41,7 @@ public interface IDraftRepository
     /// </param>
     Task<PagedResult<Draft>> ListOpenByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         Guid? ownerUserId = null,
@@ -67,7 +67,7 @@ public interface IDraftRepository
     /// </summary>
     Task<PagedResult<Draft>> ListSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -89,7 +89,7 @@ public interface IDraftRepository
     // Papelera: enviados borrados de un customer, más reciente primero.
     Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,

@@ -107,6 +107,12 @@ public sealed class RecalculateEntitlementsForPlanHandlerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<TenantSubscription>> GetActiveWithPeriodEndedBeforeAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TenantSubscription>>([]);
+
         public Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
             DateTime nowUtc,
             int batchSize,

@@ -23,9 +23,36 @@ public sealed class DraftTests
         DraftAttachmentRef.Create(Guid.NewGuid(), "file.pdf", "application/pdf", sizeBytes).Value;
 
     [Fact]
-    public void CreateNew_fails_when_customerId_is_empty()
+    public void CreateNew_without_customer_is_a_mail_not_filed_under_any_client()
     {
+        var result = Draft.CreateNew(Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value.CustomerId);
+    }
+
+    [Fact]
+    public void CreateNew_rejects_an_empty_customer_id_instead_of_reading_it_as_no_customer()
+    {
+        // "Sin cliente" se pide con null: Guid.Empty es un id mal armado, no una intención.
         var result = Draft.CreateNew(Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Draft.CustomerIdInvalid", result.Error.Code);
+    }
+
+    [Fact]
+    public void CreateReply_still_requires_a_customer()
+    {
+        // Un reply nace de un correo entrante, y solo entran correos de clientes.
+        var result = Draft.CreateReply(
+            Guid.NewGuid(),
+            Guid.Empty,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            ValidReplyContext(),
+            "Tax question"
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Draft.CustomerIdRequired", result.Error.Code);

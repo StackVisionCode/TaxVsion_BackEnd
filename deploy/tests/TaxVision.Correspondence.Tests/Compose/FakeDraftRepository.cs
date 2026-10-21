@@ -37,7 +37,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
     public Task<PagedResult<Draft>> ListOpenByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         Guid? ownerUserId = null,
@@ -48,7 +48,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         var normalizedSize = size < 1 ? 20 : size;
 
         var filtered = _store
-            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Draft)
+            .Where(x => x.TenantId == tenantId && x.CustomerId == scope.CustomerId && x.Status == DraftStatus.Draft)
             .Where(x => ownerUserId is null || x.CreatedByUserId == ownerUserId)
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
@@ -61,7 +61,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
     public Task<PagedResult<Draft>> ListSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -72,7 +72,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
         var normalizedSize = size < 1 ? 20 : size;
 
         var filtered = _store
-            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent)
+            .Where(x => x.TenantId == tenantId && x.CustomerId == scope.CustomerId && x.Status == DraftStatus.Sent)
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToList();
@@ -109,7 +109,7 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
     public Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
         Guid tenantId,
-        Guid customerId,
+        DraftCustomerScope scope,
         int page,
         int size,
         IReadOnlyCollection<Guid>? visibleAccountIds = null,
@@ -121,7 +121,10 @@ internal sealed class FakeDraftRepository : IDraftRepository
 
         var filtered = _store
             .Where(x =>
-                x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent && x.IsDeleted
+                x.TenantId == tenantId
+                && x.CustomerId == scope.CustomerId
+                && x.Status == DraftStatus.Sent
+                && x.IsDeleted
             )
             .Where(x => visibleAccountIds is null || visibleAccountIds.Contains(x.AccountId))
             .OrderByDescending(x => x.DeletedAtUtc)

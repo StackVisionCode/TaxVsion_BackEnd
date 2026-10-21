@@ -88,6 +88,21 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // Con renovaciones: el dominio las mira para no suspender a quien sigue en reintento.
+    public async Task<IReadOnlyList<TenantSubscription>> GetActiveWithPeriodEndedBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await WithRenewals(db.Subscriptions)
+            .IgnoreQueryFilters()
+            .Where(s =>
+                s.Status == SubscriptionStatus.Active && !s.CancelAtPeriodEnd && s.CurrentPeriodEndUtc <= cutoffUtc
+            )
+            .OrderBy(s => s.CurrentPeriodEndUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<TenantSubscription>> GetAccessEndingBetweenAsync(
         DateTime fromUtc,
         DateTime toUtc,

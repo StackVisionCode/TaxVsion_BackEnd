@@ -85,6 +85,73 @@ public sealed class SeatAndAddOnRenewalTests
         Assert.Equal(AddOnStatus.PastDue, addOn.Status);
     }
 
+    [Fact]
+    public void Seat_goes_past_due_after_three_retries_even_if_payments_keeps_saying_it_will_retry()
+    {
+        var seat = CreateActiveSeat();
+        seat.BeginRenewal("seat-key-1", Guid.Empty, DateTime.UtcNow);
+        var renewalId = seat.Renewals.First().Id;
+
+        for (var i = 0; i < RenewalRetryPolicy.MaxRetryAttempts; i++)
+        {
+            seat.FailRenewal(
+                renewalId,
+                "card_declined",
+                "Declined",
+                true,
+                DateTime.UtcNow,
+                Guid.Empty,
+                DateTime.UtcNow
+            );
+            Assert.NotEqual(SeatStatus.PastDue, seat.Status);
+        }
+
+        seat.FailRenewal(renewalId, "card_declined", "Declined", true, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(SeatStatus.PastDue, seat.Status);
+        Assert.Equal(RenewalStatus.Failed, seat.Renewals.First().Status);
+    }
+
+    [Theory]
+    [InlineData("requires_payment_method")]
+    [InlineData("PayPal.Authorize.NotImplemented")]
+    public void Seat_without_a_way_to_charge_goes_past_due_on_the_first_failure(string failureCode)
+    {
+        var seat = CreateActiveSeat();
+        seat.BeginRenewal("seat-key-1", Guid.Empty, DateTime.UtcNow);
+
+        seat.FailRenewal(
+            seat.Renewals.First().Id,
+            failureCode,
+            "No card",
+            true,
+            DateTime.UtcNow,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.Equal(SeatStatus.PastDue, seat.Status);
+    }
+
+    [Fact]
+    public void AddOn_without_a_saved_card_goes_past_due_on_the_first_failure()
+    {
+        var addOn = CreateActiveAddOn();
+        addOn.BeginRenewal("addon-key-1", DateTime.UtcNow.AddMonths(2), Guid.Empty, DateTime.UtcNow);
+
+        addOn.FailRenewal(
+            addOn.Renewals.First().Id,
+            "requires_payment_method",
+            "No card",
+            true,
+            DateTime.UtcNow,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.Equal(AddOnStatus.PastDue, addOn.Status);
+    }
+
     private static SubscriptionSeat CreateActiveSeat()
     {
         var seat = SubscriptionSeat

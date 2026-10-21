@@ -211,6 +211,50 @@ public sealed class OfficeAlertConsumersTests
     }
 
     [Fact]
+    public async Task Refresh_failure_groups_in_app_notifications_by_mailbox()
+    {
+        // Con GroupKey, Communication actualiza el aviso sin leer de esa cuenta en lugar de crear otro.
+        var owner = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var harness = new NotificationDispatcherHarness();
+        var resolver = new AudienceResolver(
+            Guid.NewGuid(),
+            new Dictionary<string, IReadOnlyList<Guid>> { [NotificationPermissions.MailboxAlerts] = [] }
+        );
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            await ConnectorsOAuthRefreshFailedConsumer.Handle(
+                new ConnectorsOAuthRefreshFailedIntegrationEvent
+                {
+                    TenantId = TenantId,
+                    AccountId = accountId,
+                    ConnectionId = Guid.NewGuid(),
+                    ProviderCode = "Gmail",
+                    Reason = "invalid_grant",
+                    ErrorCode = "invalid_grant",
+                    FailedAtUtc = DateTime.UtcNow,
+                    CreatedByUserId = owner,
+                    IsOfficeMailbox = false,
+                    MailboxOwnerUserId = owner,
+                },
+                harness.Dispatcher,
+                AlwaysOnInAppSource.Instance,
+                resolver,
+                new TestCorrelationContext(),
+                CancellationToken.None
+            );
+        }
+
+        var published = harness.Publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>().ToList();
+        Assert.Equal(2, published.Count);
+        Assert.All(
+            published,
+            notification => Assert.Equal($"connectors.oauth.refresh_failed:{accountId:N}", notification.GroupKey)
+        );
+    }
+
+    [Fact]
     public async Task Personal_mailbox_failure_notifies_only_mailbox_owner()
     {
         var creator = Guid.NewGuid();

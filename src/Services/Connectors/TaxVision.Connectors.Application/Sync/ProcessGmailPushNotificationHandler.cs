@@ -6,6 +6,7 @@ using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
+using TaxVision.Connectors.Domain.Accounts;
 using Wolverine;
 
 namespace TaxVision.Connectors.Application.Sync;
@@ -39,6 +40,20 @@ public static class ProcessGmailPushNotificationHandler
             return Result.Failure(accountResult.Error);
 
         var account = accountResult.Value;
+
+        // Una cuenta en Error o desconectada no puede sincronizar hasta que el usuario la reconecte.
+        // Devolver éxito hace que Pub/Sub deje de reintentar: el 500 generaba un reintento por
+        // segundo, y cada uno volvía a intentar el refresh del token.
+        if (account.Status is not (TenantEmailAccountStatus.Active or TenantEmailAccountStatus.Connected))
+        {
+            logger.LogInformation(
+                "Gmail push for account {AccountId} ignored — account is {Status}.",
+                account.Id,
+                account.Status
+            );
+            return Result.Success();
+        }
+
         var clientResult = emailClientFactory.Resolve(account.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure(clientResult.Error);
@@ -87,6 +102,15 @@ public static class ProcessGmailPushNotificationHandler
             logger,
             ct
         );
+
+        if (syncResult.IsFailure && syncResult.Error.Code == RawMessageSyncOrchestrator.ReconnectRequiredCode)
+        {
+            logger.LogWarning(
+                "Gmail push for account {AccountId} acknowledged without sync — the account needs to be reconnected.",
+                account.Id
+            );
+            return Result.Success();
+        }
 
         return syncResult.IsFailure ? Result.Failure(syncResult.Error) : Result.Success();
     }

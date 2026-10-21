@@ -144,10 +144,7 @@ public sealed class GoogleOAuthClient(
         }
 
         if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Google OAuth token request returned HTTP {Status}.", (int)response.StatusCode);
-            throw new OAuthProviderException($"Google OAuth token request returned HTTP {(int)response.StatusCode}.");
-        }
+            throw await BuildTokenErrorAsync(response, ct);
 
         GoogleTokenResponse? payload;
         try
@@ -163,6 +160,34 @@ public sealed class GoogleOAuthClient(
             throw new OAuthProviderException("Google OAuth token response was missing access_token.");
 
         return new OAuthTokenGrant(payload.AccessToken, payload.RefreshToken, payload.ExpiresInSeconds);
+    }
+
+    /// <summary>
+    /// Google usa un solo código para la cuenta: <c>invalid_grant</c> (refresh token revocado,
+    /// vencido a los 7 días si la pantalla de consentimiento está en "Testing", o invalidado por
+    /// cambio de contraseña). No usa los códigos de interacción de Microsoft.
+    /// </summary>
+    private const string ReconnectError = "invalid_grant";
+
+    /// <summary>Client id o secret de la app mal configurados: reconectar no lo arregla.</summary>
+    private static readonly HashSet<string> AppConfigurationErrors = ["invalid_client", "unauthorized_client"];
+
+    private async Task<OAuthProviderException> BuildTokenErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var status = (int)response.StatusCode;
+        // Solo el código: la descripción de Google es texto libre y no aporta para clasificar.
+        var code = (await OAuthTokenErrorResponse.TryReadAsync(response, ct))?.Error;
+        var message = $"Google OAuth token request returned HTTP {status}{(code is null ? "" : $" ({code})")}.";
+
+        if (code is not null && AppConfigurationErrors.Contains(code))
+            logger.LogError(
+                "Google OAuth token request rejected the app credentials ({Error}) — check GMAIL_CLIENT_ID/secret in Google Cloud Console.",
+                code
+            );
+        else
+            logger.LogWarning("Google OAuth token request returned HTTP {Status} ({Error}).", status, code);
+
+        return new OAuthProviderException(message, requiresReconnect: code == ReconnectError);
     }
 
     private sealed record GoogleTokenResponse

@@ -21,6 +21,9 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         int size,
         Guid? assignedToUserId = null,
         bool includeAssignees = false,
+        CustomerKind? kind = null,
+        CustomerSortField sort = CustomerSortField.Name,
+        CustomerSortDirection direction = CustomerSortDirection.Asc,
         CancellationToken ct = default
     )
     {
@@ -48,6 +51,9 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             _ => query.Where(c => c.Status == CustomerStatus.Active),
         };
 
+        if (kind is { } onlyKind)
+            query = query.Where(c => c.Kind == onlyKind);
+
         if (!string.IsNullOrWhiteSpace(term))
         {
             var normalized = term.Trim().ToLowerInvariant();
@@ -72,9 +78,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
 
         var totalCount = await query.CountAsync(ct);
 
-        var pageRows = await query
-            .OrderBy(c => c.DisplayName)
-            .ThenBy(c => c.Id)
+        var pageRows = await Ordered(query, sort, direction)
             .Skip((page - 1) * size)
             .Take(size)
             .Select(c => new
@@ -110,6 +114,23 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
 
         return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
     }
+
+    // Desempate por Id: con nombres o fechas repetidos, cada página sale siempre igual y no se repiten
+    // ni se saltan filas al paginar.
+    private static IQueryable<Domain.Customers.Customer> Ordered(
+        IQueryable<Domain.Customers.Customer> query,
+        CustomerSortField sort,
+        CustomerSortDirection direction
+    ) =>
+        (sort, direction) switch
+        {
+            (CustomerSortField.Created, CustomerSortDirection.Desc) => query
+                .OrderByDescending(c => c.CreatedAtUtc)
+                .ThenByDescending(c => c.Id),
+            (CustomerSortField.Created, _) => query.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Id),
+            (_, CustomerSortDirection.Desc) => query.OrderByDescending(c => c.DisplayName).ThenByDescending(c => c.Id),
+            _ => query.OrderBy(c => c.DisplayName).ThenBy(c => c.Id),
+        };
 
     public async Task<CustomerDirectoryOverviewResponse> GetOverviewAsync(
         Guid tenantId,

@@ -30,11 +30,17 @@ public sealed class DraftsControllerOwnershipTests
     {
         public object? NextResult { get; set; }
 
+        public object? LastInvoked { get; private set; }
+
         public Task<T> InvokeAsync<T>(
             object message,
             CancellationToken cancellation = default,
             TimeSpan? timeout = null
-        ) => Task.FromResult((T)NextResult!);
+        )
+        {
+            LastInvoked = message;
+            return Task.FromResult((T)NextResult!);
+        }
 
         public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null) => ValueTask.CompletedTask;
 
@@ -237,5 +243,101 @@ public sealed class DraftsControllerOwnershipTests
         var result = await controller.AutoSave(draft.Id, EmptyBody, CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
+    }
+
+    // ---------- Listados: el alcance por cliente es explícito ----------
+
+    [Theory]
+    [InlineData(null, false)] // ninguno: un customerId olvidado no se lee como "sin cliente"
+    [InlineData("8c1d3f7e-0000-4000-8000-000000000001", true)] // los dos a la vez
+    [InlineData("00000000-0000-0000-0000-000000000000", false)] // id vacío
+    public async Task Lists_reject_a_missing_or_ambiguous_customer_scope(string? customerId, bool unlinked)
+    {
+        var parsed = customerId is null ? (Guid?)null : Guid.Parse(customerId);
+        var (controller, bus) = BuildListController();
+
+        var results = new[]
+        {
+            await controller.List(parsed, unlinked, 1, 20, CancellationToken.None),
+            await controller.ListSent(parsed, unlinked, 1, 20, CancellationToken.None),
+            await controller.ListTrash(parsed, unlinked, 1, 20, CancellationToken.None),
+        };
+
+        Assert.All(
+            results,
+            result =>
+            {
+                var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+                Assert.Equal("Correspondence.CustomerScopeRequired", Assert.IsType<Error>(badRequest.Value).Code);
+            }
+        );
+        Assert.Null(bus.LastInvoked);
+    }
+
+    [Fact]
+    public async Task ListSent_with_unlinked_queries_mail_without_customer()
+    {
+        var (controller, bus) = BuildListController();
+        bus.NextResult =
+            new BuildingBlocks.Common.PagedResult<TaxVision.Correspondence.Application.Compose.SentMessageListItem>(
+                [],
+                1,
+                20,
+                0
+            );
+
+        var result = await controller.ListSent(null, true, 1, 20, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
+        Assert.True(query.Customer.IsUnlinked);
+    }
+
+    [Fact]
+    public async Task ListSent_with_customerId_queries_that_customer()
+    {
+        var customerId = Guid.NewGuid();
+        var (controller, bus) = BuildListController();
+        bus.NextResult =
+            new BuildingBlocks.Common.PagedResult<TaxVision.Correspondence.Application.Compose.SentMessageListItem>(
+                [],
+                1,
+                20,
+                0
+            );
+
+        await controller.ListSent(customerId, false, 1, 20, CancellationToken.None);
+
+        var query = Assert.IsType<TaxVision.Correspondence.Application.Compose.ListSentMessagesQuery>(bus.LastInvoked);
+        Assert.Equal(customerId, query.Customer.CustomerId);
+    }
+
+    private static (DraftsController Controller, ControllableMessageBus Bus) BuildListController()
+    {
+        var bus = new ControllableMessageBus();
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(
+                [new Claim("tenant_id", Guid.NewGuid().ToString()), new Claim("sub", Guid.NewGuid().ToString())],
+                "Test"
+            )
+        );
+        var controller = new DraftsController(
+            bus,
+            new FakeDraftRepository(),
+            new RealAuthorizationService(
+                new IsOwnerOrHasManageHandler<Draft>(
+                    null,
+                    new JwtEmbeddedPermissionsSource(),
+                    new AuthorizationMetrics()
+                )
+            ),
+            new FakeOwnershipOptionsMonitor(false),
+            new Projections.FakeCorrelationContext(),
+            new FakeMailboxVisibilityResolver()
+        )
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },
+        };
+        return (controller, bus);
     }
 }

@@ -86,6 +86,10 @@ public static class VerifyMfaChallengeHandler
         if (tenant is null || !tenant.IsActive)
             return Result.Failure<MfaVerifyResponse>(invalid);
 
+        // La oficina pudo quedar sin pagar entre el login y el código: el MFA no abre lo que el login cerró.
+        if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
+            return Result.Failure<MfaVerifyResponse>(BillingAccessPolicy.SubscriptionInactive);
+
         var verified = false;
         var usedRecoveryCode = false;
         string methodAmr = "otp";

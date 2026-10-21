@@ -122,6 +122,11 @@ public sealed class SubscriptionRenewalCheckoutReconciliationJob(
                 );
             }
 
+            await bus.PublishRenewalChargesSupersededAsync(
+                intent.TenantId,
+                outcome.SupersededChargeKeys,
+                intent.Id.ToString("N")
+            );
             await bus.RecalculateEntitlementsSafelyAsync(intent.TenantId, logger, ct);
 
             logger.LogInformation(

@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
@@ -12,6 +13,12 @@ namespace TaxVision.Auth.Application.Common;
 /// </summary>
 public static class BillingAccessPolicy
 {
+    /// <summary>Mismo código que entiende el front para mostrar la pantalla de oficina sin pagar.</summary>
+    public static readonly Error SubscriptionInactive = new(
+        "Auth.SubscriptionInactive",
+        "This office's subscription is inactive. Please renew to restore access."
+    );
+
     public static bool IsBlockedForBilling(Tenant tenant, UserActorType actorType) =>
         tenant.BillingAccessBlocked && actorType is not (UserActorType.TenantAdmin or UserActorType.PlatformAdmin);
 }

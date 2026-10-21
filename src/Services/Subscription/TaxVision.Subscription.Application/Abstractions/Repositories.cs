@@ -82,6 +82,13 @@ public interface ISubscriptionRepository
         int batchSize,
         CancellationToken ct = default
     );
+
+    /// <summary>Active con el período vencido antes de <paramref name="cutoffUtc"/>, con sus renovaciones.</summary>
+    Task<IReadOnlyList<TenantSubscription>> GetActiveWithPeriodEndedBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
     Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(
         DateTime fromUtc,
         DateTime toUtc,

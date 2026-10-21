@@ -841,27 +841,12 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Cantidad máxima de reintentos de renovación que este agregado tolera antes de
-    /// forzar PastDue por cuenta propia, sin importar lo que PaymentApp reporte en
-    /// <c>WillRetry</c>. PaymentApp puede reportarlo en true indefinidamente para fallos que
-    /// nunca llegan a Processing (p.ej. sin payment method guardado), así que este cap actúa
-    /// como red de seguridad para no quedar Active para siempre.</summary>
-    private const int MaxRenewalRetryAttempts = 3;
-
-    /// <summary>FailureCodes que PaymentApp puede devolver y que son permanentes (no tiene
-    /// sentido reintentar): fuerzan PastDue en el primer intento fallido, sin esperar el cap
-    /// de <see cref="MaxRenewalRetryAttempts"/>.</summary>
-    private static readonly HashSet<string> PermanentRenewalFailureCodes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "requires_payment_method",
-    };
-
     /// <summary>Registra el fallo de una renovación. Si <paramref name="willRetry"/> es
     /// false agota los reintentos y transiciona la suscripción a PastDue.
     ///
     /// No confía ciegamente en <paramref name="willRetry"/>: se lo sobreescribe a false (y por
     /// lo tanto se fuerza PastDue) cuando el failureCode es conocido como permanente, o cuando
-    /// el renewal ya agotó <see cref="MaxRenewalRetryAttempts"/> reintentos propios — esto
+    /// el renewal ya agotó <see cref="RenewalRetryPolicy.MaxRetryAttempts"/> reintentos propios — esto
     /// cubre el caso en que PaymentApp reporta WillRetry=true de forma incorrecta.</summary>
     public Result FailRenewal(
         Guid renewalId,
@@ -877,10 +862,7 @@ public sealed class TenantSubscription : TenantEntity
         if (renewal is null)
             return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal does not exist."));
 
-        var effectiveWillRetry =
-            willRetry
-            && renewal.RetryCount < MaxRenewalRetryAttempts
-            && !PermanentRenewalFailureCodes.Contains(failureCode);
+        var effectiveWillRetry = RenewalRetryPolicy.ShouldRetry(willRetry, renewal.RetryCount, failureCode);
 
         var markResult = MarkRenewalAttemptFailed(
             renewal,
@@ -937,6 +919,76 @@ public sealed class TenantSubscription : TenantEntity
     /// necesita el renewal recién creado por <see cref="BeginRenewal"/> para completarlo en la misma unidad.</summary>
     public TenantSubscriptionRenewal? FindRenewalByIdempotencyKey(string idempotencyKey) =>
         FindRenewalByKey(idempotencyKey);
+
+    /// <summary>La clave ya la tiene un renewal de otro período (activaciones viejas usaban la clave de renovación).</summary>
+    public bool IsRenewalKeyUsedByAnotherPeriod(string idempotencyKey) =>
+        FindRenewalByKey(idempotencyKey) is { } renewal && renewal.PeriodStartUtc != CurrentPeriodEndUtc;
+
+    /// <summary>
+    /// Un pago manual saldó la renovación: cancela las renovaciones automáticas que seguían abiertas y
+    /// devuelve las claves de todas las que no se cobraron, para que PaymentApp deje de reintentarlas.
+    /// </summary>
+    public IReadOnlyList<string> SettleUnpaidRenewals(string? settlingKey, Guid actorUserId, DateTime nowUtc)
+    {
+        var unpaidKeys = new List<string>();
+        foreach (var renewal in _renewals)
+        {
+            if (renewal.IdempotencyKey == settlingKey || !IsUnpaid(renewal))
+                continue;
+
+            if (renewal.IsAwaitingPayment)
+                renewal.CancelAutomaticCharge();
+            unpaidKeys.Add(renewal.IdempotencyKey);
+        }
+
+        if (unpaidKeys.Count > 0)
+            Touch(actorUserId, nowUtc);
+        return unpaidKeys;
+    }
+
+    /// <summary>
+    /// Período vencido hace más de <paramref name="tolerance"/> sin renovarse ni reintento en curso: el cobro
+    /// nunca salió (evento perdido, clave vieja) y la oficina seguía usando el sistema sin pagar.
+    /// </summary>
+    public bool IsRenewalOverdue(TimeSpan tolerance, DateTime nowUtc)
+    {
+        if (Status != SubscriptionStatus.Active || CancelAtPeriodEnd || CurrentPeriodEndUtc + tolerance > nowUtc)
+            return false;
+
+        foreach (var renewal in _renewals)
+        {
+            // PaymentApp todavía lo reintenta: se deja terminar el dunning normal.
+            if (renewal.Status == RenewalStatus.RetryScheduled && renewal.NextRetryAtUtc > nowUtc - tolerance)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Suspende por renovación vencida. Devuelve las claves de cobro que ya no deben reintentarse.</summary>
+    public Result<IReadOnlyList<string>> SuspendBecauseRenewalOverdue(
+        TimeSpan tolerance,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        if (!IsRenewalOverdue(tolerance, nowUtc))
+            return Result.Failure<IReadOnlyList<string>>(
+                new Error("Subscription.RenewalNotOverdue", "The renewal is not overdue.")
+            );
+
+        Status = SubscriptionStatus.Suspended;
+        SuspendedAtUtc = nowUtc;
+        SuspensionReason = "RenewalOverdue";
+        // Desde acá se vuelve pagando a mano: un cobro automático tardío ya no reactivaría la cuenta.
+        var stoppedKeys = SettleUnpaidRenewals(null, actorUserId, nowUtc);
+        Touch(actorUserId, nowUtc);
+        return Result.Success(stoppedKeys);
+    }
+
+    // Failed también cuenta: Subscription ya se rindió, pero PaymentApp podía seguir reintentando.
+    private static bool IsUnpaid(TenantSubscriptionRenewal renewal) =>
+        renewal.IsAwaitingPayment || renewal.Status == RenewalStatus.Failed;
 
     private TenantSubscriptionRenewal? FindRenewalByKey(string idempotencyKey)
     {

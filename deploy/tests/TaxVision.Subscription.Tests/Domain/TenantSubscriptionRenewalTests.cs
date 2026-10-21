@@ -169,6 +169,126 @@ public sealed class TenantSubscriptionRenewalTests
         Assert.Equal("Subscription.RenewalNotFound", result.Error.Code);
     }
 
+    [Fact]
+    public void Paying_by_hand_cancels_the_automatic_renewal_still_in_retry_and_reports_its_key()
+    {
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("auto-key", Guid.Empty, DateTime.UtcNow);
+        var auto = subscription.Renewals.First();
+        subscription.FailRenewal(
+            auto.Id,
+            "card_declined",
+            "Declined",
+            true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        var keys = subscription.SettleUnpaidRenewals("manual-key", Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(["auto-key"], keys);
+        Assert.Equal(RenewalStatus.Cancelled, auto.Status);
+        Assert.Null(auto.NextRetryAtUtc);
+    }
+
+    [Fact]
+    public void Paying_by_hand_reports_failed_renewals_but_not_paid_ones_or_its_own()
+    {
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("failed-key", Guid.Empty, DateTime.UtcNow);
+        var failed = subscription.Renewals.First();
+        subscription.FailRenewal(failed.Id, "card_declined", "Declined", false, null, Guid.Empty, DateTime.UtcNow);
+        subscription.ReactivateAfterSelfServicePayment(
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddMonths(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+        subscription.BeginRenewal("manual-key", Guid.Empty, DateTime.UtcNow);
+        var manual = subscription.Renewals.Last();
+        subscription.CompleteRenewal(manual.Id, "pi_manual", Guid.Empty, DateTime.UtcNow);
+
+        var keys = subscription.SettleUnpaidRenewals("manual-key", Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(["failed-key"], keys);
+        Assert.Equal(RenewalStatus.Failed, failed.Status);
+        Assert.Equal(RenewalStatus.Succeeded, manual.Status);
+    }
+
+    [Fact]
+    public void A_cancelled_renewal_can_not_advance_the_period_again()
+    {
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("auto-key", Guid.Empty, DateTime.UtcNow);
+        var auto = subscription.Renewals.First();
+        subscription.SettleUnpaidRenewals("manual-key", Guid.Empty, DateTime.UtcNow);
+        var periodEnd = subscription.CurrentPeriodEndUtc;
+
+        var late = subscription.CompleteRenewal(auto.Id, "pi_late", Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(late.IsFailure);
+        Assert.Equal(periodEnd, subscription.CurrentPeriodEndUtc);
+    }
+
+    [Fact]
+    public void The_activation_charge_holds_the_renewal_key_of_its_own_period()
+    {
+        var subscription = CreateActiveSubscription();
+        var legacyKey = $"subscription-renewal-{subscription.Id:N}-{subscription.CurrentPeriodEndUtc:yyyyMMdd}";
+        subscription.BeginActivationCharge(legacyKey, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(subscription.IsRenewalKeyUsedByAnotherPeriod(legacyKey));
+        Assert.False(subscription.IsRenewalKeyUsedByAnotherPeriod("unused-key"));
+    }
+
+    [Fact]
+    public void A_period_that_ended_days_ago_without_renewing_suspends_and_stops_its_charges()
+    {
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("stuck-key", Guid.Empty, DateTime.UtcNow);
+        var nowUtc = subscription.CurrentPeriodEndUtc.AddDays(3);
+
+        var result = subscription.SuspendBecauseRenewalOverdue(TimeSpan.FromDays(2), Guid.Empty, nowUtc);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SubscriptionStatus.Suspended, subscription.Status);
+        Assert.Equal("RenewalOverdue", subscription.SuspensionReason);
+        Assert.Equal(["stuck-key"], result.Value);
+        Assert.Equal(RenewalStatus.Cancelled, subscription.Renewals.Single().Status);
+    }
+
+    [Fact]
+    public void Within_the_tolerance_the_subscription_stays_active()
+    {
+        var subscription = CreateActiveSubscription();
+        var nowUtc = subscription.CurrentPeriodEndUtc.AddDays(1);
+
+        var result = subscription.SuspendBecauseRenewalOverdue(TimeSpan.FromDays(2), Guid.Empty, nowUtc);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+    }
+
+    [Fact]
+    public void A_renewal_still_being_retried_is_not_overdue()
+    {
+        var subscription = CreateActiveSubscription();
+        var periodEnd = subscription.CurrentPeriodEndUtc;
+        subscription.BeginRenewal("retry-key", Guid.Empty, DateTime.UtcNow);
+        subscription.FailRenewal(
+            subscription.Renewals.Single().Id,
+            "card_declined",
+            "Declined",
+            true,
+            periodEnd.AddDays(2.5),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.False(subscription.IsRenewalOverdue(TimeSpan.FromDays(2), periodEnd.AddDays(3)));
+    }
+
     private static TenantSubscription CreateActiveSubscription()
     {
         var plan = SubscriptionPlan

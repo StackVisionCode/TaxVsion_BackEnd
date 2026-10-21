@@ -11,7 +11,7 @@ namespace TaxVision.Correspondence.Application.Compose;
 /// </summary>
 public sealed record DraftDetail(
     Guid DraftId,
-    Guid CustomerId,
+    Guid? CustomerId,
     Guid AccountId,
     string Subject,
     string HtmlBody,

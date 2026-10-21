@@ -303,7 +303,12 @@ public static class SubscriptionRenewalDueConsumer
                         outcome.FailureMessage ?? "Off-session charge was declined."
                     ),
                     Guid.Empty,
-                    SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, nowUtc),
+                    // Con referencia, el intento ya quedó registrado en MarkProcessing: no contarlo dos veces.
+                    SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(
+                        payment,
+                        nowUtc,
+                        failedAttemptRecorded: payment.Status == PaymentStatus.Processing
+                    ),
                     metrics
                 );
                 break;

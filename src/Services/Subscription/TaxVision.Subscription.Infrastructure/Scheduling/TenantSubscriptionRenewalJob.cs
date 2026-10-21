@@ -88,10 +88,7 @@ public sealed class TenantSubscriptionRenewalJob(
                 continue;
             }
 
-            var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(
-                subscription.Id,
-                subscription.CurrentPeriodEndUtc
-            );
+            var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewalFor(subscription);
             var result = subscription.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
             {
