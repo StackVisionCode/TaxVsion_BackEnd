@@ -52,6 +52,36 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
 
     public sealed record SetPublicSharingPolicyRequest(bool Allow);
 
+    public sealed record SetStorageProviderRequest(string? Mode, string? ProviderId, string? Provider, string? BackupFrequency, string? BackupTime, string? BackupTimeZoneId);
+
+    [HttpGet("settings/provider")]
+    [HttpGet("settings/policy")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(CloudStoragePermissions.SettingsManage)]
+    [RateLimit("cloudstorage.f.admin_read")]
+    [ProducesResponseType<StoragePolicyResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetStorageProvider(CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId)) return Unauthorized();
+        var result = await bus.InvokeAsync<Result<StoragePolicyResponse>>(new GetStoragePolicyQuery(tenantId), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPut("settings/provider")]
+    [HttpPut("settings/policy")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(CloudStoragePermissions.SettingsManage)]
+    [RateLimit("cloudstorage.g.settings_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SetStorageProvider(SetStorageProviderRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId)) return Unauthorized();
+        var mode = request.Mode ?? request.Provider ?? string.Empty;
+        var providerId = request.ProviderId ?? "google-drive";
+        var result = await bus.InvokeAsync<Result>(new SetStorageProviderCommand(tenantId, mode, providerId, request.BackupFrequency, request.BackupTime, request.BackupTimeZoneId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Fase C3 — habilita/deshabilita links Visibility.Public. Deshabilitado por defecto (datos fiscales).</summary>
     [HttpPut("settings/public-sharing")]
     [HasPermission(CloudStoragePermissions.SettingsManage)]

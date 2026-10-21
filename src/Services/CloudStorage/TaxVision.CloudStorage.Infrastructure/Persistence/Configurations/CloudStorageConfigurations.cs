@@ -5,6 +5,7 @@ using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Quotas;
+using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Infrastructure.Persistence.Configurations;
@@ -93,12 +94,71 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder.HasKey(limit => limit.Id);
         builder.Property(limit => limit.TenantId).IsRequired();
         builder.Property(limit => limit.PlanCode).HasMaxLength(64).IsRequired();
+        builder.Property(limit => limit.StorageProvider).HasMaxLength(32).HasDefaultValue("internal").IsRequired();
         builder.Property(limit => limit.AllowPublicShareLinks).HasDefaultValue(true);
         builder.Property(limit => limit.AllowLinkOnlyExternalShares).HasDefaultValue(true);
         builder.Property(limit => limit.RequirePasswordOnLinkShares).HasDefaultValue(false);
         builder.Property(limit => limit.MaxShareLifetimeDays).HasDefaultValue(30);
         builder.Property(limit => limit.RowVersion).IsRowVersion();
         builder.HasIndex(limit => limit.TenantId).IsUnique();
+    }
+}
+
+public sealed class TenantCloudConnectionConfiguration : IEntityTypeConfiguration<TenantCloudConnection>
+{
+    public void Configure(EntityTypeBuilder<TenantCloudConnection> builder)
+    {
+        builder.ToTable("TenantCloudConnections");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.TenantId).IsRequired();
+        builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.AccountEmail).HasMaxLength(320).IsRequired();
+        builder.Property(x => x.ProtectedRefreshToken).HasMaxLength(4096).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.Provider }).IsUnique();
+    }
+}
+
+public sealed class TenantStoragePolicyConfiguration : IEntityTypeConfiguration<TenantStoragePolicy>
+{
+    public void Configure(EntityTypeBuilder<TenantStoragePolicy> builder)
+    {
+        builder.ToTable("TenantStoragePolicies");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.TenantId).IsRequired();
+        builder.Property(x => x.ProviderId).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.Mode).HasMaxLength(32).HasDefaultValue("crm").IsRequired();
+        builder.Property(x => x.BackupFrequency).HasMaxLength(16);
+        builder.Property(x => x.BackupTime).HasMaxLength(5);
+        builder.Property(x => x.BackupTimeZoneId).HasMaxLength(128);
+        builder.HasIndex(x => x.TenantId).IsUnique();
+    }
+}
+
+public sealed class CloudProviderOAuthStateConfiguration : IEntityTypeConfiguration<CloudProviderOAuthState>
+{
+    public void Configure(EntityTypeBuilder<CloudProviderOAuthState> builder)
+    {
+        builder.ToTable("CloudProviderOAuthStates");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.TenantId).IsRequired();
+        builder.Property(x => x.InitiatedByUserId).IsRequired();
+        builder.Property(x => x.ExpiresAtUtc).IsRequired();
+        builder.HasIndex(x => x.ExpiresAtUtc);
+    }
+}
+
+public sealed class TenantCloudFileCopyConfiguration : IEntityTypeConfiguration<TenantCloudFileCopy>
+{
+    public void Configure(EntityTypeBuilder<TenantCloudFileCopy> builder)
+    {
+        builder.ToTable("TenantCloudFileCopies");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.TenantId).IsRequired();
+        builder.Property(x => x.FileId).IsRequired();
+        builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.RemoteFileId).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.ChecksumSha256).HasMaxLength(64).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.FileId, x.Provider }).IsUnique();
     }
 }
 

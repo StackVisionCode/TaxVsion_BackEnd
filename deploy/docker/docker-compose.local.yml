@@ -1,0 +1,47 @@
+# Local development: keep the application stack without services that require
+# Cloudflare DNS, Stripe credentials, or a signing certificate.
+services:
+  # The legacy minio/minio and minio/mc images are no longer pullable.
+  # Pin the maintained, MinIO-compatible community fork for local development.
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+
+  minio-provision:
+    image: pgsty/mc:RELEASE.2026-08-04T00-00-00Z
+
+  caddy:
+    profiles: [external]
+
+  payment-app-api:
+    profiles: [external]
+
+  signature-api:
+    profiles: [external]
+
+  gateway:
+    depends_on: !override
+      - auth-api
+      - tenant-api
+      - customer-api
+      - subscription-api
+      - notification-api
+      - postmaster-api
+      - scribe-api
+      - connectors-api
+      - correspondence-api
+      - cloudstorage-api
+      - communication-api
+      - payment-client-api
+      - growth-api
+      - billing-api
+      - documents-api
+      - notes-api
+      - sms-api
+      - reminder-api
+      - tasks-api
+      - calendar-api
+      - catalog-api
+      - campaigns-api
+      - wallet-api
+      - inventory-api
+      - otel-collector

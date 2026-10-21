@@ -1,34 +1,36 @@
 # Staggered launcher (mirror of scripts/start-fleet.ps1, with pauses to avoid the SQL thundering herd).
 # Auth first and wait until it listens; then the rest with pauses; Gateway last.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
-$gap  = 3
+# $root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+$root = "D:\Usuarios\Jorge\Escritorio\ProyectoTax\TaxVsion_BackEnd"
+
+$gap = 3
 $fleet = @(
-  @{ n = "Auth";           d = "src\Services\Auth\Api";                                p = 5124 },
-  @{ n = "Tenant";         d = "src\Services\Tenant\TaxVision.Tenant.Api";             p = 5217 },
-  @{ n = "Customer";       d = "src\Services\Customer\TaxVision.Customer.Api";         p = 5263 },
-  @{ n = "Wallet";         d = "src\Services\Wallet\TaxVision.Wallet.Api";             p = 5270 },
-  @{ n = "Notification";   d = "src\Services\Notification\TaxVision.Notification.Api"; p = 5320 },
-  @{ n = "CloudStorage";   d = "src\Services\CloudStorage\TaxVision.CloudStorage.Api"; p = 5330 },
-  @{ n = "Signature";      d = "src\Services\Signature\TaxVision.Signature.Api";       p = 5340 },
-  @{ n = "Subscription";   d = "src\Services\Subscription\TaxVision.Subscription.Api"; p = 5360 },
-  @{ n = "Postmaster";     d = "src\Services\Postmaster\TaxVision.Postmaster.Api";     p = 5370 },
-  @{ n = "Scribe";         d = "src\Services\Scribe\TaxVision.Scribe.Api";             p = 5380 },
-  @{ n = "Connectors";     d = "src\Services\Connectors\TaxVision.Connectors.Api";     p = 5390 },
+  @{ n = "Auth"; d = "src\Services\Auth\Api"; p = 5124 },
+  @{ n = "Tenant"; d = "src\Services\Tenant\TaxVision.Tenant.Api"; p = 5217 },
+  @{ n = "Customer"; d = "src\Services\Customer\TaxVision.Customer.Api"; p = 5263 },
+  @{ n = "Wallet"; d = "src\Services\Wallet\TaxVision.Wallet.Api"; p = 5270 },
+  @{ n = "Notification"; d = "src\Services\Notification\TaxVision.Notification.Api"; p = 5320 },
+  @{ n = "CloudStorage"; d = "src\Services\CloudStorage\TaxVision.CloudStorage.Api"; p = 5330 },
+  @{ n = "Signature"; d = "src\Services\Signature\TaxVision.Signature.Api"; p = 5340 },
+  @{ n = "Subscription"; d = "src\Services\Subscription\TaxVision.Subscription.Api"; p = 5360 },
+  @{ n = "Postmaster"; d = "src\Services\Postmaster\TaxVision.Postmaster.Api"; p = 5370 },
+  @{ n = "Scribe"; d = "src\Services\Scribe\TaxVision.Scribe.Api"; p = 5380 },
+  @{ n = "Connectors"; d = "src\Services\Connectors\TaxVision.Connectors.Api"; p = 5390 },
   @{ n = "Correspondence"; d = "src\Services\Correspondence\TaxVision.Correspondence.Api"; p = 5400 },
-  @{ n = "Growth";         d = "src\Services\Growth\TaxVision.Growth.Api";             p = 5410 },
-  @{ n = "PaymentClient";  d = "src\Services\PaymentClient\TaxVision.PaymentClient.Api"; p = 5420 },
-  @{ n = "PaymentApp";     d = "src\Services\PaymentApp\TaxVision.PaymentApp.Api";     p = 5430 },
-  @{ n = "Notes";          d = "src\Services\Notes\TaxVision.Notes.Api";               p = 5440 },
-  @{ n = "Documents";      d = "src\Services\Documents\TaxVision.Documents.Api";       p = 5450 },
-  @{ n = "Billing";        d = "src\Services\Billing\TaxVision.Billing.Api";           p = 5460 },
-  @{ n = "Sms";            d = "src\Services\Sms\TaxVision.Sms.Api";                   p = 5470 },
-  @{ n = "Catalog";        d = "src\Services\Catalog\TaxVision.Catalog.Api";           p = 5480 },
-  @{ n = "Inventory";      d = "src\Services\Inventory\TaxVision.Inventory.Api";       p = 5490 },
-  @{ n = "Reminder";       d = "src\Services\Reminder\TaxVision.Reminder.Api";         p = 5500 },
-  @{ n = "Tasks";          d = "src\Services\Tasks\TaxVision.Tasks.Api";               p = 5510 },
-  @{ n = "Calendar";       d = "src\Services\Calendar\TaxVision.Calendar.Api";         p = 5520 },
-  @{ n = "Campaigns";      d = "src\Services\Campaigns\TaxVision.Campaigns.Api";       p = 5530 },
-  @{ n = "Gateway";        d = "src\Gateway\TaxVision.Gateway";                        p = 5047 }
+  @{ n = "Growth"; d = "src\Services\Growth\TaxVision.Growth.Api"; p = 5410 },
+  @{ n = "PaymentClient"; d = "src\Services\PaymentClient\TaxVision.PaymentClient.Api"; p = 5420 },
+  @{ n = "PaymentApp"; d = "src\Services\PaymentApp\TaxVision.PaymentApp.Api"; p = 5430 },
+  @{ n = "Notes"; d = "src\Services\Notes\TaxVision.Notes.Api"; p = 5440 },
+  @{ n = "Documents"; d = "src\Services\Documents\TaxVision.Documents.Api"; p = 5450 },
+  @{ n = "Billing"; d = "src\Services\Billing\TaxVision.Billing.Api"; p = 5460 },
+  @{ n = "Sms"; d = "src\Services\Sms\TaxVision.Sms.Api"; p = 5470 },
+  @{ n = "Catalog"; d = "src\Services\Catalog\TaxVision.Catalog.Api"; p = 5480 },
+  @{ n = "Inventory"; d = "src\Services\Inventory\TaxVision.Inventory.Api"; p = 5490 },
+  @{ n = "Reminder"; d = "src\Services\Reminder\TaxVision.Reminder.Api"; p = 5500 },
+  @{ n = "Tasks"; d = "src\Services\Tasks\TaxVision.Tasks.Api"; p = 5510 },
+  @{ n = "Calendar"; d = "src\Services\Calendar\TaxVision.Calendar.Api"; p = 5520 },
+  @{ n = "Campaigns"; d = "src\Services\Campaigns\TaxVision.Campaigns.Api"; p = 5530 },
+  @{ n = "Gateway"; d = "src\Gateway\TaxVision.Gateway"; p = 5047 }
 )
 
 $logs = Join-Path $root "logs"
@@ -41,8 +43,8 @@ function Start-One($s) {
   # aparezcan sin requerir compilar Debug con el proceso vivo (MSB3027 lock).
   $binDir = Join-Path $wd "bin\Release\net10.0"
   $dll = Get-ChildItem -Path $binDir -Filter "TaxVision.*.dll" -ErrorAction SilentlyContinue |
-         Where-Object { $_.BaseName -eq "TaxVision.$($s.n).Api" -or $_.BaseName -eq "TaxVision.$($s.n)" } |
-         Select-Object -First 1
+  Where-Object { $_.BaseName -eq "TaxVision.$($s.n).Api" -or $_.BaseName -eq "TaxVision.$($s.n)" } |
+  Select-Object -First 1
   if (-not $dll) { Write-Host "SKIP $($s.n): no dll in $binDir"; return }
   $env:ASPNETCORE_ENVIRONMENT = "Development"
   $env:ASPNETCORE_URLS = "http://localhost:$($s.p)"
@@ -68,15 +70,15 @@ if (Wait-Port 5124 45) { Write-Host "Auth listening :5124"; Start-Sleep -Seconds
 else { Write-Host "Auth did not listen in 45s (check logs\Auth.err.log) - continuing anyway" }
 
 # 2) The rest, staggered.
-foreach ($s in $fleet[1..($fleet.Count-1)]) {
+foreach ($s in $fleet[1..($fleet.Count - 1)]) {
   Start-One $s
   Start-Sleep -Seconds $gap
 }
 
 # 3) Node (Communication + worker), same as start-fleet.ps1.
 $nodeFleet = @(
-  @{ n = "Communication";                  d = "src\Services\Communication";                  p = 5350 },
-  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
+  @{ n = "Communication"; d = "src\Services\Communication"; p = 5350 },
+  @{ n = "CommunicationTranscriptWorker"; d = "src\Services\CommunicationTranscriptWorker"; p = $null }
 )
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
 if (-not $npm) { Write-Host "SKIP Node: npm.cmd not in PATH." }
