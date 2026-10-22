@@ -52,6 +52,7 @@ public class ProcessGraphNotificationHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -77,6 +78,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -116,6 +118,7 @@ public class ProcessGraphNotificationHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -130,7 +133,7 @@ public class ProcessGraphNotificationHandlerTests
 
     /// <summary>Fase 4 (hardening): mismo escenario y razonamiento que su equivalente en ProcessGmailPushNotificationHandlerTests — Graph subscriptions también reentregan.</summary>
     [Fact]
-    public async Task Handle_TwoNearSimultaneousDeliveries_SecondSkipsCleanlyWhileFirstIsInFlight()
+    public async Task Handle_TwoNearSimultaneousDeliveries_SecondMarksPendingAndFirstRunsOneMorePass()
     {
         var account = CreateActiveAccount();
         var accountRepository = new FakeTenantEmailAccountRepository();
@@ -149,6 +152,8 @@ public class ProcessGraphNotificationHandlerTests
         cursorRepository.Cursors.Add(existingCursor);
 
         var sharedLock = new InMemoryDistributedLock();
+
+        var sharedPendingFlag = new InMemorySyncPendingFlag();
         var bus = new FakeMessageBus();
         var unitOfWork = new FakeUnitOfWork();
         var correlation = new FakeCorrelationContext();
@@ -157,8 +162,11 @@ public class ProcessGraphNotificationHandlerTests
         var releaseHistoryFetch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new FakeEmailProviderClient(ProviderCode.Graph)
         {
-            OnGetHistory = (_, _) =>
+            // Primera pasada trae msg1; la segunda (desde el cursor nuevo) ya no trae nada.
+            OnGetHistory = (_, cursor) =>
             {
+                if (cursor != "delta-link-5")
+                    return new HistoryPage([], "delta-link-6", false);
                 enteredHistoryFetch.TrySetResult();
                 releaseHistoryFetch.Task.GetAwaiter().GetResult();
                 return new HistoryPage(["msg1"], "delta-link-6", false);
@@ -175,6 +183,7 @@ public class ProcessGraphNotificationHandlerTests
                 cursorRepository,
                 factory,
                 sharedLock,
+                sharedPendingFlag,
                 unitOfWork,
                 bus,
                 correlation,
@@ -193,6 +202,7 @@ public class ProcessGraphNotificationHandlerTests
             cursorRepository,
             factory,
             sharedLock,
+            sharedPendingFlag,
             unitOfWork,
             bus,
             correlation,
@@ -213,6 +223,9 @@ public class ProcessGraphNotificationHandlerTests
         Assert.Equal("delta-link-6", cursorRepository.Cursors[0].CursorValue); // Advanced by A only.
         var published = Assert.Single(bus.Published); // Published exactly once, by A.
         Assert.IsType<ConnectorsRawMessageReceivedIntegrationEvent>(published);
+        // B dejó la marca y A hizo una pasada más desde el cursor avanzado.
+        Assert.Equal(1, sharedPendingFlag.MarkCount);
+        Assert.Equal(["delta-link-5", "delta-link-6"], client.ReceivedCursors);
     }
 
     [Fact]
@@ -308,6 +321,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -339,6 +353,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             correlation,
@@ -361,6 +376,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),

@@ -50,6 +50,8 @@ public sealed class PendingChargeReconciliationJob(
         // El recibo lleva el nombre de la oficina, y este camino también lo emite: sin el registro
         // saldría en blanco justo cuando el webhook no llegó, que es cuando más se usa.
         var tenants = services.GetRequiredService<ITenantRegistry>();
+        // Solo pone la tarjeta en el correo de cobro fallido: si no está registrado, el evento sale sin ella.
+        var customers = services.GetService<ITenantProviderCustomerRepository>();
 
         var resolvedCount = 0;
         foreach (var payment in stuck)
@@ -57,7 +59,16 @@ public sealed class PendingChargeReconciliationJob(
             using (correlation.Push(Guid.NewGuid().ToString("N")))
             {
                 if (
-                    await TryResolveAsync(payment, providerFactory, bus, tenants, correlation.CorrelationId, logger, ct)
+                    await TryResolveAsync(
+                        payment,
+                        providerFactory,
+                        bus,
+                        tenants,
+                        customers,
+                        correlation.CorrelationId,
+                        logger,
+                        ct
+                    )
                 )
                     resolvedCount++;
             }
@@ -79,6 +90,7 @@ public sealed class PendingChargeReconciliationJob(
         IPaymentAdapterFactory providerFactory,
         IMessageBus bus,
         ITenantRegistry tenants,
+        ITenantProviderCustomerRepository? customers,
         string correlationId,
         ILogger logger,
         CancellationToken ct
@@ -125,7 +137,7 @@ public sealed class PendingChargeReconciliationJob(
                 );
 
                 if (notFound.IsSuccess)
-                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants, customers);
 
                 return notFound.IsSuccess;
             }
@@ -160,7 +172,7 @@ public sealed class PendingChargeReconciliationJob(
             case PaymentStatus.Succeeded:
                 var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
                 if (succeeded.IsSuccess)
-                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants, customers);
                 return succeeded.IsSuccess;
 
             case PaymentStatus.Failed
@@ -179,7 +191,7 @@ public sealed class PendingChargeReconciliationJob(
                     nowUtc
                 );
                 if (failed.IsSuccess)
-                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct);
+                    await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, tenants, customers);
                 return failed.IsSuccess;
 
             default:

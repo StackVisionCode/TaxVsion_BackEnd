@@ -1,4 +1,5 @@
 using TaxVision.Postmaster.Domain.Sending;
+using TaxVision.Postmaster.Domain.ValueObjects;
 
 namespace TaxVision.Postmaster.Tests.Domain;
 
@@ -186,45 +187,61 @@ public sealed class SentMessageTests
     }
 
     [Fact]
-    public void RecordDeliveryEvent_applies_suppressed_to_recipient_without_bubbling_message_status()
+    public void MarkRecipientSuppressed_changes_only_that_recipient()
     {
         var message = CreateValidMessage();
         var recipient = message.AddRecipient("customer@example.com", RecipientType.To, null).Value;
-        message.MarkAsSending();
-        message.MarkAsSent(null, DateTime.UtcNow);
 
-        var result = message.RecordDeliveryEvent(
-            recipient.Id,
-            SentMessageEventType.Suppressed,
-            DateTime.UtcNow,
-            rawPayload: null,
-            reason: "Address in suppression list."
-        );
+        var result = message.MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
-        // RecordDeliveryEvent no hace bubble-up del Status del mensaje (eso lo maneja el caller
-        // explícitamente vía MarkAsSuppressed cuando corresponde) — solo el recipient cambia.
-        Assert.Equal(SentMessageStatus.Sent, message.Status);
+        // El mensaje no cambia solo: el caller decide con MarkAsSuppressed si todos quedaron suprimidos.
+        Assert.Equal(SentMessageStatus.Queued, message.Status);
         Assert.Equal(RecipientStatus.Suppressed, recipient.Status);
+        Assert.Contains(
+            message.Events,
+            e => e.EventType == SentMessageEventType.Suppressed && e.RecipientId == recipient.Id
+        );
     }
 
     [Fact]
-    public void RecordDeliveryEvent_for_unknown_recipient_fails()
+    public void MarkRecipientSuppressed_for_unknown_recipient_fails()
     {
         var message = CreateValidMessage();
-        message.MarkAsSending();
-        message.MarkAsSent(null, DateTime.UtcNow);
 
-        var result = message.RecordDeliveryEvent(
-            Guid.NewGuid(),
-            SentMessageEventType.Suppressed,
-            DateTime.UtcNow,
-            null,
-            null
-        );
+        var result = message.MarkRecipientSuppressed(Guid.NewGuid(), "reason", DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
         Assert.Equal("SentMessage.RecipientNotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public void MarkRecipientRejectedAtSend_keeps_the_recipient_out_of_MarkAsSent()
+    {
+        var message = CreateValidMessage();
+        var accepted = message.AddRecipient("ok@example.com", RecipientType.To, null).Value;
+        var rejected = message.AddRecipient("bad@example.com", RecipientType.To, null).Value;
+        message.MarkAsSending();
+
+        message.MarkRecipientRejectedAtSend(rejected.Id, "550 5.1.1 user unknown", DateTime.UtcNow);
+        message.MarkAsSent("msg-id", DateTime.UtcNow);
+
+        Assert.Equal(RecipientStatus.Sent, accepted.Status);
+        Assert.Equal(DeliveryOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(RecipientStatus.Failed, rejected.Status);
+        Assert.Equal(DeliveryOutcome.Rejected, rejected.Outcome);
+        Assert.Equal("550 5.1.1 user unknown", rejected.ErrorReason);
+    }
+
+    [Fact]
+    public void MarkRecipientRejectedAtSend_outside_sending_fails()
+    {
+        var message = CreateValidMessage();
+        var recipient = message.AddRecipient("bad@example.com", RecipientType.To, null).Value;
+
+        var result = message.MarkRecipientRejectedAtSend(recipient.Id, "550", DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
     }
 
     [Fact]
@@ -339,5 +356,231 @@ public sealed class SentMessageTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("thread-99", message.ProviderThreadId);
+    }
+
+    private static readonly DateTime T0 = new(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc);
+
+    private static (SentMessage Message, SentMessageRecipient Recipient) SentToOne()
+    {
+        var message = CreateValidMessage();
+        var recipient = message.AddRecipient("customer@example.com", RecipientType.To, null).Value;
+        message.MarkAsSending();
+        message.MarkAsSent("msg-id", T0);
+        return (message, recipient);
+    }
+
+    private static DeliveryFeedback Outcome(DeliveryOutcome outcome, DateTime at, string? diagnostic = null) =>
+        DeliveryFeedback
+            .ForOutcome(outcome, at, FeedbackSource.Smtp2Go, Guid.NewGuid().ToString("N"), diagnostic)
+            .Value;
+
+    private static DeliveryFeedback Signal(EngagementSignal signal, DateTime at) =>
+        DeliveryFeedback.ForSignal(signal, at, FeedbackSource.Smtp2Go, Guid.NewGuid().ToString("N")).Value;
+
+    [Fact]
+    public void MarkAsSent_sets_the_Accepted_outcome()
+    {
+        var (_, recipient) = SentToOne();
+
+        Assert.Equal(DeliveryOutcome.Accepted, recipient.Outcome);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_late_event_does_not_go_back_but_stays_in_the_history()
+    {
+        var (message, recipient) = SentToOne();
+        message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Delivered, T0.AddMinutes(1)), "{}");
+
+        var result = message.ApplyDeliveryFeedback(
+            recipient.Id,
+            Outcome(DeliveryOutcome.Deferred, T0.AddMinutes(2)),
+            "{}"
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DeliveryOutcome.Delivered, recipient.Outcome);
+        Assert.Equal(T0.AddMinutes(1), recipient.OutcomeAtUtc);
+        Assert.Contains(message.Events, e => e.EventType == SentMessageEventType.Deferred);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_complaint_after_delivered_wins()
+    {
+        var (message, recipient) = SentToOne();
+        message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Delivered, T0.AddMinutes(1)), null);
+
+        message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Complained, T0.AddHours(3)), null);
+
+        Assert.Equal(DeliveryOutcome.Complained, recipient.Outcome);
+        Assert.Equal(DeliveryOutcome.Complained, message.DeliverySummary);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_hard_bounce_is_final_and_keeps_the_reason()
+    {
+        var (message, recipient) = SentToOne();
+        message.ApplyDeliveryFeedback(
+            recipient.Id,
+            Outcome(DeliveryOutcome.HardBounced, T0.AddMinutes(1), "550 5.1.1 user unknown"),
+            null
+        );
+
+        message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Delivered, T0.AddMinutes(2)), null);
+
+        Assert.Equal(DeliveryOutcome.HardBounced, recipient.Outcome);
+        Assert.Equal("550 5.1.1 user unknown", recipient.ErrorReason);
+        Assert.Contains(message.Events, e => e.EventType == SentMessageEventType.Bounced);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_counts_opens_and_clicks_without_touching_the_outcome()
+    {
+        var (message, recipient) = SentToOne();
+
+        message.ApplyDeliveryFeedback(recipient.Id, Signal(EngagementSignal.Opened, T0.AddMinutes(5)), null);
+        message.ApplyDeliveryFeedback(recipient.Id, Signal(EngagementSignal.Opened, T0.AddMinutes(2)), null);
+        message.ApplyDeliveryFeedback(recipient.Id, Signal(EngagementSignal.Clicked, T0.AddMinutes(6)), null);
+
+        Assert.Equal(2, recipient.OpenCount);
+        Assert.Equal(T0.AddMinutes(2), recipient.FirstOpenedAtUtc);
+        Assert.Equal(T0.AddMinutes(5), recipient.LastOpenedAtUtc);
+        Assert.Equal(1, recipient.ClickCount);
+        Assert.Equal(T0.AddMinutes(6), recipient.FirstClickedAtUtc);
+        Assert.Equal(DeliveryOutcome.Accepted, recipient.Outcome);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_unsubscribe_keeps_the_first_time()
+    {
+        var (message, recipient) = SentToOne();
+
+        message.ApplyDeliveryFeedback(recipient.Id, Signal(EngagementSignal.Unsubscribed, T0.AddMinutes(9)), null);
+        message.ApplyDeliveryFeedback(recipient.Id, Signal(EngagementSignal.Unsubscribed, T0.AddMinutes(3)), null);
+
+        Assert.Equal(T0.AddMinutes(3), recipient.UnsubscribedAtUtc);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_rejects_Accepted_because_only_our_send_sets_it()
+    {
+        var (message, recipient) = SentToOne();
+
+        var result = message.ApplyDeliveryFeedback(recipient.Id, Outcome(DeliveryOutcome.Accepted, T0), null);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public void ApplyDeliveryFeedback_for_unknown_recipient_fails()
+    {
+        var (message, _) = SentToOne();
+
+        var result = message.ApplyDeliveryFeedback(Guid.NewGuid(), Outcome(DeliveryOutcome.Delivered, T0), null);
+
+        Assert.Equal("SentMessage.RecipientNotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public void DeliverySummary_shows_the_worst_recipient()
+    {
+        var message = CreateValidMessage();
+        var delivered = message.AddRecipient("a@example.com", RecipientType.To, null).Value;
+        var bounced = message.AddRecipient("b@example.com", RecipientType.Cc, null).Value;
+        message.MarkAsSending();
+        message.MarkAsSent("msg-id", T0);
+
+        message.ApplyDeliveryFeedback(delivered.Id, Outcome(DeliveryOutcome.Delivered, T0.AddMinutes(1)), null);
+        message.ApplyDeliveryFeedback(bounced.Id, Outcome(DeliveryOutcome.SoftBounced, T0.AddMinutes(1)), null);
+
+        Assert.Equal(DeliveryOutcome.SoftBounced, message.DeliverySummary);
+    }
+
+    [Fact]
+    public void FindRecipientByAddress_ignores_case_and_spaces()
+    {
+        var (message, recipient) = SentToOne();
+
+        Assert.Same(recipient, message.FindRecipientByAddress("  Customer@Example.com "));
+        Assert.Null(message.FindRecipientByAddress("someone@else.com"));
+    }
+
+    [Fact]
+    public void Queue_records_the_delivery_lane()
+    {
+        var message = SentMessage
+            .Queue(
+                tenantId: Guid.NewGuid(),
+                idempotencyKey: "key-lane",
+                subject: "Hello",
+                fromAddress: "office@example.com",
+                stream: EmailStream.Transactional,
+                providerCode: "gmail",
+                notificationLogId: null,
+                correlationId: null,
+                fromDisplayName: null,
+                replyTo: null,
+                templateKey: null,
+                queuedAtUtc: T0,
+                deliveryLane: DeliveryLane.TenantMailbox
+            )
+            .Value;
+
+        Assert.Equal(DeliveryLane.TenantMailbox, message.DeliveryLane);
+        Assert.Equal(DeliveryLane.SystemProvider, CreateValidMessage().DeliveryLane);
+    }
+
+    [Fact]
+    public void FallBackToSystemProvider_only_from_a_mailbox_send_in_progress()
+    {
+        // Por SMTP del sistema ya no hay otra vía a la que caer.
+        var systemMessage = CreateValidMessage();
+        systemMessage.AddRecipient("a@example.com", RecipientType.To, null);
+        systemMessage.MarkAsSending();
+
+        var result = systemMessage.FallBackToSystemProvider(
+            "down",
+            "system-smtp",
+            "no-reply@taxoffix.com",
+            null,
+            "office@gmail.com",
+            T0
+        );
+
+        Assert.Equal("SentMessage.FallbackNotAllowed", result.Error.Code);
+        Assert.Empty(systemMessage.DeliveryAttempts);
+    }
+
+    [Fact]
+    public void FallBackToSystemProvider_is_not_allowed_before_trying_the_mailbox()
+    {
+        var message = SentMessage
+            .Queue(
+                Guid.NewGuid(),
+                "key-fb",
+                "Hello",
+                "office@gmail.com",
+                EmailStream.Transactional,
+                "gmail",
+                null,
+                null,
+                null,
+                null,
+                null,
+                T0,
+                deliveryLane: DeliveryLane.TenantMailbox
+            )
+            .Value;
+
+        var result = message.FallBackToSystemProvider(
+            "down",
+            "system-smtp",
+            "no-reply@taxoffix.com",
+            null,
+            "office@gmail.com",
+            T0
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(DeliveryLane.TenantMailbox, message.DeliveryLane);
     }
 }

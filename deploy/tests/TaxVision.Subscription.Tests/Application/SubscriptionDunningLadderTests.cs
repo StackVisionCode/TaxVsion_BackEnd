@@ -32,6 +32,7 @@ public sealed class SubscriptionDunningLadderTests
                 WillRetry = false,
             },
             new FakeSubscriptionRepository(subscription),
+            new FakePlanRepo(null),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -47,6 +48,101 @@ public sealed class SubscriptionDunningLadderTests
         Assert.Equal(nameof(SubscriptionChangeReason.RenewalPaymentFailed), evt.Reason);
         Assert.Equal("card_declined", evt.FailureCode);
     }
+
+    // Un correo por cada cobro automático fallido: con el nombre del plan y la fecha del próximo intento.
+    [Fact]
+    public async Task Automatic_failure_with_a_retry_asks_for_the_failed_charge_email_without_suspending()
+    {
+        var subscription = CreateActiveSubscription(out var plan);
+        subscription.BeginRenewal("k1", Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+        var nextRetry = DateTime.UtcNow.AddHours(1);
+
+        await FailAutomatically(subscription, plan, bus, willRetry: true, nextRetry);
+
+        Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+        Assert.Empty(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        var email = Assert.Single(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
+        Assert.Equal(RenewalChargeKinds.Plan, email.ChargeKind);
+        Assert.Equal("Starter plan", email.ItemDescription);
+        Assert.False(email.IsFinal);
+        Assert.Equal(nextRetry, email.NextRetryAtUtc);
+        Assert.Null(email.Consequence);
+        Assert.Equal(2, email.AttemptNumber);
+        Assert.Equal("4242", email.CardLast4);
+    }
+
+    // El último intento manda UN correo que ya dice que se suspendió: el de "suspended" no se repite.
+    [Fact]
+    public async Task Final_automatic_failure_reports_the_suspension_in_the_same_email()
+    {
+        var subscription = CreateActiveSubscription(out var plan);
+        subscription.BeginRenewal("k1", Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+
+        await FailAutomatically(subscription, plan, bus, willRetry: false, null);
+
+        Assert.Equal(SubscriptionStatus.Suspended, subscription.Status);
+        var email = Assert.Single(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
+        Assert.True(email.IsFinal);
+        Assert.Equal(RenewalChargeConsequences.SubscriptionSuspended, email.Consequence);
+        var status = Assert.Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>());
+        Assert.True(status.NotifiedByChargeFailedEmail);
+    }
+
+    // En un checkout hosteado el usuario paga en pantalla: ni correo de cobro fallido, y el de suspensión sigue.
+    [Fact]
+    public async Task A_hosted_checkout_failure_sends_no_failed_charge_email()
+    {
+        var subscription = CreateActiveSubscription(out var plan);
+        subscription.BeginRenewal("k1", Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+
+        await FailAutomatically(subscription, plan, bus, willRetry: false, null, automatic: false);
+
+        Assert.Empty(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
+        Assert.False(
+            Assert
+                .Single(bus.Published.OfType<TenantSubscriptionStatusChangedIntegrationEvent>())
+                .NotifiedByChargeFailedEmail
+        );
+    }
+
+    private static Task FailAutomatically(
+        TenantSubscription subscription,
+        SubscriptionPlan plan,
+        CapturingMessageBus bus,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        bool automatic = true
+    ) =>
+        SubscriptionRenewalPaymentFailedConsumer.Handle(
+            new SubscriptionRenewalPaymentFailedIntegrationEvent
+            {
+                TenantId = subscription.TenantId,
+                TenantSubscriptionId = subscription.Id,
+                SaaSPaymentId = Guid.NewGuid(),
+                IdempotencyKey = "k1",
+                FailureCode = "card_declined",
+                FailureReason = "Card declined",
+                WillRetry = willRetry,
+                NextRetryAtUtc = nextRetryAtUtc,
+                AttemptNumber = 2,
+                MaxAttempts = 4,
+                AmountCents = 4900,
+                Currency = "USD",
+                CardBrand = "visa",
+                CardLast4 = "4242",
+                IsAutomaticCharge = automatic,
+            },
+            new FakeSubscriptionRepository(subscription),
+            new FakePlanRepo(plan),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<TenantSubscription>.Instance,
+            CancellationToken.None
+        );
 
     [Fact]
     public async Task Renewal_success_while_past_due_recovers_to_active_and_publishes_recovery()
@@ -83,10 +179,12 @@ public sealed class SubscriptionDunningLadderTests
         Assert.Equal(nameof(SubscriptionChangeReason.PaymentRecovered), evt.Reason);
     }
 
-    private static TenantSubscription CreateActiveSubscription()
+    private static TenantSubscription CreateActiveSubscription() => CreateActiveSubscription(out _);
+
+    private static TenantSubscription CreateActiveSubscription(out SubscriptionPlan plan)
     {
         var nowUtc = DateTime.UtcNow;
-        var plan = SubscriptionPlan
+        plan = SubscriptionPlan
             .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Starter, Guid.Empty, nowUtc)
             .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;

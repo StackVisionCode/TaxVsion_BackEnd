@@ -17,6 +17,7 @@ public static class SubscriptionRenewalPaymentFailedConsumer
     public static async Task Handle(
         SubscriptionRenewalPaymentFailedIntegrationEvent evt,
         ISubscriptionRepository subscriptions,
+        IPlanRepository plans,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -50,6 +51,11 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                 );
                 return;
             }
+
+            // El nombre del plan se busca antes de tocar nada: si el catálogo falla, el correo sale genérico.
+            var itemDescription = evt.IsAutomaticCharge
+                ? RenewalItemDescriptions.Plan(await TryGetPlanNameAsync(plans, subscription.PlanCode, logger, ct))
+                : string.Empty;
 
             var previousStatus = subscription.Status;
             var result = subscription.FailRenewal(
@@ -96,9 +102,38 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                     previousStatus,
                     SubscriptionChangeReason.RenewalPaymentFailed,
                     failureCode: evt.FailureCode,
-                    correlationId: correlationId
+                    correlationId: correlationId,
+                    // El correo del último intento ya dice que se suspendió: no se manda otro "suspended".
+                    notifiedByChargeFailedEmail: evt.IsAutomaticCharge
                 );
             }
+
+            var suspended =
+                subscription.Status == SubscriptionStatus.Suspended && previousStatus != SubscriptionStatus.Suspended;
+            await bus.PublishRenewalChargeFailedAsync(
+                evt,
+                itemDescription,
+                suspended ? RenewalChargeConsequences.SubscriptionSuspended : null,
+                correlationId
+            );
+        }
+    }
+
+    private static async Task<string?> TryGetPlanNameAsync(
+        IPlanRepository plans,
+        string planCode,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return (await plans.GetByCodeAsync(planCode, ct))?.Name;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not read plan {PlanCode} for the failed-charge email.", planCode);
+            return null;
         }
     }
 

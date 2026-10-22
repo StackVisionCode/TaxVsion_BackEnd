@@ -25,6 +25,13 @@ public sealed record PlatformSettingsSnapshot(
     /// <summary>Sitio público de la plataforma.</summary>
     public string Website => $"https://{BaseDomain}";
 
+    /// <summary>
+    /// Página del landing, en el mismo host al que manda el CRM (<c>www.{BaseDomain}</c>), p. ej. el Account
+    /// de "Manage subscription": <c>LandingUrl("/account/plan")</c>.
+    /// </summary>
+    public string LandingUrl(string path) =>
+        $"https://www.{NormalizeHost(BaseDomain)}{(path.StartsWith('/') ? path : "/" + path)}";
+
     /// <summary>Host de una oficina por su slug (<c>{slug}.{BaseDomain}</c>).</summary>
     public string TenantHost(string slug) => $"{slug}.{BaseDomain}";
 

@@ -82,6 +82,7 @@ public static class SubscriptionRenewalDueConsumer
                     metrics,
                     bus,
                     unitOfWork,
+                    customers,
                     correlationId,
                     logger,
                     ct
@@ -155,6 +156,7 @@ public static class SubscriptionRenewalDueConsumer
         IPaymentAppMetrics metrics,
         IMessageBus bus,
         IUnitOfWork unitOfWork,
+        ITenantProviderCustomerRepository customers,
         string correlationId,
         ILogger logger,
         CancellationToken ct
@@ -201,11 +203,11 @@ public static class SubscriptionRenewalDueConsumer
             ApplyOffSessionOutcome(payment, chargeResult.Value, provider, metrics, logger);
         }
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct);
-        // Email de confirmación/fallo del cobro recurrente. Viaja por el canal de
-        // status-changed (no mueve el estado): el metrics consumer lo ignora, el email consumer
-        // dispara el template nuevo.
-        await PublishRecurringChargeEmailAsync(evt, payment, provider, chargeResult, correlationId, bus, ct);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlationId, ct, customers: customers);
+        // Email de confirmación del cobro recurrente. Viaja por el canal de status-changed (no mueve el
+        // estado). El de fallo ya no sale de acá: lo manda Subscription en cada intento fallido
+        // (RenewalChargeFailedIntegrationEvent), con el intento, la fecha del próximo y la tarjeta real.
+        await PublishRecurringChargeSucceededEmailAsync(evt, chargeResult, correlationId, bus);
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
@@ -396,25 +398,16 @@ public static class SubscriptionRenewalDueConsumer
     private static bool TryParseProvider(string code, out PaymentProviderCode provider) =>
         Enum.TryParse(code, ignoreCase: true, out provider);
 
-    private static async Task PublishRecurringChargeEmailAsync(
+    private static async Task PublishRecurringChargeSucceededEmailAsync(
         SubscriptionRenewalDueIntegrationEvent evt,
-        SaaSPayment payment,
-        PaymentProviderCode provider,
         Result<OffSessionChargeOutcome> chargeResult,
         string correlationId,
-        IMessageBus bus,
-        CancellationToken ct
+        IMessageBus bus
     )
     {
-        var succeeded = chargeResult.IsSuccess && chargeResult.Value.Status == OffSessionChargeStatus.Succeeded;
-        var reason = succeeded
-            ? nameof(SubscriptionChangeReason.RecurringChargeSucceeded)
-            : nameof(SubscriptionChangeReason.RecurringChargeFailed);
-        var failureCode =
-            succeeded ? null
-            : chargeResult.IsFailure ? chargeResult.Error.Message
-            : chargeResult.Value.FailureMessage ?? chargeResult.Value.FailureCode;
-        var nowUtc = DateTime.UtcNow;
+        if (!chargeResult.IsSuccess || chargeResult.Value.Status != OffSessionChargeStatus.Succeeded)
+            return;
+
         await bus.PublishAsync(
             new TenantSubscriptionStatusChangedIntegrationEvent
             {
@@ -423,13 +416,12 @@ public static class SubscriptionRenewalDueConsumer
                 TenantSubscriptionId = evt.TenantSubscriptionId,
                 Status = "Active",
                 PreviousStatus = "Active",
-                Reason = reason,
-                FailureCode = failureCode,
+                Reason = nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
                 Amount = (evt.AmountCents / 100m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                CardBrand = provider.ToString(),
-                DateCharged = succeeded
-                    ? nowUtc.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
-                    : null,
+                DateCharged = DateTime.UtcNow.ToString(
+                    "MMMM d, yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture
+                ),
             }
         );
     }

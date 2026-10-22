@@ -175,7 +175,8 @@ public static class SendCorrespondenceMessageHandler
             ProviderScope.TenantMailbox,
             command.CorrespondenceDraftId,
             command.InReplyToInternetMessageId,
-            command.References
+            command.References,
+            deliveryLane: DeliveryLane.TenantMailbox
         );
         if (queueResult.IsFailure)
             throw new InvalidOperationException(
@@ -220,13 +221,7 @@ public static class SendCorrespondenceMessageHandler
 
         var now = DateTime.UtcNow;
         foreach (var recipient in message.Recipients.Where(r => suppressed.Contains(r.Address)))
-            message.RecordDeliveryEvent(
-                recipient.Id,
-                SentMessageEventType.Suppressed,
-                now,
-                rawPayload: null,
-                "Address in suppression list."
-            );
+            message.MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", now);
 
         if (!message.Recipients.All(r => r.Status == RecipientStatus.Suppressed))
         {
@@ -301,10 +296,7 @@ public static class SendCorrespondenceMessageHandler
     )
     {
         var now = DateTime.UtcNow;
-        if (sendResult.Success)
-            message.MarkAsSent(sendResult.ProviderMessageId, now);
-        else
-            message.MarkAsFailed(sendResult.ErrorReason ?? "Unknown Connectors send failure.", now);
+        SendResultRecorder.Record(message, sendResult, "Unknown Connectors send failure.", now);
 
         await idempotencyGuard.CompleteAsync(message.TenantId, idempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);

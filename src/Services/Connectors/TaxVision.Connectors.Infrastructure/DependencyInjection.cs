@@ -24,6 +24,7 @@ using TaxVision.Connectors.Infrastructure.Observability;
 using TaxVision.Connectors.Infrastructure.Persistence;
 using TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 using TaxVision.Connectors.Infrastructure.Providers;
+using TaxVision.Connectors.Infrastructure.Providers.DeliveryReports;
 using TaxVision.Connectors.Infrastructure.Providers.Gmail;
 using TaxVision.Connectors.Infrastructure.Providers.Graph;
 using TaxVision.Connectors.Infrastructure.Providers.Imap;
@@ -39,10 +40,11 @@ namespace TaxVision.Connectors.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddConnectorsInfrastructure(
-        this IServiceCollection services,
-        IConfiguration configuration
-    )
+    /// <summary>
+    /// Lo que comparten la API y el listener de buzones: base, secretos, cuentas y Redis. Sin jobs ni
+    /// clientes de proveedores: el listener solo lee cuentas y escucha, nunca sincroniza.
+    /// </summary>
+    public static IServiceCollection AddConnectorsCore(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString =
             configuration.GetConnectionString("Default")
@@ -55,23 +57,45 @@ public static class DependencyInjection
         services.AddSingleton<IEncryptedSecretProtector, EncryptedSecretProtector>();
 
         services.AddScoped<ITenantEmailAccountRepository, TenantEmailAccountRepository>();
-        services.AddScoped<IOAuthConnectionRepository, OAuthConnectionRepository>();
         services.AddScoped<IImapCredentialsRepository, ImapCredentialsRepository>();
-        services.AddScoped<ISmtpCredentialsRepository, SmtpCredentialsRepository>();
-        services.AddScoped<IManualAccountConnectivityValidator, ManualAccountConnectivityValidator>();
 
-        // Distributed lock + rate limiter (Redis). Sin connection string, degrada a no-op/single-node.
+        // Lock distribuido y marcas por cuenta (Redis). Sin connection string, degrada a no-op/single-node.
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
             services.AddSingleton<IDistributedLock, RedisDistributedLock>();
+            services.AddSingleton<ISyncPendingFlag, RedisSyncPendingFlag>();
+            services.AddSingleton<IMailboxListenerPresence, RedisMailboxListenerPresence>();
+        }
+        else
+        {
+            services.AddSingleton<IDistributedLock, NoOpDistributedLock>();
+            services.AddSingleton<ISyncPendingFlag, NoOpSyncPendingFlag>();
+            services.AddSingleton<IMailboxListenerPresence, NoOpMailboxListenerPresence>();
+        }
+
+        return services;
+    }
+
+    public static IServiceCollection AddConnectorsInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
+    {
+        services.AddConnectorsCore(configuration);
+        services.AddScoped<IOAuthConnectionRepository, OAuthConnectionRepository>();
+        services.AddScoped<ISmtpCredentialsRepository, SmtpCredentialsRepository>();
+        services.AddScoped<IManualAccountConnectivityValidator, ManualAccountConnectivityValidator>();
+
+        var redisConnectionString = configuration.GetConnectionString("Redis");
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
             services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IProviderRateLimiter, RedisProviderRateLimiter>();
         }
         else
         {
-            services.AddSingleton<IDistributedLock, NoOpDistributedLock>();
             services.AddSingleton<IProviderRateLimiter, InMemoryProviderRateLimiter>();
         }
 
@@ -119,6 +143,7 @@ public static class DependencyInjection
         services.AddHttpClient<GraphApiClient>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<ImapClient>();
         services.AddScoped<IEmailProviderClientFactory, EmailProviderClientFactory>();
+        services.AddSingleton<IDeliveryReportParser, Rfc3464DeliveryReportParser>();
         services.AddScoped<SmtpManualClient>();
         services.AddScoped<IOutboundEmailProviderClientFactory, OutboundEmailProviderClientFactory>();
 

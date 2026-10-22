@@ -81,11 +81,20 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
             .OrderBy(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<ActiveAccountRef>> ListActivePageAsync(
+        Guid? afterId,
+        int pageSize,
+        CancellationToken ct = default
+    ) =>
         await dbContext
             .TenantEmailAccounts.IgnoreQueryFilters()
-            .Where(a => a.Status == TenantEmailAccountStatus.Active)
+            .AsNoTracking()
+            .Where(a =>
+                a.Status == TenantEmailAccountStatus.Active && (afterId == null || a.Id.CompareTo(afterId.Value) > 0)
+            )
             .OrderBy(a => a.Id)
+            .Take(pageSize)
+            .Select(a => new ActiveAccountRef(a.Id, a.ProviderCode, a.TenantId))
             .ToListAsync(ct);
 
     // Tracked (sin AsNoTracking): el consumer de offboard los desconecta y persiste. IgnoreQueryFilters

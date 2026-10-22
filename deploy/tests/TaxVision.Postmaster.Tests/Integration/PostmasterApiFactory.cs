@@ -32,6 +32,8 @@ public sealed class PostmasterApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // Aunque el dev tenga la key en user-secrets, los tests nunca consultan SMTP2GO real.
+                        ["DeliveryFeedback:Smtp2Go:ApiKey"] = string.Empty,
                     }
                 )
         );

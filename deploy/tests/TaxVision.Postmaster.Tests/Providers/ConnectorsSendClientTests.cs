@@ -62,6 +62,89 @@ public sealed class ConnectorsSendClientTests
         new(accountId, "gmail", "sales@tenant.example", "Tenant Sales");
 
     [Fact]
+    public async Task SendAsync_sends_our_message_id_and_returns_the_one_the_mailbox_used()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"providerMessageId":"draft-1","providerThreadId":"conv-1","sentAtUtc":"2026-07-17T00:00:00Z","internetMessageId":"<AM6P@outlook.com>"}"""
+                ),
+            }
+        );
+        var client = new ConnectorsSendClient(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5390/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ConnectorsSendClient>.Instance
+        );
+        var message = CreateMessage();
+
+        var result = await client.SendAsync(
+            message,
+            new RenderedContent("Welcome", "<p>Hi</p>", "Hi"),
+            CreateProvider(Guid.NewGuid()),
+            null,
+            null,
+            null,
+            attachments: [],
+            inlineAssets: [],
+            CancellationToken.None
+        );
+
+        // Con nuestro id el aviso de no entrega se ata solo; si el buzón lo cambia, vale el que devuelve.
+        Assert.Contains($"pm.{message.Id:N}@", handler.RequestBodies[0]);
+        Assert.Equal("<AM6P@outlook.com>", result.InternetMessageId);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "SendMessageHandler.AuthExpired", MailboxSendFailure.MailboxUnavailable)]
+    [InlineData(HttpStatusCode.Forbidden, "SendMessageHandler.PermissionDenied", MailboxSendFailure.MailboxUnavailable)]
+    [InlineData(HttpStatusCode.NotFound, "TenantEmailAccount.NotFound", MailboxSendFailure.MailboxUnavailable)]
+    [InlineData(
+        HttpStatusCode.BadGateway,
+        "SendMessageHandler.TransientProviderError",
+        MailboxSendFailure.ProviderUnavailable
+    )]
+    [InlineData(HttpStatusCode.GatewayTimeout, "SendMessageHandler.Timeout", MailboxSendFailure.ProviderUnavailable)]
+    [InlineData(HttpStatusCode.BadRequest, "SendMessageHandler.InvalidRequest", MailboxSendFailure.InvalidMessage)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "Something.Else", MailboxSendFailure.ProviderUnavailable)]
+    public async Task SendAsync_translates_the_failure_to_whose_fault_it_was(
+        HttpStatusCode status,
+        string code,
+        MailboxSendFailure expected
+    )
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            new HttpResponseMessage(status)
+            {
+                Content = new StringContent($$"""{"code":"{{code}}","message":"failed"}"""),
+            }
+        );
+        var client = new ConnectorsSendClient(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5390/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ConnectorsSendClient>.Instance
+        );
+
+        var result = await client.SendAsync(
+            CreateMessage(),
+            new RenderedContent("Welcome", "<p>Hi</p>", "Hi"),
+            CreateProvider(Guid.NewGuid()),
+            null,
+            null,
+            null,
+            attachments: [],
+            inlineAssets: [],
+            CancellationToken.None
+        );
+
+        Assert.False(result.Success);
+        Assert.Equal(expected, result.MailboxFailure);
+    }
+
+    [Fact]
     public async Task SendAsync_returns_success_with_ProviderMessageId_on_200()
     {
         var handler = new FakeHttpMessageHandler();
@@ -97,6 +180,8 @@ public sealed class ConnectorsSendClientTests
 
         Assert.True(result.Success);
         Assert.Equal("gmail-msg-1", result.ProviderMessageId);
+        // Antes se perdía: Correspondence lo necesita para seguir el hilo.
+        Assert.Equal("thread-1", result.ProviderThreadId);
         Assert.All(result.RecipientOutcomes, o => Assert.Equal(RecipientSendStatus.Sent, o.Status));
     }
 

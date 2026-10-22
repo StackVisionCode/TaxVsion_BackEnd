@@ -1,5 +1,7 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
+using TaxVision.PaymentApp.Domain.ProviderCustomers;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Tests.TestDoubles;
@@ -144,6 +146,164 @@ public sealed class SaaSPaymentResultPublisherTests
 
         var published = Assert.Single(bus.Published.OfType<SubscriptionPlanChangePaymentSucceededIntegrationEvent>());
         Assert.Equal(TargetId, published.PlanChangeRequestId);
+    }
+
+    // El correo de cobro fallido sale de estos datos: intento, importe, tarjeta real y si fue automático.
+    [Fact]
+    public async Task Failed_renewal_carries_the_attempt_amount_and_the_saved_card()
+    {
+        var payment = ProcessingPayment(SaaSPaymentType.SubscriptionRenewal);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            willRetry: true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(
+            payment,
+            bus,
+            "corr",
+            CancellationToken.None,
+            customers: new Customers(WithDefaultCard("visa", "4242"))
+        );
+
+        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        Assert.Equal(1, published.AttemptNumber);
+        Assert.Equal(SaaSPaymentChargeOutcome.MaxDunningAttempts, published.MaxAttempts);
+        Assert.Equal(1999, published.AmountCents);
+        Assert.Equal("USD", published.Currency);
+        Assert.Equal("visa", published.CardBrand);
+        Assert.Equal("4242", published.CardLast4);
+        Assert.True(published.IsAutomaticCharge);
+    }
+
+    [Theory]
+    [InlineData(SaaSPaymentType.SeatRenewal)]
+    [InlineData(SaaSPaymentType.AddOnRenewal)]
+    public async Task Failed_seat_and_add_on_renewals_carry_the_same_attempt_facts(SaaSPaymentType type)
+    {
+        var payment = ProcessingPayment(type);
+        payment.MarkFailed("card_declined", "Declined.", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(
+            payment,
+            bus,
+            "corr",
+            CancellationToken.None,
+            customers: new Customers(WithDefaultCard("mastercard", "5555"))
+        );
+
+        var (attempt, last4, automatic) =
+            type == SaaSPaymentType.SeatRenewal
+                ? Facts(Assert.Single(bus.Published.OfType<SeatRenewalPaymentFailedIntegrationEvent>()))
+                : Facts(Assert.Single(bus.Published.OfType<AddOnRenewalPaymentFailedIntegrationEvent>()));
+        Assert.Equal(1, attempt);
+        Assert.Equal("5555", last4);
+        Assert.True(automatic);
+    }
+
+    // En un checkout hosteado el usuario está pagando en pantalla: no es un cobro automático.
+    [Fact]
+    public async Task A_hosted_checkout_failure_is_not_an_automatic_charge()
+    {
+        var payment = SaaSPayment
+            .Create(
+                TenantId,
+                IdempotencyKey.Create("key-hosted").Value,
+                Money.Create(1999, "USD").Value,
+                SaaSPaymentType.SeatRenewal,
+                TargetId,
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        payment.RecordHostedCheckoutSession(
+            "cs_test_1",
+            ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "cs_test_1").Value,
+            "https://checkout.test/cs_test_1",
+            DateTime.UtcNow
+        );
+        payment.MarkFailed("card_declined", "Declined.", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, "corr", CancellationToken.None);
+
+        Assert.False(Assert.Single(bus.Published.OfType<SeatRenewalPaymentFailedIntegrationEvent>()).IsAutomaticCharge);
+    }
+
+    // Subscription depende del evento de fallo para el dunning: sin tarjeta legible sale igual.
+    [Fact]
+    public async Task The_failure_is_published_even_if_the_saved_card_cannot_be_read()
+    {
+        var payment = ProcessingPayment(SaaSPaymentType.SubscriptionRenewal);
+        payment.MarkFailed(
+            "card_declined",
+            "Declined.",
+            willRetry: true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+        var bus = new CapturingMessageBus();
+
+        await SaaSPaymentResultPublisher.PublishAsync(
+            payment,
+            bus,
+            "corr",
+            CancellationToken.None,
+            customers: new Customers(null, fail: true)
+        );
+
+        var published = Assert.Single(bus.Published.OfType<SubscriptionRenewalPaymentFailedIntegrationEvent>());
+        Assert.Null(published.CardLast4);
+        Assert.True(published.IsAutomaticCharge);
+    }
+
+    private static (int Attempt, string? Last4, bool Automatic) Facts(SeatRenewalPaymentFailedIntegrationEvent evt) =>
+        (evt.AttemptNumber, evt.CardLast4, evt.IsAutomaticCharge);
+
+    private static (int Attempt, string? Last4, bool Automatic) Facts(AddOnRenewalPaymentFailedIntegrationEvent evt) =>
+        (evt.AttemptNumber, evt.CardLast4, evt.IsAutomaticCharge);
+
+    private static TenantProviderCustomer WithDefaultCard(string brand, string last4)
+    {
+        var reference = ProviderCustomerReference.Create(PaymentProviderCode.Stripe, "cus_test_1").Value;
+        var customer = TenantProviderCustomer
+            .Register(TenantId, PaymentProviderCode.Stripe, reference, "tenant@example.com", DateTime.UtcNow)
+            .Value;
+        customer.AttachPaymentMethod("pm_test_1", brand, last4, 12, 2030, setAsDefault: true, DateTime.UtcNow);
+        return customer;
+    }
+
+    private sealed class Customers(TenantProviderCustomer? customer, bool fail = false)
+        : ITenantProviderCustomerRepository
+    {
+        public Task<TenantProviderCustomer?> GetByTenantAndProviderAsync(
+            Guid tenantId,
+            PaymentProviderCode code,
+            CancellationToken ct = default
+        ) => fail ? throw new InvalidOperationException("db down") : Task.FromResult(customer);
+
+        public Task<TenantProviderCustomer?> GetByIdAsync(
+            Guid tenantProviderCustomerId,
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<TenantProviderCustomer?>(null);
+
+        public Task<IReadOnlyList<TenantProviderCustomer>> GetWithMethodsExpiringBeforeAsync(
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TenantProviderCustomer>>([]);
+
+        public Task AddAsync(TenantProviderCustomer added, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private static SaaSPayment ProcessingPayment(SaaSPaymentType type)

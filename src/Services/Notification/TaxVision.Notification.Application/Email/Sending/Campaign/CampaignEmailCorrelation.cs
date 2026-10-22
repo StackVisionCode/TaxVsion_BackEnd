@@ -33,7 +33,10 @@ public static class CampaignEmailCorrelation
 
         var trimmed = messageId.Trim().Trim('<', '>').Trim();
         var at = trimmed.IndexOf('@');
-        var local = at >= 0 ? trimmed[..at] : trimmed;
+        // Sin el dominio exacto no es nuestro: antes cualquier id de 4 partes pasaba como campaña.
+        if (at <= 0 || !string.Equals(trimmed[(at + 1)..], Domain, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var local = trimmed[..at];
 
         var parts = local.Split('.', 4);
         if (parts.Length != 4)

@@ -6,6 +6,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Postmaster.Domain.Feedback;
 using TaxVision.Postmaster.Domain.Idempotency;
 using TaxVision.Postmaster.Domain.Permissions;
 using TaxVision.Postmaster.Domain.Projections;
@@ -32,6 +33,7 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     public DbSet<SentMessage> SentMessages => Set<SentMessage>();
     public DbSet<SentMessageRecipient> SentMessageRecipients => Set<SentMessageRecipient>();
     public DbSet<SentMessageEvent> SentMessageEvents => Set<SentMessageEvent>();
+    public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
     public DbSet<SystemEmailProvider> SystemEmailProviders => Set<SystemEmailProvider>();
     public DbSet<ProviderHealthStatus> ProviderHealthStatuses => Set<ProviderHealthStatus>();
     public DbSet<EmailIdempotency> EmailIdempotencies => Set<EmailIdempotency>();
@@ -41,6 +43,8 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+    public DbSet<DeliveryFeedbackReceipt> DeliveryFeedbackReceipts => Set<DeliveryFeedbackReceipt>();
+    public DbSet<UnmatchedDeliveryFeedback> UnmatchedDeliveryFeedback => Set<UnmatchedDeliveryFeedback>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

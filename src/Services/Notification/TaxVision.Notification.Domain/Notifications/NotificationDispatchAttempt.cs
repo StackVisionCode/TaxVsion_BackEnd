@@ -128,6 +128,8 @@ public sealed class NotificationDispatchAttempt : TenantEntity
                 is NotificationDispatchAttemptStatus.Delivered
                     or NotificationDispatchAttemptStatus.Bounced
                     or NotificationDispatchAttemptStatus.Failed,
+            // Rebote tardío: el servidor aceptó y después devolvió.
+            NotificationDispatchAttemptStatus.Delivered => to is NotificationDispatchAttemptStatus.Bounced,
             _ => false,
         };
 

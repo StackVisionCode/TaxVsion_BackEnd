@@ -18,7 +18,10 @@ public static class OutboundMimeBuilder
 
         var atIndex = fromAddress.IndexOf('@');
         var fromDomain = atIndex >= 0 ? fromAddress[(atIndex + 1)..] : "taxvision.local";
-        mime.MessageId = MimeUtils.GenerateMessageId(fromDomain);
+        // El id del caller si lo trae: así un aviso de no entrega se puede atar al envío original.
+        mime.MessageId = string.IsNullOrWhiteSpace(message.ClientMessageId)
+            ? MimeUtils.GenerateMessageId(fromDomain)
+            : message.ClientMessageId.Trim().Trim('<', '>');
 
         foreach (var to in message.To)
             mime.To.Add(MailboxAddress.Parse(to));

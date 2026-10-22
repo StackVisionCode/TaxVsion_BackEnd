@@ -34,6 +34,9 @@ public sealed class GmailApiClient(
     private const string BaseUrl = "https://gmail.googleapis.com/gmail/v1/users/me";
     private const int MaxHistoryPages = 10;
 
+    /// <summary>Cuántos mensajes recientes del INBOX se traen al resincronizar desde cero.</summary>
+    private const int ResyncRecentMessages = 50;
+
     private static readonly JsonSerializerOptions SendRequestJsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -51,6 +54,7 @@ public sealed class GmailApiClient(
         var messageIds = new List<string>();
         var pageToken = (string?)null;
         var latestHistoryId = sinceCursor;
+        var lastRecordId = (string?)null;
         var hasMore = false;
 
         for (var page = 0; page < MaxHistoryPages; page++)
@@ -60,10 +64,16 @@ public sealed class GmailApiClient(
                 + (sinceCursor is not null ? $"&startHistoryId={Uri.EscapeDataString(sinceCursor)}" : string.Empty)
                 + (pageToken is not null ? $"&pageToken={Uri.EscapeDataString(pageToken)}" : string.Empty);
 
-            var payload = await SendAsync<GmailHistoryResponse>(accountId, tenantId, url, ct);
-            if (payload.History is not null)
+            var payload = await SendCoreAsync<GmailHistoryResponse>(accountId, tenantId, url, ct, notFoundAsNull: true);
+            if (payload is null)
             {
-                foreach (var record in payload.History)
+                // 404: el historyId ya no existe en Gmail (se guarda ~1 semana). Sin esto la cuenta quedaba trabada.
+                return await ResyncFromRecentAsync(accountId, tenantId, ct);
+            }
+
+            foreach (var record in payload.History ?? [])
+            {
+                lastRecordId = record.Id ?? lastRecordId;
                 foreach (var added in record.MessagesAdded ?? [])
                 {
                     if (added.Message?.LabelIds?.Contains("INBOX") ?? true)
@@ -81,7 +91,35 @@ public sealed class GmailApiClient(
             hasMore = page == MaxHistoryPages - 1;
         }
 
-        return new HistoryPage(messageIds, latestHistoryId, hasMore);
+        // Si quedaron páginas sin leer, se sigue desde el último registro leído; saltar al historyId
+        // actual del buzón perdía todo lo que venía después de la página 10.
+        var nextCursor = hasMore && lastRecordId is not null ? lastRecordId : latestHistoryId;
+        return new HistoryPage(messageIds, nextCursor, hasMore);
+    }
+
+    /// <summary>
+    /// Vuelve a empezar desde el historyId actual y entrega los mensajes recientes del INBOX.
+    /// Correspondence descarta los que ya tenía por InternetMessageId.
+    /// </summary>
+    private async Task<HistoryPage> ResyncFromRecentAsync(Guid accountId, Guid tenantId, CancellationToken ct)
+    {
+        logger.LogWarning("Gmail history expired for account {AccountId}; resyncing from recent INBOX.", accountId);
+
+        var profile = await SendAsync<GmailProfileResponse>(accountId, tenantId, $"{BaseUrl}/profile", ct);
+        var recent = await SendAsync<GmailMessageListResponse>(
+            accountId,
+            tenantId,
+            $"{BaseUrl}/messages?labelIds=INBOX&maxResults={ResyncRecentMessages}",
+            ct
+        );
+
+        var ids = new List<string>();
+        foreach (var message in recent.Messages ?? [])
+            ids.Add(message.Id);
+        // La lista viene de más nuevo a más viejo; se publica en orden de llegada.
+        ids.Reverse();
+
+        return new HistoryPage(ids, profile.HistoryId, HasMore: false);
     }
 
     public async Task<RawMessage> GetMessageAsync(
@@ -131,6 +169,24 @@ public sealed class GmailApiClient(
     }
 
     /// <summary>Fetch completo (Fase 8) — a diferencia de GetMessageAsync, acá SÍ se pide format=full y se camina el árbol MIME para extraer html/text (nunca bytes de attachments, esos quedan solo como metadata).</summary>
+    public async Task<byte[]> GetRawMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    )
+    {
+        var payload = await SendAsync<GmailRawMessageResponse>(
+            accountId,
+            tenantId,
+            $"{BaseUrl}/messages/{providerMessageId}?format=raw",
+            ct
+        );
+        var raw = payload.Raw ?? string.Empty;
+        var base64 = raw.Replace('-', '+').Replace('_', '/');
+        return Convert.FromBase64String(base64.PadRight(base64.Length + (4 - base64.Length % 4) % 4, '='));
+    }
+
     public async Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
         Guid tenantId,
@@ -243,7 +299,7 @@ public sealed class GmailApiClient(
     )
     {
         var threadId = await ResolveThreadIdAsync(accountId, tenantId, message.ReplyToProviderMessageId, ct);
-        var raw = BuildRawMimeBase64Url(fromAddress, fromDisplayName, message);
+        var (raw, ourMessageId) = BuildRawMimeBase64Url(fromAddress, fromDisplayName, message);
         var requestBody = JsonSerializer.Serialize(new GmailSendRequest(raw, threadId), SendRequestJsonOptions);
 
         var response = await SendWriteRequestAsync(accountId, tenantId, $"{BaseUrl}/messages/send", requestBody, ct);
@@ -265,7 +321,40 @@ public sealed class GmailApiClient(
         }
 
         ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Gmail"));
-        return new SendMessageResult(parsed.Id, parsed.ThreadId, DateTime.UtcNow);
+        var internetMessageId = await ReadSentMessageIdAsync(accountId, tenantId, parsed.Id, ourMessageId, ct);
+        return new SendMessageResult(parsed.Id, parsed.ThreadId, DateTime.UtcNow, internetMessageId);
+    }
+
+    /// <summary>
+    /// Gmail puede reescribir el Message-ID al enviar: se lee el que quedó. Si la lectura falla, el
+    /// correo ya salió; se devuelve el que pusimos y no se rompe el envío.
+    /// </summary>
+    private async Task<string> ReadSentMessageIdAsync(
+        Guid accountId,
+        Guid tenantId,
+        string gmailMessageId,
+        string ourMessageId,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            var sent = await SendAsync<GmailFullMessageResponse>(
+                accountId,
+                tenantId,
+                $"{BaseUrl}/messages/{gmailMessageId}?format=metadata&metadataHeaders=Message-ID",
+                ct
+            );
+            var header = sent.Payload?.Headers?.Find(h =>
+                string.Equals(h.Name, "Message-ID", StringComparison.OrdinalIgnoreCase)
+            );
+            return string.IsNullOrWhiteSpace(header?.Value) ? ourMessageId : header.Value.Trim().Trim('<', '>');
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not read the Message-ID of sent Gmail message {MessageId}.", gmailMessageId);
+            return ourMessageId;
+        }
     }
 
     private static void RecordSendFailureMetric(SendFailureReason reason) =>
@@ -301,7 +390,11 @@ public sealed class GmailApiClient(
         }
     }
 
-    private static string BuildRawMimeBase64Url(string fromAddress, string? fromDisplayName, OutboundMessage message)
+    private static (string Raw, string MessageId) BuildRawMimeBase64Url(
+        string fromAddress,
+        string? fromDisplayName,
+        OutboundMessage message
+    )
     {
         MimeMessage mime;
         try
@@ -319,7 +412,8 @@ public sealed class GmailApiClient(
 
         using var stream = new MemoryStream();
         mime.WriteTo(stream);
-        return Convert.ToBase64String(stream.ToArray()).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var raw = Convert.ToBase64String(stream.ToArray()).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        return (raw, mime.MessageId ?? string.Empty);
     }
 
     /// <summary>Taxonomía normalizada D3 §8 — el string exacto <c>insufficientPermissions</c> para problemas de scope no está confirmado en la doc canónica de Gmail (nota honesta del research), se trata como PermissionDenied genérico.</summary>
@@ -365,6 +459,18 @@ public sealed class GmailApiClient(
     }
 
     private async Task<T> SendAsync<T>(Guid accountId, Guid tenantId, string url, CancellationToken ct)
+        where T : class =>
+        // Sin notFoundAsNull un 404 lanza, así que nunca vuelve null.
+        (await SendCoreAsync<T>(accountId, tenantId, url, ct, notFoundAsNull: false))!;
+
+    private async Task<T?> SendCoreAsync<T>(
+        Guid accountId,
+        Guid tenantId,
+        string url,
+        CancellationToken ct,
+        bool notFoundAsNull
+    )
+        where T : class
     {
         await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
@@ -392,6 +498,9 @@ public sealed class GmailApiClient(
         {
             throw new EmailProviderException("Gmail API request failed (network error) after retries.", ex);
         }
+
+        if (notFoundAsNull && response.StatusCode == HttpStatusCode.NotFound)
+            return null;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -550,6 +659,9 @@ public sealed class GmailApiClient(
 
     private sealed record GmailHistoryRecord
     {
+        [JsonPropertyName("id")]
+        public string? Id { get; init; }
+
         [JsonPropertyName("messagesAdded")]
         public List<GmailMessageAdded>? MessagesAdded { get; init; }
     }
@@ -567,6 +679,18 @@ public sealed class GmailApiClient(
 
         [JsonPropertyName("labelIds")]
         public List<string>? LabelIds { get; init; }
+    }
+
+    private sealed record GmailProfileResponse
+    {
+        [JsonPropertyName("historyId")]
+        public string? HistoryId { get; init; }
+    }
+
+    private sealed record GmailMessageListResponse
+    {
+        [JsonPropertyName("messages")]
+        public List<GmailHistoryMessageRef>? Messages { get; init; }
     }
 
     private sealed record GmailHeader
@@ -640,6 +764,12 @@ public sealed class GmailApiClient(
 
         [JsonPropertyName("data")]
         public string? Data { get; init; }
+    }
+
+    private sealed record GmailRawMessageResponse
+    {
+        [JsonPropertyName("raw")]
+        public string? Raw { get; init; }
     }
 
     private sealed record GmailSendRequest(

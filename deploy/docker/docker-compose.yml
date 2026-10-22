@@ -950,6 +950,10 @@ services:
       # Cupo del stream Bulk (campañas). SIN esto el email de campaña falla como "bulk no configurado".
       SystemEmailProvider__RateLimitPerMinute: ${SYSTEM_EMAIL_RATE_PER_MIN:-60}
       SystemEmailProvider__BulkRateLimitPerMinute: ${SYSTEM_EMAIL_BULK_RATE_PER_MIN:-120}
+      # Estado real de entrega: consulta de respaldo a SMTP2GO (/v3/activity/search). Vacío = apagada,
+      # el webhook sigue funcionando. Key con permiso solo de lectura de actividad.
+      DeliveryFeedback__Smtp2Go__ApiKey: ${SMTP2GO_API_KEY:-}
+      DeliveryFeedback__ReconcileAfterHours: ${POSTMASTER_FEEDBACK_RECONCILE_AFTER_HOURS:-6}
       # A6 — gate de módulo (Entitlements en runtime). El interruptor es por servicio para poder
       # subir el escalón de uno en uno y revertirlo sin redespliegue de código.
       #
@@ -1147,6 +1151,47 @@ services:
       db-ready:
         condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  # Escucha IMAP IDLE (una conexión por cuenta) y avisa a connectors-api cuando llega correo. Solo
+  # lee la base y publica a taxvision-events; sin puertos. Apagado por defecto: mientras
+  # tanto IMAP sigue con la reconciliación cada 15 min. Se escala con réplicas (lease por cuenta en Redis).
+  connectors-mailbox-listener:
+    image: taxvision/connectors-mailbox-listener:dev
+    container_name: taxvision-connectors-mailbox-listener
+    build:
+      context: ../..
+      dockerfile: src/Services/Connectors/TaxVision.Connectors.MailboxListener/Dockerfile
+    restart: unless-stopped
+    # Cierra las conexiones IMAP con LOGOUT y suelta los leases antes de morir.
+    stop_grace_period: 30s
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Mismo valor que connectors-api: descifra la contraseña IMAP justo antes del login.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Connectors__MailboxListener__Enabled: ${CONNECTORS_LISTENER_ENABLED:-false}
+      Connectors__MailboxListener__MaxAccountsPerInstance: ${CONNECTORS_LISTENER_MAX_ACCOUNTS:-500}
+      Connectors__MailboxListener__IdleMinutes: ${CONNECTORS_LISTENER_IDLE_MINUTES:-4}
+    volumes:
+      - taxvision-logs:/app/Logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      # Arranca después de connectors-api, que es quien consume los avisos.
+      connectors-api:
         condition: service_healthy
       otel-collector:
         condition: service_started

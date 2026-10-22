@@ -439,6 +439,10 @@ jobs:
           SYSTEM_EMAIL_FROM_ADDRESS=${{ secrets.SYSTEM_EMAIL_FROM_ADDRESS }}
           SYSTEM_EMAIL_FROM_NAME=${{ secrets.SYSTEM_EMAIL_FROM_NAME }}
           SYSTEM_EMAIL_DISPLAY_NAME=${{ secrets.SYSTEM_EMAIL_DISPLAY_NAME }}
+          # Postmaster: consulta de respaldo del estado de entrega en SMTP2GO. Vacío = apagada.
+          SMTP2GO_API_KEY=${{ secrets.SMTP2GO_API_KEY }}
+          # Listener IMAP IDLE de Connectors. Vacío o "false" = apagado (IMAP sigue con la reconciliación).
+          CONNECTORS_LISTENER_ENABLED=${{ secrets.CONNECTORS_LISTENER_ENABLED }}
           # El JSON de la cuenta de servicio de Firebase ya se decodifica a un archivo
           # (ver step "Write JWT keys...", FIREBASE_SERVICE_ACCOUNT_JSON_B64), pero
           # Notification__UseFcmPush tiene default false en docker-compose.yml -- sin
@@ -457,6 +461,21 @@ jobs:
           # en runtime). CAMPAIGN_EMAIL_WEBHOOK_SECRET se compara en tiempo constante (SHA-256 + FixedTimeEquals)
           # contra Authorization: Bearer / X-Webhook-Secret / ?key=.
           CAMPAIGN_EMAIL_WEBHOOK_SECRET=${{ secrets.CAMPAIGN_EMAIL_WEBHOOK_SECRET }}
+          # Envío de campañas (Notification). Sin estas líneas el .env salía sin usuario/contraseña
+          # y el compose caía a sus defaults: las campañas no podían autenticarse en SMTP2GO.
+          CAMPAIGN_EMAIL_PROVIDER=${{ secrets.CAMPAIGN_EMAIL_PROVIDER }}
+          CAMPAIGN_EMAIL_SMTP_HOST=${{ secrets.CAMPAIGN_EMAIL_SMTP_HOST }}
+          CAMPAIGN_EMAIL_SMTP_PORT=${{ secrets.CAMPAIGN_EMAIL_SMTP_PORT }}
+          CAMPAIGN_EMAIL_SMTP_USE_TLS=${{ secrets.CAMPAIGN_EMAIL_SMTP_USE_TLS }}
+          CAMPAIGN_EMAIL_SMTP_USERNAME=${{ secrets.CAMPAIGN_EMAIL_SMTP_USERNAME }}
+          CAMPAIGN_EMAIL_SMTP_PASSWORD=${{ secrets.CAMPAIGN_EMAIL_SMTP_PASSWORD }}
+          CAMPAIGN_EMAIL_SMTP_FROM_ADDRESS=${{ secrets.CAMPAIGN_EMAIL_SMTP_FROM_ADDRESS }}
+          CAMPAIGN_EMAIL_SMTP_FROM_NAME=${{ secrets.CAMPAIGN_EMAIL_SMTP_FROM_NAME }}
+          CAMPAIGN_EMAIL_API_BASE_URL=${{ secrets.CAMPAIGN_EMAIL_API_BASE_URL }}
+          CAMPAIGN_EMAIL_API_KEY=${{ secrets.CAMPAIGN_EMAIL_API_KEY }}
+          CAMPAIGN_EMAIL_API_FROM_ADDRESS=${{ secrets.CAMPAIGN_EMAIL_API_FROM_ADDRESS }}
+          CAMPAIGN_EMAIL_API_FROM_NAME=${{ secrets.CAMPAIGN_EMAIL_API_FROM_NAME }}
+          CAMPAIGN_EMAIL_MAX_PER_MIN=${{ secrets.CAMPAIGN_EMAIL_MAX_PER_MIN }}
 
           # Rollout del puente in-app por grupo. Secret ausente = default "Communication" (compat).
           # Para pasar un grupo al pipeline nuevo (Notification), setear el secret a "Notification"

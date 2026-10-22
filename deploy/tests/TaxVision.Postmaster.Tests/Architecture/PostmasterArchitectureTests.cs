@@ -211,6 +211,9 @@ public sealed class PostmasterArchitectureTests
             .And()
             .DoNotResideInNamespace("TaxVision.Postmaster.Infrastructure.Providers.TenantDirectory")
             .And()
+            // El sexto: consulta de respaldo a la API de actividad de SMTP2GO (estado real de entrega).
+            .DoNotResideInNamespace("TaxVision.Postmaster.Infrastructure.Feedback.Smtp2Go")
+            .And()
             .DoNotHaveName(["DependencyInjection"])
             .Should()
             .NotHaveDependencyOn("System.Net.Http")

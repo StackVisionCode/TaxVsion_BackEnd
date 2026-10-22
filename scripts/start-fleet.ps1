@@ -14,6 +14,9 @@ $fleet = @(
   @{ n = "Postmaster";     d = "src\Services\Postmaster\TaxVision.Postmaster.Api";     p = 5370 },
   @{ n = "Scribe";         d = "src\Services\Scribe\TaxVision.Scribe.Api";             p = 5380 },
   @{ n = "Connectors";     d = "src\Services\Connectors\TaxVision.Connectors.Api";     p = 5390 },
+  # IMAP IDLE listener (worker, own process). Only reads the DB and publishes to taxvision-events.
+  @{ n = "Connectors.MailboxListener"; d = "src\Services\Connectors\TaxVision.Connectors.MailboxListener"; p = 5395;
+     e = @{ "Connectors__MailboxListener__Enabled" = "true" } },
   @{ n = "Correspondence"; d = "src\Services\Correspondence\TaxVision.Correspondence.Api"; p = 5400 },
   @{ n = "Growth";         d = "src\Services\Growth\TaxVision.Growth.Api";             p = 5410 },
   @{ n = "PaymentClient";  d = "src\Services\PaymentClient\TaxVision.PaymentClient.Api"; p = 5420 },
@@ -46,10 +49,13 @@ function Start-One($s) {
   if (-not $dll) { Write-Host "SKIP $($s.n): no dll in $binDir"; return }
   $env:ASPNETCORE_ENVIRONMENT = "Development"
   $env:ASPNETCORE_URLS = "http://localhost:$($s.p)"
+  # Extra env per service (e.g. the listener switch); cleared after launch so it does not leak.
+  if ($s.e) { foreach ($k in $s.e.Keys) { Set-Item -Path "env:$k" -Value $s.e[$k] } }
   Start-Process -FilePath "dotnet" -ArgumentList $dll.FullName -WorkingDirectory $wd `
     -RedirectStandardOutput (Join-Path $logs "$($s.n).log") `
     -RedirectStandardError (Join-Path $logs "$($s.n).err.log") `
     -WindowStyle Hidden
+  if ($s.e) { foreach ($k in $s.e.Keys) { Remove-Item -Path "env:$k" -ErrorAction SilentlyContinue } }
   Write-Host "UP $($s.n) :$($s.p)"
 }
 

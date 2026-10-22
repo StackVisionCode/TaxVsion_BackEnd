@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Messaging;
@@ -100,6 +100,8 @@ builder
 
 // Fase 4 — limpieza horaria de reservas de idempotencia expiradas.
 builder.Services.AddHostedService<IdempotencyCleanupJob>();
+builder.Services.AddHostedService<UnmatchedDeliveryFeedbackCleanupJob>();
+builder.Services.AddHostedService<DeliveryFeedbackReconciliationJob>();
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -164,6 +166,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<PostmasterEmailDeliverySucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PostmasterEmailDeliveryFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PostmasterEmailDeliverySuppressedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Estado real de entrega (avisos del proveedor): solo cuando cambia, nunca por cada evento repetido.
+    options.PublishMessage<PostmasterEmailDeliveredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PostmasterEmailDeliveryBouncedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PostmasterEmailComplainedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PostmasterEmailEngagementIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // El consumer de notifications.email_send_requested.v1 se agrega en Fase 5.
     // La cola/binding se declara ya en Fase 1 para que exista en Rabbit desde el arranque.

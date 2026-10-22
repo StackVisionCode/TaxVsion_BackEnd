@@ -32,7 +32,9 @@ public sealed record NotificationTemplateSeed(
     // v15: la marca sale de {{ product_name }} (PlatformSettings) en vez de "TaxProffice" escrito; los
     //      overrides explícitos subieron uno cada uno por lo mismo.
     // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
-    int ContentVersion = 17,
+    // v18 (por plantilla): subscription.recurring_charge_failed reescrito — un correo por cada cobro
+    //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
+    int ContentVersion = 18,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -133,7 +135,8 @@ public static class NotificationTemplateSeedSource
         ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
-        ["subscription.recurring_charge_failed"] = "We couldn't charge your saved card — please take a look.",
+        ["subscription.recurring_charge_failed"] =
+            "Your payment didn't go through. See what happens next and how to keep your access.",
         ["subscription.billing_mode_changed"] = "Your billing preference was updated.",
         ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
         ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
@@ -1498,47 +1501,104 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
-    /// <summary>Cobro recurrente off-session fallido. Lleva al user a actualizar la tarjeta.</summary>
+    /// <summary>
+    /// Cobro automático de renovación fallido (plan, asiento o add-on), uno por intento. Dos variantes:
+    /// quedan reintentos (fecha del próximo) o fue el último (qué se suspendió). Lleva a Manage subscription.
+    /// v18: reescrito — antes solo salía en el primer cobro del plan, con la marca "Stripe" y "$" fijo.
+    /// </summary>
     private static NotificationTemplateSeed SubscriptionRecurringChargeFailed { get; } =
         new(
             EventKey: "subscription.recurring_charge_failed.v1",
             TemplateKey: "subscription.recurring_charge_failed",
-            Name: "Suscripción — Cobro recurrente fallido",
-            Subject: "We couldn't charge your {{ card_brand }} — action needed",
+            Name: "Suscripción — Cobro automático fallido",
+            Subject: "{% if is_final %}Final notice: we couldn't process your {{ product_name }} payment{% else %}Action needed: we couldn't process your {{ product_name }} payment{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
-              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
-              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">We couldn't charge your card</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we tried to charge <strong style="color:#1E466B;">${{ amount }}</strong> on your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan but it didn't go through.</td></tr>
-              {% if failure_reason != blank %}
-              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">Reason: {{ failure_reason }}</td></tr></table></td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="{% if is_final %}#D65B5B{% else %}#67BAF4{% endif %}" style="background-color:{% if is_final %}#D65B5B{% else %}#67BAF4{% endif %};height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">{% if is_final %}Your payment couldn't be completed{% else %}We couldn't process your payment{% endif %}</td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, {% if is_final %}we made our final attempt to charge{% else %}we attempted to charge{% endif %} {% if has_card %}your <strong style="color:#1E466B;">{{ card_brand }} ending in {{ card_last4 }}</strong>{% else %}your account{% endif %} for <strong style="color:#1E466B;">{{ item_description }}</strong>, but the payment was not completed.</td></tr>
+              {% if is_final %}
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">As a result, <strong>{{ suspension_effect }}</strong>.</td></tr></table></td></tr>
               {% endif %}
               <tr>
-                <td align="left" style="padding:22px 0 4px 0;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;margin-right:10px;"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Update card</a></td></tr></table>
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-block;"><tr><td align="center" style="border:1px solid #1E466B;border-radius:10px;"><a href="{{ renew_url }}" target="_blank" style="display:inline-block;padding:11px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#1E466B;text-decoration:none;">Pay now</a></td></tr></table>
+                <td style="padding-bottom:20px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E3E9EF;border-radius:10px;">
+                    <tr>
+                      <td style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Amount</td>
+                      <td align="right" style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">{{ amount }}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Item</td>
+                      <td align="right" style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#23384B;mso-line-height-rule:exactly;">{{ item_description }}</td>
+                    </tr>
+                    {% if attempt_number != blank and max_attempts != blank %}
+                    <tr>
+                      <td style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Attempt</td>
+                      <td align="right" style="padding:12px 18px;border-bottom:1px solid #E3E9EF;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#23384B;mso-line-height-rule:exactly;">{{ attempt_number }} of {{ max_attempts }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                      <td style="padding:12px 18px;{% unless is_final %}border-bottom:1px solid #E3E9EF;{% endunless %}font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Reason</td>
+                      <td align="right" style="padding:12px 18px;{% unless is_final %}border-bottom:1px solid #E3E9EF;{% endunless %}font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#23384B;mso-line-height-rule:exactly;">{{ friendly_reason }}</td>
+                    </tr>
+                    {% unless is_final %}
+                    <tr>
+                      <td style="padding:12px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Next attempt</td>
+                      <td align="right" style="padding:12px 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ next_retry_date }}</td>
+                    </tr>
+                    {% endunless %}
+                  </table>
                 </td>
               </tr>
-              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">We'll try again automatically. If you've already updated your payment, you can ignore this email.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_final %}Your data is safe and nothing has been deleted. To restore access right away, complete the payment in Manage subscription.{% else %}<strong style="color:#23384B;">What happens next:</strong> we'll automatically try again on {{ next_retry_date }}. To keep your team's access uninterrupted, please review your payment method or complete the payment now.{% endif %}</td></tr>
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Go to Manage subscription</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% unless is_final %}If you've already taken care of this, no further action is needed. {% endunless %}Need a hand? Our support team is happy to help you get back on track.</td></tr>
             </table>
             """,
             Variables:
             [
-                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
-                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
-                ("amount", VariableType.String, true, null, "Importe intentado ya formateado."),
-                ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
-                ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
+                ("first_name", VariableType.String, true, null, "Nombre del admin principal del tenant."),
                 (
-                    "failure_reason",
+                    "item_description",
+                    VariableType.String,
+                    true,
+                    "your subscription",
+                    "Qué se intentó cobrar, en inglés (\"Professional plan\", \"1 additional user seat\")."
+                ),
+                ("amount", VariableType.String, true, null, "Importe con moneda ya formateado (\"$49.00\")."),
+                ("has_card", VariableType.Bool, true, "false", "true si se conoce la tarjeta guardada."),
+                ("card_brand", VariableType.String, false, "card", "Marca de la tarjeta guardada (Visa, Mastercard…)."),
+                ("card_last4", VariableType.String, false, null, "Últimos 4 de la tarjeta guardada."),
+                ("attempt_number", VariableType.String, false, null, "Número de este intento (1 = primer cobro)."),
+                ("max_attempts", VariableType.String, false, null, "Intentos del ciclo de cobro."),
+                ("is_final", VariableType.Bool, true, "false", "true si fue el último intento (sin reintentos)."),
+                (
+                    "next_retry_date",
                     VariableType.String,
                     false,
                     null,
-                    "Motivo legible del fallo; si falta, se omite la línea."
+                    "Fecha del próximo intento; vacía si es el último."
                 ),
-                ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription para actualizar la tarjeta."),
-                ("renew_url", VariableType.Url, true, null, "URL de pago manual (fallback)."),
+                (
+                    "friendly_reason",
+                    VariableType.String,
+                    true,
+                    "The payment could not be completed.",
+                    "Motivo en palabras de cliente (nunca el código crudo del proveedor)."
+                ),
+                (
+                    "suspension_effect",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Qué se suspendió tras el último intento, en minúscula para seguir la frase \"As a result, …\"."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Account del Landing, sección Plan (Pay now)."),
                 (
                     "product_name",
                     VariableType.String,
@@ -1546,7 +1606,8 @@ public static class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: 18
         );
 
     /// <summary>Confirmación del cambio Auto↔Manual.</summary>

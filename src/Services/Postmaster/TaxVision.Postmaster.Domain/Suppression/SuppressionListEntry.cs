@@ -65,6 +65,31 @@ public sealed class SuppressionListEntry
         );
     }
 
+    /// <summary>
+    /// El proveedor nos avisó un rebote duro o una queja. SMTP2GO también suprime quejas y bajas; esta
+    /// es nuestra copia para no depender de él (y para cuando se cambie de proveedor).
+    /// </summary>
+    public static Result<SuppressionListEntry> CreateFromFeedback(
+        Guid tenantId,
+        string emailAddress,
+        SuppressionReason reason,
+        string source,
+        Guid sentMessageId,
+        DateTime addedAtUtc
+    ) =>
+        reason is SuppressionReason.HardBounce or SuppressionReason.Complaint
+            ? Create(
+                tenantId,
+                emailAddress,
+                reason,
+                addedByUserId: null,
+                $"Automatic: {source} reported {reason} for message {sentMessageId:N}.",
+                addedAtUtc
+            )
+            : Result.Failure<SuppressionListEntry>(
+                new Error("SuppressionListEntry.Reason", "Only hard bounces and complaints suppress automatically.")
+            );
+
     /// <summary>La dirección vuelve a suprimirse (ej. nuevo hard bounce) — refresca motivo y fecha.</summary>
     public void Reactivate(SuppressionReason reason, Guid? addedByUserId, string? notes, DateTime addedAtUtc)
     {

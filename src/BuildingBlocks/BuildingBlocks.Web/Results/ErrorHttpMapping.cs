@@ -181,6 +181,7 @@ public static class ErrorHttpMapping
             or "ConnectorsClient.UnexpectedStatus"
             or "CloudStorageClient.EmptyResponse"
             or "CloudStorageClient.UnexpectedStatus"
+            or "CloudStorageClient.FileNotRegistered"
             or "CorrespondenceTempBucketUploader.UploadFailed"
             or "PostmasterClient.EmptyResponse"
             or "PostmasterClient.UnexpectedStatus"

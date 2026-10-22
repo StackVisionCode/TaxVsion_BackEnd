@@ -114,6 +114,89 @@ public static class PostmasterOutboundEmailFailedConsumer
 /// (retirado en esta misma fase, ver Program.cs). Este es el primer productor REAL de bounces para
 /// <see cref="OutboundEmailMessage"/>.
 /// </summary>
+/// <summary>Estado real de entrega en el path OutboundEmail (campañas por Postmaster y /notifications/email/send).</summary>
+public static class PostmasterOutboundEmailDeliveredConsumer
+{
+    public static async Task Handle(
+        PostmasterEmailDeliveredIntegrationEvent evt,
+        IOutboundEmailRepository outbound,
+        IUnitOfWork uow,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        {
+            var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
+            if (message is null)
+                return;
+
+            message.MarkDelivered();
+            await uow.SaveChangesAsync(ct);
+        }
+    }
+
+    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
+        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
+}
+
+public static class PostmasterOutboundEmailComplainedConsumer
+{
+    public static async Task Handle(
+        PostmasterEmailComplainedIntegrationEvent evt,
+        IOutboundEmailRepository outbound,
+        IUnitOfWork uow,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        {
+            var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
+            if (message is null)
+                return;
+
+            message.MarkComplained(evt.EventAtUtc);
+            await uow.SaveChangesAsync(ct);
+        }
+    }
+
+    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
+        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
+}
+
+/// <summary>Aperturas y clics son aproximados (algunos clientes abren solos); la baja no cambia nada acá.</summary>
+public static class PostmasterOutboundEmailEngagementConsumer
+{
+    public static async Task Handle(
+        PostmasterEmailEngagementIntegrationEvent evt,
+        IOutboundEmailRepository outbound,
+        IUnitOfWork uow,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        {
+            var message = await outbound.GetForDeliveryAsync(evt.NotificationLogId, ct);
+            if (message is null)
+                return;
+
+            var changed = evt.Signal switch
+            {
+                "Opened" => message.MarkOpened(),
+                "Clicked" => message.MarkClicked(),
+                _ => false,
+            };
+            if (changed)
+                await uow.SaveChangesAsync(ct);
+        }
+    }
+
+    private static string ResolveCorrelation(string correlationId, Guid eventId) =>
+        string.IsNullOrWhiteSpace(correlationId) ? eventId.ToString("N") : correlationId;
+}
+
 public static class PostmasterOutboundEmailBouncedConsumer
 {
     public static async Task Handle(

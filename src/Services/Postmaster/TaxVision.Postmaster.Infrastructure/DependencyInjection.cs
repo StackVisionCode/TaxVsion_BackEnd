@@ -10,12 +10,17 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
+using TaxVision.Postmaster.Application.Feedback;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.RateLimiting.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Application.Suppression;
+using TaxVision.Postmaster.Infrastructure.Feedback;
+using TaxVision.Postmaster.Infrastructure.Feedback.Dsn;
+using TaxVision.Postmaster.Infrastructure.Feedback.Smtp2Go;
 using TaxVision.Postmaster.Infrastructure.Idempotency;
+using TaxVision.Postmaster.Infrastructure.Locking;
 using TaxVision.Postmaster.Infrastructure.Persistence;
 using TaxVision.Postmaster.Infrastructure.Persistence.Repositories;
 using TaxVision.Postmaster.Infrastructure.Providers;
@@ -54,6 +59,9 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<IConnectedMailboxResolver, ConnectedMailboxResolver>();
         services.AddScoped<IIdempotencyGuard, SqlIdempotencyGuard>();
+        services.AddScoped<IDeliveryFeedbackReceiptRepository, DeliveryFeedbackReceiptRepository>();
+        services.AddScoped<IUnmatchedDeliveryFeedbackRepository, UnmatchedDeliveryFeedbackRepository>();
+        AddDeliveryFeedback(services, configuration);
         services.Configure<SystemEmailProviderOptions>(
             configuration.GetSection(SystemEmailProviderOptions.SectionName)
         );
@@ -127,6 +135,36 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+    }
+
+    /// <summary>
+    /// Avisos de entrega por proveedor: el traductor del webhook siempre; la consulta de respaldo solo si
+    /// hay API key (sin ella queda apagada y el webhook sigue funcionando).
+    /// </summary>
+    private static void AddDeliveryFeedback(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<IDeliveryFeedbackCapabilities, DeliveryFeedbackCapabilities>();
+        services.AddSingleton<IDeliveryFeedbackTranslator, Smtp2GoWebhookFeedbackTranslator>();
+        // Avisos de no entrega que llegan al buzón de la oficina (los lee Connectors).
+        services.AddSingleton<IDeliveryFeedbackTranslator, DsnFeedbackTranslator>();
+        services.AddSingleton<JobLeaderLock>();
+        services.Configure<DeliveryFeedbackReconciliationOptions>(
+            configuration.GetSection(DeliveryFeedbackReconciliationOptions.SectionName)
+        );
+
+        var smtp2GoSection = configuration.GetSection(Smtp2GoFeedbackOptions.SectionName);
+        services.Configure<Smtp2GoFeedbackOptions>(smtp2GoSection);
+        if (string.IsNullOrWhiteSpace(smtp2GoSection[nameof(Smtp2GoFeedbackOptions.ApiKey)]))
+            return;
+
+        services.AddHttpClient<Smtp2GoActivityFeedbackPoller>(
+            (sp, http) =>
+            {
+                http.BaseAddress = new Uri(sp.GetRequiredService<IOptions<Smtp2GoFeedbackOptions>>().Value.BaseUrl);
+                http.Timeout = TimeSpan.FromSeconds(20);
+            }
+        );
+        services.AddScoped<IDeliveryFeedbackPoller>(sp => sp.GetRequiredService<Smtp2GoActivityFeedbackPoller>());
     }
 
     /// <summary>Si no hay Redis configurado (dev local) se degrada a un limiter no-op — mismo criterio que Signature Fase 4.</summary>

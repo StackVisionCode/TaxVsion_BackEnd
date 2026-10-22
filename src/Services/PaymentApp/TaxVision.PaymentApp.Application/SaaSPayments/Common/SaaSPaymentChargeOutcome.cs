@@ -14,6 +14,9 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.Common;
 /// </summary>
 public static class SaaSPaymentChargeOutcome
 {
+    /// <summary>Intentos de un ciclo de cobro con dunning: el primero más los 3 reintentos (1 h, 6 h, 24 h).</summary>
+    public const int MaxDunningAttempts = 4;
+
     /// <summary>Mismo código que usa Stripe: Subscription ya lo trata como fallo permanente.</summary>
     public const string MissingPaymentMethodCode = "requires_payment_method";
 

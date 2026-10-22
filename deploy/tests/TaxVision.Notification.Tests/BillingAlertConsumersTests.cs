@@ -110,6 +110,43 @@ public sealed class BillingAlertConsumersTests
         Assert.Empty(harness.Publisher.Published);
     }
 
+    [Theory]
+    [InlineData(false, "Payment attempt failed", "We'll try again on October 23.")]
+    [InlineData(true, "Payment failed — action required", "Complete the payment in Manage subscription")]
+    public async Task A_failed_charge_attempt_shows_what_happens_next_in_the_bell(
+        bool isFinal,
+        string expectedTitle,
+        string expectedBodyPart
+    )
+    {
+        var harness = new NotificationDispatcherHarness();
+
+        await SubscriptionLifecycleInAppConsumer.Handle(
+            new TenantSubscriptionEmailRequestedIntegrationEvent
+            {
+                TenantId = TenantId,
+                Email = "owner@example.com",
+                FirstName = "Owner",
+                Status = isFinal ? "Suspended" : "Active",
+                Reason = "RenewalChargeFailed",
+                RenewUrl = "https://www.taxoffix.io/account/plan",
+                Amount = "$49.00",
+                ItemDescription = "Professional plan",
+                IsFinalAttempt = isFinal,
+                NextAttemptAtUtc = isFinal ? null : new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc),
+            },
+            harness.Dispatcher,
+            new AudienceResolver(Guid.NewGuid()),
+            new TestCorrelationContext(),
+            CancellationToken.None
+        );
+
+        var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(harness.Publisher.Published));
+        Assert.Equal(expectedTitle, evt.FallbackTitle);
+        Assert.Contains("We couldn't charge $49.00 for your Professional plan.", evt.FallbackBody);
+        Assert.Contains(expectedBodyPart, evt.FallbackBody);
+    }
+
     [Fact]
     public async Task Renewal_upcoming_uses_renewal_kind()
     {

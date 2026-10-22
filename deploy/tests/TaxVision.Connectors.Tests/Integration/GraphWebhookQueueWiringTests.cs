@@ -18,15 +18,30 @@ namespace TaxVision.Connectors.Tests.Integration;
 /// </summary>
 public sealed class GraphWebhookQueueWiringTests(ConnectorsApiFactory factory) : IClassFixture<ConnectorsApiFactory>
 {
-    public static TheoryData<object> QueuedMessages =>
-        [
-            new GraphNotificationReceived("sub-1", "correlation"),
-            new GraphLifecycleNotificationReceived("sub-1", GraphLifecycleEvents.SubscriptionRemoved, "correlation"),
-        ];
+    public static TheoryData<object, string> QueuedMessages =>
+        new()
+        {
+            { new GraphNotificationReceived("sub-1", "correlation"), "graph-webhook" },
+            {
+                new GraphLifecycleNotificationReceived(
+                    "sub-1",
+                    GraphLifecycleEvents.SubscriptionRemoved,
+                    "correlation"
+                ),
+                "graph-webhook"
+            },
+            // Gmail: Pub/Sub reintenta si tardamos, pero un 200 ya entregado no vuelve.
+            { new GmailPushReceived("office@gmail.com", "100", "correlation"), "gmail-webhook" },
+            // Avisos de no entrega: bajar el MIME no debe frenar el sync, y un reinicio no los pierde.
+            {
+                new InspectDeliveryReport(Guid.NewGuid(), Guid.NewGuid(), "report-1", DateTime.UtcNow, "correlation"),
+                "delivery-reports"
+            },
+        };
 
     [Theory]
     [MemberData(nameof(QueuedMessages))]
-    public void Handler_CompilesAgainstTheRealContainer(object message)
+    public void Handler_CompilesAgainstTheRealContainer(object message, string _)
     {
         var graph = factory.Services.GetServices<ICodeFileCollection>().OfType<HandlerGraph>().Single();
 
@@ -35,7 +50,7 @@ public sealed class GraphWebhookQueueWiringTests(ConnectorsApiFactory factory) :
 
     [Theory]
     [MemberData(nameof(QueuedMessages))]
-    public void Message_IsRoutedOnlyToTheDurableLocalQueue(object message)
+    public void Message_IsRoutedOnlyToTheDurableLocalQueue(object message, string queue)
     {
         using var scope = factory.Services.CreateScope();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
@@ -43,7 +58,7 @@ public sealed class GraphWebhookQueueWiringTests(ConnectorsApiFactory factory) :
 
         var envelope = Assert.Single(bus.PreviewSubscriptions(message));
 
-        Assert.Equal(new Uri("local://graph-webhook"), envelope.Destination);
+        Assert.Equal(new Uri($"local://{queue}"), envelope.Destination);
         Assert.Equal(EndpointMode.Durable, runtime.Endpoints.EndpointFor(envelope.Destination!)!.Mode);
     }
 }

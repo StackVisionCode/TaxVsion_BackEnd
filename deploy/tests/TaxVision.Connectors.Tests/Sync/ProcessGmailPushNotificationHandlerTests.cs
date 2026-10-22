@@ -56,6 +56,7 @@ public class ProcessGmailPushNotificationHandlerTests
             cursorRepository,
             factory,
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             unitOfWork,
             bus,
             correlation,
@@ -105,6 +106,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -144,6 +146,7 @@ public class ProcessGmailPushNotificationHandlerTests
             cursorRepository,
             factory,
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             unitOfWork,
             bus,
             correlation,
@@ -165,6 +168,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -195,6 +199,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -236,6 +241,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -270,6 +276,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -302,6 +309,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -325,7 +333,7 @@ public class ProcessGmailPushNotificationHandlerTests
     /// publicado exactamente una vez.
     /// </summary>
     [Fact]
-    public async Task Handle_TwoNearSimultaneousDeliveries_SecondSkipsCleanlyWhileFirstIsInFlight()
+    public async Task Handle_TwoNearSimultaneousDeliveries_SecondMarksPendingAndFirstRunsOneMorePass()
     {
         var account = CreateActiveAccount();
         var accountRepository = new FakeTenantEmailAccountRepository();
@@ -339,6 +347,8 @@ public class ProcessGmailPushNotificationHandlerTests
         cursorRepository.Cursors.Add(existingCursor);
 
         var sharedLock = new InMemoryDistributedLock();
+
+        var sharedPendingFlag = new InMemorySyncPendingFlag();
         var bus = new FakeMessageBus();
         var unitOfWork = new FakeUnitOfWork();
         var correlation = new FakeCorrelationContext();
@@ -347,8 +357,11 @@ public class ProcessGmailPushNotificationHandlerTests
         var releaseHistoryFetch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new FakeEmailProviderClient(ProviderCode.Gmail)
         {
-            OnGetHistory = (_, _) =>
+            // Primera pasada trae msg1; la segunda (desde el cursor nuevo) ya no trae nada.
+            OnGetHistory = (_, cursor) =>
             {
+                if (cursor != "history-5")
+                    return new HistoryPage([], "history-2", false);
                 enteredHistoryFetch.TrySetResult();
                 releaseHistoryFetch.Task.GetAwaiter().GetResult();
                 return new HistoryPage(["msg1"], "history-2", false);
@@ -365,6 +378,7 @@ public class ProcessGmailPushNotificationHandlerTests
                 cursorRepository,
                 factory,
                 sharedLock,
+                sharedPendingFlag,
                 unitOfWork,
                 bus,
                 correlation,
@@ -383,6 +397,7 @@ public class ProcessGmailPushNotificationHandlerTests
             cursorRepository,
             factory,
             sharedLock,
+            sharedPendingFlag,
             unitOfWork,
             bus,
             correlation,
@@ -403,5 +418,8 @@ public class ProcessGmailPushNotificationHandlerTests
         Assert.Equal("history-2", cursorRepository.Cursors[0].CursorValue); // Advanced by A only.
         var published = Assert.Single(bus.Published); // Published exactly once, by A.
         Assert.IsType<ConnectorsRawMessageReceivedIntegrationEvent>(published);
+        // B dejó la marca y A hizo una pasada más desde el cursor avanzado.
+        Assert.Equal(1, sharedPendingFlag.MarkCount);
+        Assert.Equal(["history-5", "history-2"], client.ReceivedCursors);
     }
 }

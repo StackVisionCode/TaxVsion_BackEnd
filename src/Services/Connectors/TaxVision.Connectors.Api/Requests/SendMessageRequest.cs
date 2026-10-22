@@ -14,7 +14,8 @@ public sealed record SendMessageRequest(
     IReadOnlyList<string>? References,
     string? ReplyToProviderMessageId,
     IReadOnlyList<SendMessageAttachmentRequest>? Attachments = null,
-    IReadOnlyList<SendMessageInlineAssetRequest>? InlineAssets = null
+    IReadOnlyList<SendMessageInlineAssetRequest>? InlineAssets = null,
+    string? ClientMessageId = null
 );
 
 /// <summary>Contenido en base64 (D3 Compose §16 Fase 1) — consistente con el resto de payloads binarios M2M del repo (ej. <c>EmailLayoutsController.PreviewPngBase64</c>).</summary>

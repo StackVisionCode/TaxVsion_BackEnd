@@ -22,6 +22,77 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Feedback.DeliveryFeedbackReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SentMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentMessageId")
+                        .HasDatabaseName("IX_DeliveryFeedbackReceipts_SentMessageId");
+
+                    b.HasIndex("Source", "SourceEventId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DeliveryFeedbackReceipts_Source_SourceEventId");
+
+                    b.ToTable("DeliveryFeedbackReceipts", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Feedback.UnmatchedDeliveryFeedback", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CorrelationHint")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MaskedRecipient")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("RawPayload")
+                        .HasMaxLength(8192)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedAtUtc")
+                        .HasDatabaseName("IX_UnmatchedDeliveryFeedback_ReceivedAtUtc");
+
+                    b.ToTable("UnmatchedDeliveryFeedback", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Idempotency.EmailIdempotency", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -348,6 +419,45 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.DeliveryAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AttemptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Lane")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("SentMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentMessageId")
+                        .HasDatabaseName("IX_DeliveryAttempts_SentMessageId");
+
+                    b.ToTable("DeliveryAttempts", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -361,6 +471,16 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<Guid?>("CorrespondenceDraftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DeliveryLane")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("SystemProvider");
+
+                    b.Property<Guid?>("DispatchAttemptId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ErrorReason")
@@ -382,6 +502,10 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("InReplyToInternetMessageId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("InternetMessageId")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -464,6 +588,12 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("InternetMessageId")
+                        .HasDatabaseName("IX_SentMessages_InternetMessageId");
+
+                    b.HasIndex("DeliveryLane", "SentAtUtc")
+                        .HasDatabaseName("IX_SentMessages_DeliveryLane_SentAtUtc");
+
                     b.HasIndex("TenantId", "CampaignId");
 
                     b.HasIndex("TenantId", "CorrespondenceDraftId");
@@ -525,6 +655,9 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
 
+                    b.Property<int>("ClickCount")
+                        .HasColumnType("int");
+
                     b.Property<string>("DisplayName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -533,8 +666,31 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<DateTime?>("FirstClickedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FirstOpenedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("LastEventAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastOpenedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OpenCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("OutcomeAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderAcceptance")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(200)
@@ -556,7 +712,13 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<DateTime?>("UnsubscribedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ProviderMessageId")
+                        .HasDatabaseName("IX_SentMessageRecipients_ProviderMessageId");
 
                     b.HasIndex("SentMessageId");
 
@@ -596,6 +758,15 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.ToTable("SuppressionListEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.DeliveryAttempt", b =>
+                {
+                    b.HasOne("TaxVision.Postmaster.Domain.Sending.SentMessage", null)
+                        .WithMany("DeliveryAttempts")
+                        .HasForeignKey("SentMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessageEvent", b =>
                 {
                     b.HasOne("TaxVision.Postmaster.Domain.Sending.SentMessage", null)
@@ -616,6 +787,8 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessage", b =>
                 {
+                    b.Navigation("DeliveryAttempts");
+
                     b.Navigation("Events");
 
                     b.Navigation("Recipients");
