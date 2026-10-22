@@ -62,4 +62,20 @@ public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : Integrat
 
     /// <summary>Fecha del próximo cobro ya formateada.</summary>
     public string? NextChargeDate { get; init; }
+
+    // Cobro automático de renovación fallido (motivo RenewalChargeFailed): uno por intento.
+
+    /// <summary>Pago fallido; con el intento arma la clave de idempotencia del correo.</summary>
+    public Guid? SaaSPaymentId { get; init; }
+
+    public int? AttemptNumber { get; init; }
+    public int? MaxAttempts { get; init; }
+    public bool IsFinalAttempt { get; init; }
+    public DateTime? NextAttemptAtUtc { get; init; }
+
+    /// <summary>Qué se intentó cobrar, en inglés (p. ej. "Professional plan", "1 additional user seat").</summary>
+    public string? ItemDescription { get; init; }
+
+    /// <summary>Qué se suspendió tras el último intento (ver <c>RenewalChargeConsequences</c>).</summary>
+    public string? Consequence { get; init; }
 }

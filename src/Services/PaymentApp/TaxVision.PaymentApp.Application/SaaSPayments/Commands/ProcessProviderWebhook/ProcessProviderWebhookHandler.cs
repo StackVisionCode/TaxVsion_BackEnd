@@ -36,7 +36,8 @@ public static class ProcessProviderWebhookHandler
         IMessageBus bus,
         ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
-        CancellationToken ct
+        CancellationToken ct,
+        ITenantProviderCustomerRepository? customers = null
     ) =>
         ProcessAsync(
             command.Provider,
@@ -54,7 +55,8 @@ public static class ProcessProviderWebhookHandler
             bus,
             tenants,
             logger,
-            ct
+            ct,
+            customers
         );
 
     public static async Task<Result> ProcessAsync(
@@ -73,7 +75,9 @@ public static class ProcessProviderWebhookHandler
         IMessageBus bus,
         ITenantRegistry tenants,
         ILogger<WebhookEvent> logger,
-        CancellationToken ct
+        CancellationToken ct,
+        // Solo para la tarjeta del correo de cobro fallido; sin él el evento sale sin tarjeta.
+        ITenantProviderCustomerRepository? customers = null
     )
     {
         metrics.RecordWebhookReceived(provider.ToString());
@@ -266,7 +270,7 @@ public static class ProcessProviderWebhookHandler
             ct
         );
 
-        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct, tenants);
+        await SaaSPaymentResultPublisher.PublishAsync(payment, bus, correlation.CorrelationId, ct, tenants, customers);
 
         await unitOfWork.SaveChangesAsync(ct);
 

@@ -50,7 +50,12 @@ public interface ITenantEmailAccountRepository
     /// Solo Active: Draft/Connected todavía no terminaron el setup de watch (SetupWatchHandler), y
     /// Disconnected/Error no deberían sincronizar nada hasta que un reauth manual las reactive.
     /// </summary>
-    Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default);
+    /// <remarks>Por páginas (keyset por Id) para no cargar todas las cuentas a memoria.</remarks>
+    Task<IReadOnlyList<ActiveAccountRef>> ListActivePageAsync(
+        Guid? afterId,
+        int pageSize,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Buzones PERSONALES de <paramref name="ownerUserId"/> en el tenant (OwnerUserId == user) — para

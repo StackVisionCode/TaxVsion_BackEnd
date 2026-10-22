@@ -66,6 +66,13 @@ internal sealed class CloudStorageClient(
                         )
                     );
 
+                // El SaveFileRequested que crea el archivo viaja por RabbitMQ: justo después de la
+                // descarga el archivo todavía no existe. El handler decide si es espera o pérdida.
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                    return Result.Failure<CloudStorageDownloadUrl>(
+                        new Error("CloudStorageClient.FileNotRegistered", "CloudStorage has no file with this id yet.")
+                    );
+
                 logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
                 return Result.Failure<CloudStorageDownloadUrl>(
                     new Error(

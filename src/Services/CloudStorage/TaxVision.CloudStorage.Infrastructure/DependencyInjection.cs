@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CloudStorageDbContext>());
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
+        services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
         services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
         services.AddScoped<IFolderRepository, FolderRepository>();
         services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();
@@ -57,6 +58,30 @@ public static class DependencyInjection
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
         services.Configure<ClamAvOptions>(configuration.GetSection(ClamAvOptions.SectionName));
+        services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
+        services.Configure<OneDriveOptions>(configuration.GetSection(OneDriveOptions.SectionName));
+        services.Configure<DropboxOptions>(configuration.GetSection(DropboxOptions.SectionName));
+        services.AddSecretProtection();
+        services.AddHttpClient("google-drive-oauth", client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("google-drive-api", client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddHttpClient("onedrive-oauth", client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("onedrive-graph", client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddHttpClient("onedrive-upload", client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddHttpClient("dropbox-oauth", client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient("dropbox-api", client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient("dropbox-content", client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddScoped<CloudProviderOAuthStateStore>();
+        services.AddScoped<IGoogleDriveConnectionService, GoogleDriveConnectionService>();
+        services.AddScoped<IOneDriveConnectionService, OneDriveConnectionService>();
+        services.AddScoped<IDropboxConnectionService, DropboxConnectionService>();
+        services.AddScoped<GoogleDriveFileMirror>();
+        services.AddScoped<OneDriveFileMirror>();
+        services.AddScoped<DropboxFileMirror>();
+        services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<GoogleDriveFileMirror>());
+        services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<OneDriveFileMirror>());
+        services.AddScoped<IStoragePolicyProviderAdapter>(sp => sp.GetRequiredService<DropboxFileMirror>());
+        services.AddScoped<StoragePolicyDispatcher>();
+        services.AddHostedService<CloudStorageBackupWorker>();
 
         // Sin key = cliente INTERNO (red de Docker / loopback) — todas las operaciones reales:
         // bootstrap de buckets, upload/download/copy/delete server-side, multipart

@@ -196,6 +196,21 @@ builder.Host.UseWolverine(options =>
         .ToLocalQueue("graph-webhook")
         .UseDurableInbox();
 
+    // Push de Gmail: mismo esquema que Graph, cola local durable y respuesta inmediata.
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.GmailPushReceived>()
+        .ToLocalQueue("gmail-webhook")
+        .UseDurableInbox();
+
+    // Avisos de no entrega: se revisan aparte del sync (bajan el MIME completo).
+    options
+        .PublishMessage<TaxVision.Connectors.Application.Sync.InspectDeliveryReport>()
+        .ToLocalQueue("delivery-reports")
+        .UseDurableInbox();
+    options
+        .PublishMessage<BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsDeliveryReportDetectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Cola propia desde el arranque (Fase 1) aunque todavía no haya ningún consumer — mismo
     // patrón que Postmaster/Scribe: el binding queda listo en Rabbit antes de que exista lógica.
     options

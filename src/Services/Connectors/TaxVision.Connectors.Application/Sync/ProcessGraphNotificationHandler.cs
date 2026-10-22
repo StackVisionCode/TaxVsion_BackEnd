@@ -24,6 +24,7 @@ public static class ProcessGraphNotificationHandler
         IProviderSyncCursorRepository cursorRepository,
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
+        ISyncPendingFlag pendingFlag,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -75,14 +76,16 @@ public static class ProcessGraphNotificationHandler
         // can and do redeliver the same notification. Same lock namespace convention
         // ("connectors:webhook-sync:{accountId}") so a Gmail and a Graph account never share a key
         // by construction (each TenantEmailAccount has exactly one ProviderCode), and same
-        // skip-cleanly-on-contention behavior: a redelivery that loses the race returns
-        // Result.Success, it does not retry or fail loudly.
+        // mark-pending-on-contention behavior: it returns Result.Success, it does not retry or
+        // fail loudly.
         var lockKey = $"connectors:webhook-sync:{account.Id:N}";
         await using var lockHandle = await distributedLock.AcquireAsync(lockKey, WebhookSyncLockTtl, ct);
         if (!lockHandle.IsAcquired)
         {
+            // Mismo criterio que Gmail: se marca y el dueño del lock repite la pasada.
+            await pendingFlag.MarkAsync(account.Id, ct);
             logger.LogInformation(
-                "Graph notification redelivery for account {AccountId} arrived while a sync was already in flight — skipping.",
+                "Graph notification for account {AccountId} arrived while a sync was already in flight — marked as pending.",
                 account.Id
             );
             return Result.Success();
@@ -99,14 +102,22 @@ public static class ProcessGraphNotificationHandler
             ct
         );
 
-        var syncResult = await RawMessageSyncOrchestrator.SyncAndPublishAsync(
-            account,
-            clientResult.Value,
-            cursor,
-            unitOfWork,
-            bus,
-            correlation,
-            logger,
+        var syncResult = await PendingAwareSync.RunAsync(
+            account.Id,
+            lockHandle,
+            WebhookSyncLockTtl,
+            pendingFlag,
+            () =>
+                RawMessageSyncOrchestrator.SyncAndPublishAsync(
+                    account,
+                    clientResult.Value,
+                    cursor,
+                    unitOfWork,
+                    bus,
+                    correlation,
+                    logger,
+                    ct
+                ),
             ct
         );
 

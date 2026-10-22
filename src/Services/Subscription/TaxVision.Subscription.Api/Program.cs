@@ -196,6 +196,8 @@ builder.Host.UseWolverine(options =>
     // emails quedarían muertos en silencio en producción.
     options.PublishMessage<TenantSubscriptionStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<RenewalChargesSupersededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Un correo por cada cobro automático de renovación fallido: Auth le pone destinatario y enlace.
+    options.PublishMessage<RenewalChargeFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Cancelación y expiración de intents hosted-checkout. Sin esta ruta los consumidores (notificación,
     // audit, reconcile cross-service) nunca se enteran y las compras canceladas quedan huérfanas.

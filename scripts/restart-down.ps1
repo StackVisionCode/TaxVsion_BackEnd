@@ -1,7 +1,8 @@
 # Relanza SOLO los servicios cuyo puerto no esta escuchando.
 # El arranque en frio de la flota pierde varios por timeout de SQL (Error Number:-2) al migrar
 # Wolverine: no es un fallo de codigo. Con SQL ya caliente, relanzarlos escalonados los levanta.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+# La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
+$root = Split-Path -Parent $PSScriptRoot
 $gap  = 4
 
 $fleet = @(
@@ -16,6 +17,9 @@ $fleet = @(
   @{ n = "Postmaster";     d = "src\Services\Postmaster\TaxVision.Postmaster.Api";     p = 5370 },
   @{ n = "Scribe";         d = "src\Services\Scribe\TaxVision.Scribe.Api";             p = 5380 },
   @{ n = "Connectors";     d = "src\Services\Connectors\TaxVision.Connectors.Api";     p = 5390 },
+  # IMAP IDLE listener (worker, own process). Only reads the DB and publishes to taxvision-events.
+  @{ n = "Connectors.MailboxListener"; d = "src\Services\Connectors\TaxVision.Connectors.MailboxListener"; p = 5395;
+     e = @{ "Connectors__MailboxListener__Enabled" = "true" } },
   @{ n = "Correspondence"; d = "src\Services\Correspondence\TaxVision.Correspondence.Api"; p = 5400 },
   @{ n = "Growth";         d = "src\Services\Growth\TaxVision.Growth.Api";             p = 5410 },
   @{ n = "PaymentClient";  d = "src\Services\PaymentClient\TaxVision.PaymentClient.Api"; p = 5420 },
@@ -44,7 +48,8 @@ foreach ($s in $fleet) {
   if (Test-Up $s.p) { continue }
 
   $wd = Join-Path $root $s.d
-  $binDir = Join-Path $wd "bin\Debug\net10.0"
+  # Same binaries as start-fleet.ps1 (Release): Debug may be stale and revert recent changes.
+  $binDir = Join-Path $wd "bin\Release\net10.0"
   $dll = Get-ChildItem -Path $binDir -Filter "TaxVision.*.dll" -ErrorAction SilentlyContinue |
          Where-Object { $_.BaseName -eq "TaxVision.$($s.n).Api" -or $_.BaseName -eq "TaxVision.$($s.n)" } |
          Select-Object -First 1
@@ -52,10 +57,13 @@ foreach ($s in $fleet) {
 
   $env:ASPNETCORE_ENVIRONMENT = "Development"
   $env:ASPNETCORE_URLS = "http://localhost:$($s.p)"
+  # Extra env per service (e.g. the listener switch); cleared after launch so it does not leak.
+  if ($s.e) { foreach ($k in $s.e.Keys) { Set-Item -Path "env:$k" -Value $s.e[$k] } }
   Start-Process -FilePath "dotnet" -ArgumentList $dll.FullName -WorkingDirectory $wd `
     -RedirectStandardOutput (Join-Path $logs "$($s.n).log") `
     -RedirectStandardError  (Join-Path $logs "$($s.n).err.log") `
     -WindowStyle Hidden
+  if ($s.e) { foreach ($k in $s.e.Keys) { Remove-Item -Path "env:$k" -ErrorAction SilentlyContinue } }
   Write-Host "relanzado $($s.n) :$($s.p)"
   Start-Sleep -Seconds $gap
 }

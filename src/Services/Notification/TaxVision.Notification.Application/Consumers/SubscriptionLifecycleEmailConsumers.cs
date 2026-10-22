@@ -38,7 +38,7 @@ public static class SubscriptionLifecycleEmailConsumer
                     new Dictionary<string, object?>
                     {
                         ["first_name"] = evt.FirstName,
-                        ["plan_name"] = evt.PlanName ?? "tu plan",
+                        ["plan_name"] = evt.PlanName ?? "your plan",
                         ["renew_url"] = evt.RenewUrl,
                         ["manage_url"] = evt.ManageUrl ?? evt.RenewUrl,
                         ["access_ends_date"] = FormatDate(evt.AccessEndsAtUtc),
@@ -48,13 +48,25 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["failure_reason"] = evt.FailureCode ?? string.Empty,
                         // Variables para cobro recurrente, mandate y cambio de preferencia.
                         ["amount"] = evt.Amount ?? string.Empty,
-                        ["card_brand"] = evt.CardBrand ?? "card",
+                        ["card_brand"] = CardBrandNames.Display(evt.CardBrand),
                         ["card_last4"] = evt.CardLast4 ?? "----",
                         ["receipt_url"] = evt.ReceiptUrl ?? string.Empty,
                         ["new_mode"] = evt.NewMode ?? string.Empty,
                         ["cadence"] = evt.Cadence ?? "month",
                         ["date_charged"] = evt.DateCharged ?? string.Empty,
                         ["next_charge_date"] = evt.NextChargeDate ?? string.Empty,
+                        // Cobro automático de renovación fallido: uno por intento.
+                        ["item_description"] = evt.ItemDescription ?? evt.PlanName ?? "your subscription",
+                        ["has_card"] = !string.IsNullOrWhiteSpace(evt.CardLast4),
+                        ["attempt_number"] = evt.AttemptNumber?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                        ["max_attempts"] = evt.MaxAttempts?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                        ["is_final"] = evt.IsFinalAttempt,
+                        ["next_retry_date"] = FormatDate(evt.NextAttemptAtUtc),
+                        ["friendly_reason"] = ChargeFailureReasons.Describe(evt.FailureCode),
+                        ["suspension_effect"] = ChargeFailureConsequences.Describe(
+                            evt.Consequence,
+                            evt.ItemDescription
+                        ),
                     },
                     ct
                 )
@@ -77,6 +89,9 @@ public static class SubscriptionLifecycleEmailConsumer
                             $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
                         "subscription.renewal_upcoming" =>
                             $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
+                        // Un correo por intento: un reenvío del mismo aviso no lo repite.
+                        "subscription.recurring_charge_failed" when evt.SaaSPaymentId is { } paymentId =>
+                            $"{paymentId:N}:attempt-{evt.AttemptNumber}:{evt.Email.Trim().ToLowerInvariant()}",
                         _ => null,
                     },
                 },
@@ -102,6 +117,11 @@ public static class SubscriptionLifecycleEmailConsumer
             && string.Equals(reason, "AccessEnding", StringComparison.OrdinalIgnoreCase)
         )
             return ("subscription.access_ending.v1", "subscription.access_ending");
+
+        // Cobro automático de renovación fallido (plan, asiento o add-on): uno por intento. Va antes del
+        // estado porque el último intento llega con la suscripción ya suspendida y ese correo lo explica.
+        if (string.Equals(reason, "RenewalChargeFailed", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.recurring_charge_failed.v1", "subscription.recurring_charge_failed");
 
         // Recordatorio pre-vencimiento (7 o 1 día). Lo publica RenewalNotificationJob y Auth lo re-emite.
         if (string.Equals(reason, "RenewalUpcoming", StringComparison.OrdinalIgnoreCase))

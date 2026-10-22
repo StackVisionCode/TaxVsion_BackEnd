@@ -136,7 +136,8 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
             body.References,
             body.ReplyToProviderMessageId,
             attachments,
-            inlineAssets
+            inlineAssets,
+            body.ClientMessageId
         );
 
         var result = await bus.InvokeAsync<Result<SendMessageResult>>(

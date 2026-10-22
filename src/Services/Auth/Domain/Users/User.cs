@@ -311,6 +311,45 @@ public sealed class User : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Repara una cuenta que quedó como PlatformAdmin dentro de una oficina: un estado que
+    /// <see cref="Register"/> nunca permite (solo aparece si se cambió a mano en la base). Vuelve a
+    /// TenantAdmin; si nació por onboarding, como dueña (primer asiento). Solo cubre ese caso: no es
+    /// un cambio de tipo de actor general.
+    /// </summary>
+    public Result RestoreAsTenantAdmin(Guid restoredByUserId, DateTime nowUtc)
+    {
+        if (ActorType != UserActorType.PlatformAdmin || TenantId == PlatformTenant.Id)
+            return Result.Failure(
+                new Error(
+                    "User.NotMisplacedPlatformAdmin",
+                    "Only a platform administrator outside the platform tenant can be restored as tenant administrator."
+                )
+            );
+
+        if (restoredByUserId == Guid.Empty)
+            return Result.Failure(new Error("User.SlotOverrideActor", "The acting administrator is required."));
+
+        ActorType = UserActorType.TenantAdmin;
+        _roles.Clear();
+        _roles.Add(UserActorRoles.For(ActorType));
+
+        // El evento de override dispara el recálculo de asientos del tenant.
+        var previous = SlotPriorityAt;
+        SlotPriorityAt = OnboardingId.HasValue ? DateTime.MinValue : nowUtc;
+        AddDomainEvent(
+            new UserSlotPriorityOverridden(
+                TenantId,
+                Id,
+                previous,
+                SlotPriorityAt,
+                restoredByUserId,
+                "Restored as tenant administrator"
+            )
+        );
+        return Result.Success();
+    }
+
     private static DateTime? ResolveInitialSlotPriority(UserActorType actorType, Guid? onboardingId, DateTime nowUtc) =>
         actorType switch
         {

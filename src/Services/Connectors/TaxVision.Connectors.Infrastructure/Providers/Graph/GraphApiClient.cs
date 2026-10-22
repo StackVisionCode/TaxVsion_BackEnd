@@ -60,8 +60,23 @@ public sealed class GraphApiClient(
 
         for (var page = 0; page < MaxDeltaPages; page++)
         {
-            var payload = await SendAsync<GraphDeltaResponse>(accountId, tenantId, url, ct);
-            messageIds.AddRange((payload.Value ?? []).Select(m => m.Id));
+            var payload = await SendCoreAsync<GraphDeltaResponse>(accountId, tenantId, url, ct, goneAsNull: true);
+            if (payload is null)
+            {
+                // 410: el estado del delta venció en Microsoft. Se reinicia desde cero; Correspondence
+                // descarta los que ya tenía por InternetMessageId.
+                logger.LogWarning("Graph delta state expired for account {AccountId}; restarting delta.", accountId);
+                url = InboxDeltaBaseUrl;
+                sinceCursor = null;
+                continue;
+            }
+
+            // Los borrados (@removed) no son correo nuevo.
+            foreach (var item in payload.Value ?? [])
+            {
+                if (item.Removed is null)
+                    messageIds.Add(item.Id);
+            }
 
             if (!string.IsNullOrEmpty(payload.DeltaLink))
             {
@@ -76,7 +91,10 @@ public sealed class GraphApiClient(
             hasMore = page == MaxDeltaPages - 1;
         }
 
-        return new HistoryPage(messageIds, finalDeltaLink ?? sinceCursor, hasMore);
+        // Sin deltaLink porque se llegó al tope: se guarda el nextLink para seguir desde ahí. Guardar el
+        // cursor viejo hacía releer las mismas 10 páginas en cada pasada sin avanzar nunca.
+        var nextCursor = finalDeltaLink ?? (hasMore ? url : sinceCursor);
+        return new HistoryPage(messageIds, nextCursor, hasMore);
     }
 
     public async Task<RawMessage> GetMessageAsync(
@@ -130,6 +148,23 @@ public sealed class GraphApiClient(
     /// aproximación (bytes del contenido devuelto) — Graph no expone el tamaño crudo sin pedir
     /// <c>/messages/{id}/$value</c> (fuera de alcance acá).
     /// </summary>
+    public async Task<byte[]> GetRawMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    )
+    {
+        var url = $"{BaseUrl}/messages/{providerMessageId}/$value";
+        var response = await GetAsync(accountId, tenantId, url, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Graph API request to {Url} returned HTTP {Status}.", url, (int)response.StatusCode);
+            throw new EmailProviderException($"Graph API returned HTTP {(int)response.StatusCode}.");
+        }
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     public async Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
         Guid tenantId,
@@ -223,46 +258,94 @@ public sealed class GraphApiClient(
             );
         }
 
-        var (url, requestBody, extraHeaders) = string.IsNullOrWhiteSpace(message.ReplyToProviderMessageId)
-            ? BuildSendMailRequest(message)
-            : BuildReplyRequest(message);
-
-        var response = await SendWriteRequestAsync(accountId, tenantId, url, requestBody, extraHeaders, ct);
-        if (!response.IsSuccessStatusCode)
+        if (!string.IsNullOrWhiteSpace(message.ReplyToProviderMessageId))
         {
-            var exception = BuildSendException(response);
-            ConnectorsMetrics.SendFailures.Add(
-                1,
-                new KeyValuePair<string, object?>("provider", "Graph"),
-                new KeyValuePair<string, object?>("reason", exception.Reason.ToString())
-            );
-            throw exception;
+            var (url, requestBody, extraHeaders) = BuildReplyRequest(message);
+            await EnsureSentAsync(await SendWriteRequestAsync(accountId, tenantId, url, requestBody, extraHeaders, ct));
+            ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Graph"));
+            // El reply de un paso devuelve 202 sin cuerpo: no hay id que leer.
+            return new SendMessageResult(ProviderMessageId: null, ProviderThreadId: null, DateTime.UtcNow);
         }
 
-        ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Graph"));
-        return new SendMessageResult(ProviderMessageId: null, ProviderThreadId: null, DateTime.UtcNow);
+        return await SendNewThroughDraftAsync(accountId, tenantId, message, ct);
     }
 
-    private static (string Url, string Body, IReadOnlyDictionary<string, string>? Headers) BuildSendMailRequest(
-        OutboundMessage message
+    /// <summary>
+    /// sendMail no devuelve nada. Crear el borrador sí devuelve su internetMessageId, y es el que van a
+    /// citar los avisos de no entrega. Después se envía ese borrador.
+    /// </summary>
+    private async Task<SendMessageResult> SendNewThroughDraftAsync(
+        Guid accountId,
+        Guid tenantId,
+        OutboundMessage message,
+        CancellationToken ct
     )
     {
-        var payload = new GraphSendMailRequest(
-            new GraphSendMailMessage(
-                message.Subject,
-                new GraphItemBodyRequest("html", message.Html),
-                ToRecipients(message.To),
-                ToRecipients(message.Cc),
-                ToRecipients(message.Bcc),
-                string.IsNullOrWhiteSpace(message.ReplyToDisplayAddress)
-                    ? null
-                    : ToRecipients([message.ReplyToDisplayAddress]),
-                ToAttachments(message)
-            ),
-            SaveToSentItems: true
+        var draftResponse = await SendWriteRequestAsync(
+            accountId,
+            tenantId,
+            $"{BaseUrl}/messages",
+            JsonSerializer.Serialize(BuildDraftMessage(message), SendRequestJsonOptions),
+            null,
+            ct
         );
-        return ($"{BaseUrl}/sendMail", JsonSerializer.Serialize(payload, SendRequestJsonOptions), null);
+        await EnsureSentAsync(draftResponse);
+        var draft = await draftResponse.Content.ReadFromJsonAsync<GraphCreatedMessage>(cancellationToken: ct);
+        if (draft is null || string.IsNullOrWhiteSpace(draft.Id))
+        {
+            RecordSendFailureMetric(SendFailureReason.TransientProviderError);
+            throw new OutboundEmailSendException(
+                SendFailureReason.TransientProviderError,
+                "Graph API returned no draft id."
+            );
+        }
+
+        var sendResponse = await SendWriteRequestAsync(
+            accountId,
+            tenantId,
+            $"{BaseUrl}/messages/{draft.Id}/send",
+            string.Empty,
+            null,
+            ct
+        );
+        if (!sendResponse.IsSuccessStatusCode)
+            // El borrador queda en Drafts: el usuario lo ve y puede reenviarlo a mano.
+            logger.LogWarning("Graph draft {DraftId} was created but could not be sent.", draft.Id);
+        await EnsureSentAsync(sendResponse);
+
+        ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "Graph"));
+        return new SendMessageResult(draft.Id, draft.ConversationId, DateTime.UtcNow, draft.InternetMessageId);
     }
+
+    private Task EnsureSentAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return Task.CompletedTask;
+
+        var exception = BuildSendException(response);
+        RecordSendFailureMetric(exception.Reason);
+        throw exception;
+    }
+
+    private static void RecordSendFailureMetric(SendFailureReason reason) =>
+        ConnectorsMetrics.SendFailures.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", "Graph"),
+            new KeyValuePair<string, object?>("reason", reason.ToString())
+        );
+
+    private static GraphSendMailMessage BuildDraftMessage(OutboundMessage message) =>
+        new(
+            message.Subject,
+            new GraphItemBodyRequest("html", message.Html),
+            ToRecipients(message.To),
+            ToRecipients(message.Cc),
+            ToRecipients(message.Bcc),
+            string.IsNullOrWhiteSpace(message.ReplyToDisplayAddress)
+                ? null
+                : ToRecipients([message.ReplyToDisplayAddress]),
+            ToAttachments(message)
+        );
 
     private static (string Url, string Body, IReadOnlyDictionary<string, string>? Headers) BuildReplyRequest(
         OutboundMessage message
@@ -382,6 +465,36 @@ public sealed class GraphApiClient(
     }
 
     private async Task<T> SendAsync<T>(Guid accountId, Guid tenantId, string url, CancellationToken ct)
+        where T : class =>
+        // Sin goneAsNull un 410 lanza, así que nunca vuelve null.
+        (await SendCoreAsync<T>(accountId, tenantId, url, ct, goneAsNull: false))!;
+
+    private async Task<T?> SendCoreAsync<T>(
+        Guid accountId,
+        Guid tenantId,
+        string url,
+        CancellationToken ct,
+        bool goneAsNull
+    )
+        where T : class
+    {
+        var response = await GetAsync(accountId, tenantId, url, ct);
+
+        if (goneAsNull && response.StatusCode == HttpStatusCode.Gone)
+            return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Graph API request to {Url} returned HTTP {Status}.", url, (int)response.StatusCode);
+            throw new EmailProviderException($"Graph API returned HTTP {(int)response.StatusCode}.");
+        }
+
+        var parsed = await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
+        return parsed ?? throw new EmailProviderException("Graph API returned an empty response body.");
+    }
+
+    /// <summary>GET autenticado con cupo, token y breaker; el caller interpreta la respuesta.</summary>
+    private async Task<HttpResponseMessage> GetAsync(Guid accountId, Guid tenantId, string url, CancellationToken ct)
     {
         await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
@@ -393,10 +506,9 @@ public sealed class GraphApiClient(
             );
 
         var breaker = circuitBreakers.GetOrCreate("Graph:messages");
-        HttpResponseMessage response;
         try
         {
-            response = await breaker.ExecuteAsync(
+            return await breaker.ExecuteAsync(
                 token => SendWithRetryAfterAsync(url, HttpMethod.Get, null, null, tokenResult.Value, token),
                 ct
             );
@@ -409,15 +521,6 @@ public sealed class GraphApiClient(
         {
             throw new EmailProviderException("Graph API request failed (network error) after retries.", ex);
         }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Graph API request to {Url} returned HTTP {Status}.", url, (int)response.StatusCode);
-            throw new EmailProviderException($"Graph API returned HTTP {(int)response.StatusCode}.");
-        }
-
-        var parsed = await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
-        return parsed ?? throw new EmailProviderException("Graph API returned an empty response body.");
     }
 
     private async Task<HttpResponseMessage> SendWithRetryAfterAsync(
@@ -490,6 +593,9 @@ public sealed class GraphApiClient(
     {
         [JsonPropertyName("id")]
         public string Id { get; init; } = string.Empty;
+
+        [JsonPropertyName("@removed")]
+        public JsonElement? Removed { get; init; }
     }
 
     private sealed record GraphMessage
@@ -603,10 +709,17 @@ public sealed class GraphApiClient(
         public string? Content { get; init; }
     }
 
-    private sealed record GraphSendMailRequest(
-        [property: JsonPropertyName("message")] GraphSendMailMessage Message,
-        [property: JsonPropertyName("saveToSentItems")] bool SaveToSentItems
-    );
+    private sealed record GraphCreatedMessage
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = string.Empty;
+
+        [JsonPropertyName("internetMessageId")]
+        public string? InternetMessageId { get; init; }
+
+        [JsonPropertyName("conversationId")]
+        public string? ConversationId { get; init; }
+    }
 
     private sealed record GraphSendMailMessage(
         [property: JsonPropertyName("subject")] string Subject,

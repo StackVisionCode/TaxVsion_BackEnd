@@ -23,10 +23,11 @@ public static class SaaSPaymentResultPublisher
         IMessageBus bus,
         string correlationId,
         CancellationToken ct,
-        ITenantRegistry? tenants = null
+        ITenantRegistry? tenants = null,
+        ITenantProviderCustomerRepository? customers = null
     )
     {
-        await PublishByTypeAsync(payment, bus, correlationId, ct);
+        await PublishByTypeAsync(payment, bus, correlationId, customers, ct);
         await PublishReceiptRequestAsync(payment, bus, correlationId, tenants, ct);
     }
 
@@ -79,6 +80,7 @@ public static class SaaSPaymentResultPublisher
         SaaSPayment payment,
         IMessageBus bus,
         string correlationId,
+        ITenantProviderCustomerRepository? customers,
         CancellationToken ct
     ) =>
         payment.Type switch
@@ -107,9 +109,15 @@ public static class SaaSPaymentResultPublisher
                 correlationId,
                 ct
             ),
-            SaaSPaymentType.SubscriptionRenewal => PublishSubscriptionRenewalResultAsync(payment, bus, correlationId),
-            SaaSPaymentType.SeatRenewal => PublishSeatRenewalResultAsync(payment, bus, correlationId),
-            SaaSPaymentType.AddOnRenewal => PublishAddOnRenewalResultAsync(payment, bus, correlationId),
+            SaaSPaymentType.SubscriptionRenewal => PublishSubscriptionRenewalResultAsync(
+                payment,
+                bus,
+                correlationId,
+                customers,
+                ct
+            ),
+            SaaSPaymentType.SeatRenewal => PublishSeatRenewalResultAsync(payment, bus, correlationId, customers, ct),
+            SaaSPaymentType.AddOnRenewal => PublishAddOnRenewalResultAsync(payment, bus, correlationId, customers, ct),
             // El checkout y el cobro off-session del upgrade cierran el MISMO PlanChangeRequest: mismo evento,
             // mismos consumers. Lo único que cambia es de dónde salió el dinero.
             SaaSPaymentType.PlanChangeCharge or SaaSPaymentType.PlanChangeCheckout => PublishPlanChangeResultAsync(
@@ -135,11 +143,14 @@ public static class SaaSPaymentResultPublisher
     private static async ValueTask PublishSubscriptionRenewalResultAsync(
         SaaSPayment payment,
         IMessageBus bus,
-        string correlationId
+        string correlationId,
+        ITenantProviderCustomerRepository? customers,
+        CancellationToken ct
     )
     {
         if (IsFailure(payment))
         {
+            var facts = await ChargeAttemptFacts.ResolveAsync(payment, customers, ct);
             await bus.PublishAsync(
                 new SubscriptionRenewalPaymentFailedIntegrationEvent
                 {
@@ -151,6 +162,13 @@ public static class SaaSPaymentResultPublisher
                     FailureReason = FailureReason(payment),
                     WillRetry = payment.NextRetryAtUtc is not null,
                     NextRetryAtUtc = payment.NextRetryAtUtc,
+                    AttemptNumber = facts.AttemptNumber,
+                    MaxAttempts = facts.MaxAttempts,
+                    AmountCents = facts.AmountCents,
+                    Currency = facts.Currency,
+                    CardBrand = facts.CardBrand,
+                    CardLast4 = facts.CardLast4,
+                    IsAutomaticCharge = facts.IsAutomaticCharge,
                     CorrelationId = correlationId,
                 }
             );
@@ -199,10 +217,18 @@ public static class SaaSPaymentResultPublisher
         }
     }
 
-    private static ValueTask PublishSeatRenewalResultAsync(SaaSPayment payment, IMessageBus bus, string correlationId)
+    private static async ValueTask PublishSeatRenewalResultAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        ITenantProviderCustomerRepository? customers,
+        CancellationToken ct
+    )
     {
         if (IsFailure(payment))
-            return bus.PublishAsync(
+        {
+            var facts = await ChargeAttemptFacts.ResolveAsync(payment, customers, ct);
+            await bus.PublishAsync(
                 new SeatRenewalPaymentFailedIntegrationEvent
                 {
                     TenantId = payment.TenantId,
@@ -213,14 +239,23 @@ public static class SaaSPaymentResultPublisher
                     FailureReason = FailureReason(payment),
                     WillRetry = payment.NextRetryAtUtc is not null,
                     NextRetryAtUtc = payment.NextRetryAtUtc,
+                    AttemptNumber = facts.AttemptNumber,
+                    MaxAttempts = facts.MaxAttempts,
+                    AmountCents = facts.AmountCents,
+                    Currency = facts.Currency,
+                    CardBrand = facts.CardBrand,
+                    CardLast4 = facts.CardLast4,
+                    IsAutomaticCharge = facts.IsAutomaticCharge,
                     CorrelationId = correlationId,
                 }
             );
+            return;
+        }
 
         if (payment.Status != PaymentStatus.Succeeded)
-            return ValueTask.CompletedTask;
+            return;
 
-        return bus.PublishAsync(
+        await bus.PublishAsync(
             new SeatRenewalPaymentSucceededIntegrationEvent
             {
                 TenantId = payment.TenantId,
@@ -234,10 +269,18 @@ public static class SaaSPaymentResultPublisher
         );
     }
 
-    private static ValueTask PublishAddOnRenewalResultAsync(SaaSPayment payment, IMessageBus bus, string correlationId)
+    private static async ValueTask PublishAddOnRenewalResultAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        ITenantProviderCustomerRepository? customers,
+        CancellationToken ct
+    )
     {
         if (IsFailure(payment))
-            return bus.PublishAsync(
+        {
+            var facts = await ChargeAttemptFacts.ResolveAsync(payment, customers, ct);
+            await bus.PublishAsync(
                 new AddOnRenewalPaymentFailedIntegrationEvent
                 {
                     TenantId = payment.TenantId,
@@ -248,14 +291,23 @@ public static class SaaSPaymentResultPublisher
                     FailureReason = FailureReason(payment),
                     WillRetry = payment.NextRetryAtUtc is not null,
                     NextRetryAtUtc = payment.NextRetryAtUtc,
+                    AttemptNumber = facts.AttemptNumber,
+                    MaxAttempts = facts.MaxAttempts,
+                    AmountCents = facts.AmountCents,
+                    Currency = facts.Currency,
+                    CardBrand = facts.CardBrand,
+                    CardLast4 = facts.CardLast4,
+                    IsAutomaticCharge = facts.IsAutomaticCharge,
                     CorrelationId = correlationId,
                 }
             );
+            return;
+        }
 
         if (payment.Status != PaymentStatus.Succeeded)
-            return ValueTask.CompletedTask;
+            return;
 
-        return bus.PublishAsync(
+        await bus.PublishAsync(
             new AddOnRenewalPaymentSucceededIntegrationEvent
             {
                 TenantId = payment.TenantId,

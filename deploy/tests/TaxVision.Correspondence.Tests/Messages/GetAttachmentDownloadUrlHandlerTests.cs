@@ -63,6 +63,66 @@ public sealed class GetAttachmentDownloadUrlHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenCloudStorageHasNotRegisteredTheFreshCopy_ReturnsNotReady()
+    {
+        var (tenantId, email, repo) = await DownloadedEmailAsync();
+        var cloudStorage = new FakeCloudStorageClient { Response = FileNotRegistered() };
+
+        var result = await GetAttachmentDownloadUrlHandler.Handle(
+            new GetAttachmentDownloadUrlQuery(tenantId, email.Id, email.Attachments.Single().Id),
+            repo,
+            new Ingest.FakeEmailThreadRepository(),
+            cloudStorage,
+            CancellationToken.None
+        );
+
+        Assert.Equal("IncomingEmailAttachment.NotReady", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTheCopyIsStillMissingAfterTheGracePeriod_ReportsTheFailure()
+    {
+        var (tenantId, email, repo) = await DownloadedEmailAsync();
+        var attachment = email.Attachments.Single();
+        typeof(IncomingEmailAttachment)
+            .GetProperty(nameof(IncomingEmailAttachment.DownloadedAtUtc))!
+            .SetValue(
+                attachment,
+                DateTime.UtcNow - GetAttachmentDownloadUrlHandler.CopyGracePeriod - TimeSpan.FromSeconds(1)
+            );
+        var cloudStorage = new FakeCloudStorageClient { Response = FileNotRegistered() };
+
+        var result = await GetAttachmentDownloadUrlHandler.Handle(
+            new GetAttachmentDownloadUrlQuery(tenantId, email.Id, attachment.Id),
+            repo,
+            new Ingest.FakeEmailThreadRepository(),
+            cloudStorage,
+            CancellationToken.None
+        );
+
+        Assert.Equal("CloudStorageClient.FileNotRegistered", result.Error.Code);
+    }
+
+    private static async Task<(
+        Guid TenantId,
+        IncomingEmail Email,
+        FakeIncomingEmailRepository Repo
+    )> DownloadedEmailAsync()
+    {
+        var tenantId = Guid.NewGuid();
+        var email = NewIncomingEmail(tenantId);
+        var attachment = email.Attachments.Single();
+        attachment.MarkInProgress();
+        attachment.MarkDownloaded(Guid.NewGuid());
+        var repo = new FakeIncomingEmailRepository();
+        await repo.AddAsync(email);
+        return (tenantId, email, repo);
+    }
+
+    private static Result<CloudStorageDownloadUrl> FileNotRegistered() =>
+        Result.Failure<CloudStorageDownloadUrl>(new Error("CloudStorageClient.FileNotRegistered", "Not there yet."));
+
+    [Fact]
     public async Task Handle_WithNotYetDownloadedAttachment_ReturnsNotReadyWithoutCallingCloudStorage()
     {
         var tenantId = Guid.NewGuid();

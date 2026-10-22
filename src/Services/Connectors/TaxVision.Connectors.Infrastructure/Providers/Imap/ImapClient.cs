@@ -16,7 +16,7 @@ namespace TaxVision.Connectors.Infrastructure.Providers.Imap;
 /// tenant (SMTP manual en Postmaster solo envía; sin esto esas oficinas no tendrían forma de
 /// recibir nada en Correspondence). Inbox-only siempre (D1, §34.5): abre <c>client.Inbox</c>
 /// explícitamente, nunca itera otras carpetas. Connect+operate pasa por un
-/// <see cref="HttpResiliencePipeline"/> propio (F24, clave <c>"Imap:messages"</c>) que abre tras
+/// <see cref="HttpResiliencePipeline"/> propio por cuenta (clave <c>"Imap:messages:{accountId}"</c>) que abre tras
 /// fallos consecutivos — el stage de retry compartido (F24) solo reintenta
 /// <see cref="HttpRequestException"/>/<see cref="TaskCanceledException"/>, que MailKit rara vez
 /// lanza para fallos de protocolo/auth IMAP (esos llegan como <c>ImapProtocolException</c>,
@@ -196,48 +196,107 @@ public sealed class ImapClient(
             async (inbox, token) =>
             {
                 var uid = ParseUid(providerMessageId);
-                var summary = (
-                    await inbox.FetchAsync(
-                        [uid],
-                        MessageSummaryItems.UniqueId
-                            | MessageSummaryItems.Envelope
-                            | MessageSummaryItems.References
-                            | MessageSummaryItems.BodyStructure
-                            | MessageSummaryItems.Headers,
-                        token
-                    )
-                ).FirstOrDefault();
+                var summary = (await inbox.FetchAsync([uid], MetadataItems, token)).FirstOrDefault();
 
                 if (summary is null)
                     throw new EmailProviderException($"IMAP message with UID {providerMessageId} was not found.");
 
-                var authHeader =
-                    summary.Headers?.Contains("Authentication-Results") == true
-                        ? summary.Headers["Authentication-Results"]
-                        : null;
-
-                return new RawMessage(
-                    providerMessageId,
-                    null, // IMAP no tiene threadId nativo — Correspondence hilvana por In-Reply-To/References.
-                    summary.Envelope?.MessageId,
-                    summary.Envelope?.InReplyTo,
-                    (summary.References ?? []).ToList(),
-                    ExtractMailbox(summary.Envelope?.From),
-                    ExtractMailboxName(summary.Envelope?.From),
-                    ExtractAddresses(summary.Envelope?.To),
-                    ExtractAddresses(summary.Envelope?.Cc),
-                    ExtractAddresses(summary.Envelope?.Bcc),
-                    summary.Envelope?.Subject ?? string.Empty,
-                    string.Empty, // IMAP no tiene snippet — no vale la pena descargar el body para generarlo acá.
-                    summary.Envelope?.Date?.UtcDateTime ?? DateTime.UtcNow,
-                    ExtractAttachments(summary),
-                    AuthenticationResultsHeaderParser.Parse(authHeader)
-                );
+                return ToRawMessage(providerMessageId, summary);
             },
             ct
         );
 
+    /// <summary>Un solo FETCH para todo el lote, en vez de un viaje al servidor por mensaje.</summary>
+    public Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    ) =>
+        ExecuteAsync<IReadOnlyList<ProviderMessageFetch>>(
+            accountId,
+            tenantId,
+            async (inbox, token) =>
+            {
+                var uids = new List<UniqueId>(providerMessageIds.Count);
+                foreach (var id in providerMessageIds)
+                    uids.Add(ParseUid(id));
+
+                var byUid = new Dictionary<uint, IMessageSummary>();
+                foreach (var summary in await inbox.FetchAsync(uids, MetadataItems, token))
+                    byUid[summary.UniqueId.Id] = summary;
+
+                var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
+                foreach (var id in providerMessageIds)
+                {
+                    results.Add(
+                        byUid.TryGetValue(ParseUid(id).Id, out var summary)
+                            ? ProviderMessageFetch.Found(id, ToRawMessage(id, summary))
+                            : ProviderMessageFetch.Failed(
+                                id,
+                                new EmailProviderException($"IMAP message with UID {id} was not found.")
+                            )
+                    );
+                }
+
+                return results;
+            },
+            ct
+        );
+
+    private const MessageSummaryItems MetadataItems =
+        MessageSummaryItems.UniqueId
+        | MessageSummaryItems.Envelope
+        | MessageSummaryItems.References
+        | MessageSummaryItems.BodyStructure
+        | MessageSummaryItems.Headers;
+
+    private static RawMessage ToRawMessage(string providerMessageId, IMessageSummary summary)
+    {
+        var authHeader =
+            summary.Headers?.Contains("Authentication-Results") == true
+                ? summary.Headers["Authentication-Results"]
+                : null;
+
+        return new RawMessage(
+            providerMessageId,
+            null, // IMAP no tiene threadId nativo — Correspondence hilvana por In-Reply-To/References.
+            summary.Envelope?.MessageId,
+            summary.Envelope?.InReplyTo,
+            (summary.References ?? []).ToList(),
+            ExtractMailbox(summary.Envelope?.From),
+            ExtractMailboxName(summary.Envelope?.From),
+            ExtractAddresses(summary.Envelope?.To),
+            ExtractAddresses(summary.Envelope?.Cc),
+            ExtractAddresses(summary.Envelope?.Bcc),
+            summary.Envelope?.Subject ?? string.Empty,
+            string.Empty, // IMAP no tiene snippet — no vale la pena descargar el body para generarlo acá.
+            summary.Envelope?.Date?.UtcDateTime ?? DateTime.UtcNow,
+            ExtractAttachments(summary),
+            AuthenticationResultsHeaderParser.Parse(authHeader)
+        );
+    }
+
     /// <summary>MailKit ya resuelve la "mejor" parte html/text vía BODYSTRUCTURE (summary.HtmlBody/TextBody) — no hace falta caminar el árbol a mano como con Gmail. Octets viene de la propia BODYSTRUCTURE, sin descargas extra.</summary>
+    public Task<byte[]> GetRawMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) =>
+        ExecuteAsync(
+            accountId,
+            tenantId,
+            async (inbox, token) =>
+            {
+                var message = await inbox.GetMessageAsync(ParseUid(providerMessageId), token);
+                using var buffer = new MemoryStream();
+                await message.WriteToAsync(buffer, token);
+                return buffer.ToArray();
+            },
+            ct
+        );
+
     public Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
         Guid tenantId,
@@ -336,7 +395,8 @@ public sealed class ImapClient(
     {
         await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
-        var breaker = circuitBreakers.GetOrCreate("Imap:messages");
+        // Por cuenta: la contraseña mala de un tenant no debe cortar el IMAP de los demás.
+        var breaker = circuitBreakers.GetOrCreate($"Imap:messages:{accountId:N}");
         try
         {
             return await breaker.ExecuteAsync(
@@ -395,6 +455,12 @@ public sealed class ImapClient(
             cachedConnection = client;
             cachedAccountId = accountId;
             return client;
+        }
+        catch (AuthenticationException ex)
+        {
+            // Usuario o contraseña rechazados: reintentar no lo arregla, hay que reconectar la cuenta.
+            client.Dispose();
+            throw new EmailProviderException("IMAP server rejected the credentials.", ex, requiresReconnect: true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

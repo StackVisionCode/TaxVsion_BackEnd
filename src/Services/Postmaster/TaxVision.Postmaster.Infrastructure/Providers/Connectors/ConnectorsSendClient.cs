@@ -8,6 +8,7 @@ using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
+using TaxVision.Postmaster.Domain.ValueObjects;
 using TaxVision.Postmaster.Infrastructure.Providers.Assets;
 
 namespace TaxVision.Postmaster.Infrastructure.Providers.Connectors;
@@ -51,7 +52,7 @@ public sealed class ConnectorsSendClient(
         if (string.IsNullOrEmpty(token))
         {
             logger.LogWarning("No service token available to call Connectors for tenant {TenantId}.", message.TenantId);
-            return Failed(message, "No Connectors credentials available.");
+            return Failed(message, "No Connectors credentials available.", MailboxSendFailure.ProviderUnavailable);
         }
 
         var request = BuildRequest(
@@ -71,7 +72,7 @@ public sealed class ConnectorsSendClient(
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             logger.LogWarning(ex, "Connectors send call failed for SentMessage {SentMessageId}.", message.Id);
-            return Failed(message, ex.Message);
+            return Failed(message, ex.Message, MailboxSendFailure.ProviderUnavailable);
         }
     }
 
@@ -97,7 +98,9 @@ public sealed class ConnectorsSendClient(
             references,
             replyToProviderMessageId,
             attachments.Count == 0 ? null : attachments.Select(ToAttachmentDto).ToList(),
-            inlineAssets.Count == 0 ? null : inlineAssets.Select(ToInlineAssetDto).ToList()
+            inlineAssets.Count == 0 ? null : inlineAssets.Select(ToInlineAssetDto).ToList(),
+            // Nuestro Message-ID: si el buzón lo respeta, el aviso de no entrega lo cita tal cual.
+            OurMessageId.For(message.Id, message.FromAddress).ToString()
         );
 
     private static SendMessageAttachmentRequestDto ToAttachmentDto(OutboundAttachmentBytes attachment) =>
@@ -142,7 +145,7 @@ public sealed class ConnectorsSendClient(
         if (response.IsSuccessStatusCode)
         {
             var payload = await response.Content.ReadFromJsonAsync<SendMessageResultDto>(Json, ct);
-            return Succeeded(message, payload?.ProviderMessageId);
+            return Succeeded(message, payload);
         }
 
         var error = await response.Content.ReadFromJsonAsync<ErrorDto>(Json, ct);
@@ -158,8 +161,8 @@ public sealed class ConnectorsSendClient(
         // El cupo por minuto de Connectors: el email no salió y el consumer lo difiere. El diario
         // (SendMessageHandler.QuotaExceeded) también es 429, pero reintentar en minutos no lo arregla.
         return IsPerMinuteThrottle(response, error)
-            ? Failed(message, reason, RetryAfterOf(response))
-            : Failed(message, reason);
+            ? Failed(message, reason, MailboxSendFailure.Throttled, RetryAfterOf(response))
+            : Failed(message, reason, FailureKindOf(response.StatusCode, error?.Code));
     }
 
     private static bool IsPerMinuteThrottle(HttpResponseMessage response, ErrorDto? error) =>
@@ -176,17 +179,47 @@ public sealed class ConnectorsSendClient(
         return DefaultRetryAfter;
     }
 
-    private static SendResult Succeeded(SentMessage message, string? providerMessageId) =>
+    // El hilo se perdía acá: Correspondence lo necesita para seguir la conversación.
+    private static SendResult Succeeded(SentMessage message, SendMessageResultDto? payload) =>
         new(
             true,
-            providerMessageId,
+            payload?.ProviderMessageId,
             null,
             message
                 .Recipients.Select(r => new RecipientSendOutcome(r.Id, r.Address, RecipientSendStatus.Sent, null))
-                .ToList()
+                .ToList(),
+            ProviderThreadId: payload?.ProviderThreadId,
+            InternetMessageId: payload?.InternetMessageId
         );
 
-    private static SendResult Failed(SentMessage message, string reason, TimeSpan? retryAfter = null) =>
+    /// <summary>
+    /// Traduce los códigos de Connectors a nuestro idioma. Es lo único que decide si conviene probar por
+    /// el sistema: la culpa es del buzón o del proveedor, o del correo en sí.
+    /// </summary>
+    private static MailboxSendFailure FailureKindOf(HttpStatusCode status, string? code) =>
+        code switch
+        {
+            "SendMessageHandler.AuthExpired"
+            or "SendMessageHandler.PermissionDenied"
+            or "SendMessageHandler.QuotaExceeded"
+            or "SendMessageHandler.AttachmentTooLarge"
+            or "SendMessageHandler.Forbidden" => MailboxSendFailure.MailboxUnavailable,
+            "SendMessageHandler.TransientProviderError" or "SendMessageHandler.Timeout" =>
+                MailboxSendFailure.ProviderUnavailable,
+            "SendMessageHandler.InvalidRequest" => MailboxSendFailure.InvalidMessage,
+            _ when code?.StartsWith("TenantEmailAccount.", StringComparison.Ordinal) == true =>
+                MailboxSendFailure.MailboxUnavailable,
+            _ when status == HttpStatusCode.NotFound => MailboxSendFailure.MailboxUnavailable,
+            _ when (int)status >= 500 => MailboxSendFailure.ProviderUnavailable,
+            _ => MailboxSendFailure.Unknown,
+        };
+
+    private static SendResult Failed(
+        SentMessage message,
+        string reason,
+        MailboxSendFailure failure,
+        TimeSpan? retryAfter = null
+    ) =>
         new(
             false,
             null,
@@ -194,7 +227,8 @@ public sealed class ConnectorsSendClient(
             message
                 .Recipients.Select(r => new RecipientSendOutcome(r.Id, r.Address, RecipientSendStatus.Rejected, reason))
                 .ToList(),
-            retryAfter
+            retryAfter,
+            MailboxFailure: failure
         );
 
     private sealed record SendMessageRequestDto(
@@ -210,14 +244,20 @@ public sealed class ConnectorsSendClient(
         IReadOnlyList<string>? References,
         string? ReplyToProviderMessageId,
         IReadOnlyList<SendMessageAttachmentRequestDto>? Attachments,
-        IReadOnlyList<SendMessageInlineAssetRequestDto>? InlineAssets
+        IReadOnlyList<SendMessageInlineAssetRequestDto>? InlineAssets,
+        string? ClientMessageId
     );
 
     private sealed record SendMessageAttachmentRequestDto(string Filename, string ContentType, string ContentBase64);
 
     private sealed record SendMessageInlineAssetRequestDto(string ContentId, string ContentType, string ContentBase64);
 
-    private sealed record SendMessageResultDto(string? ProviderMessageId, string? ProviderThreadId, DateTime SentAtUtc);
+    private sealed record SendMessageResultDto(
+        string? ProviderMessageId,
+        string? ProviderThreadId,
+        DateTime SentAtUtc,
+        string? InternetMessageId
+    );
 
     private sealed record ErrorDto(string Code, string Message);
 }

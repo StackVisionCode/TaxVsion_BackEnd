@@ -1,5 +1,7 @@
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Accounts;
@@ -33,6 +35,7 @@ public class ReconcileAccountHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -70,6 +73,7 @@ public class ReconcileAccountHandlerTests
             new FakeProviderSyncCursorRepository(),
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -115,6 +119,7 @@ public class ReconcileAccountHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -161,6 +166,7 @@ public class ReconcileAccountHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -198,6 +204,7 @@ public class ReconcileAccountHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(client),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -227,6 +234,8 @@ public class ReconcileAccountHandlerTests
         );
 
         var sharedLock = new InMemoryDistributedLock();
+
+        var sharedPendingFlag = new InMemorySyncPendingFlag();
         var lockKey = $"connectors:webhook-sync:{account.Id:N}";
         await using var heldByWebhook = await sharedLock.AcquireAsync(
             lockKey,
@@ -244,6 +253,7 @@ public class ReconcileAccountHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             sharedLock,
+            sharedPendingFlag,
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
@@ -278,6 +288,7 @@ public class ReconcileAccountHandlerTests
             cursorRepository,
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Graph)),
             new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
@@ -289,5 +300,211 @@ public class ReconcileAccountHandlerTests
         Assert.False(result.Value.CursorWasSeeded);
         Assert.False(result.Value.Skipped);
         Assert.Equal(0, result.Value.MessagesFound);
+    }
+
+    private static async Task<(
+        BuildingBlocks.Results.Result<ReconciliationOutcome> Result,
+        FakeEmailProviderClient Client,
+        FakeMessageBus Bus
+    )> ReconcileGraphAsync(IDistributedLock distributedLock, ISyncPendingFlag pendingFlag)
+    {
+        var account = CreateActiveAccount("office@outlook.com", ProviderCode.Graph);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var cursorRepository = new FakeProviderSyncCursorRepository();
+        cursorRepository.Cursors.Add(
+            TaxVision.Connectors.Domain.Sync.ProviderSyncCursor.Create(account.Id, "delta-0", Now).Value
+        );
+
+        // Cada pasada trae un mensaje nuevo y avanza el cursor.
+        var client = new FakeEmailProviderClient(ProviderCode.Graph)
+        {
+            OnGetHistory = (_, cursor) => new HistoryPage([$"after-{cursor}"], $"{cursor}+", false),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileAccountHandler.Handle(
+            new ReconcileAccountCommand(account.Id),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            cursorRepository,
+            new FakeEmailProviderClientFactory(client),
+            distributedLock,
+            pendingFlag,
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+        return (result, client, bus);
+    }
+
+    [Fact]
+    public async Task Handle_WhenAPushWasMarkedPending_RunsOneMorePass()
+    {
+        var (result, client, bus) = await ReconcileGraphAsync(new InMemoryDistributedLock(), new MarkOnceSyncFlag());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["delta-0", "delta-0+"], client.ReceivedCursors);
+        Assert.Equal(2, result.Value.MessagesFound);
+        Assert.Equal(2, bus.Published.Count);
+    }
+
+    [Fact]
+    public async Task Handle_WhenAlwaysPending_StopsAtThreePasses()
+    {
+        var (result, client, _) = await ReconcileGraphAsync(new InMemoryDistributedLock(), new AlwaysPendingSyncFlag());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, client.ReceivedCursors.Count);
+    }
+
+    [Fact]
+    public async Task Handle_WhenLockIsLostBeforeTheExtraPass_StopsAfterTheFirstPass()
+    {
+        var (result, client, _) = await ReconcileGraphAsync(
+            new LostOnExtendDistributedLock(),
+            new AlwaysPendingSyncFlag()
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(client.ReceivedCursors);
+    }
+
+    [Fact]
+    public async Task Handle_Imap_WhenCredentialsAreRejected_MarksErrorAndNotifiesOnce()
+    {
+        var account = CreateActiveAccount("office@example.com", ProviderCode.Imap);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var client = new FakeEmailProviderClient(ProviderCode.Imap)
+        {
+            ThrowOnGetHistory = new EmailProviderException("rejected", requiresReconnect: true),
+        };
+        var bus = new FakeMessageBus();
+
+        async Task<BuildingBlocks.Results.Result<ReconciliationOutcome>> ReconcileAsync() =>
+            await ReconcileAccountHandler.Handle(
+                new ReconcileAccountCommand(account.Id),
+                accountRepository,
+                new FakeProviderWatchSubscriptionRepository(),
+                new FakeProviderSyncCursorRepository(),
+                new FakeEmailProviderClientFactory(client),
+                new InMemoryDistributedLock(),
+                new InMemorySyncPendingFlag(),
+                new FakeUnitOfWork(),
+                bus,
+                new FakeCorrelationContext(),
+                NullLogger.Instance,
+                CancellationToken.None
+            );
+
+        var first = await ReconcileAsync();
+        var second = await ReconcileAsync();
+
+        Assert.True(first.IsFailure);
+        Assert.True(second.IsFailure);
+        Assert.Equal(TenantEmailAccountStatus.Error, account.Status);
+        // La segunda corrida ya encuentra la cuenta en Error: no se avisa otra vez.
+        var notified = Assert.Single(bus.Published.OfType<ConnectorsOAuthRefreshFailedIntegrationEvent>());
+        Assert.Equal("Imap.AuthenticationFailed", notified.ErrorCode);
+        Assert.Equal(Guid.Empty, notified.ConnectionId);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTheWholeMetadataBatchFails_KeepsTheCursorAndPublishesNothing()
+    {
+        var account = CreateActiveAccount("office@example.com", ProviderCode.Imap);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var cursorRepository = new FakeProviderSyncCursorRepository();
+        cursorRepository.Cursors.Add(
+            TaxVision.Connectors.Domain.Sync.ProviderSyncCursor.Create(account.Id, "uid-10", Now).Value
+        );
+        var client = new FakeEmailProviderClient(ProviderCode.Imap)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["11", "12"], "uid-12", false),
+            ThrowOnGetMessages = new EmailProviderException("Connection reset."),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileAccountHandler.Handle(
+            new ReconcileAccountCommand(account.Id),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            cursorRepository,
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        // Sin avanzar el cursor, la próxima pasada vuelve a pedir los mismos mensajes.
+        Assert.True(result.IsFailure);
+        Assert.Equal("RawMessageSync.MessageFetchFailed", result.Error.Code);
+        Assert.Equal("uid-10", cursorRepository.Cursors[0].CursorValue);
+        Assert.Empty(bus.Published);
+        Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
+    }
+
+    [Fact]
+    public async Task Handle_queues_a_delivery_report_for_inspection_and_still_shows_it_as_mail()
+    {
+        var account = CreateActiveAccount("office@gmail.com", ProviderCode.Gmail);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var cursorRepository = new FakeProviderSyncCursorRepository();
+        cursorRepository.Cursors.Add(
+            TaxVision.Connectors.Domain.Sync.ProviderSyncCursor.Create(account.Id, "history-1", Now).Value
+        );
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["bounce-1"], "history-2", false),
+            OnGetMessage = (_, id) =>
+                new RawMessage(
+                    id,
+                    null,
+                    null,
+                    null,
+                    [],
+                    "mailer-daemon@googlemail.com",
+                    "Mail Delivery Subsystem",
+                    ["office@gmail.com"],
+                    [],
+                    [],
+                    "Delivery Status Notification (Failure)",
+                    "Address not found",
+                    Now,
+                    [],
+                    AuthenticationSignals.Unknown
+                ),
+        };
+        var bus = new FakeMessageBus();
+
+        await ReconcileAccountHandler.Handle(
+            new ReconcileAccountCommand(account.Id),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            cursorRepository,
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        // No se oculta nada: el aviso sigue llegando a la bandeja como correo.
+        Assert.Single(bus.Published.OfType<ConnectorsRawMessageReceivedIntegrationEvent>());
+        var inspect = Assert.Single(bus.Published.OfType<InspectDeliveryReport>());
+        Assert.Equal("bounce-1", inspect.ProviderMessageId);
+        Assert.Equal(account.TenantId, inspect.TenantId);
     }
 }

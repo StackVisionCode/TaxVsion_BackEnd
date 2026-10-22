@@ -43,4 +43,22 @@ public sealed class PermissionsAdminController(IMessageBus bus) : ControllerBase
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>Repara una cuenta que quedó como PlatformAdmin dentro de una oficina (cambio manual en
+    /// la base): la vuelve TenantAdmin, re-proyecta sus permisos en todos los servicios y corta sus
+    /// sesiones para que el próximo login traiga el tipo de actor correcto.</summary>
+    [HttpPost("users/{userId:guid}/restore-tenant-admin")]
+    [RateLimit("auth.g.onboarding_admin_manage")]
+    [ProducesResponseType<RestoreTenantAdminResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RestoreTenantAdmin(Guid userId, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var requesterId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<RestoreTenantAdminResult>>(
+            new RestoreTenantAdminCommand(userId, requesterId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

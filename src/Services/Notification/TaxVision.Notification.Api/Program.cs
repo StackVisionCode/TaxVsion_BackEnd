@@ -186,7 +186,8 @@ builder.Services.AddTaxVisionOpenTelemetry(
     builder.Configuration,
     "notification-service",
     TaxVision.Notification.Infrastructure.Observability.SubscriptionEmailMetrics.MeterName,
-    TaxVision.Notification.Infrastructure.Observability.NotificationDispatchMetrics.MeterName
+    TaxVision.Notification.Infrastructure.Observability.NotificationDispatchMetrics.MeterName,
+    TaxVision.Notification.Infrastructure.Observability.ProviderWebhookMetrics.MeterName
 );
 
 var rabbitUri = new Uri(
@@ -230,6 +231,9 @@ builder.Host.UseWolverine(options =>
     // email/send y de EmailCampaigns). El PublishMessage se declara siempre para no romper el binding
     // aun cuando el flag esté OFF; el runtime simplemente no genera envíos hasta que alguno lo invoque.
     options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Avisos del webhook único de SMTP2GO que son de correos del sistema: los traduce Postmaster.
+    options.PublishMessage<EmailProviderFeedbackReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Puente SMS real: el IntegrationEventSmsSender publica esto y el microservicio Sms lo entrega
     // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.

@@ -871,6 +871,58 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "SMTP2GO System Hard Bounce",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{campaignEmailWebhookSecret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"event\": \"bounce\",\n  \"bounce\": \"hard\",\n  \"rcpt\": \"{{postmasterRecipientEmail}}\",\n  \"email_id\": \"{{smtp2goEmailId}}\",\n  \"message-id\": \"<pm.{{postmasterSentMessageIdN}}@{{systemEmailDomain}}>\",\n  \"time\": \"2026-10-21T12:00:00Z\",\n  \"host\": \"mx.example.com\",\n  \"message\": \"550 5.1.1 user unknown\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/notifications/campaign-email/webhooks/smtp2go",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"campaign-email",
+								"webhooks",
+								"smtp2go"
+							]
+						},
+						"description": "Mismo webhook único de SMTP2GO, pero para un correo del SISTEMA (F2): el message-id empieza con pm. (o viene el header X-TaxVision-Message-Id), así que Notification lo manda a Postmaster como EmailProviderFeedbackReceived en vez de a Campaigns. postmasterSentMessageIdN = SentMessage.Id sin guiones; systemEmailDomain = dominio del remitente del sistema. Resultado esperado en Postmaster: destinatario HardBounced, dirección agregada a supresión y estado Bounced en ListActivity. Repetir el mismo POST no cambia nada (recibo idempotente)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Authenticated webhook accepted\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},

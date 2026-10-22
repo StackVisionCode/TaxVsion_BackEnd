@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using BuildingBlocks.Results;
+using BuildingBlocks.Common;
 using BuildingBlocks.Web.RateLimiting;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
@@ -25,6 +25,7 @@ namespace TaxVision.Connectors.Api.Controllers;
 [EnableRateLimiting("connectors-webhook")]
 public sealed class GmailPushWebhookController(
     IMessageBus bus,
+    ICorrelationContext correlation,
     IOptions<GmailPushWebhookOptions> options,
     ILogger<GmailPushWebhookController> logger
 ) : ControllerBase
@@ -64,18 +65,11 @@ public sealed class GmailPushWebhookController(
         )
             return BadRequest();
 
-        var result = await bus.InvokeAsync<Result>(
-            new ProcessGmailPushNotificationCommand(decoded.EmailAddress, decoded.HistoryId),
-            ct
+        // Se guarda en la cola durable y se responde: el sync corre después, fuera de la request.
+        await bus.PublishAsync(
+            new GmailPushReceived(decoded.EmailAddress, decoded.HistoryId, correlation.CorrelationId)
         );
-
-        // Pub/Sub reintenta ante cualquier respuesta que no sea 2xx — "cuenta no encontrada" no es
-        // transitorio (nunca lo va a encontrar reintentando), así que igual respondemos 200.
-        if (result.IsSuccess || result.Error.Code == "TenantEmailAccount.NotFound")
-            return Ok();
-
-        logger.LogWarning("Gmail push processing failed: {Code} {Message}", result.Error.Code, result.Error.Message);
-        return StatusCode(StatusCodes.Status500InternalServerError);
+        return Ok();
     }
 
     private GmailPushMessage? TryDecodeMessage(PubSubPushEnvelope envelope)

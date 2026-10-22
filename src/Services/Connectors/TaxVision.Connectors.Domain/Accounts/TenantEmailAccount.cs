@@ -135,6 +135,20 @@ public sealed class TenantEmailAccount : TenantEntity
         LastActivityAtUtc = erroredAtUtc;
     }
 
+    /// <summary>
+    /// Connected|Active → Error: el servidor IMAP rechazó usuario o contraseña. Falla si ya estaba en
+    /// Error o Disconnected, así el aviso al usuario sale una sola vez.
+    /// </summary>
+    public Result MarkCredentialsRejected(DateTime rejectedAtUtc)
+    {
+        if (Status is not (TenantEmailAccountStatus.Connected or TenantEmailAccountStatus.Active))
+            return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Error));
+
+        Status = TenantEmailAccountStatus.Error;
+        LastActivityAtUtc = rejectedAtUtc;
+        return Result.Success();
+    }
+
     public void TouchActivity(DateTime activityAtUtc) => LastActivityAtUtc = activityAtUtc;
 
     /// <summary>

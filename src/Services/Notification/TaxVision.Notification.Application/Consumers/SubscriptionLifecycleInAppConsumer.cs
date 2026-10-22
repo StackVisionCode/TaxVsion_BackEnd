@@ -28,7 +28,10 @@ public static class SubscriptionLifecycleInAppConsumer
             var kind = renewal
                 ? NotificationKinds.SubscriptionRenewalUpcoming
                 : NotificationKinds.SubscriptionStatusChanged;
-            var title = renewal ? "Subscription renewal coming up" : SubscriptionTitle(evt.Status, evt.Reason);
+            var title =
+                renewal ? "Subscription renewal coming up"
+                : IsChargeFailure(evt) ? ChargeFailureTitle(evt)
+                : SubscriptionTitle(evt.Status, evt.Reason);
 
             await BillingNotificationPublisher.RecordAsync(
                 dispatcher,
@@ -73,8 +76,24 @@ public static class SubscriptionLifecycleInAppConsumer
         return $"Subscription {status.ToLowerInvariant()}";
     }
 
-    private static string SubscriptionBody(TenantSubscriptionEmailRequestedIntegrationEvent evt) =>
-        evt.DaysUntilRenewal is { } days
+    private static bool IsChargeFailure(TenantSubscriptionEmailRequestedIntegrationEvent evt) =>
+        string.Equals(evt.Reason, "RenewalChargeFailed", StringComparison.OrdinalIgnoreCase);
+
+    private static string ChargeFailureTitle(TenantSubscriptionEmailRequestedIntegrationEvent evt) =>
+        evt.IsFinalAttempt ? "Payment failed — action required" : "Payment attempt failed";
+
+    private static string SubscriptionBody(TenantSubscriptionEmailRequestedIntegrationEvent evt)
+    {
+        if (IsChargeFailure(evt))
+        {
+            var what = $"We couldn't charge {evt.Amount} for your {evt.ItemDescription ?? "subscription"}.";
+            return evt.IsFinalAttempt || evt.NextAttemptAtUtc is null
+                ? $"{what} Complete the payment in Manage subscription to restore access."
+                : $"{what} We'll try again on {evt.NextAttemptAtUtc.Value.ToString("MMMM d", new CultureInfo("en-US"))}.";
+        }
+
+        return evt.DaysUntilRenewal is { } days
             ? $"Your subscription renews in {days} day{(days == 1 ? string.Empty : "s")}."
             : "Review your billing settings for details.";
+    }
 }

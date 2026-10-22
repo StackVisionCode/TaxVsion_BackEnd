@@ -88,7 +88,7 @@ public sealed class FakePlanRepo(SubscriptionPlan? plan) : IPlanRepository
         throw new NotSupportedException();
 
     public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(plan is not null && plan.Code.Value == code ? plan : null);
 
     public Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default) =>
         Task.FromResult(plan is not null && plan.Id == planId ? plan : null);

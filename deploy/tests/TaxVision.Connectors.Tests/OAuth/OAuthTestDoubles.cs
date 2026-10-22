@@ -152,6 +152,8 @@ internal sealed class FakeEncryptedSecretProtector : IEncryptedSecretProtector
 internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepository
 {
     public List<TenantEmailAccount> Accounts { get; } = [];
+    public int ListActivePageCalls { get; private set; }
+    public Action<IReadOnlyList<ActiveAccountRef>>? OnListActivePage { get; set; }
 
     public Task AddAsync(TenantEmailAccount account, CancellationToken ct = default)
     {
@@ -214,10 +216,23 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         return Task.FromResult(accounts);
     }
 
-    public Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default)
+    public Task<IReadOnlyList<ActiveAccountRef>> ListActivePageAsync(
+        Guid? afterId,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
-        IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a => a.Status == TenantEmailAccountStatus.Active);
-        return Task.FromResult(accounts);
+        ListActivePageCalls++;
+        IReadOnlyList<ActiveAccountRef> page = Accounts
+            .Where(a =>
+                a.Status == TenantEmailAccountStatus.Active && (afterId is null || a.Id.CompareTo(afterId.Value) > 0)
+            )
+            .OrderBy(a => a.Id)
+            .Take(pageSize)
+            .Select(a => new ActiveAccountRef(a.Id, a.ProviderCode, a.TenantId))
+            .ToList();
+        OnListActivePage?.Invoke(page);
+        return Task.FromResult(page);
     }
 
     public Task<IReadOnlyList<TenantEmailAccount>> ListByOwnerUserAsync(
@@ -358,6 +373,23 @@ internal sealed class FakeProviderConnectionAuditLogRepository : IProviderConnec
 }
 
 /// <summary>SET-NX-like lock en memoria — semántica real de "solo un caller a la vez" para tests de concurrencia.</summary>
+internal sealed class InMemorySyncPendingFlag : ISyncPendingFlag
+{
+    private readonly ConcurrentDictionary<Guid, byte> _marked = new();
+
+    public int MarkCount { get; private set; }
+
+    public Task MarkAsync(Guid accountId, CancellationToken ct = default)
+    {
+        MarkCount++;
+        _marked[accountId] = 0;
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> TryConsumeAsync(Guid accountId, CancellationToken ct = default) =>
+        Task.FromResult(_marked.TryRemove(accountId, out _));
+}
+
 internal sealed class InMemoryDistributedLock : IDistributedLock
 {
     private readonly ConcurrentDictionary<string, byte> _held = new();

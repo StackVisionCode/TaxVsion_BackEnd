@@ -146,8 +146,16 @@ internal sealed class InMemoryUserRepository : IUserRepository
     public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
         throw new NotSupportedException();
 
+    // Misma regla que el repositorio real: el TenantAdmin activo más antiguo de la oficina.
     public Task<User?> GetPrimaryAdminAsync(Guid tenantId, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(
+            _users
+                .Values.Where(user =>
+                    user.TenantId == tenantId && user.IsActive && user.ActorType == UserActorType.TenantAdmin
+                )
+                .OrderBy(user => user.CreatedAtUtc)
+                .FirstOrDefault()
+        );
 
     public Task<(IReadOnlyList<User> Items, int TotalCount)> GetPagedAsync(
         Guid tenantId,

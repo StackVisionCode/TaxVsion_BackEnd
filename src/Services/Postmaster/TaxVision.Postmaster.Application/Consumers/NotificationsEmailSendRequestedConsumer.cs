@@ -132,6 +132,7 @@ public static class NotificationsEmailSendRequestedConsumer
                     mailboxResult,
                     suppressionList,
                     mailboxSender,
+                    new SystemLane(providerResolver, rateLimiter, emailSender),
                     inlineAssetFetcher,
                     attachmentFetcher,
                     sentMessages,
@@ -250,6 +251,7 @@ public static class NotificationsEmailSendRequestedConsumer
         MailboxResolveResult resolveResult,
         ISuppressionListRepository suppressionList,
         IConnectedMailboxSender mailboxSender,
+        SystemLane systemLane,
         IInlineAssetFetcher inlineAssetFetcher,
         IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
@@ -284,6 +286,8 @@ public static class NotificationsEmailSendRequestedConsumer
             delivery,
             provider,
             mailboxSender,
+            systemLane,
+            tenantDirectory,
             inlineAssetFetcher,
             attachmentFetcher,
             sentMessages,
@@ -319,13 +323,7 @@ public static class NotificationsEmailSendRequestedConsumer
 
         var now = DateTime.UtcNow;
         foreach (var recipient in message.Recipients.Where(r => suppressed.Contains(r.Address)))
-            message.RecordDeliveryEvent(
-                recipient.Id,
-                SentMessageEventType.Suppressed,
-                now,
-                rawPayload: null,
-                "Address in suppression list."
-            );
+            message.MarkRecipientSuppressed(recipient.Id, "Address in suppression list.", now);
 
         if (!message.Recipients.All(r => r.Status == RecipientStatus.Suppressed))
         {
@@ -518,7 +516,8 @@ public static class NotificationsEmailSendRequestedConsumer
             correspondenceDraftId: null,
             inReplyToInternetMessageId: null,
             references: null,
-            campaignId: evt.CampaignId
+            campaignId: evt.CampaignId,
+            dispatchAttemptId: evt.DispatchAttemptId
         );
         if (queueResult.IsFailure)
             throw new InvalidOperationException(
@@ -555,7 +554,9 @@ public static class NotificationsEmailSendRequestedConsumer
             evt.TemplateKey,
             DateTime.UtcNow,
             ProviderScope.TenantMailbox,
-            campaignId: evt.CampaignId
+            campaignId: evt.CampaignId,
+            deliveryLane: DeliveryLane.TenantMailbox,
+            dispatchAttemptId: evt.DispatchAttemptId
         );
         if (queueResult.IsFailure)
             throw new InvalidOperationException(
@@ -697,6 +698,8 @@ public static class NotificationsEmailSendRequestedConsumer
         int delivery,
         ResolvedMailbox provider,
         IConnectedMailboxSender mailboxSender,
+        SystemLane systemLane,
+        ITenantDirectoryRepository tenantDirectory,
         IInlineAssetFetcher inlineAssetFetcher,
         IOutboundAttachmentFetcher attachmentFetcher,
         ISentMessageRepository sentMessages,
@@ -755,11 +758,33 @@ public static class NotificationsEmailSendRequestedConsumer
                 ct
             );
 
+        if (ShouldFallBack(message, evt, sendResult))
+        {
+            var fallback = await FallBackToSystemAsync(
+                message,
+                evt,
+                delivery,
+                provider,
+                content,
+                inlineAssetBytes,
+                attachments,
+                sendResult.ErrorReason ?? "Office mailbox send failed.",
+                systemLane,
+                tenantDirectory,
+                sentMessages,
+                idempotencyGuard,
+                unitOfWork,
+                bus,
+                logger,
+                ct
+            );
+            if (fallback.AlreadyFinalized)
+                return;
+            sendResult = fallback.Result ?? sendResult;
+        }
+
         var now = DateTime.UtcNow;
-        if (sendResult.Success)
-            message.MarkAsSent(sendResult.ProviderMessageId, now);
-        else
-            message.MarkAsFailed(sendResult.ErrorReason ?? "Unknown Connectors send failure.", now);
+        SendResultRecorder.Record(message, sendResult, "Unknown Connectors send failure.", now);
 
         await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);
@@ -776,6 +801,98 @@ public static class NotificationsEmailSendRequestedConsumer
                 now,
                 ct
             );
+    }
+
+    /// <summary>Lo que hace falta para salir por el proveedor del sistema desde la vía buzón.</summary>
+    private sealed record SystemLane(
+        IProviderResolver Resolver,
+        IEmailProviderRateLimiter RateLimiter,
+        IEmailSender Sender
+    );
+
+    /// <param name="AlreadyFinalized">El cupo del sistema ya cerró el mensaje (diferido o fallido): no seguir.</param>
+    /// <param name="Result">El envío por el sistema; null si no se pudo intentar y vale el fallo del buzón.</param>
+    private sealed record FallbackResult(bool AlreadyFinalized, SendResult? Result);
+
+    private static bool ShouldFallBack(
+        SentMessage message,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        SendResult sendResult
+    ) =>
+        !sendResult.Success
+        && sendResult.RetryAfter is null
+        && sendResult.MailboxFailure is { } failure
+        && MailboxFallbackPolicy.ShouldFallBack(ParseProviderScope(evt.RequiredProviderScope), message.Stream, failure);
+
+    /// <summary>
+    /// El buzón de la oficina falló por su culpa (desconectado, proveedor caído…): el mismo correo sale
+    /// por el proveedor del sistema en nombre de la oficina, con Reply-To al buzón para que las
+    /// respuestas le lleguen. Si el reconectar hace falta, ese aviso ya lo dio Connectors.
+    /// </summary>
+    private static async Task<FallbackResult> FallBackToSystemAsync(
+        SentMessage message,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        int delivery,
+        ResolvedMailbox mailbox,
+        RenderedContent content,
+        IReadOnlyList<InlineAssetBytes> inlineAssetBytes,
+        IReadOnlyList<OutboundAttachmentBytes> attachments,
+        string mailboxFailureReason,
+        SystemLane systemLane,
+        ITenantDirectoryRepository tenantDirectory,
+        ISentMessageRepository sentMessages,
+        IIdempotencyGuard idempotencyGuard,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var resolved = await systemLane.Resolver.ResolveAsync(
+            evt.TenantId,
+            ProviderScope.System,
+            ParsePriorityHint(evt.PriorityHint),
+            systemFallbackAllowed: false,
+            ct
+        );
+        if (resolved.Status != ProviderResolutionStatus.Resolved)
+            return new FallbackResult(false, null);
+
+        var system = resolved.Provider!;
+        var onBehalfOf = (await tenantDirectory.FindAsync(evt.TenantId, ct))?.Name;
+        var moved = message.FallBackToSystemProvider(
+            mailboxFailureReason,
+            system.ProviderCode,
+            system.FromAddress,
+            FromDisplayNameFor(onBehalfOf, system, ProviderScope.System),
+            mailbox.FromAddress,
+            DateTime.UtcNow
+        );
+        if (moved.IsFailure)
+            return new FallbackResult(false, null);
+
+        logger.LogInformation(
+            "Office mailbox send failed for SentMessage {SentMessageId}; retrying through the system provider.",
+            message.Id
+        );
+        if (
+            await ApplyRateLimitAsync(
+                message,
+                evt,
+                delivery,
+                system,
+                systemLane.RateLimiter,
+                sentMessages,
+                idempotencyGuard,
+                unitOfWork,
+                bus,
+                ct
+            )
+        )
+            return new FallbackResult(true, null);
+
+        var result = await systemLane.Sender.SendAsync(message, content, system, inlineAssetBytes, attachments, ct);
+        return new FallbackResult(false, result);
     }
 
     /// <summary>
@@ -825,10 +942,7 @@ public static class NotificationsEmailSendRequestedConsumer
         var sendResult = await emailSender.SendAsync(message, content, provider, inlineAssetBytes, attachments, ct);
 
         var now = DateTime.UtcNow;
-        if (sendResult.Success)
-            message.MarkAsSent(sendResult.ProviderMessageId, now);
-        else
-            message.MarkAsFailed(sendResult.ErrorReason ?? "Unknown SMTP failure.", now);
+        SendResultRecorder.Record(message, sendResult, "Unknown SMTP failure.", now);
 
         await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);

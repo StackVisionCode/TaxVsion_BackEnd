@@ -3361,6 +3361,52 @@
             "description": "Sin body. PlatformAdmin-only (permiso onboarding.admin.manage). Break-glass del RBAC async: re-publica UserRolesChanged para el usuario con su set de roles/permisos ACTUAL, para que cada microservicio re-materialice su UserPermissionsProjection local. Usar cuando el rol SI esta asignado en Auth pero la proyeccion quedo ausente/desincronizada en algun servicio (evento de fan-out perdido, servicio caido durante el alta, reparacion manual de DB), sin tener que reiniciar Auth. NO bumpea PermissionsVersion (no invalida JWT vigentes). Responde 200 con { userId, tenantId, permissionsVersion, permissionCodeCount, roleCount }: si permissionCodeCount=0 el problema real es de asignacion de rol, no de proyeccion. Funciona sobre usuarios de cualquier tenant."
           },
           "response": []
+        },
+        {
+          "name": "RestoreTenantAdmin (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/permissions/admin/users/{{userId}}/restore-tenant-admin",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "permissions",
+                "admin",
+                "users",
+                "{{userId}}",
+                "restore-tenant-admin"
+              ]
+            },
+            "description": "Repara una cuenta que quedó como PlatformAdmin dentro de una oficina (cambio manual en la base; Register nunca lo permite). La vuelve TenantAdmin (dueña si nació por onboarding), deja el rol de sistema Tenant Admin, sube PermissionsVersion y publica UserRolesChanged con ActorType=TenantAdmin para que todos los servicios corrijan su proyección; recalcula asientos y corta las sesiones del usuario. Un PlatformAdmin real (tenant de plataforma) devuelve User.NotMisplacedPlatformAdmin. Requiere PlatformAdmin + onboarding.admin.manage."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"restored as tenant admin, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"permissionsVersion\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404, 422]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ]
     },

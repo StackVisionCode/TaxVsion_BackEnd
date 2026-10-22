@@ -1,6 +1,7 @@
-using TaxVision.Connectors.Application.Accounts;
+using BuildingBlocks.Platform;
+using Xunit;
 
-namespace TaxVision.Connectors.Tests.Accounts;
+namespace TaxVision.BuildingBlocks.Tests.Platform;
 
 /// <summary>
 /// El callback de OAuth es anónimo y el <c>state</c> lo controla el usuario: si el origen de retorno
@@ -95,6 +96,32 @@ public sealed class OAuthReturnRedirectPolicyTests
         Assert.Equal(
             "http://localhost:4200",
             OAuthReturnRedirectPolicy.Resolve("http://localhost:4200", "http://localhost:5047", PlatformDomain)
+        );
+    }
+
+    [Fact]
+    public void ResolveUrl_TenantSubdomain_KeepsTheConfiguredPath()
+    {
+        Assert.Equal(
+            "https://manfer.taxproffice.com/storage",
+            OAuthReturnRedirectPolicy.ResolveUrl(
+                "https://manfer.taxproffice.com/email",
+                ProdBase + "/storage",
+                PlatformDomain
+            )
+        );
+    }
+
+    [Fact]
+    public void ResolveUrl_ForeignOrMissingOrigin_FallsBackToTheConfiguredUrl()
+    {
+        Assert.Equal(
+            ProdBase + "/storage",
+            OAuthReturnRedirectPolicy.ResolveUrl("https://evil.example.com", ProdBase + "/storage", PlatformDomain)
+        );
+        Assert.Equal(
+            ProdBase + "/storage",
+            OAuthReturnRedirectPolicy.ResolveUrl(null, ProdBase + "/storage", PlatformDomain)
         );
     }
 }

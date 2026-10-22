@@ -7,4 +7,10 @@ namespace TaxVision.Connectors.Application.Providers;
 /// devuelve). <c>SentMessage.MarkAsSent</c> en Postmaster ya acepta <c>providerMessageId</c> nullable
 /// por esta misma razón.
 /// </summary>
-public sealed record SendMessageResult(string? ProviderMessageId, string? ProviderThreadId, DateTime SentAtUtc);
+/// <param name="InternetMessageId">Message-ID RFC con el que salió de verdad: los avisos de no entrega lo citan.</param>
+public sealed record SendMessageResult(
+    string? ProviderMessageId,
+    string? ProviderThreadId,
+    DateTime SentAtUtc,
+    string? InternetMessageId = null
+);

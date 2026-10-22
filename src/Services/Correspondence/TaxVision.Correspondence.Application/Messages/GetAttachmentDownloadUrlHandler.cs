@@ -14,6 +14,9 @@ namespace TaxVision.Correspondence.Application.Messages;
 /// </summary>
 public static class GetAttachmentDownloadUrlHandler
 {
+    /// <summary>Cuánto puede tardar CloudStorage en registrar la copia antes de que su ausencia cuente como fallo.</summary>
+    public static readonly TimeSpan CopyGracePeriod = TimeSpan.FromMinutes(2);
+
     public static async Task<Result<AttachmentDownloadUrlResult>> Handle(
         GetAttachmentDownloadUrlQuery query,
         IIncomingEmailRepository incomingEmails,
@@ -32,6 +35,11 @@ public static class GetAttachmentDownloadUrlHandler
             attachment.CloudStorageFileId!.Value,
             ct
         );
+        if (urlResult.IsFailure && IsCopyStillInFlight(urlResult.Error, attachment))
+            return Result.Failure<AttachmentDownloadUrlResult>(
+                new Error("IncomingEmailAttachment.NotReady", "The attachment is still being copied to storage.")
+            );
+
         return urlResult.IsFailure
             ? Result.Failure<AttachmentDownloadUrlResult>(urlResult.Error)
             : Result.Success(
@@ -42,6 +50,12 @@ public static class GetAttachmentDownloadUrlHandler
                 )
             );
     }
+
+    // Recién descargado y CloudStorage aún no lo tiene: 409 para que el front siga esperando, no un 404.
+    private static bool IsCopyStillInFlight(Error error, IncomingEmailAttachment attachment) =>
+        error.Code == "CloudStorageClient.FileNotRegistered"
+        && attachment.DownloadedAtUtc is { } downloadedAt
+        && DateTime.UtcNow - downloadedAt < CopyGracePeriod;
 
     private static async Task<Result<IncomingEmailAttachment>> LoadReadyAttachmentAsync(
         GetAttachmentDownloadUrlQuery query,

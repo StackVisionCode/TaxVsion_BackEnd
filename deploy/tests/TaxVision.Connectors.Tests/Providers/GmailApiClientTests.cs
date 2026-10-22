@@ -52,6 +52,62 @@ public class GmailApiClientTests
     }
 
     [Fact]
+    public async Task GetHistoryAsync_On404_ResyncsFromRecentInbox()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.NotFound, """{ "error": { "code": 404 } }""");
+        handler.Enqueue(HttpStatusCode.OK, """{ "historyId": "900" }""");
+        handler.Enqueue(HttpStatusCode.OK, """{ "messages": [ { "id": "newest" }, { "id": "oldest" } ] }""");
+
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), "expired-50");
+
+        // Orden de llegada (más viejo primero) y cursor nuevo desde el perfil.
+        Assert.Equal(["oldest", "newest"], result.NewMessageIds);
+        Assert.Equal("900", result.NextCursor);
+        Assert.False(result.HasMore);
+        Assert.Contains("/profile", handler.Requests[1].RequestUri!.ToString());
+        Assert.Contains("labelIds=INBOX", handler.Requests[2].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_WhenPageCapReached_ContinuesFromLastRecordRead()
+    {
+        var handler = new FakeHttpMessageHandler();
+        for (var page = 0; page < 10; page++)
+            handler.Enqueue(
+                HttpStatusCode.OK,
+                $$"""
+                {
+                  "history": [ { "id": "rec-{{page}}", "messagesAdded": [ { "message": { "id": "msg-{{page}}", "labelIds": ["INBOX"] } } ] } ],
+                  "historyId": "999",
+                  "nextPageToken": "token-{{page}}"
+                }
+                """
+            );
+
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), "50");
+
+        // Saltar a 999 perdía lo que quedaba después de la página 10.
+        Assert.Equal(10, result.NewMessageIds.Count);
+        Assert.True(result.HasMore);
+        Assert.Equal("rec-9", result.NextCursor);
+    }
+
+    [Fact]
+    public async Task GetRawMessageAsync_DecodesTheBase64UrlMime()
+    {
+        var mime = "Subject: Delivery Status Notification\r\n\r\nbody";
+        var raw = Convert.ToBase64String(Encoding.UTF8.GetBytes(mime)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, $$"""{ "id": "m1", "raw": "{{raw}}" }""");
+
+        var bytes = await CreateClient(handler).GetRawMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "m1");
+
+        Assert.Equal(mime, Encoding.UTF8.GetString(bytes));
+        Assert.Contains("format=raw", handler.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task GetMessageAsync_ParsesHeadersAttachmentsAndAuthenticationSignals()
     {
         var handler = new FakeHttpMessageHandler();
@@ -343,6 +399,52 @@ public class GmailApiClientTests
         using var payload = JsonDocument.Parse(capturedBody!);
         Assert.True(payload.RootElement.TryGetProperty("raw", out _));
         Assert.False(payload.RootElement.TryGetProperty("threadId", out _));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_UsesTheClientMessageIdAndReturnsTheOneGmailKept()
+    {
+        var handler = new FakeHttpMessageHandler();
+        string? capturedBody = null;
+        handler.Enqueue(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{ "id": "sent1", "threadId": "thread1" }"""),
+            };
+        });
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """{ "id": "sent1", "payload": { "headers": [ { "name": "Message-ID", "value": "<rewritten@mail.gmail.com>" } ] } }"""
+        );
+        var message = NewOutboundMessage() with { ClientMessageId = "<pm.abc@office.com>" };
+
+        var result = await CreateClient(handler)
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", "Office", message);
+
+        var raw = JsonDocument.Parse(capturedBody!).RootElement.GetProperty("raw").GetString()!;
+        var mime = Encoding.UTF8.GetString(
+            Convert.FromBase64String(raw.Replace('-', '+').Replace('_', '/').PadRight((raw.Length + 3) / 4 * 4, '='))
+        );
+        Assert.Contains("Message-Id: <pm.abc@office.com>", mime, StringComparison.OrdinalIgnoreCase);
+        // Gmail puede reescribirlo: se devuelve el que quedó, que es el que citan los rebotes.
+        Assert.Equal("rewritten@mail.gmail.com", result.InternetMessageId);
+        Assert.Contains("format=metadata", handler.Requests[1].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WhenReadingTheMessageIdFails_StillSucceedsWithOurs()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, """{ "id": "sent1", "threadId": "thread1" }""");
+        var message = NewOutboundMessage() with { ClientMessageId = "pm.abc@office.com" };
+
+        var result = await CreateClient(handler)
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", "Office", message);
+
+        Assert.Equal("sent1", result.ProviderMessageId);
+        Assert.Equal("pm.abc@office.com", result.InternetMessageId);
     }
 
     [Fact]

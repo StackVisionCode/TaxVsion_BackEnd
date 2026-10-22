@@ -78,6 +78,7 @@
     <Project Path="src/Services/Connectors/TaxVision.Connectors.Application/TaxVision.Connectors.Application.csproj" />
     <Project Path="src/Services/Connectors/TaxVision.Connectors.Domain/TaxVision.Connectors.Domain.csproj" />
     <Project Path="src/Services/Connectors/TaxVision.Connectors.Infrastructure/TaxVision.Connectors.Infrastructure.csproj" />
+    <Project Path="src/Services/Connectors/TaxVision.Connectors.MailboxListener/TaxVision.Connectors.MailboxListener.csproj" />
   </Folder>
   <!-- CorrespondenceService -->
   <Folder Name="/src/Services/Correspondence/">

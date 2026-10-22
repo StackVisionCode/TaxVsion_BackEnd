@@ -158,7 +158,51 @@ public static class PostmasterEmailDeliveryBouncedConsumer
                 );
                 return;
             }
-            log.MarkFailed($"Bounce ({evt.BounceType}): {evt.Reason}");
+            log.MarkBounced($"Bounce ({evt.BounceType}): {evt.Reason}");
+            await uow.SaveChangesAsync(ct);
+        }
+    }
+}
+
+/// <summary>El proveedor confirmó la entrega: el intento pasa a Delivered y el log también.</summary>
+public static class PostmasterEmailDeliveredConsumer
+{
+    public static async Task Handle(
+        PostmasterEmailDeliveredIntegrationEvent evt,
+        INotificationLogQueryRepository logQuery,
+        IUnitOfWork uow,
+        ICorrelationContext correlation,
+        ILogger<PostmasterEmailDeliveredIntegrationEvent> logger,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(PostmasterCallbackHandling.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        {
+            var log = await logQuery.FindWithAttemptsAsync(evt.NotificationLogId, ct);
+            if (log is null)
+                return; // es un OutboundEmailMessage: lo atiende PostmasterOutboundEmailDeliveredConsumer.
+
+            var result = log.UpdateAttemptStatus(
+                evt.DispatchAttemptId,
+                NotificationDispatchAttemptStatus.Delivered,
+                eventAtUtc: evt.EventAtUtc
+            );
+            if (result.IsFailure)
+            {
+                // Delivered llegó antes que Sent: se reintenta en vez de perderlo.
+                if (result.Error.Code == PostmasterCallbackHandling.OrderingPendingCode)
+                    throw new InvalidOperationException(
+                        $"Delivered callback for log {evt.NotificationLogId} attempt {evt.DispatchAttemptId} arrived before Sent; retrying."
+                    );
+                logger.LogDebug(
+                    "Delivered callback for log {LogId} attempt {AttemptId} ignored: {Error}",
+                    evt.NotificationLogId,
+                    evt.DispatchAttemptId,
+                    result.Error.Message
+                );
+                return;
+            }
+            log.MarkDelivered();
             await uow.SaveChangesAsync(ct);
         }
     }

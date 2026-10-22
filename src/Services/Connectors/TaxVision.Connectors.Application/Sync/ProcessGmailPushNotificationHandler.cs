@@ -28,6 +28,7 @@ public static class ProcessGmailPushNotificationHandler
         IProviderSyncCursorRepository cursorRepository,
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
+        ISyncPendingFlag pendingFlag,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -62,9 +63,9 @@ public static class ProcessGmailPushNotificationHandler
         // twice within milliseconds of each other. Without this lock, two deliveries for the same
         // account could both read the current ProviderSyncCursor, both fetch overlapping history
         // ranges, and both publish raw_message_received for the same underlying message. A
-        // redelivery that finds the lock already held skips cleanly (Result.Success — not a
-        // failure): the in-flight sync already covers whatever this delivery would have done, and
-        // returning a failure here would just make Pub/Sub retry pointlessly. This uses its own
+        // delivery that finds the lock already held marks the account as pending and returns
+        // Result.Success: the lock owner runs one more pass, and a failure would only make Pub/Sub
+        // retry pointlessly. This uses its own
         // "webhook-sync" lock namespace, deliberately separate from OAuthTokenManager's
         // "oauth-refresh" one — the two never need to serialize against each other directly. The
         // provider clients invoked below call IOAuthTokenManager internally for a valid access
@@ -76,8 +77,10 @@ public static class ProcessGmailPushNotificationHandler
         await using var lockHandle = await distributedLock.AcquireAsync(lockKey, WebhookSyncLockTtl, ct);
         if (!lockHandle.IsAcquired)
         {
+            // Puede ser un mensaje nuevo que el sync en vuelo ya no ve: el dueño del lock repite.
+            await pendingFlag.MarkAsync(account.Id, ct);
             logger.LogInformation(
-                "Gmail push redelivery for account {AccountId} arrived while a sync was already in flight — skipping.",
+                "Gmail push for account {AccountId} arrived while a sync was already in flight — marked as pending.",
                 account.Id
             );
             return Result.Success();
@@ -92,14 +95,22 @@ public static class ProcessGmailPushNotificationHandler
             ct
         );
 
-        var syncResult = await RawMessageSyncOrchestrator.SyncAndPublishAsync(
-            account,
-            clientResult.Value,
-            cursor,
-            unitOfWork,
-            bus,
-            correlation,
-            logger,
+        var syncResult = await PendingAwareSync.RunAsync(
+            account.Id,
+            lockHandle,
+            WebhookSyncLockTtl,
+            pendingFlag,
+            () =>
+                RawMessageSyncOrchestrator.SyncAndPublishAsync(
+                    account,
+                    clientResult.Value,
+                    cursor,
+                    unitOfWork,
+                    bus,
+                    correlation,
+                    logger,
+                    ct
+                ),
             ct
         );
 

@@ -133,7 +133,8 @@ public sealed class EventRoutingContractTests(ITestOutputHelper output)
     private static HashSet<string> RoutedEvents(DirectoryInfo service)
     {
         HashSet<string> routed = new(StringComparer.Ordinal);
-        foreach (var file in SourceFiles(service).Where(f => f.Name == "Program.cs"))
+        // EndsWith: un worker con Main explícito (p. ej. MailboxListenerProgram.cs) también cuenta.
+        foreach (var file in SourceFiles(service).Where(f => f.Name.EndsWith("Program.cs", StringComparison.Ordinal)))
         {
             foreach (Match m in Routed.Matches(File.ReadAllText(file.FullName)))
                 routed.Add(m.Groups[1].Value);

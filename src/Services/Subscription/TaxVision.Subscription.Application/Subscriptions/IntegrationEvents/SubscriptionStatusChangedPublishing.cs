@@ -20,7 +20,8 @@ public static class SubscriptionStatusChangedPublishing
         SubscriptionChangeReason reason,
         Guid? actorUserId = null,
         string? failureCode = null,
-        string? correlationId = null
+        string? correlationId = null,
+        bool notifiedByChargeFailedEmail = false
     ) =>
         bus.PublishAsync(
                 new TenantSubscriptionStatusChangedIntegrationEvent
@@ -35,6 +36,7 @@ public static class SubscriptionStatusChangedPublishing
                     FailureCode = failureCode,
                     ActorUserId = actorUserId,
                     CorrelationId = correlationId ?? string.Empty,
+                    NotifiedByChargeFailedEmail = notifiedByChargeFailedEmail,
                 }
             )
             .AsTask();

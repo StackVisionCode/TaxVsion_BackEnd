@@ -65,4 +65,17 @@ public sealed class MimeMessageBuilderTests
         Assert.Equal("multipart", mimeMessage.Body!.ContentType.MediaType);
         Assert.Equal("related", mimeMessage.Body.ContentType.MediaSubtype);
     }
+
+    [Fact]
+    public void Build_sets_our_message_id_and_correlation_header()
+    {
+        var message = CreateMessageWithRecipient();
+        var content = new RenderedContent("Welcome", "<p>Hi</p>", "Hi");
+
+        var mime = MimeMessageBuilder.Build(message, content, CreateProvider(), [], []);
+
+        // Con estos dos atamos cada aviso del proveedor a este SentMessage.
+        Assert.Equal($"pm.{message.Id:N}@taxvision.com", mime.MessageId);
+        Assert.Equal(message.Id.ToString("N"), mime.Headers[MimeMessageBuilder.CorrelationHeaderName]);
+    }
 }

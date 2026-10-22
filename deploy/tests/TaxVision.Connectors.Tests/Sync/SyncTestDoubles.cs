@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Domain.Shared;
@@ -35,6 +36,34 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
     public Exception? ThrowOnGetHistory { get; set; }
     public HashSet<string> ThrowOnGetMessageFor { get; } = [];
     public List<string?> ReceivedCursors { get; } = [];
+
+    /// <summary>Falla el lote entero (ej. se cortó la conexión IMAP a mitad del FETCH).</summary>
+    public Exception? ThrowOnGetMessages { get; set; }
+
+    public async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        if (ThrowOnGetMessages is not null)
+            throw ThrowOnGetMessages;
+
+        var results = new List<ProviderMessageFetch>();
+        foreach (var id in providerMessageIds)
+        {
+            try
+            {
+                results.Add(ProviderMessageFetch.Found(id, await GetMessageAsync(accountId, tenantId, id, ct)));
+            }
+            catch (EmailProviderException ex)
+            {
+                results.Add(ProviderMessageFetch.Failed(id, ex));
+            }
+        }
+        return results;
+    }
 
     public Task<HistoryPage> GetHistoryAsync(
         Guid accountId,
@@ -101,6 +130,21 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
         );
     }
 
+    public Func<string, byte[]>? OnGetRawMessage { get; set; }
+    public Exception? ThrowOnGetRawMessage { get; set; }
+
+    public Task<byte[]> GetRawMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    )
+    {
+        if (ThrowOnGetRawMessage is not null)
+            throw ThrowOnGetRawMessage;
+        return Task.FromResult(OnGetRawMessage?.Invoke(providerMessageId) ?? []);
+    }
+
     public Func<Guid, string, string, byte[]>? OnGetAttachment { get; set; }
     public Exception? ThrowOnGetAttachment { get; set; }
 
@@ -123,4 +167,44 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
 internal sealed class FakeEmailProviderClientFactory(IEmailProviderClient client) : IEmailProviderClientFactory
 {
     public Result<IEmailProviderClient> Resolve(ProviderCode providerCode) => Result.Success(client);
+}
+
+/// <summary>Siempre hay otro aviso pendiente: simula una cuenta muy activa.</summary>
+internal sealed class AlwaysPendingSyncFlag : ISyncPendingFlag
+{
+    public Task MarkAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<bool> TryConsumeAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(true);
+}
+
+/// <summary>Toma el lock pero al alargarlo ya es de otro (venció a mitad del sync).</summary>
+internal sealed class LostOnExtendDistributedLock : IDistributedLock
+{
+    public Task<ILockHandle> AcquireAsync(string key, TimeSpan ttl, CancellationToken ct = default) =>
+        Task.FromResult<ILockHandle>(new Handle(key));
+
+    private sealed class Handle(string key) : ILockHandle
+    {
+        public bool IsAcquired => true;
+        public string Key => key;
+
+        public Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(false);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
+/// <summary>Llegó un solo aviso mientras se sincronizaba.</summary>
+internal sealed class MarkOnceSyncFlag : ISyncPendingFlag
+{
+    private bool _pending = true;
+
+    public Task MarkAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<bool> TryConsumeAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var wasPending = _pending;
+        _pending = false;
+        return Task.FromResult(wasPending);
+    }
 }

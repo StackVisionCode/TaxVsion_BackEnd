@@ -30,6 +30,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.Id).ValueGeneratedNever();
         builder.Property(m => m.TenantId).IsRequired();
         builder.Property(m => m.NotificationLogId);
+        builder.Property(m => m.DispatchAttemptId);
         builder.Property(m => m.CorrelationId).HasMaxLength(128);
         builder.Property(m => m.IdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(m => m.Subject).HasMaxLength(500).IsRequired();
@@ -48,10 +49,17 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.MimeSize).IsRequired();
         builder.Property(m => m.Metadata).HasColumnType("nvarchar(max)");
         builder.Property(m => m.RequiredProviderScope).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder
+            .Property(m => m.DeliveryLane)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(DeliveryLane.SystemProvider)
+            .IsRequired();
         builder.Property(m => m.CorrespondenceDraftId);
         builder.Property(m => m.CampaignId);
         builder.Property(m => m.InReplyToInternetMessageId).HasMaxLength(500);
         builder.Property(m => m.ProviderThreadId).HasMaxLength(500);
+        builder.Property(m => m.InternetMessageId).HasMaxLength(500);
 
         // InlineAssets/Attachments/References son propiedades computadas de solo lectura — EF las
         // descubriría por convención como navigation collections si no se ignoran explícitamente.
@@ -59,6 +67,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Ignore(m => m.InlineAssets);
         builder.Ignore(m => m.Attachments);
         builder.Ignore(m => m.References);
+        builder.Ignore(m => m.DeliverySummary);
 
         var inlineAssetsConverter = new ValueConverter<List<InlineAsset>, string>(
             assets => JsonSerializer.Serialize(assets.Select(ToDto), (JsonSerializerOptions?)null),
@@ -121,11 +130,22 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(m => m.Events).WithOne().HasForeignKey(e => e.SentMessageId).OnDelete(DeleteBehavior.Cascade);
+        builder
+            .HasMany(m => m.DeliveryAttempts)
+            .WithOne()
+            .HasForeignKey(a => a.SentMessageId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(m => new { m.TenantId, m.QueuedAtUtc });
         builder.HasIndex(m => new { m.TenantId, m.NotificationLogId });
         builder.HasIndex(m => new { m.TenantId, m.CorrespondenceDraftId });
         builder.HasIndex(m => new { m.TenantId, m.CampaignId });
+        // Un aviso de no entrega cita el Message-ID original: se busca por acá, sin tenant.
+        builder.HasIndex(m => m.InternetMessageId).HasDatabaseName("IX_SentMessages_InternetMessageId");
+        // La consulta de respaldo del estado de entrega busca por vía y fecha de envío, sin tenant.
+        builder
+            .HasIndex(m => new { m.DeliveryLane, m.SentAtUtc })
+            .HasDatabaseName("IX_SentMessages_DeliveryLane_SentAtUtc");
         // IdempotencyKey es NOT NULL (validado en el aggregate) — índice único simple, sin filtro.
         builder.HasIndex(m => new { m.TenantId, m.IdempotencyKey }).IsUnique();
     }

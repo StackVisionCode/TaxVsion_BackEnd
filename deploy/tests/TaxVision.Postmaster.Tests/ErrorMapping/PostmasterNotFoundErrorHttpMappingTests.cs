@@ -17,7 +17,7 @@ namespace TaxVision.Postmaster.Tests.ErrorMapping;
 /// mismo problema: <c>ProviderHealthStatus.NotFound</c> (<c>ProviderHealthStatusRepository.cs</c>) se
 /// consume internamente en <c>GetProviderStatusHandler</c> vía <c>IsFailure</c>/<c>IsSuccess</c>, nunca
 /// se propaga como <c>Result</c> failure hacia un controller; <c>SentMessage.RecipientNotFound</c>
-/// (<c>SentMessage.RecordDeliveryEvent</c>) solo se invoca con IDs que ya vienen de
+/// (<c>SentMessage.MarkRecipientSuppressed</c>) solo se invoca con IDs que ya vienen de
 /// <c>message.Recipients</c> (ver <c>NotificationsEmailSendRequestedConsumer</c>/
 /// <c>SendCorrespondenceMessageHandler</c>), inalcanzable en la práctica y con su <c>Result</c>
 /// también descartado por ambos callers — ninguno de los dos llega nunca a un controller HTTP.

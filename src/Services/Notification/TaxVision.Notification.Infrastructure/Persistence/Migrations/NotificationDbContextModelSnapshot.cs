@@ -375,6 +375,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ClickedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("ComplainedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("ConfigurationId")
                         .HasColumnType("uniqueidentifier");
 

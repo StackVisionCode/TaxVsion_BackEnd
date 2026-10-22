@@ -9,15 +9,22 @@ public enum SentMessageEventType
     Failed,
     Suppressed,
     Retry,
+    Delivered,
+    Deferred,
+    Bounced,
+    Rejected,
+    Complained,
+    Opened,
+    Clicked,
+    Unsubscribed,
+
+    /// <summary>Falló el buzón de la oficina y se reintentó por el proveedor del sistema.</summary>
+    Fallback,
 }
 
 /// <summary>
-/// Log append-only de eventos del ciclo de vida de un <see cref="SentMessage"/>. Solo se crea vía
-/// <c>SentMessage</c> — refleja transiciones internas (Queued, Sent, Failed, Suppressed) y, a nivel
-/// de recipient individual, supresiones aplicadas antes del envío (ver <c>SentMessage.RecordDeliveryEvent</c>).
-/// Delivered/Bounced/Opened/Clicked/Complained existieron durante el tracking de entrega por webhook
-/// que se evaluó y retiró (over-engineering sin caller real) — no quedan en este enum; si se decide
-/// reconstruir tracking de entrega real, se reintroducen ahí con sus productores reales.
+/// Historial append-only de un <see cref="SentMessage"/>: sus transiciones y, por destinatario, cada
+/// aviso de entrega que llegó (aunque haya llegado tarde y no cambie el estado).
 /// </summary>
 public sealed class SentMessageEvent : TenantEntity
 {
@@ -27,6 +34,8 @@ public sealed class SentMessageEvent : TenantEntity
     public Guid? RecipientId { get; private set; }
     public SentMessageEventType EventType { get; private set; }
     public DateTime EventAtUtc { get; private set; }
+
+    /// <summary>Payload crudo del proveedor, solo para auditoría. Nunca se interpreta fuera de su adaptador.</summary>
     public string? RawPayload { get; private set; }
     public string? Reason { get; private set; }
 

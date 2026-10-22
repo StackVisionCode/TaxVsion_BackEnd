@@ -2,11 +2,12 @@
 # Cubre los 3 caminos: por puerto conocido, y por línea de comando bajo el repo (para cazar el
 # CommunicationTranscriptWorker, que no expone puerto). Mata el árbol de procesos (taskkill /T) por
 # si algún Node corre bajo nodemon y respawnea al hijo.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+# La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
+$root = Split-Path -Parent $PSScriptRoot
 
-# Mismos puertos que start-fleet.ps1 (25 .NET + Gateway 5047 + Communication 5350).
+# Mismos puertos que start-fleet.ps1 (25 .NET + listener IMAP 5395 + Gateway 5047 + Communication 5350).
 $ports = @(
-  5124, 5217, 5263, 5270, 5320, 5330, 5340, 5360, 5370, 5380, 5390, 5400, 5410, 5420, 5430,
+  5124, 5217, 5263, 5270, 5320, 5330, 5340, 5360, 5370, 5380, 5390, 5395, 5400, 5410, 5420, 5430,
   5440, 5450, 5460, 5470, 5480, 5490, 5500, 5510, 5520, 5530, 5047, 5350
 )
 
@@ -19,12 +20,13 @@ foreach ($p in $ports) {
 }
 
 # 2) Procesos por línea de comando. Acotado para NO tocar un `dotnet build/test` en curso:
-#    - .NET: los lanzados como `dotnet ...\bin\Debug\net10.0\TaxVision.*.dll`
+#    - .NET: los lanzados como `dotnet ...\bin\{Debug,Release}\net10.0\TaxVision.*.dll`
 #    - Node: cualquier proceso bajo src\Services\Communication (cubre Communication y el TranscriptWorker)
 $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object {
     $_.CommandLine -and (
       $_.CommandLine -like "*bin\Debug\net10.0\TaxVision.*.dll*" -or
+      $_.CommandLine -like "*bin\Release\net10.0\TaxVision.*.dll*" -or
       $_.CommandLine -like "*\src\Services\Communication*"
     ) -and $_.CommandLine -like "*$root*"
   }

@@ -22,8 +22,19 @@ public sealed class SentMessageRecipientConfiguration : IEntityTypeConfiguration
         builder.Property(r => r.ProviderMessageId).HasMaxLength(200);
         builder.Property(r => r.LastEventAtUtc);
         builder.Property(r => r.ErrorReason).HasMaxLength(500);
+        builder.Property(r => r.Outcome).HasConversion<string>().HasMaxLength(20);
+        builder.Property(r => r.OutcomeAtUtc);
+        builder.Property(r => r.ProviderAcceptance).HasMaxLength(SentMessageRecipient.MaxProviderAcceptanceLength);
+        builder.Property(r => r.FirstOpenedAtUtc);
+        builder.Property(r => r.LastOpenedAtUtc);
+        builder.Property(r => r.OpenCount).IsRequired();
+        builder.Property(r => r.FirstClickedAtUtc);
+        builder.Property(r => r.ClickCount).IsRequired();
+        builder.Property(r => r.UnsubscribedAtUtc);
 
         builder.HasIndex(r => r.SentMessageId);
+        // Correlación por id del proveedor cuando un aviso no trae nuestro Message-ID.
+        builder.HasIndex(r => r.ProviderMessageId).HasDatabaseName("IX_SentMessageRecipients_ProviderMessageId");
         builder.HasIndex(r => new
         {
             r.TenantId,

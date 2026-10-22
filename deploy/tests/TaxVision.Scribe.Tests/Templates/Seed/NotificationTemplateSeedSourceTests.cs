@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Fluid;
 using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Validation;
@@ -69,6 +70,97 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.DoesNotContain("en progreso", seed.Subject, StringComparison.OrdinalIgnoreCase);
         Assert.True(seed.ContentVersion >= 16);
     }
+
+    // ---------- Cobro automático fallido: un correo por intento, con dos variantes ----------
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Failed_charge_template_renders_the_retry_and_the_final_variants(bool isFinal)
+    {
+        var seed = FailedChargeSeed();
+        var context = new TemplateContext();
+        foreach (var (name, value) in FailedChargeVariables(isFinal))
+            context.SetValue(name, value);
+
+        var subject = Parser.Parse(seed.Subject).Render(context);
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("Go to Manage subscription", html);
+        Assert.Contains("https://www.taxoffix.io/account/plan", html);
+        Assert.Contains("Visa ending in 4242", html);
+        Assert.Contains("Professional plan", html);
+        Assert.Contains("Your bank declined the charge.", html);
+        if (isFinal)
+        {
+            Assert.StartsWith("Final notice:", subject);
+            Assert.Contains("As a result,", html);
+            Assert.Contains("your subscription has been suspended", html);
+            Assert.DoesNotContain("Next attempt", html);
+        }
+        else
+        {
+            Assert.StartsWith("Action needed:", subject);
+            Assert.Contains("Next attempt", html);
+            Assert.Contains("October 23, 2026", html);
+            Assert.Contains("2 of 4", html);
+            Assert.DoesNotContain("As a result,", html);
+        }
+    }
+
+    // Sin tarjeta conocida (p. ej. no había ninguna guardada) no se inventan "card ending in".
+    [Fact]
+    public void Failed_charge_template_without_a_known_card_does_not_mention_one()
+    {
+        var context = new TemplateContext();
+        foreach (var (name, value) in FailedChargeVariables(isFinal: true))
+            context.SetValue(name, name == "has_card" ? false : value);
+
+        var html = Parser.Parse(FailedChargeSeed().Html).Render(context);
+
+        Assert.DoesNotContain("ending in", html);
+        Assert.Contains("your account", html);
+    }
+
+    // Toda variable que usa la plantilla tiene que estar declarada (Scribe rechaza las no declaradas al publicar).
+    [Fact]
+    public void Failed_charge_template_declares_every_variable_it_uses_and_was_republished()
+    {
+        var seed = FailedChargeSeed();
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        // Cambió el contenido: sin subir la versión el seeder no republica y seguiría saliendo el correo viejo.
+        Assert.True(seed.ContentVersion >= 18);
+    }
+
+    private static NotificationTemplateSeed FailedChargeSeed() =>
+        Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "subscription.recurring_charge_failed.v1"
+        );
+
+    private static IEnumerable<(string Name, object Value)> FailedChargeVariables(bool isFinal) =>
+        [
+            ("first_name", "Carlos"),
+            ("item_description", "Professional plan"),
+            ("amount", "$49.00"),
+            ("has_card", true),
+            ("card_brand", "Visa"),
+            ("card_last4", "4242"),
+            ("attempt_number", isFinal ? "4" : "2"),
+            ("max_attempts", "4"),
+            ("is_final", isFinal),
+            ("next_retry_date", isFinal ? "" : "October 23, 2026"),
+            ("friendly_reason", "Your bank declined the charge."),
+            ("suspension_effect", "your subscription has been suspended and your team can no longer sign in"),
+            ("manage_url", "https://www.taxoffix.io/account/plan"),
+            ("product_name", "TaxOffix"),
+        ];
 
     [Fact]
     public void Certificate_template_can_identify_a_per_document_certificate()

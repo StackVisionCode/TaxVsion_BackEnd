@@ -2,3 +2,4 @@
 # La clave privada firma los JWT; exponer esto comprometería toda la autenticación.
 jwt-private.pem
 jwt-public.pem
+firebase-service-account.json

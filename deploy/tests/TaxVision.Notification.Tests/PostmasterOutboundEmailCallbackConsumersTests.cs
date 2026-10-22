@@ -221,6 +221,87 @@ public sealed class PostmasterOutboundEmailCallbackConsumersTests
     // Helpers
     // ------------------------------------------------------------------
 
+    [Fact]
+    public async Task DeliveredCallback_marks_a_sent_message_Delivered()
+    {
+        var message = CreateSendingMessage();
+        message.MarkSent("Postmaster", configurationId: null);
+        var uow = new NoOpUnitOfWork();
+
+        await PostmasterOutboundEmailDeliveredConsumer.Handle(
+            new PostmasterEmailDeliveredIntegrationEvent
+            {
+                TenantId = message.TenantId,
+                NotificationLogId = message.Id,
+                DispatchAttemptId = Guid.NewGuid(),
+                SentMessageId = Guid.NewGuid(),
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new RecordingOutboundEmailRepository(message),
+            uow,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(EmailStatus.Delivered, message.Status);
+        Assert.NotNull(message.DeliveredAtUtc);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task ComplainedCallback_records_the_complaint_once()
+    {
+        var message = CreateSendingMessage();
+        var first = new DateTime(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc);
+        var repo = new RecordingOutboundEmailRepository(message);
+
+        foreach (var at in new[] { first, first.AddHours(1) })
+            await PostmasterOutboundEmailComplainedConsumer.Handle(
+                new PostmasterEmailComplainedIntegrationEvent
+                {
+                    TenantId = message.TenantId,
+                    NotificationLogId = message.Id,
+                    DispatchAttemptId = Guid.NewGuid(),
+                    SentMessageId = Guid.NewGuid(),
+                    EventAtUtc = at,
+                },
+                repo,
+                new NoOpUnitOfWork(),
+                new NoOpCorrelationContext(),
+                CancellationToken.None
+            );
+
+        Assert.Equal(first, message.ComplainedAtUtc);
+    }
+
+    [Theory]
+    [InlineData("Opened", true, false)]
+    [InlineData("Clicked", false, true)]
+    [InlineData("Unsubscribed", false, false)]
+    public async Task EngagementCallback_marks_the_first_open_or_click(string signal, bool opened, bool clicked)
+    {
+        var message = CreateSendingMessage();
+
+        await PostmasterOutboundEmailEngagementConsumer.Handle(
+            new PostmasterEmailEngagementIntegrationEvent
+            {
+                TenantId = message.TenantId,
+                NotificationLogId = message.Id,
+                DispatchAttemptId = Guid.NewGuid(),
+                SentMessageId = Guid.NewGuid(),
+                Signal = signal,
+                EventAtUtc = DateTime.UtcNow,
+            },
+            new RecordingOutboundEmailRepository(message),
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(opened, message.OpenedAtUtc is not null);
+        Assert.Equal(clicked, message.ClickedAtUtc is not null);
+    }
+
     private static OutboundEmailMessage CreateSendingMessage(Guid? campaignId = null)
     {
         var message = OutboundEmailMessage
