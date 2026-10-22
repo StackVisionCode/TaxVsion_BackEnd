@@ -1,6 +1,7 @@
 # Staggered launcher (mirror of scripts/start-fleet.ps1, with pauses to avoid the SQL thundering herd).
 # Auth first and wait until it listens; then the rest with pauses; Gateway last.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+# La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
+$root = Split-Path -Parent $PSScriptRoot
 $gap  = 3
 $fleet = @(
   @{ n = "Auth";           d = "src\Services\Auth\Api";                                p = 5124 },

@@ -1,7 +1,8 @@
 # Relanza SOLO los servicios cuyo puerto no esta escuchando.
 # El arranque en frio de la flota pierde varios por timeout de SQL (Error Number:-2) al migrar
 # Wolverine: no es un fallo de codigo. Con SQL ya caliente, relanzarlos escalonados los levanta.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+# La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
+$root = Split-Path -Parent $PSScriptRoot
 $gap  = 4
 
 $fleet = @(

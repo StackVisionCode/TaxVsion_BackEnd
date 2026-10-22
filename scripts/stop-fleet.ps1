@@ -2,7 +2,8 @@
 # Cubre los 3 caminos: por puerto conocido, y por línea de comando bajo el repo (para cazar el
 # CommunicationTranscriptWorker, que no expone puerto). Mata el árbol de procesos (taskkill /T) por
 # si algún Node corre bajo nodemon y respawnea al hijo.
-$root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+# La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
+$root = Split-Path -Parent $PSScriptRoot
 
 # Mismos puertos que start-fleet.ps1 (25 .NET + listener IMAP 5395 + Gateway 5047 + Communication 5350).
 $ports = @(
