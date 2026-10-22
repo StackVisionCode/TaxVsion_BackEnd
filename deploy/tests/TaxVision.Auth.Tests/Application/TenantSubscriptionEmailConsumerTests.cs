@@ -48,6 +48,30 @@ public sealed class TenantSubscriptionEmailConsumerTests
         Assert.Empty(bus.Published);
     }
 
+    // El último cobro automático fallido ya mandó un correo que dice que se suspendió: no se repite.
+    [Fact]
+    public async Task A_suspension_already_explained_by_the_failed_charge_email_sends_nothing()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, "Suspended", nameof(SubscriptionChangeReason.RenewalPaymentFailed)) with
+            {
+                NotifiedByChargeFailedEmail = true,
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
     [Fact]
     public async Task A_real_expiration_still_sends_the_email()
     {

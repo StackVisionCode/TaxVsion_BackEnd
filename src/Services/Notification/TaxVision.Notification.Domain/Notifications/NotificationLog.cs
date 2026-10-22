@@ -16,6 +16,12 @@ public enum NotificationStatus
     Pending,
     Sent,
     Failed,
+
+    /// <summary>El proveedor confirmó que el servidor del destinatario lo aceptó.</summary>
+    Delivered,
+
+    /// <summary>Rebotó después de salir (dirección inexistente, buzón lleno…).</summary>
+    Bounced,
 }
 
 /// <summary>
@@ -90,6 +96,23 @@ public sealed class NotificationLog : TenantEntity
     {
         Status = NotificationStatus.Failed;
         Error = Truncate(error, 512);
+    }
+
+    /// <summary>Solo desde Sent: un fallo no se "arregla" con un aviso tardío del proveedor.</summary>
+    public void MarkDelivered()
+    {
+        if (Status == NotificationStatus.Sent)
+            Status = NotificationStatus.Delivered;
+    }
+
+    /// <summary>Desde Sent o Delivered: un rebote tardío (aceptó y después devolvió) es la verdad final.</summary>
+    public void MarkBounced(string reason)
+    {
+        if (Status is not (NotificationStatus.Sent or NotificationStatus.Delivered))
+            return;
+
+        Status = NotificationStatus.Bounced;
+        Error = Truncate(reason, 512);
     }
 
     /// <summary>

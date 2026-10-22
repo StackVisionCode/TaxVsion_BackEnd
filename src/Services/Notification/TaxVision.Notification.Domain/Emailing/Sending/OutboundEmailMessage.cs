@@ -52,6 +52,9 @@ public sealed class OutboundEmailMessage : TenantEntity
     public DateTime? DeliveredAtUtc { get; private set; }
     public DateTime? OpenedAtUtc { get; private set; }
     public DateTime? ClickedAtUtc { get; private set; }
+
+    /// <summary>El destinatario lo marcó como spam. Postmaster ya suprimió la dirección.</summary>
+    public DateTime? ComplainedAtUtc { get; private set; }
     public DateTime? BouncedAtUtc { get; private set; }
 
     public IReadOnlyCollection<EmailRecipient> Recipients => _recipients.AsReadOnly();
@@ -165,6 +168,8 @@ public sealed class OutboundEmailMessage : TenantEntity
         OpenedAtUtc = DateTime.UtcNow;
         return true;
     }
+
+    public void MarkComplained(DateTime complainedAtUtc) => ComplainedAtUtc ??= complainedAtUtc;
 
     public bool MarkClicked()
     {

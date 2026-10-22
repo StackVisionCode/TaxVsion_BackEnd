@@ -10,6 +10,109 @@
 			"name": "Messages",
 			"item": [
 				{
+					"name": "ListActivity",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/postmaster/messages?status=Bounced&recipient={{postmasterRecipientEmail}}&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"postmaster",
+								"messages"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "Bounced"
+								},
+								{
+									"key": "recipient",
+									"value": "{{postmasterRecipientEmail}}"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "\"Email activity\": envíos del tenant con su estado real de entrega, del más nuevo al más viejo. Filtros opcionales: status (Sending, Sent, Deferred, Delivered, Bounced, Complained, Failed, Suppressed), recipient (contiene), from/to (UTC). Devuelve PagedResult { items, page, size, totalCount }. Requiere postmaster.messages.read; los destinatarios salen enmascarados salvo para TenantAdmin/PlatformAdmin."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with paged items\", () => {",
+									"  pm.response.to.have.status(200);",
+									"  const body = pm.response.json();",
+									"  pm.expect(body).to.have.property(\"items\");",
+									"  pm.expect(body).to.have.property(\"totalCount\");",
+									"  if (body.items.length > 0) pm.collectionVariables.set(\"postmasterSentMessageId\", body.items[0].id);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetDetail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/postmaster/messages/{{postmasterSentMessageId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"postmaster",
+								"messages",
+								"{{postmasterSentMessageId}}"
+							]
+						},
+						"description": "Detalle de un envío: estado por destinatario (Outcome, aceptación del proveedor, aperturas/clics aproximados), carril (Lane) y línea de tiempo (incluye el paso al proveedor del sistema cuando falla el buzón del tenant, F5). Requiere postmaster.messages.read. Errores: SentMessage.NotFound (404), Forbid sin tenant_id (403)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with recipients, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"recipients\");",
+									"  } else {",
+									"    pm.expect([403, 404]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "GetEvents",
 					"request": {
 						"method": "GET",

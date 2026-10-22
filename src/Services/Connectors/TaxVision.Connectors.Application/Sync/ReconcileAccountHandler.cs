@@ -6,6 +6,7 @@ using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Application.Watch;
+using TaxVision.Connectors.Domain.Shared;
 using Wolverine;
 
 namespace TaxVision.Connectors.Application.Sync;
@@ -46,6 +47,7 @@ public static class ReconcileAccountHandler
         IProviderSyncCursorRepository cursorRepository,
         IEmailProviderClientFactory emailClientFactory,
         IDistributedLock distributedLock,
+        ISyncPendingFlag pendingFlag,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -82,16 +84,40 @@ public static class ReconcileAccountHandler
             ct
         );
 
-        var syncResult = await RawMessageSyncOrchestrator.SyncAndPublishAsync(
-            account,
-            clientResult.Value,
-            cursor,
-            unitOfWork,
-            bus,
-            correlation,
-            logger,
+        var syncResult = await PendingAwareSync.RunAsync(
+            account.Id,
+            lockHandle,
+            ReconciliationSyncLockTtl,
+            pendingFlag,
+            () =>
+                RawMessageSyncOrchestrator.SyncAndPublishAsync(
+                    account,
+                    clientResult.Value,
+                    cursor,
+                    unitOfWork,
+                    bus,
+                    correlation,
+                    logger,
+                    ct
+                ),
             ct
         );
+
+        // Gmail/Graph ya marcan la cuenta desde OAuthTokenManager; IMAP no tiene token que refrescar.
+        if (
+            syncResult.IsFailure
+            && syncResult.Error.Code == RawMessageSyncOrchestrator.ReconnectRequiredCode
+            && account.ProviderCode == ProviderCode.Imap
+        )
+            await MailboxCredentialsRejection.HandleAsync(
+                account,
+                syncResult.Error.Message,
+                unitOfWork,
+                bus,
+                correlation,
+                logger,
+                ct
+            );
 
         return syncResult.IsFailure
             ? Result.Failure<ReconciliationOutcome>(syncResult.Error)

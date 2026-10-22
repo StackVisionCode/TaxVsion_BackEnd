@@ -47,26 +47,48 @@ internal static class RawMessageSyncOrchestrator
         }
 
         var publishedCount = 0;
-        foreach (var messageId in history.NewMessageIds)
+        if (history.NewMessageIds.Count > 0)
         {
-            RawMessage message;
+            IReadOnlyList<ProviderMessageFetch> fetched;
             try
             {
-                message = await client.GetMessageAsync(account.Id, account.TenantId, messageId, ct);
+                fetched = await client.GetMessagesAsync(account.Id, account.TenantId, history.NewMessageIds, ct);
             }
             catch (EmailProviderException ex)
             {
-                logger.LogWarning(
-                    ex,
-                    "Could not fetch metadata for message {MessageId} on account {AccountId} — skipping.",
-                    messageId,
-                    account.Id
-                );
-                continue;
+                // Falló el lote entero: sin avanzar el cursor, la próxima pasada lo reintenta.
+                var code = ex.RequiresReconnect ? ReconnectRequiredCode : "RawMessageSync.MessageFetchFailed";
+                return Result.Failure<int>(new Error(code, ex.Message));
             }
 
-            await bus.PublishAsync(BuildEvent(account, message, correlation.CorrelationId));
-            publishedCount++;
+            foreach (var item in fetched)
+            {
+                if (item.Message is null)
+                {
+                    logger.LogWarning(
+                        item.Error,
+                        "Could not fetch metadata for message {MessageId} on account {AccountId} — skipping.",
+                        item.ProviderMessageId,
+                        account.Id
+                    );
+                    continue;
+                }
+
+                await bus.PublishAsync(BuildEvent(account, item.Message, correlation.CorrelationId));
+                publishedCount++;
+
+                // Un aviso de no entrega se revisa aparte: bajar el MIME no debe frenar el sync.
+                if (DeliveryReportCandidate.IsLikely(item.Message))
+                    await bus.PublishAsync(
+                        new InspectDeliveryReport(
+                            account.Id,
+                            account.TenantId,
+                            item.Message.ProviderMessageId,
+                            item.Message.ReceivedAtUtc,
+                            correlation.CorrelationId
+                        )
+                    );
+            }
         }
 
         var now = DateTime.UtcNow;

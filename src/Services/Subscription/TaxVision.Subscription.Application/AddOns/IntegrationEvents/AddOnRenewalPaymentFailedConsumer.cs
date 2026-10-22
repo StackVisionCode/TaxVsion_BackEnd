@@ -1,9 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.AddOns;
+using Wolverine;
 
 namespace TaxVision.Subscription.Application.AddOns.IntegrationEvents;
 
@@ -16,7 +19,9 @@ public static class AddOnRenewalPaymentFailedConsumer
     public static async Task Handle(
         AddOnRenewalPaymentFailedIntegrationEvent evt,
         ITenantAddOnRepository tenantAddOns,
+        IAddOnDefinitionRepository definitions,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantAddOn> logger,
         CancellationToken ct
@@ -45,6 +50,11 @@ public static class AddOnRenewalPaymentFailedConsumer
                 );
                 return;
             }
+
+            // El nombre se busca antes de tocar nada: si el catálogo falla, el correo sale genérico.
+            var itemDescription = evt.IsAutomaticCharge
+                ? RenewalItemDescriptions.AddOn(await TryGetAddOnNameAsync(definitions, addOn, logger, ct))
+                : string.Empty;
 
             var previousStatus = addOn.Status;
             var nowUtc = DateTime.UtcNow;
@@ -81,6 +91,32 @@ public static class AddOnRenewalPaymentFailedConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+
+            var suspended = addOn.Status == AddOnStatus.Suspended && previousStatus != AddOnStatus.Suspended;
+            await bus.PublishRenewalChargeFailedAsync(
+                evt,
+                itemDescription,
+                suspended ? RenewalChargeConsequences.AddOnSuspended : null,
+                correlationId
+            );
+        }
+    }
+
+    private static async Task<string?> TryGetAddOnNameAsync(
+        IAddOnDefinitionRepository definitions,
+        TenantAddOn addOn,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return (await definitions.GetByCodeAsync(addOn.AddOnCode, ct))?.Name;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not read add-on {AddOnCode} for the failed-charge email.", addOn.AddOnCode);
+            return null;
         }
     }
 

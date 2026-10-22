@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
+using TaxVision.Postmaster.Application.Feedback;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.Sending;
@@ -191,6 +192,9 @@ internal sealed class FakeProviderResolver : IProviderResolver
 internal sealed class FakeEmailSender : IEmailSender
 {
     public SendResult SendReturnValue { get; set; } = new(true, "provider-msg-1", null, []);
+
+    /// <summary>Para armar el resultado con los ids reales de los destinatarios.</summary>
+    public Func<SentMessage, SendResult>? OnSend { get; set; }
     public SentMessage? LastMessage { get; private set; }
     public RenderedContent? LastContent { get; private set; }
 
@@ -212,7 +216,7 @@ internal sealed class FakeEmailSender : IEmailSender
         LastContent = content;
         LastInlineAssets = inlineAssets;
         LastAttachments = attachments;
-        return Task.FromResult(SendReturnValue);
+        return Task.FromResult(OnSend?.Invoke(message) ?? SendReturnValue);
     }
 }
 
@@ -239,6 +243,65 @@ internal sealed class FakeSentMessageRepository : ISentMessageRepository
         return Task.FromResult(
             message is null
                 ? Result.Failure<SentMessage>(new Error("SentMessage.NotFound", $"SentMessage {id} not found."))
+                : Result.Success(message)
+        );
+    }
+
+    public Task<Result<SentMessage>> GetByIdForFeedbackAsync(Guid id, CancellationToken ct = default)
+    {
+        var message = Added.Find(m => m.Id == id);
+        return Task.FromResult(
+            message is null
+                ? Result.Failure<SentMessage>(new Error("SentMessage.NotFound", $"SentMessage {id} not found."))
+                : Result.Success(message)
+        );
+    }
+
+    public Task<(IReadOnlyList<SentMessage> Items, int Total)> ListForActivityAsync(
+        Guid tenantId,
+        SentMessageActivityFilter filter,
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
+    public Task<Result<SentMessage>> GetDetailAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+        GetByIdWithEventsAsync(tenantId, id, ct);
+
+    public Task<IReadOnlyList<PendingDeliveryRef>> ListPendingDeliveryAsync(
+        DateTime sentFromUtc,
+        DateTime sentToUtc,
+        int max,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<PendingDeliveryRef>>([]);
+
+    public Task<Result<SentMessage>> FindByInternetMessageIdForFeedbackAsync(
+        string internetMessageId,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = SentMessage.NormalizeMessageId(internetMessageId);
+        var message = Added.Find(m => m.InternetMessageId == normalized);
+        return Task.FromResult(
+            message is null
+                ? Result.Failure<SentMessage>(new Error("SentMessage.NotFound", "No match."))
+                : Result.Success(message)
+        );
+    }
+
+    public Task<Result<SentMessage>> FindByProviderMessageIdForFeedbackAsync(
+        string providerMessageId,
+        string recipientAddress,
+        CancellationToken ct = default
+    )
+    {
+        var address = recipientAddress.Trim().ToLowerInvariant();
+        var message = Added.Find(m =>
+            m.Recipients.Any(r => r.ProviderMessageId == providerMessageId && r.Address == address)
+        );
+        return Task.FromResult(
+            message is null
+                ? Result.Failure<SentMessage>(new Error("SentMessage.NotFound", "No match."))
                 : Result.Success(message)
         );
     }

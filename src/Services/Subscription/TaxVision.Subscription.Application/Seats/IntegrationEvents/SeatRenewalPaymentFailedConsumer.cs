@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Domain.Seats;
 using Wolverine;
 
@@ -81,7 +82,13 @@ public static class SeatRenewalPaymentFailedConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
-            if (seat.Status == SeatStatus.Suspended && previousStatus != SeatStatus.Suspended)
+            var suspended = seat.Status == SeatStatus.Suspended && previousStatus != SeatStatus.Suspended;
+            await bus.PublishRenewalChargeFailedAsync(
+                evt,
+                suspended ? RenewalChargeConsequences.SeatSuspended : null,
+                correlationId
+            );
+            if (suspended)
             {
                 await bus.PublishAsync(
                     new SubscriptionSeatSuspendedIntegrationEvent

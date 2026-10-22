@@ -17,6 +17,47 @@ public sealed record StorageUsageResponse(
 
 public sealed record GetStorageUsageQuery(Guid TenantId);
 
+public sealed record StoragePolicyResponse(
+    string ProviderId,
+    IReadOnlyList<string> AvailableProviders,
+    // Los que el tenant tiene conectados de verdad (AvailableProviders son los que se pueden elegir).
+    IReadOnlyList<string> ConnectedProviders,
+    string Mode,
+    string? BackupFrequency,
+    string? BackupTime,
+    string? BackupTimeZoneId
+);
+
+public sealed record GetStoragePolicyQuery(Guid TenantId);
+
+public static class GetStoragePolicyHandler
+{
+    public static async Task<Result<StoragePolicyResponse>> Handle(
+        GetStoragePolicyQuery query,
+        IStoragePolicyRepository policies,
+        CancellationToken ct
+    )
+    {
+        var policy = await policies.GetAsync(query.TenantId, ct);
+        var connectedProviders = await policies.ListConnectedProviderIdsAsync(query.TenantId, ct);
+        var availableProviders = new[] { "google-drive", "onedrive" }
+            .Concat(connectedProviders)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return Result.Success(
+            new StoragePolicyResponse(
+                policy?.ProviderId ?? "google-drive",
+                availableProviders,
+                connectedProviders,
+                policy?.Mode ?? "crm",
+                policy?.BackupFrequency,
+                policy?.BackupTime,
+                policy?.BackupTimeZoneId
+            )
+        );
+    }
+}
+
 public static class GetStorageUsageHandler
 {
     public static async Task<Result<StorageUsageResponse>> Handle(

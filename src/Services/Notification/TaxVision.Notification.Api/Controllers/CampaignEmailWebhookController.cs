@@ -1,78 +1,122 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Webhooks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Email.Sending.Campaign;
+using TaxVision.Notification.Application.Email.Webhooks;
 
 namespace TaxVision.Notification.Api.Controllers;
 
 /// <summary>
-/// Webhook de estado del proveedor de email de CAMPAÑA (SMTP2GO y cualquier proveedor que haga POST de
-/// eventos). Anónimo — lo firma/llama el proveedor, no pasa por el JWT; se protege con un secreto
-/// compartido obligatorio (Bearer, header <c>X-Webhook-Secret</c> o <c>?key=</c>). Correlaciona por el Message-Id
-/// (SMTP2GO devuelve el del remitente) que el adapter codificó con tenant/campaign/run/dispatch, y
-/// publica un <c>campaign.dispatch.result.v1</c> de Delivered/Failed que el consumer de Campaigns aplica
-/// (refinamiento tardío Accepted→Delivered). Solo los eventos autenticados se procesan.
+/// Webhook único de SMTP2GO (el plan gratis permite uno solo). Anónimo — lo llama el proveedor, sin
+/// JWT; se protege con el secreto compartido <c>CampaignEmail:WebhookSecret</c>. Cada aviso va a su
+/// dueño mirando solo el Message-ID: los de campaña siguen el camino de siempre hacia Campaigns, los
+/// de Postmaster (<c>pm.</c>) se reenvían crudos para que Postmaster los traduzca, el resto se ignora.
 /// </summary>
 [ApiController]
 [Route("notifications/campaign-email/webhooks")]
 [AllowAnonymous]
 public sealed class CampaignEmailWebhookController(
     IIntegrationEventPublisher publisher,
+    IProviderWebhookMetrics metrics,
     IConfiguration configuration,
     ILogger<CampaignEmailWebhookController> logger
 ) : ControllerBase
 {
+    private const string Source = "Smtp2Go";
+
+    /// <summary>Un aviso pesa ~2 KB; esto deja margen sin aceptar cuerpos gigantes de un tercero.</summary>
+    private const int MaxBodyBytes = 256 * 1024;
+
     [HttpPost("smtp2go")]
+    [RequestSizeLimit(MaxBodyBytes)]
     [RateLimitExempt(
-        "Anónimo — webhook del proveedor SMTP2GO sin JWT que particionar; el abuso lo contiene el secreto compartido y la validación del Message-Id."
+        "Anónimo — webhook del proveedor SMTP2GO sin JWT que particionar. No se limita por IP: el tráfico "
+            + "legítimo llega en ráfagas (una campaña genera miles de avisos) y cortarlo perdería entregas. "
+            + "Lo protegen el secreto compartido y el tope de tamaño."
     )]
     public async Task<IActionResult> Smtp2Go(CancellationToken ct)
     {
-        var expectedSecret = configuration["CampaignEmail:WebhookSecret"];
-        if (string.IsNullOrWhiteSpace(expectedSecret))
+        var check = SharedSecretWebhookVerifier.Verify(Request, configuration["CampaignEmail:WebhookSecret"]);
+        if (check.Verdict == WebhookSecretVerdict.NotConfigured)
         {
             logger.LogError("SMTP2GO webhook rejected because CampaignEmail:WebhookSecret is not configured.");
             return StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
 
-        var (providedSecret, source) = ReadProvidedSecret();
-        if (source == WebhookSecretSource.Query)
+        if (check.Source == WebhookSecretSource.Query)
             logger.LogWarning("SMTP2GO webhook used the legacy query-string secret. Prefer Authorization bearer.");
 
-        if (!CampaignWebhookSecretVerifier.Matches(expectedSecret, providedSecret))
+        if (check.Verdict != WebhookSecretVerdict.Accepted)
             return Unauthorized();
 
-        var (eventType, messageId, reasonDetail) = await ReadPayloadAsync(ct);
+        if (!Request.HasFormContentType && !Request.HasJsonContentType())
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
-        if (string.IsNullOrWhiteSpace(eventType) || string.IsNullOrWhiteSpace(messageId))
+        var events = await ReadEventsAsync(ct);
+        if (events is null)
+            return BadRequest();
+
+        foreach (var evt in events)
+            await RouteAsync(evt, ct);
+
+        return Ok();
+    }
+
+    private async Task RouteAsync(JsonObject evt, CancellationToken ct)
+    {
+        var messageId = Field(evt, "message-id", "message_id", "messageid");
+        var route = ProviderWebhookRouter.Classify(
+            messageId,
+            Field(evt, ProviderWebhookRouter.SystemCorrelationHeader)
+        );
+        switch (route)
         {
-            logger.LogWarning("SMTP2GO webhook: missing event/message-id; ignoring.");
-            return Ok();
+            case ProviderWebhookRoute.Campaign:
+                await PublishCampaignResultAsync(evt, messageId!, ct);
+                break;
+            case ProviderWebhookRoute.SystemEmail:
+                // Notification no traduce nada de esto: la ACL vive en Postmaster.
+                await publisher.PublishAsync(
+                    new EmailProviderFeedbackReceivedIntegrationEvent
+                    {
+                        TenantId = PlatformTenant.Id,
+                        CorrelationId = Guid.NewGuid().ToString("N"),
+                        Source = Source,
+                        RawPayload = evt.ToJsonString(),
+                        ReceivedAtUtc = DateTime.UtcNow,
+                    },
+                    ct
+                );
+                break;
+            default:
+                metrics.RecordUnrouted(Source);
+                break;
         }
+    }
 
-        if (
-            !CampaignEmailCorrelation.TryParse(
-                messageId,
-                out var tenantId,
-                out var campaignId,
-                out var runId,
-                out var dispatchId
-            )
-        )
-        {
-            // Un Message-Id que no es de campaña (otro tráfico por la misma cuenta SMTP2GO) — no es nuestro.
-            logger.LogDebug("SMTP2GO webhook: message-id '{MessageId}' is not a campaign send; ignoring.", messageId);
-            return Ok();
-        }
+    private async Task PublishCampaignResultAsync(JsonObject evt, string messageId, CancellationToken ct)
+    {
+        CampaignEmailCorrelation.TryParse(
+            messageId,
+            out var tenantId,
+            out var campaignId,
+            out var runId,
+            out var dispatchId
+        );
+        var eventType = Field(evt, "event");
+        if (string.IsNullOrWhiteSpace(eventType))
+            return;
 
-        var (outcome, reason) = MapOutcome(eventType, reasonDetail);
+        var (outcome, reason) = MapCampaignOutcome(eventType, Field(evt, "bounce", "reject", "rejectreason", "reason"));
         if (outcome is null)
-            return Ok(); // evento sin interés (processed/open/click/…): no cambia el estado de entrega
+            return; // evento sin interés (processed/open/click/…): no cambia el estado de entrega
 
         await publisher.PublishAsync(
             new CampaignDispatchResultIntegrationEvent
@@ -96,49 +140,43 @@ public sealed class CampaignEmailWebhookController(
             dispatchId,
             runId
         );
-        return Ok();
     }
 
-    /// <summary>Lee el secreto compartido sin escribir su valor en logs.</summary>
-    private (string? Secret, WebhookSecretSource Source) ReadProvidedSecret()
-    {
-        var auth = Request.Headers.Authorization.ToString();
-        const string bearer = "Bearer ";
-        if (auth.StartsWith(bearer, StringComparison.OrdinalIgnoreCase))
-            return (auth[bearer.Length..].Trim(), WebhookSecretSource.Bearer);
-
-        var header = Request.Headers["X-Webhook-Secret"].ToString().Trim();
-        if (!string.IsNullOrEmpty(header))
-            return (header, WebhookSecretSource.Header);
-
-        var query = Request.Query["key"].ToString().Trim();
-        return string.IsNullOrEmpty(query) ? (null, WebhookSecretSource.None) : (query, WebhookSecretSource.Query);
-    }
-
-    /// <summary>Lee el payload sea form-encoded o JSON (SMTP2GO lo manda en cualquiera de los dos según config).</summary>
-    private async Task<(string? Event, string? MessageId, string? Reason)> ReadPayloadAsync(CancellationToken ct)
+    /// <summary>
+    /// SMTP2GO manda un evento por POST, en JSON o form según la config. Se acepta también un arreglo
+    /// por si el proveedor los agrupa. Null si el JSON no se puede leer.
+    /// </summary>
+    private async Task<IReadOnlyList<JsonObject>?> ReadEventsAsync(CancellationToken ct)
     {
         if (Request.HasFormContentType)
         {
             var form = await Request.ReadFormAsync(ct);
-            return (
-                First(form, "event"),
-                First(form, "message-id", "message_id", "messageid"),
-                First(form, "bounce", "reject", "rejectreason", "reason")
-            );
+            var fromForm = new JsonObject();
+            foreach (var (key, value) in form)
+                fromForm[key] = value.ToString();
+            return [fromForm];
         }
 
-        using var doc = await JsonDocument.ParseAsync(Request.Body, cancellationToken: ct);
-        var root = doc.RootElement;
-        return (
-            JsonStr(root, "event"),
-            JsonStr(root, "message-id", "message_id", "messageid"),
-            JsonStr(root, "bounce", "reject", "rejectreason", "reason")
-        );
+        JsonNode? root;
+        try
+        {
+            root = await JsonNode.ParseAsync(Request.Body, cancellationToken: ct);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return root switch
+        {
+            JsonObject single => [single],
+            JsonArray many => many.OfType<JsonObject>().ToList(),
+            _ => null,
+        };
     }
 
     /// <summary>SMTP2GO: event=delivered → Delivered; bounce/reject → Failed. El resto no toca la entrega.</summary>
-    private static (string? Outcome, string? Reason) MapOutcome(string eventType, string? reasonDetail) =>
+    private static (string? Outcome, string? Reason) MapCampaignOutcome(string eventType, string? reasonDetail) =>
         eventType.Trim().ToLowerInvariant() switch
         {
             "delivered" => ("Delivered", null),
@@ -148,42 +186,24 @@ public sealed class CampaignEmailWebhookController(
             _ => (null, null),
         };
 
-    private static string? First(Microsoft.AspNetCore.Http.IFormCollection form, params string[] keys)
+    /// <summary>Lee el primer campo presente; los nombres de headers personalizados llegan con cualquier mayúscula.</summary>
+    private static string? Field(JsonObject evt, params string[] keys)
     {
-        foreach (var k in keys)
-            if (form.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v))
-                return v.ToString();
+        foreach (var key in keys)
+        {
+            foreach (var (name, value) in evt)
+            {
+                if (!string.Equals(name, key, StringComparison.OrdinalIgnoreCase) || value is null)
+                    continue;
+
+                var text =
+                    value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var str)
+                        ? str
+                        : value.ToJsonString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+            }
+        }
         return null;
     }
-
-    private static string? JsonStr(JsonElement root, params string[] keys)
-    {
-        if (root.ValueKind != JsonValueKind.Object)
-            return null;
-        foreach (var k in keys)
-            if (root.TryGetProperty(k, out var el))
-                return el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
-        return null;
-    }
-}
-
-public static class CampaignWebhookSecretVerifier
-{
-    public static bool Matches(string expected, string? provided)
-    {
-        if (string.IsNullOrEmpty(provided))
-            return false;
-
-        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expected));
-        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(provided));
-        return CryptographicOperations.FixedTimeEquals(expectedHash, providedHash);
-    }
-}
-
-internal enum WebhookSecretSource
-{
-    None,
-    Bearer,
-    Header,
-    Query,
 }

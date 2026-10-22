@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Application.AddOns.IntegrationEvents;
 using TaxVision.Subscription.Domain.AddOns;
@@ -69,7 +70,42 @@ public sealed class AddOnRenewalPaymentConsumerTests
         Assert.Equal(AddOnStatus.Active, addOn.Status);
     }
 
-    private static Task Fail(TenantAddOn addOn, string key, FakeUnitOfWork unitOfWork, bool willRetry) =>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Automatic_failure_asks_for_the_failed_charge_email_with_the_add_on_name(bool willRetry)
+    {
+        var (addOn, key, _) = ActiveAddOnWithScheduledRenewal();
+        var bus = new CapturingMessageBus();
+
+        await Fail(addOn, key, new FakeUnitOfWork(), willRetry, bus, automatic: true);
+
+        var email = Assert.Single(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
+        Assert.Equal(RenewalChargeKinds.AddOn, email.ChargeKind);
+        Assert.Equal("Email add-on", email.ItemDescription);
+        Assert.Equal(!willRetry, email.IsFinal);
+        Assert.Equal(willRetry ? null : RenewalChargeConsequences.AddOnSuspended, email.Consequence);
+    }
+
+    [Fact]
+    public async Task A_hosted_checkout_failure_sends_no_failed_charge_email()
+    {
+        var (addOn, key, _) = ActiveAddOnWithScheduledRenewal();
+        var bus = new CapturingMessageBus();
+
+        await Fail(addOn, key, new FakeUnitOfWork(), willRetry: false, bus, automatic: false);
+
+        Assert.Empty(bus.Published.OfType<RenewalChargeFailedIntegrationEvent>());
+    }
+
+    private static Task Fail(
+        TenantAddOn addOn,
+        string key,
+        FakeUnitOfWork unitOfWork,
+        bool willRetry,
+        CapturingMessageBus? bus = null,
+        bool automatic = false
+    ) =>
         AddOnRenewalPaymentFailedConsumer.Handle(
             new AddOnRenewalPaymentFailedIntegrationEvent
             {
@@ -81,18 +117,23 @@ public sealed class AddOnRenewalPaymentConsumerTests
                 FailureReason = "Card declined",
                 WillRetry = willRetry,
                 NextRetryAtUtc = willRetry ? DateTime.UtcNow.AddDays(3) : null,
+                AttemptNumber = 1,
+                MaxAttempts = 4,
+                AmountCents = 2900,
+                Currency = "USD",
+                IsAutomaticCharge = automatic,
             },
             new FakeTenantAddOnRepo([addOn]),
+            new FakeAddOnDefinitionRepository(EmailDefinition(DateTime.UtcNow)),
             unitOfWork,
+            bus ?? new CapturingMessageBus(),
             new FakeCorrelationContext(),
             NullLogger<TenantAddOn>.Instance,
             CancellationToken.None
         );
 
-    private static (TenantAddOn AddOn, string Key, DateTime NewEnd) ActiveAddOnWithScheduledRenewal()
-    {
-        var nowUtc = DateTime.UtcNow;
-        var definition = AddOnDefinition
+    private static AddOnDefinition EmailDefinition(DateTime nowUtc) =>
+        AddOnDefinition
             .Create(
                 AddOnCode.Create("email.addon").Value,
                 "Email",
@@ -104,6 +145,11 @@ public sealed class AddOnRenewalPaymentConsumerTests
                 nowUtc
             )
             .Value;
+
+    private static (TenantAddOn AddOn, string Key, DateTime NewEnd) ActiveAddOnWithScheduledRenewal()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var definition = EmailDefinition(nowUtc);
         var addOn = TenantAddOn
             .Purchase(
                 Guid.NewGuid(),

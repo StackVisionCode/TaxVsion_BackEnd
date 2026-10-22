@@ -20,6 +20,14 @@ else
     return 0
 end";
 
+    private const string ExtendScript =
+        @"
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+else
+    return 0
+end";
+
     public async Task<ILockHandle> AcquireAsync(string key, TimeSpan ttl, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
@@ -35,6 +43,17 @@ end";
     {
         public bool IsAcquired => true;
         public string Key => key;
+
+        public async Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default)
+        {
+            // Solo si el valor sigue siendo nuestro token: si venció y otro lo tomó, no se lo pisamos.
+            var result = await db.ScriptEvaluateAsync(
+                ExtendScript,
+                new RedisKey[] { key },
+                new RedisValue[] { token, (long)ttl.TotalMilliseconds }
+            );
+            return (long)result == 1;
+        }
 
         public async ValueTask DisposeAsync()
         {

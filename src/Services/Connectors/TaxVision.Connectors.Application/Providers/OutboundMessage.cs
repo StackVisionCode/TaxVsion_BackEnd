@@ -20,10 +20,17 @@ public sealed record OutboundMessage(
     IReadOnlyList<string>? References,
     string? ReplyToProviderMessageId,
     IReadOnlyList<OutboundAttachment>? Attachments = null,
-    IReadOnlyList<OutboundInlineAsset>? InlineAssets = null
+    IReadOnlyList<OutboundInlineAsset>? InlineAssets = null,
+    string? ClientMessageId = null
 )
 {
     public IReadOnlyList<OutboundAttachment> Attachments { get; init; } = Attachments ?? [];
+
+    /// <summary>
+    /// Message-ID que pide el caller (Postmaster pone el suyo para reconocer después los avisos de no
+    /// entrega). Gmail y SMTP lo usan; Graph asigna el propio y se devuelve en <see cref="SendMessageResult"/>.
+    /// </summary>
+    public string? ClientMessageId { get; init; } = ClientMessageId;
 
     /// <summary>Imagenes embebidas por Content-ID. Vacio = el cuerpo no referencia ninguna.</summary>
     public IReadOnlyList<OutboundInlineAsset> InlineAssets { get; init; } = InlineAssets ?? [];

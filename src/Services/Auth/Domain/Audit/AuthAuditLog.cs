@@ -93,6 +93,7 @@ public static class AuthAuditAction
     public const string UserRolesChanged = "auth.user.roles_changed";
     public const string UserPermissionOverridesChanged = "auth.user.permission_overrides_changed";
     public const string UserSlotPriorityOverridden = "auth.user.slot_priority_overridden";
+    public const string UserRestoredAsTenantAdmin = "auth.user.restored_as_tenant_admin";
     public const string RoleCreated = "auth.role.created";
     public const string RoleUpdated = "auth.role.updated";
     public const string RoleDeactivated = "auth.role.deactivated";

@@ -1,4 +1,4 @@
-namespace TaxVision.Connectors.Application.Accounts;
+namespace BuildingBlocks.Platform;
 
 /// <summary>
 /// Decide a qué base redirige el callback de OAuth: el origen del frontend que inició el flujo
@@ -21,6 +21,21 @@ public static class OAuthReturnRedirectPolicy
         if (!IsAllowedHost(origin.Host, baseUrl, platformDomain))
             return fallback;
         return origin.GetLeftPart(UriPartial.Authority);
+    }
+
+    /// <summary>
+    /// Igual que <see cref="Resolve"/>, pero devuelve una URL completa: el host del tenant (si es válido)
+    /// con la ruta del <paramref name="fallbackUrl"/> configurado (p. ej. <c>/storage</c>).
+    /// </summary>
+    public static string ResolveUrl(string? returnOrigin, string fallbackUrl, string platformDomain)
+    {
+        var origin = Resolve(returnOrigin, fallbackUrl, platformDomain);
+        if (
+            origin == (fallbackUrl ?? string.Empty).TrimEnd('/')
+            || !Uri.TryCreate(fallbackUrl, UriKind.Absolute, out var fallback)
+        )
+            return fallbackUrl ?? string.Empty;
+        return origin + fallback.PathAndQuery;
     }
 
     /// <summary>

@@ -78,6 +78,17 @@ OpenTelemetry.
 44. PayFlow Fase 18-19 — Endpoints públicos, hardening de credenciales y cierre del plan
 45. Primitivas compartidas de BuildingBlocks — resiliencia HTTP, cache de tokens M2M, rate limiting Redis
 
+
+## para levantar el proyecto en local utilizando el .env se debe utilizar lo siguiente:
+`docker compose --env-file .env -f deploy/docker/docker-compose.local-infra.yml up -d`
+
+## codigo para verificar el estado de los microservicios en local
+`$fleet = [ordered]@{ Auth=5124; Tenant=5217; Customer=5263; Notification=5320; CloudStorage=5330; Signature=5340; Communication=5350; Subscription=5360; Postmaster=5370; Scribe=5380; Connectors=5390; Correspondence=5400; Growth=5410; PaymentClient=5420; PaymentApp=5430; Notes=5440; Documents=5450; Billing=5460; Sms=5470; Catalog=5480; Inventory=5490; Reminder=5500; Tasks=5510; Calendar=5520; Campaigns=5530; Gateway=5047 }; $fleet.GetEnumerator() | ForEach-Object { $c = Get-NetTCPConnection -LocalPort $_.Value -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; $p = if ($c) { Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue }; [pscustomobject]@{ Service=$_.Key; Port=$_.Value; Status=if ($c) {'UP'} else {'DOWN'}; PID=if ($c) {$c.OwningProcess}; Started=if ($p) {$p.CreationDate.ToString('HH:mm:ss')}; Build=if ($p -and $p.CommandLine -match '\\bin\\(Debug|Release)\\') {$Matches[1]} } } | Format-Table -AutoSize`
+
+### comando para ver los logs de un microservicio en especifico
+
+`Get-Content .\logs\MicroServiceName.log -Tail 100 -Wait`
+
 ## 1. Introduccion y objetivo
 
 TaxVision es una base para una plataforma SaaS multitenant. El backend separa:
@@ -2633,6 +2644,39 @@ dotnet ef database update `
 .\deploy\docker\compose.ps1 up -d --build
 .\deploy\docker\compose.ps1 ps
 ```
+
+Para desarrollo local sin token DNS de Cloudflare, credenciales de Stripe ni
+certificado PFX, usa el modo `local`. Mantiene el gateway HTTP en
+`http://localhost:5047` y excluye Caddy, PaymentApp y Signature. El wrapper
+genera una pareja JWT de desarrollo en `dev-keys` si no existe y usa el `.env`
+de la raiz para el resto de los servicios. MinIO y el cliente `mc` usan imagenes
+fijadas del fork comunitario SILO (`pgsty/minio` y `pgsty/mc`), porque las imagenes
+originales de MinIO dejaron de estar disponibles en los registros publicos.
+
+El wrapper limita a dos las tareas simultaneas de Docker Compose en este modo
+para que la compilacion inicial no agote la memoria de Docker Desktop. La
+variable `COMMUNICATION_DB_CONNECTION` del `.env` debe tener formato Prisma
+`sqlserver://HOST:PUERTO;database=...;user=...;password=...`; las demas
+conexiones SQL Server del stack usan formato ADO.NET.
+
+Comandos desde la raiz del repositorio:
+
+```powershell
+.\deploy\docker\compose.ps1 local up -d --build
+.\deploy\docker\compose.ps1 local ps
+.\deploy\docker\compose.ps1 local logs -f gateway
+.\deploy\docker\compose.ps1 local down
+```
+
+Si solo necesitas RabbitMQ, Redis, MinIO y ClamAV:
+
+```powershell
+.\deploy\docker\compose.ps1 infra up -d
+.\deploy\docker\compose.ps1 infra ps
+```
+
+Los endpoints de pagos de PaymentApp y firma no estaran disponibles en modo
+`local`. El resto del stack sigue necesitando SQL Server accesible desde Docker.
 
 ## 26.9 Prueba de humo end-to-end
 

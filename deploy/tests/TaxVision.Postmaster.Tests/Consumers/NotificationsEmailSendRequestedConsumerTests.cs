@@ -967,4 +967,70 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         Assert.Empty(sentMessages.Added);
         Assert.Empty(idempotencyGuard.Completed);
     }
+
+    /// <summary>
+    /// Antes el resultado por destinatario se ignoraba: un rechazo 5xx del relay quedaba como enviado.
+    /// </summary>
+    [Fact]
+    public async Task Handle_keeps_a_relay_rejected_recipient_out_of_Sent_and_records_the_acceptance()
+    {
+        var evt = CreateEvent() with { Cc = ["bad@example.com"] };
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
+        };
+        var emailSender = new FakeEmailSender
+        {
+            OnSend = message => new SendResult(
+                true,
+                "pm-message-id",
+                null,
+                message
+                    .Recipients.Select(r =>
+                        r.Address == "bad@example.com"
+                            ? new RecipientSendOutcome(
+                                r.Id,
+                                r.Address,
+                                RecipientSendStatus.Rejected,
+                                "550 no such user"
+                            )
+                            : new RecipientSendOutcome(r.Id, r.Address, RecipientSendStatus.Sent, null)
+                    )
+                    .ToList(),
+                ProviderAcceptance: "OK id=relay-42",
+                ProviderReference: "relay-42"
+            ),
+        };
+        var sentMessages = new FakeSentMessageRepository();
+
+        await NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            new FakeIdempotencyGuard(),
+            providerResolver,
+            new FakeConnectedMailboxResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            new FakeOutboundAttachmentFetcher(),
+            sentMessages,
+            new FakeTenantDirectoryRepository(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        var sent = Assert.Single(sentMessages.Added);
+        var rejected = Assert.Single(sent.Recipients, r => r.Address == "bad@example.com");
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.RecipientStatus.Failed, rejected.Status);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.DeliveryOutcome.Rejected, rejected.Outcome);
+        var accepted = Assert.Single(sent.Recipients, r => r.Address == evt.To);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.RecipientStatus.Sent, accepted.Status);
+        Assert.Equal("OK id=relay-42", accepted.ProviderAcceptance);
+        // El id del relay queda para correlacionar sus avisos cuando no traen nuestro Message-ID.
+        Assert.Equal("relay-42", accepted.ProviderMessageId);
+    }
 }

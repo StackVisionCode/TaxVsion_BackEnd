@@ -123,4 +123,13 @@ public sealed class PlatformHostRulesTests
         Assert.True(moved.IsPlatformHttpsOrigin("https://admin.taxoffix.com"));
         Assert.False(moved.IsPlatformHttpsOrigin("https://manfer.taxoffix.io"));
     }
+
+    // Los correos de cobro fallido mandan al Account del landing en el mismo host al que va el CRM (www).
+    [Theory]
+    [InlineData("/account/plan", "https://www.taxoffix.io/account/plan")]
+    [InlineData("account/plan", "https://www.taxoffix.io/account/plan")]
+    public void A_landing_page_lives_on_the_www_host(string path, string expected)
+    {
+        Assert.Equal(expected, Platform.LandingUrl(path));
+    }
 }

@@ -278,6 +278,13 @@ public interface IStorageLimitRepository
     Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct);
 }
 
+public interface IStoragePolicyRepository
+{
+    void Add(TaxVision.CloudStorage.Domain.Providers.TenantStoragePolicy policy);
+    Task<TaxVision.CloudStorage.Domain.Providers.TenantStoragePolicy?> GetAsync(Guid tenantId, CancellationToken ct);
+    Task<IReadOnlyList<string>> ListConnectedProviderIdsAsync(Guid tenantId, CancellationToken ct);
+}
+
 /// <summary>Fase C3 — links de compartir (nucleo publico/privado, ver Domain/Sharing/ShareLink.cs).</summary>
 public interface IShareLinkRepository
 {

@@ -91,6 +91,90 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Empty(gateway.Queued);
     }
 
+    // ---------- Cobro automático de renovación fallido: un correo por intento ----------
+
+    [Fact]
+    public async Task A_failed_charge_attempt_sends_the_failed_charge_template_with_the_retry_date()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = ChargeFailed(attempt: 2, isFinal: false);
+
+        await HandleAsync(evt, gateway, scribe);
+
+        var queued = Assert.Single(gateway.Queued);
+        Assert.Equal("subscription.recurring_charge_failed", queued.TemplateKey);
+        Assert.Equal("subscription.recurring_charge_failed.v1", scribe.LastEventKey);
+        var vars = scribe.LastVariables!;
+        Assert.Equal("Professional plan", vars["item_description"]);
+        Assert.Equal("$49.00", vars["amount"]);
+        Assert.Equal("Visa", vars["card_brand"]);
+        Assert.Equal(true, vars["has_card"]);
+        Assert.Equal("2", vars["attempt_number"]);
+        Assert.Equal("4", vars["max_attempts"]);
+        Assert.Equal(false, vars["is_final"]);
+        Assert.Equal("October 23, 2026", vars["next_retry_date"]);
+        // Nunca el código crudo del proveedor.
+        Assert.Equal("Your bank declined the charge.", vars["friendly_reason"]);
+        Assert.Equal("https://www.taxoffix.io/account/plan", vars["manage_url"]);
+    }
+
+    // El último intento llega con la suscripción ya suspendida: el correo de cobro fallido lo explica, no
+    // el de "suspended".
+    [Fact]
+    public async Task The_final_attempt_uses_the_failed_charge_template_even_when_suspended()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+
+        await HandleAsync(ChargeFailed(attempt: 4, isFinal: true), gateway, scribe);
+
+        Assert.Equal("subscription.recurring_charge_failed", Assert.Single(gateway.Queued).TemplateKey);
+        Assert.Equal(true, scribe.LastVariables!["is_final"]);
+        Assert.Equal(
+            "your subscription has been suspended and your team can no longer sign in",
+            scribe.LastVariables["suspension_effect"]
+        );
+    }
+
+    // Un reenvío del mismo aviso (otro EventId) no repite el correo; el intento siguiente sí sale.
+    [Fact]
+    public async Task Each_attempt_has_its_own_idempotency_key()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var paymentId = Guid.NewGuid();
+
+        await HandleAsync(ChargeFailed(2, false, paymentId), gateway, new CapturingScribeRenderClient());
+        await HandleAsync(ChargeFailed(2, false, paymentId), gateway, new CapturingScribeRenderClient());
+        await HandleAsync(ChargeFailed(3, false, paymentId), gateway, new CapturingScribeRenderClient());
+
+        Assert.Equal($"{paymentId:N}:attempt-2:owner@acme.test", gateway.Queued[0].IdempotencyKey);
+        Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+        Assert.Equal($"{paymentId:N}:attempt-3:owner@acme.test", gateway.Queued[2].IdempotencyKey);
+    }
+
+    private static TenantSubscriptionEmailRequestedIntegrationEvent ChargeFailed(
+        int attempt,
+        bool isFinal,
+        Guid? paymentId = null
+    ) =>
+        Event(isFinal ? "Suspended" : "Active", "RenewalChargeFailed") with
+        {
+            Email = "Owner@Acme.test",
+            SaaSPaymentId = paymentId ?? Guid.NewGuid(),
+            AttemptNumber = attempt,
+            MaxAttempts = 4,
+            IsFinalAttempt = isFinal,
+            NextAttemptAtUtc = isFinal ? null : new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc),
+            ItemDescription = "Professional plan",
+            Amount = "$49.00",
+            CardBrand = "visa",
+            CardLast4 = "4242",
+            FailureCode = "card_declined",
+            Consequence = isFinal ? "SubscriptionSuspended" : null,
+            ManageUrl = "https://www.taxoffix.io/account/plan",
+        };
+
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
         string status,
         string reason,

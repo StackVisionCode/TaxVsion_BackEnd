@@ -81,7 +81,7 @@ public sealed class SmtpManualClient(
         }
 
         ConnectorsMetrics.MessagesSent.Add(1, new KeyValuePair<string, object?>("provider", "SmtpManual"));
-        return new SendMessageResult(mime.MessageId, ProviderThreadId: null, DateTime.UtcNow);
+        return new SendMessageResult(mime.MessageId, ProviderThreadId: null, DateTime.UtcNow, mime.MessageId);
     }
 
     /// <summary>Connect+authenticate+send es la única superficie que puede fallar de verdad acá — todo lo demás (MIME) ya se validó antes de entrar al breaker.</summary>

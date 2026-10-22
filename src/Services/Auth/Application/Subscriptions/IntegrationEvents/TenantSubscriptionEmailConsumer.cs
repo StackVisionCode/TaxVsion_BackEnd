@@ -53,7 +53,9 @@ public static class TenantSubscriptionEmailConsumer
 
         using (correlation.Push(correlationId))
         {
-            if (!ShouldNotify(evt.Status, evt.Reason))
+            // La suspensión la causó el último cobro automático fallido y ese correo ya lo explica
+            // (RenewalChargeFailedEmailConsumer): un segundo correo de "suspended" sería repetir lo mismo.
+            if (evt.NotifiedByChargeFailedEmail || !ShouldNotify(evt.Status, evt.Reason))
                 return;
 
             var admin = await users.GetPrimaryAdminAsync(evt.TenantId, ct);

@@ -60,7 +60,7 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
                     using var client = new global::MailKit.Net.Smtp.SmtpClient();
                     await ConnectAndAuthenticateAsync(client, provider, token);
 
-                    var (accepted, rejected) = await SendWithPerRecipientRejectionHandlingAsync(
+                    var (accepted, rejected, response) = await SendWithPerRecipientRejectionHandlingAsync(
                         client,
                         mimeMessage,
                         message,
@@ -77,7 +77,15 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
                         );
 
                     var outcomes = accepted.Concat(rejected).ToList();
-                    return new SendResult(true, mimeMessage.MessageId, null, outcomes);
+                    return new SendResult(
+                        true,
+                        mimeMessage.MessageId,
+                        null,
+                        outcomes,
+                        ProviderAcceptance: response,
+                        ProviderReference: SmtpRelayAcceptance.ExtractReference(response),
+                        InternetMessageId: mimeMessage.MessageId
+                    );
                 },
                 ct
             );
@@ -122,10 +130,12 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
     /// <summary>
     /// Envía el envelope completo; si el servidor rechaza destinatarios individuales (5xx), los
     /// aísla en <c>rejected</c> y reintenta una sola vez con el resto (nunca recursivo/ilimitado).
+    /// <c>response</c> es lo que contestó el relay al aceptar.
     /// </summary>
     private async Task<(
         List<RecipientSendOutcome> accepted,
-        List<RecipientSendOutcome> rejected
+        List<RecipientSendOutcome> rejected,
+        string response
     )> SendWithPerRecipientRejectionHandlingAsync(
         global::MailKit.Net.Smtp.SmtpClient client,
         MimeMessage mimeMessage,
@@ -135,8 +145,11 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
     {
         try
         {
-            await TransientRetryPipeline.ExecuteAsync(async token => await client.SendAsync(mimeMessage, token), ct);
-            return (BuildAcceptedOutcomes(message, excludedAddresses: []), []);
+            var response = await TransientRetryPipeline.ExecuteAsync(
+                async token => await client.SendAsync(mimeMessage, token),
+                ct
+            );
+            return (BuildAcceptedOutcomes(message, excludedAddresses: []), [], response);
         }
         catch (SmtpCommandException ex) when (ex.ErrorCode == SmtpErrorCode.RecipientNotAccepted)
         {
@@ -144,11 +157,14 @@ public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResilie
             logger.LogWarning(ex, "Recipient {Address} rejected by SMTP server, retrying without it.", rejectedAddress);
 
             RemoveRecipient(mimeMessage, rejectedAddress);
-            await TransientRetryPipeline.ExecuteAsync(async token => await client.SendAsync(mimeMessage, token), ct);
+            var response = await TransientRetryPipeline.ExecuteAsync(
+                async token => await client.SendAsync(mimeMessage, token),
+                ct
+            );
 
             var excluded = rejectedAddress is null ? [] : new HashSet<string> { rejectedAddress };
             var rejected = BuildRejectedOutcomes(message, excluded, ex.Message);
-            return (BuildAcceptedOutcomes(message, excluded), rejected);
+            return (BuildAcceptedOutcomes(message, excluded), rejected, response);
         }
     }
 

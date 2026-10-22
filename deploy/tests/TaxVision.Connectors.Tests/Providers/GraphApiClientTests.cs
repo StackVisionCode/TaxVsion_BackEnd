@@ -70,6 +70,76 @@ public class GraphApiClientTests
     }
 
     [Fact]
+    public async Task GetHistoryAsync_On410_RestartsDeltaFromScratch()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.Gone, """{ "error": { "code": "SyncStateNotFound" } }""");
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """{ "value": [ { "id": "msg1" } ], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-new" }"""
+        );
+
+        var result = await CreateClient(handler)
+            .GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), "https://graph.microsoft.com/v1.0/delta-expired");
+
+        Assert.Equal(["msg1"], result.NewMessageIds);
+        Assert.Equal("https://graph.microsoft.com/v1.0/delta-new", result.NextCursor);
+        Assert.Contains("/mailFolders/inbox/messages/delta", handler.Requests[1].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_WhenPageCapReached_KeepsNextLinkAsCursor()
+    {
+        var handler = new FakeHttpMessageHandler();
+        for (var page = 0; page < 10; page++)
+            handler.Enqueue(
+                HttpStatusCode.OK,
+                $$"""{ "value": [ { "id": "msg-{{page}}" } ], "@odata.nextLink": "https://graph.microsoft.com/v1.0/next-{{page}}" }"""
+            );
+
+        var result = await CreateClient(handler)
+            .GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), "https://graph.microsoft.com/v1.0/delta-old");
+
+        // Guardar el cursor viejo hacía releer las mismas 10 páginas en cada pasada.
+        Assert.True(result.HasMore);
+        Assert.Equal("https://graph.microsoft.com/v1.0/next-9", result.NextCursor);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_SkipsRemovedItems()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """
+            {
+              "value": [ { "id": "msg1" }, { "id": "msg2", "@removed": { "reason": "deleted" } } ],
+              "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-final"
+            }
+            """
+        );
+
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
+
+        Assert.Equal(["msg1"], result.NewMessageIds);
+    }
+
+    [Fact]
+    public async Task GetRawMessageAsync_ReadsTheMimeFromValue()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("Subject: Undeliverable\r\n\r\nx")),
+        });
+
+        var bytes = await CreateClient(handler).GetRawMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg-1");
+
+        Assert.StartsWith("Subject: Undeliverable", System.Text.Encoding.UTF8.GetString(bytes));
+        Assert.EndsWith("/me/messages/msg-1/$value", handler.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task GetMessageAsync_ParsesStructuredFieldsHeadersAndAttachmentMetadata()
     {
         var handler = new FakeHttpMessageHandler();
@@ -197,26 +267,35 @@ public class GraphApiClientTests
         new("Subject", "<p>Html</p>", "Text", ["to@example.com"], [], [], null, null, null, replyToProviderMessageId);
 
     [Fact]
-    public async Task SendMessageAsync_NewMessage_PostsSendMailWithRecipients()
+    public async Task SendMessageAsync_NewMessage_CreatesADraftThenSendsItAndReturnsItsInternetMessageId()
     {
         var handler = new FakeHttpMessageHandler();
         string? capturedBody = null;
         handler.Enqueue(request =>
         {
             capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return new HttpResponseMessage(HttpStatusCode.Accepted);
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent(
+                    """{ "id": "draft-1", "internetMessageId": "<AM6P@outlook.com>", "conversationId": "conv-1" }"""
+                ),
+            };
         });
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Accepted));
 
         var result = await CreateClient(handler)
             .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage());
 
-        Assert.Null(result.ProviderMessageId);
-        Assert.Contains("/sendMail", handler.Requests[0].RequestUri!.ToString());
+        // sendMail no devolvía nada; el borrador sí trae el id que van a citar los rebotes.
+        Assert.Equal("<AM6P@outlook.com>", result.InternetMessageId);
+        Assert.Equal("draft-1", result.ProviderMessageId);
+        Assert.Equal("conv-1", result.ProviderThreadId);
+        Assert.EndsWith("/me/messages", handler.Requests[0].RequestUri!.ToString());
+        Assert.EndsWith("/me/messages/draft-1/send", handler.Requests[1].RequestUri!.ToString());
 
         using var payload = JsonDocument.Parse(capturedBody!);
         var toAddress = payload
-            .RootElement.GetProperty("message")
-            .GetProperty("toRecipients")[0]
+            .RootElement.GetProperty("toRecipients")[0]
             .GetProperty("emailAddress")
             .GetProperty("address")
             .GetString();
@@ -287,8 +366,12 @@ public class GraphApiClientTests
         handler.Enqueue(request =>
         {
             capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return new HttpResponseMessage(HttpStatusCode.Accepted);
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = new StringContent("""{ "id": "draft-1", "internetMessageId": "<x@outlook.com>" }"""),
+            };
         });
+        handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Accepted));
         var message = new OutboundMessage(
             "Subject",
             "<p>Html</p>",
@@ -307,7 +390,7 @@ public class GraphApiClientTests
             .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, message);
 
         using var payload = JsonDocument.Parse(capturedBody!);
-        var attachment = payload.RootElement.GetProperty("message").GetProperty("attachments")[0];
+        var attachment = payload.RootElement.GetProperty("attachments")[0];
         Assert.Equal("doc.pdf", attachment.GetProperty("name").GetString());
         Assert.Equal("application/pdf", attachment.GetProperty("contentType").GetString());
         Assert.Equal("#microsoft.graph.fileAttachment", attachment.GetProperty("@odata.type").GetString());

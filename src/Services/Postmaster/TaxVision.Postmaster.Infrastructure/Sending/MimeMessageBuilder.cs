@@ -2,6 +2,7 @@
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
+using TaxVision.Postmaster.Domain.ValueObjects;
 
 namespace TaxVision.Postmaster.Infrastructure.Sending;
 
@@ -13,6 +14,8 @@ namespace TaxVision.Postmaster.Infrastructure.Sending;
 /// </summary>
 public static class MimeMessageBuilder
 {
+    public const string CorrelationHeaderName = "X-TaxVision-Message-Id";
+
     public static MimeMessage Build(
         SentMessage message,
         RenderedContent content,
@@ -29,6 +32,10 @@ public static class MimeMessageBuilder
             mimeMessage.ReplyTo.Add(MailboxAddress.Parse(message.ReplyTo));
 
         AddRecipients(mimeMessage, message);
+        // Nuestro id en el Message-ID y en un header propio: con él atamos cada aviso del proveedor a este correo.
+        var ourMessageId = OurMessageId.For(message.Id, provider.FromAddress);
+        mimeMessage.MessageId = ourMessageId.ToString();
+        mimeMessage.Headers.Add(CorrelationHeaderName, ourMessageId.CorrelationHeaderValue);
         mimeMessage.Subject = content.Subject;
         mimeMessage.Body = BuildBody(content, inlineAssets, attachments);
         return mimeMessage;

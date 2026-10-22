@@ -6,7 +6,7 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.SlotGating.Consumers;
 
-public static class UserSlotPriorityDomainEventHandlers
+public static class UserSlotPriorityDomainEventHandler
 {
     public static Task Handle(UserSlotPriorityAssigned evt, IMessageBus bus) => Recompute(evt.TenantId, bus);
 

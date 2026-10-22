@@ -5,6 +5,12 @@ public interface ILockHandle : IAsyncDisposable
 {
     bool IsAcquired { get; }
     string Key { get; }
+
+    /// <summary>
+    /// Alarga el TTL si el lock sigue siendo nuestro. false = se perdió (venció y lo tomó otro): hay que
+    /// dejar de trabajar como dueño. Sin Redis (dev) siempre es nuestro.
+    /// </summary>
+    Task<bool> ExtendAsync(TimeSpan ttl, CancellationToken ct = default) => Task.FromResult(IsAcquired);
 }
 
 /// <summary>

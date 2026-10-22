@@ -15,6 +15,7 @@ using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.Platform;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.ResourceAuthorization;
 using BuildingBlocks.Web.Security;
@@ -50,6 +51,10 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddCloudStorageInfrastructure(builder.Configuration);
+
+// Dominio de la plataforma: el callback OAuth de Drive/OneDrive/Dropbox vuelve al subdominio del
+// tenant solo si es *.{BaseDomain}. Va junto a ListenForPlatformSettings() en Wolverine.
+builder.Services.AddPlatformSettings(builder.Configuration);
 
 // Resolver async del scope para las queries de listado (visibilidad por asignación). Vive en Api porque
 // consume ClaimsPrincipal + IUserPermissionsSource; cada controller lo llama antes de bus.InvokeAsync.
@@ -109,6 +114,27 @@ builder.Services.AddRateLimiter(options =>
                 (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
                 ?? context.Request.Path.Value?.ToLowerInvariant()
                 ?? string.Empty;
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:{routeKey}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+
+    // Callbacks OAuth de Google Drive/OneDrive/Dropbox: anónimos (los visita el navegador tras el
+    // consentimiento), así que se limitan por IP+ruta como los links públicos.
+    options.AddPolicy(
+        "provider-oauth-callback",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var routeKey = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? string.Empty;
             return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
@@ -191,8 +217,13 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
+    // The mirror consumer lives in the API assembly, outside the Application assembly above.
+    // Without explicit discovery, FileAvailableIntegrationEvent is received by this service's
+    // cloudstorage-events queue but no handler applies the selected cloud provider copy policy.
+    options.Discovery.IncludeType(typeof(TaxVision.CloudStorage.Api.Consumers.CloudStorageFileMirrorConsumer));
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConnection =

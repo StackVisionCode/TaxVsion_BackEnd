@@ -227,6 +227,10 @@ public static class DependencyInjection
             TaxVision.Notification.Application.Abstractions.ISubscriptionEmailMetrics,
             Observability.SubscriptionEmailMetrics
         >();
+        services.AddSingleton<
+            TaxVision.Notification.Application.Abstractions.IProviderWebhookMetrics,
+            Observability.ProviderWebhookMetrics
+        >();
 
         // Observabilidad del dispatcher (Fase 11 del plan de notificaciones) — counter
         // notification.dispatched_total by (kind, channel, outcome).

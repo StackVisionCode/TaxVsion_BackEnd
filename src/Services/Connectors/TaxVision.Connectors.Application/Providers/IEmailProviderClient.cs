@@ -39,8 +39,46 @@ public interface IEmailProviderClient
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Metadata de varios mensajes. Por defecto pide uno por uno; IMAP lo resuelve en un solo FETCH.
+    /// Un mensaje que falla queda con su error y no corta a los demás.
+    /// </summary>
+    async Task<IReadOnlyList<ProviderMessageFetch>> GetMessagesAsync(
+        Guid accountId,
+        Guid tenantId,
+        IReadOnlyList<string> providerMessageIds,
+        CancellationToken ct = default
+    )
+    {
+        var results = new List<ProviderMessageFetch>(providerMessageIds.Count);
+        foreach (var id in providerMessageIds)
+        {
+            try
+            {
+                results.Add(ProviderMessageFetch.Found(id, await GetMessageAsync(accountId, tenantId, id, ct)));
+            }
+            catch (EmailProviderException ex)
+            {
+                results.Add(ProviderMessageFetch.Failed(id, ex));
+            }
+        }
+
+        return results;
+    }
+
     /// <summary>Fetch completo bajo demanda (Fase 8, format=full/body select) — nunca se llama desde el pipeline de webhooks (metadata-first), solo desde el endpoint M2M de body fetch.</summary>
     Task<MessageBody> GetMessageBodyAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// El correo completo en MIME (RFC 822). Solo para leer avisos de no entrega (el informe va adentro
+    /// del cuerpo); nunca desde el sync, que sigue siendo metadata-only.
+    /// </summary>
+    Task<byte[]> GetRawMessageAsync(
         Guid accountId,
         Guid tenantId,
         string providerMessageId,

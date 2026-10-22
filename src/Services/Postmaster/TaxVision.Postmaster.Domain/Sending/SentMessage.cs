@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Postmaster.Domain.Providers;
+using TaxVision.Postmaster.Domain.ValueObjects;
 
 namespace TaxVision.Postmaster.Domain.Sending;
 
@@ -32,12 +33,16 @@ public sealed class SentMessage : TenantEntity
     private readonly List<InlineAsset> _inlineAssets = [];
     private readonly List<OutboundAttachmentRef> _attachments = [];
     private readonly List<string> _references = [];
+    private readonly List<DeliveryAttempt> _deliveryAttempts = [];
 
     private const long MaxTotalInlineAssetsBytes = 5 * 1024 * 1024;
 
     private SentMessage() { }
 
     public Guid? NotificationLogId { get; private set; }
+
+    /// <summary>Intento de Notification que pidió este envío; los avisos de entrega posteriores lo devuelven.</summary>
+    public Guid? DispatchAttemptId { get; private set; }
     public string? CorrelationId { get; private set; }
     public string IdempotencyKey { get; private set; } = default!;
     public string Subject { get; private set; } = default!;
@@ -57,6 +62,9 @@ public sealed class SentMessage : TenantEntity
     public string? Metadata { get; private set; }
     public ProviderScope RequiredProviderScope { get; private set; }
 
+    /// <summary>Por dónde salió de verdad: proveedor del sistema o buzón conectado del tenant.</summary>
+    public DeliveryLane DeliveryLane { get; private set; }
+
     /// <summary>Correlación de vuelta a Correspondence (D3 Compose §11.3) — null para el canal existente de notificaciones automáticas.</summary>
     public Guid? CorrespondenceDraftId { get; private set; }
 
@@ -69,11 +77,20 @@ public sealed class SentMessage : TenantEntity
     /// <summary>Message-ID del proveedor una vez enviado (Gmail threadId / Graph conversationId) — se conoce recién tras <see cref="MarkAsSent"/>.</summary>
     public string? ProviderThreadId { get; private set; }
 
+    /// <summary>
+    /// Message-ID RFC con el que salió de verdad (sin los signos de menor/mayor). Por SMTP es el nuestro;
+    /// por buzón puede ser otro (Graph pone el suyo). Con él se atan los avisos de no entrega.
+    /// </summary>
+    public string? InternetMessageId { get; private set; }
+
     public IReadOnlyCollection<SentMessageRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<SentMessageEvent> Events => _events.AsReadOnly();
     public IReadOnlyCollection<InlineAsset> InlineAssets => _inlineAssets.AsReadOnly();
     public IReadOnlyCollection<OutboundAttachmentRef> Attachments => _attachments.AsReadOnly();
     public IReadOnlyCollection<string> References => _references.AsReadOnly();
+
+    /// <summary>Por dónde intentó salir y cómo le fue. Con fallback hay dos: el buzón que falló y el sistema.</summary>
+    public IReadOnlyCollection<DeliveryAttempt> DeliveryAttempts => _deliveryAttempts.AsReadOnly();
 
     public static Result<SentMessage> Queue(
         Guid tenantId,
@@ -92,7 +109,9 @@ public sealed class SentMessage : TenantEntity
         Guid? correspondenceDraftId = null,
         string? inReplyToInternetMessageId = null,
         IReadOnlyList<string>? references = null,
-        Guid? campaignId = null
+        Guid? campaignId = null,
+        DeliveryLane deliveryLane = DeliveryLane.SystemProvider,
+        Guid? dispatchAttemptId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -128,6 +147,7 @@ public sealed class SentMessage : TenantEntity
         {
             Id = Guid.NewGuid(),
             NotificationLogId = notificationLogId,
+            DispatchAttemptId = dispatchAttemptId,
             CorrelationId = correlationId,
             IdempotencyKey = idempotencyKey,
             Subject = Truncate(subject, 500),
@@ -140,6 +160,7 @@ public sealed class SentMessage : TenantEntity
             QueuedAtUtc = queuedAtUtc,
             TemplateKey = templateKey is { Length: > 200 } ? templateKey[..200] : templateKey,
             RequiredProviderScope = requiredProviderScope,
+            DeliveryLane = deliveryLane,
             CorrespondenceDraftId = correspondenceDraftId,
             CampaignId = campaignId,
             InReplyToInternetMessageId = inReplyToInternetMessageId is { Length: > 500 }
@@ -204,8 +225,9 @@ public sealed class SentMessage : TenantEntity
         foreach (var recipient in _recipients)
         {
             if (recipient.Status == RecipientStatus.Pending)
-                recipient.MarkAsSent(providerMessageId);
+                recipient.MarkAsSent(providerMessageId, sentAtUtc);
         }
+        RecordAttempt(succeeded: true, failureReason: null, sentAtUtc);
 
         _events.Add(SentMessageEvent.Create(TenantId, Id, null, SentMessageEventType.Sent, sentAtUtc, null, null));
         return Result.Success();
@@ -217,6 +239,9 @@ public sealed class SentMessage : TenantEntity
         if (Status is not (SentMessageStatus.Queued or SentMessageStatus.Sending))
             return Result.Failure(InvalidTransition(SentMessageStatus.Failed));
 
+        // Desde Queued no hubo intento: falló antes, al resolver por dónde mandarlo.
+        if (Status == SentMessageStatus.Sending)
+            RecordAttempt(succeeded: false, reason, eventAtUtc);
         Status = SentMessageStatus.Failed;
         ErrorReason = Truncate(reason, 500);
         LastEventAtUtc = eventAtUtc;
@@ -225,6 +250,67 @@ public sealed class SentMessage : TenantEntity
         );
         return Result.Success();
     }
+
+    /// <summary>
+    /// Falló el buzón de la oficina y se reintenta por el proveedor del sistema, en el mismo mensaje
+    /// lógico (misma clave de idempotencia). El intento del buzón queda registrado; las respuestas van a
+    /// la oficina por Reply-To.
+    /// </summary>
+    public Result FallBackToSystemProvider(
+        string failureReason,
+        string systemProviderCode,
+        string systemFromAddress,
+        string? fromDisplayName,
+        string replyTo,
+        DateTime nowUtc
+    )
+    {
+        if (Status != SentMessageStatus.Sending || DeliveryLane != DeliveryLane.TenantMailbox)
+            return Result.Failure(
+                new Error(
+                    "SentMessage.FallbackNotAllowed",
+                    "Only a message being sent through the office mailbox can fall back to the system provider."
+                )
+            );
+
+        var from = ValidateEmailAddress(systemFromAddress, "SentMessage.FromAddress");
+        if (from.IsFailure)
+            return Result.Failure(from.Error);
+        var reply = ValidateEmailAddress(replyTo, "SentMessage.ReplyTo");
+        if (reply.IsFailure)
+            return Result.Failure(reply.Error);
+        if (string.IsNullOrWhiteSpace(systemProviderCode) || systemProviderCode.Length > 50)
+            return Result.Failure(
+                new Error("SentMessage.ProviderCode", "ProviderCode is required and must be at most 50 chars.")
+            );
+
+        RecordAttempt(succeeded: false, failureReason, nowUtc);
+        DeliveryLane = DeliveryLane.SystemProvider;
+        RequiredProviderScope = ProviderScope.System;
+        ProviderCode = systemProviderCode;
+        FromAddress = from.Value;
+        FromDisplayName = fromDisplayName is { Length: > 100 } ? fromDisplayName[..100] : fromDisplayName;
+        ReplyTo = reply.Value;
+        InternetMessageId = null;
+        LastEventAtUtc = nowUtc;
+        _events.Add(
+            SentMessageEvent.Create(
+                TenantId,
+                Id,
+                null,
+                SentMessageEventType.Fallback,
+                nowUtc,
+                null,
+                Truncate(failureReason, 500)
+            )
+        );
+        return Result.Success();
+    }
+
+    private void RecordAttempt(bool succeeded, string? failureReason, DateTime attemptedAtUtc) =>
+        _deliveryAttempts.Add(
+            DeliveryAttempt.Create(TenantId, Id, DeliveryLane, ProviderCode, succeeded, failureReason, attemptedAtUtc)
+        );
 
     /// <summary>Queued → Suppressed. El address estaba en la suppression list — nunca se intentó enviar.</summary>
     public Result MarkAsSuppressed(string reason, DateTime eventAtUtc)
@@ -266,49 +352,190 @@ public sealed class SentMessage : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>La dirección estaba en la lista de supresión: nunca se le intenta enviar.</summary>
+    public Result MarkRecipientSuppressed(Guid recipientId, string reason, DateTime suppressedAtUtc)
+    {
+        var recipient = _recipients.Find(r => r.Id == recipientId);
+        if (recipient is null)
+            return Result.Failure(RecipientNotFound(recipientId));
+
+        recipient.MarkAsSuppressed(reason, suppressedAtUtc);
+        AppendRecipientEvent(recipient, SentMessageEventType.Suppressed, suppressedAtUtc, null, reason);
+        return Result.Success();
+    }
+
+    /// <summary>El relay rechazó esta dirección durante el envío (5xx). Se llama antes de <see cref="MarkAsSent"/>.</summary>
+    public Result MarkRecipientRejectedAtSend(Guid recipientId, string reason, DateTime rejectedAtUtc)
+    {
+        if (Status != SentMessageStatus.Sending)
+            return Result.Failure(
+                new Error("SentMessage.NotSending", "Recipients can only be rejected while the message is sending.")
+            );
+
+        var recipient = _recipients.Find(r => r.Id == recipientId);
+        if (recipient is null)
+            return Result.Failure(RecipientNotFound(recipientId));
+
+        recipient.MarkRejectedAtSend(reason, rejectedAtUtc);
+        AppendRecipientEvent(recipient, SentMessageEventType.Rejected, rejectedAtUtc, null, reason);
+        return Result.Success();
+    }
+
+    public void RecordInternetMessageId(string internetMessageId)
+    {
+        var normalized = NormalizeMessageId(internetMessageId);
+        if (normalized.Length > 0)
+            InternetMessageId = Truncate(normalized, 500);
+    }
+
+    public static string NormalizeMessageId(string messageId) => messageId.Trim().Trim('<', '>').Trim();
+
+    /// <summary>Guarda la respuesta del relay en los destinatarios que aceptó.</summary>
+    public void RecordProviderAcceptance(string acceptance)
+    {
+        foreach (var recipient in _recipients)
+        {
+            if (recipient.Status == RecipientStatus.Sent)
+                recipient.RecordProviderAcceptance(acceptance);
+        }
+    }
+
+    public SentMessageRecipient? FindRecipientByAddress(string address)
+    {
+        var normalized = address.Trim().ToLowerInvariant();
+        return _recipients.Find(r => r.Address == normalized);
+    }
+
     /// <summary>
-    /// Registra un evento a nivel de recipient individual — en la práctica hoy, el único productor real
-    /// es la supresión pre-envío (<c>NotificationsEmailSendRequestedConsumer</c>/<c>SendCorrespondenceMessageHandler</c>
-    /// solo pasan <see cref="SentMessageEventType.Suppressed"/>). Si trae <paramref name="recipientId"/>,
-    /// actualiza el estado de ese recipient vía <see cref="SentMessageRecipient.ApplyEvent"/>.
-    /// No hace bubble-up al <see cref="Status"/> del mensaje — eso lo maneja el caller explícitamente
-    /// (ver <see cref="MarkAsSuppressed"/>) cuando corresponde. Este método existió para trackear entrega
-    /// real por webhook (Delivered/Bounced/Opened/Clicked/Complained); ese tracking se evaluó y se retiró
-    /// por no tener ningún productor real — reservado para cuando se reconstruya el tracking de entrega
-    /// real, si se decide hacerlo.
+    /// Aplica un aviso de entrega a un destinatario y lo deja en el historial. Si llegó tarde, el
+    /// estado no cambia pero el aviso igual queda registrado. Devuelve true si cambió algo que vale
+    /// la pena avisar: un outcome nuevo, o la primera apertura/clic/baja.
     /// </summary>
-    public Result RecordDeliveryEvent(
-        Guid? recipientId,
+    public Result<bool> ApplyDeliveryFeedback(Guid recipientId, DeliveryFeedback feedback, string? rawPayload)
+    {
+        var recipient = _recipients.Find(r => r.Id == recipientId);
+        if (recipient is null)
+            return Result.Failure<bool>(RecipientNotFound(recipientId));
+
+        var outcomeBefore = recipient.Outcome;
+        var firstOfItsKind = IsFirstSignal(recipient, feedback);
+        var applied =
+            feedback.Kind == DeliveryFeedbackKind.Outcome
+                ? ApplyOutcome(recipient, feedback)
+                : ApplySignal(recipient, feedback);
+        if (applied.IsFailure)
+            return Result.Failure<bool>(applied.Error);
+
+        AppendRecipientEvent(
+            recipient,
+            EventTypeFor(feedback),
+            feedback.OccurredAtUtc,
+            rawPayload,
+            feedback.Diagnostic
+        );
+        var changed =
+            feedback.Kind == DeliveryFeedbackKind.Outcome ? recipient.Outcome != outcomeBefore : firstOfItsKind;
+        return Result.Success(changed);
+    }
+
+    private static bool IsFirstSignal(SentMessageRecipient recipient, DeliveryFeedback feedback) =>
+        feedback.Signal switch
+        {
+            EngagementSignal.Opened => recipient.OpenCount == 0,
+            EngagementSignal.Clicked => recipient.ClickCount == 0,
+            EngagementSignal.Unsubscribed => recipient.UnsubscribedAtUtc is null,
+            _ => false,
+        };
+
+    /// <summary>Lo más relevante para mostrar del mensaje: el peor outcome entre sus destinatarios.</summary>
+    public DeliveryOutcome? DeliverySummary
+    {
+        get
+        {
+            DeliveryOutcome? summary = null;
+            foreach (var recipient in _recipients)
+            {
+                if (
+                    recipient.Outcome is { } outcome
+                    && (summary is not { } current || Severity(outcome) > Severity(current))
+                )
+                    summary = outcome;
+            }
+            return summary;
+        }
+    }
+
+    private static Result ApplyOutcome(SentMessageRecipient recipient, DeliveryFeedback feedback) =>
+        feedback.Outcome switch
+        {
+            DeliveryOutcome.Delivered => recipient.RecordDelivered(feedback),
+            DeliveryOutcome.Deferred => recipient.RecordDeferred(feedback),
+            DeliveryOutcome.SoftBounced => recipient.RecordBounce(feedback, isHard: false),
+            DeliveryOutcome.HardBounced => recipient.RecordBounce(feedback, isHard: true),
+            DeliveryOutcome.Rejected => recipient.RecordRejected(feedback),
+            DeliveryOutcome.Complained => recipient.RecordComplaint(feedback),
+            // Accepted solo lo pone nuestro propio envío, nunca un aviso externo.
+            _ => Result.Failure(
+                new Error("SentMessage.UnsupportedFeedback", $"Outcome '{feedback.Outcome}' cannot come from feedback.")
+            ),
+        };
+
+    private static Result ApplySignal(SentMessageRecipient recipient, DeliveryFeedback feedback) =>
+        feedback.Signal switch
+        {
+            EngagementSignal.Opened => recipient.RecordOpened(feedback),
+            EngagementSignal.Clicked => recipient.RecordClicked(feedback),
+            EngagementSignal.Unsubscribed => recipient.RecordUnsubscribed(feedback),
+            _ => Result.Failure(
+                new Error("SentMessage.UnsupportedFeedback", $"Signal '{feedback.Signal}' is not supported.")
+            ),
+        };
+
+    private static SentMessageEventType EventTypeFor(DeliveryFeedback feedback) =>
+        feedback.Kind == DeliveryFeedbackKind.Signal
+            ? feedback.Signal switch
+            {
+                EngagementSignal.Opened => SentMessageEventType.Opened,
+                EngagementSignal.Clicked => SentMessageEventType.Clicked,
+                _ => SentMessageEventType.Unsubscribed,
+            }
+            : feedback.Outcome switch
+            {
+                DeliveryOutcome.Delivered => SentMessageEventType.Delivered,
+                DeliveryOutcome.Deferred => SentMessageEventType.Deferred,
+                DeliveryOutcome.Rejected => SentMessageEventType.Rejected,
+                DeliveryOutcome.Complained => SentMessageEventType.Complained,
+                _ => SentMessageEventType.Bounced,
+            };
+
+    /// <summary>Orden para mostrar: lo que más necesita atención primero; entregado es lo menos.</summary>
+    private static int Severity(DeliveryOutcome outcome) =>
+        outcome switch
+        {
+            DeliveryOutcome.Complained => 6,
+            DeliveryOutcome.HardBounced => 5,
+            DeliveryOutcome.Rejected => 4,
+            DeliveryOutcome.SoftBounced => 3,
+            DeliveryOutcome.Deferred => 2,
+            DeliveryOutcome.Accepted => 1,
+            _ => 0,
+        };
+
+    private void AppendRecipientEvent(
+        SentMessageRecipient recipient,
         SentMessageEventType eventType,
         DateTime eventAtUtc,
         string? rawPayload,
         string? reason
     )
     {
-        if (recipientId is { } id)
-        {
-            var recipient = _recipients.Find(r => r.Id == id);
-            if (recipient is null)
-                return Result.Failure(
-                    new Error("SentMessage.RecipientNotFound", $"Recipient {id} not found on message {Id}.")
-                );
-            recipient.ApplyEvent(eventType, reason);
-        }
-
-        LastEventAtUtc = eventAtUtc;
-        _events.Add(
-            SentMessageEvent.Create(
-                TenantId,
-                Id,
-                recipientId,
-                eventType,
-                eventAtUtc,
-                rawPayload,
-                reason is { Length: > 500 } ? reason[..500] : reason
-            )
-        );
-        return Result.Success();
+        if (LastEventAtUtc is null || eventAtUtc > LastEventAtUtc)
+            LastEventAtUtc = eventAtUtc;
+        _events.Add(SentMessageEvent.Create(TenantId, Id, recipient.Id, eventType, eventAtUtc, rawPayload, reason));
     }
+
+    private Error RecipientNotFound(Guid recipientId) =>
+        new("SentMessage.RecipientNotFound", $"Recipient {recipientId} not found on message {Id}.");
 
     /// <summary>Registra el checksum SHA-256 del HTML renderizado (audit sin persistir el cuerpo).</summary>
     public void RecordRenderedChecksum(string sha256Hex) => RenderedHtmlChecksum = sha256Hex;
