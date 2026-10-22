@@ -22,7 +22,15 @@ public sealed class CloudProviderDeployWiringTests
             new Regex(@"\$\{" + Regex.Escape(varName) + @"[:}]"),
             ReadRepoFile("deploy/docker/docker-compose.yml")
         );
-        Assert.Contains($"{varName}=${{{{ secrets.{varName} }}}}", ReadRepoFile(".github/workflows/deploy.yml"));
+
+        // `production` está al tope de 100 secrets: los nuevos viven en `production-extra`, que solo
+        // lee el job `deploy`. Escritos en el job `stage` llegan vacíos al contenedor (503 en prod).
+        var workflow = ReadRepoFile(".github/workflows/deploy.yml");
+        var line = $"{varName}=${{{{ secrets.{varName} }}}}";
+        var deployJob = workflow.IndexOf("environment: production-extra", StringComparison.Ordinal);
+        Assert.True(deployJob > 0, "The deploy job (environment: production-extra) was not found.");
+        Assert.True(workflow.IndexOf(line, StringComparison.Ordinal) > deployJob, $"{varName} must be written by the deploy job.");
+        Assert.Equal(1, Regex.Matches(workflow, Regex.Escape(line)).Count);
     }
 
     [Theory]
