@@ -11,8 +11,17 @@ public sealed class RenameFormTemplateHandlerTests
         var unit = new RecordingUnitOfWork();
 
         var result = await RenameFormTemplateHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, "Updated intake", "New description", []),
-            new MemoryFormTemplateRepository(template), unit, default
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                "Updated intake",
+                "New description",
+                []
+            ),
+            new MemoryFormTemplateRepository(template),
+            unit,
+            default
         );
 
         Assert.True(result.IsSuccess);

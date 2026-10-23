@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Infrastructure.Persistence.Configurations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Infrastructure.Persistence.Repositories;
@@ -164,4 +165,22 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
     {
         await db.Customers.AddAsync(customer, ct);
     }
+
+    // Sin filtro de estado: el origen identifica la operación aunque el cliente esté archivado.
+    public Task<Guid?> FindIdByOriginAsync(
+        Guid tenantId,
+        string sourceService,
+        Guid sourceReferenceId,
+        CancellationToken ct
+    ) =>
+        db
+            .Customers.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(c =>
+                c.TenantId == tenantId
+                && EF.Property<string?>(c, CustomerConfiguration.OriginSourceService) == sourceService
+                && EF.Property<Guid?>(c, CustomerConfiguration.OriginSourceReferenceId) == sourceReferenceId
+            )
+            .Select(c => (Guid?)c.Id)
+            .FirstOrDefaultAsync(ct);
 }

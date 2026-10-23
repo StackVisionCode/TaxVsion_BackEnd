@@ -15,7 +15,8 @@ public sealed record FormTemplateVersionResponse(
     string ContentHash,
     int ComponentCount,
     DateTime PublishedAtUtc,
-    Guid PublishedByUserId
+    Guid PublishedByUserId,
+    int TargetCatalogVersion
 )
 {
     public static FormTemplateVersionResponse From(FormTemplateVersion version) =>
@@ -31,6 +32,7 @@ public sealed record FormTemplateVersionResponse(
             version.ContentHash.Value,
             version.ComponentCount,
             version.PublishedAtUtc,
-            version.PublishedByUserId
+            version.PublishedByUserId,
+            version.TargetCatalogVersion
         );
 }

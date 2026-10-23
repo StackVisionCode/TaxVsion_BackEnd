@@ -88,4 +88,24 @@ internal static class ReviewSupport
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(FormRequestResponse.From(request));
     }
+
+    // Se mide después de guardar: una revisión que no confirma no cuenta.
+    internal static async Task<Result<FormRequestResponse>> SaveReviewed(
+        Result transition,
+        FormRequest request,
+        string action,
+        string outcome,
+        Guid byUserId,
+        DateTime nowUtc,
+        IFormAuditLog audit,
+        IClientFormsMetrics metrics,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var saved = await Save(transition, request, action, byUserId, audit, unitOfWork, ct);
+        if (saved.IsSuccess)
+            metrics.RecordReviewed(outcome, nowUtc - request.LastSubmittedAtUtc);
+        return saved;
+    }
 }

@@ -2,7 +2,8 @@ using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tasks.Application.Attachments.Abstractions;
-using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Common;
+using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
@@ -17,7 +18,7 @@ internal sealed class FormAttachmentReconciler(
     ITaskFileScanStatusClient files,
     IClientFormsCustomerReader customers,
     ICorrelationContext correlation,
-    ITaskMetrics metrics,
+    IClientFormsMetrics metrics,
     ILogger<FormAttachmentReconciler> logger
 )
 {
@@ -36,24 +37,31 @@ internal sealed class FormAttachmentReconciler(
             return 0;
         var known = await LoadKnownVerdictsAsync(requests, reconcileCutoff, ct);
 
-        var reconciled = 0;
-        var expired = 0;
+        var verdicts = new List<string>();
         using (correlation.Push($"client-forms-attachment-reconciliation-{Guid.NewGuid():N}"))
         {
             foreach (var request in requests)
             {
-                reconciled += await ReconcilePendingAsync(request, known, reconcileCutoff, nowUtc, ct);
-                expired += await ExpireStaleAsync(request, expiryCutoff, nowUtc, ct);
+                await ReconcilePendingAsync(request, known, reconcileCutoff, nowUtc, verdicts, ct);
+                await ExpireStaleAsync(request, expiryCutoff, nowUtc, verdicts, ct);
             }
 
-            if (reconciled > 0 || expired > 0 || outbox.DbContext.ChangeTracker.HasChanges())
+            if (verdicts.Exists(IsApplied) || outbox.DbContext.ChangeTracker.HasChanges())
                 await outbox.SaveChangesAndFlushMessagesAsync(ct);
         }
 
-        metrics.RecordClientFormsAttachmentsReconciled(reconciled, "reconciliation");
-        metrics.RecordClientFormsAttachmentsReconciled(expired, "expiry");
-        return reconciled + expired;
+        return RecordVerdicts(verdicts);
     }
+
+    // Se mide después de guardar; "unknown" no cambia nada y no cuenta como reconciliado.
+    private int RecordVerdicts(List<string> verdicts)
+    {
+        foreach (var status in verdicts)
+            metrics.RecordAttachmentVerdict(status, ClientFormsMetricValues.SourceReconciliation);
+        return verdicts.Count(IsApplied);
+    }
+
+    private static bool IsApplied(string status) => status != ClientFormsMetricValues.Unknown;
 
     private Task<List<FormRequest>> LoadCandidatesAsync(
         DateTime reconcileCutoff,
@@ -93,11 +101,12 @@ internal sealed class FormAttachmentReconciler(
             .ToDictionaryAsync(item => item.Id, ct);
     }
 
-    private async Task<int> ReconcilePendingAsync(
+    private async Task ReconcilePendingAsync(
         FormRequest request,
         Dictionary<Guid, FormFileScanVerdict> known,
         DateTime reconcileCutoff,
         DateTime nowUtc,
+        List<string> verdicts,
         CancellationToken ct
     )
     {
@@ -106,10 +115,11 @@ internal sealed class FormAttachmentReconciler(
                 item.Status == FormAttachmentStatus.Pending && item.RegisteredAtUtc < reconcileCutoff
             )
             .ToList();
-        var reconciled = 0;
         foreach (var attachment in pending)
         {
             var verdict = await ResolveVerdictAsync(request, attachment, known, nowUtc, ct);
+            if (verdict is null)
+                verdicts.Add(ClientFormsMetricValues.Unknown);
             if (verdict is null || !SharesTenant(request, attachment, verdict))
                 continue;
 
@@ -117,11 +127,10 @@ internal sealed class FormAttachmentReconciler(
             var outcome = request.ApplyFileVerdict(attachment.FileId, verdict.ToVerdict(), nowUtc);
             if (outcome == FileVerdictOutcome.Ignored)
                 continue;
-            reconciled++;
+            verdicts.Add(ClientFormsMetricValues.Of(verdict.Status));
             if (attachment.Status == FormAttachmentStatus.Rejected && before != FormAttachmentStatus.Rejected)
                 await PublishRejectedAsync(request, attachment, ct);
         }
-        return reconciled;
     }
 
     // Sin veredicto local se pregunta a CloudStorage; un estado desconocido queda para la próxima vuelta.
@@ -158,10 +167,11 @@ internal sealed class FormAttachmentReconciler(
         return false;
     }
 
-    private async Task<int> ExpireStaleAsync(
+    private async Task ExpireStaleAsync(
         FormRequest request,
         DateTime expiryCutoff,
         DateTime nowUtc,
+        List<string> verdicts,
         CancellationToken ct
     )
     {
@@ -171,9 +181,9 @@ internal sealed class FormAttachmentReconciler(
             )
             .ToList();
         var expired = request.ExpireStalePendingAttachments(expiryCutoff, nowUtc);
+        verdicts.AddRange(Enumerable.Repeat(ClientFormsMetricValues.Expired, expired));
         foreach (var attachment in expiring)
             await PublishRejectedAsync(request, attachment, ct);
-        return expired;
     }
 
     private async Task PublishRejectedAsync(FormRequest request, FormAttachment attachment, CancellationToken ct)

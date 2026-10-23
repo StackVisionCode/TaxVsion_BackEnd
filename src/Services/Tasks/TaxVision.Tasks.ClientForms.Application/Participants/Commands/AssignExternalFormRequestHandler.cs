@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
@@ -46,15 +47,17 @@ public static class AssignExternalFormRequestHandler
         IFormTemplateVersionRepository versions,
         IConsentNoticeRepository notices,
         IFormRequestRepository requests,
+        IFormActionAuthorizer authorizer,
         IProtectedPayloadCodec payloadCodec,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
-        var inputs = await LoadAndValidateAsync(command, capabilities, templates, versions, notices, ct);
+        var inputs = await LoadAndValidateAsync(command, capabilities, templates, versions, notices, authorizer, ct);
         if (inputs.IsFailure)
             return Failure(inputs.Error);
         var participant = await ResolveParticipantAsync(command, inputs.Value.Email, participants, requests, ct);
@@ -69,7 +72,6 @@ public static class AssignExternalFormRequestHandler
             return Failure(grant.Error);
         requests.Add(request.Value);
         grants.Add(grant.Value);
-
         await PublishAsync(
             command,
             participant.Value,
@@ -82,6 +84,7 @@ public static class AssignExternalFormRequestHandler
             correlation
         );
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordRequestAssigned();
         return Result.Success(FormRequestResponse.From(request.Value));
     }
 
@@ -93,6 +96,7 @@ public static class AssignExternalFormRequestHandler
         IFormTemplateRepository templates,
         IFormTemplateVersionRepository versions,
         IConsentNoticeRepository notices,
+        IFormActionAuthorizer authorizer,
         CancellationToken ct
     )
     {
@@ -102,6 +106,15 @@ public static class AssignExternalFormRequestHandler
         var version = await LoadPublishedVersionAsync(command, templates, versions, ct);
         if (version.IsFailure)
             return Result.Failure<(ParticipantEmail, FormTemplateVersion, EntryNoticeSelection)>(version.Error);
+        // Quien envía queda como responsable: ejecutará las acciones de la plantilla en su nombre.
+        var authorized = await authorizer.EnsureResponsibleCanRunAsync(
+            command.TenantId,
+            command.ByUserId,
+            version.Value,
+            ct
+        );
+        if (authorized.IsFailure)
+            return Result.Failure<(ParticipantEmail, FormTemplateVersion, EntryNoticeSelection)>(authorized.Error);
         var entryNotice = await EntryNoticeSupport.ResolveForCreationAsync(
             command.TenantId,
             command.EntryNoticeKey,

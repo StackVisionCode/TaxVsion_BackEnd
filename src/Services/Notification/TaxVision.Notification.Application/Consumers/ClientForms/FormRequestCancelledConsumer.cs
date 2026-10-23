@@ -22,9 +22,15 @@ public static class FormRequestCancelledConsumer
                 return;
             await ClientFormCustomerNotifier.NotifyInAppAsync(
                 new ClientFormCustomerNotification(
-                    evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-                    NotificationKinds.TasksFormRequestCancelled, "task.form_request_cancelled.v1",
-                    "A form request was cancelled", evt.Title,
+                    evt.TenantId,
+                    customerId,
+                    evt.FormRequestId,
+                    evt.EventId,
+                    evt.OccurredOn,
+                    NotificationKinds.TasksFormRequestCancelled,
+                    "task.form_request_cancelled.v1",
+                    "A form request was cancelled",
+                    evt.Title,
                     new Dictionary<string, object?>(),
                     new Dictionary<string, string> { ["title"] = evt.Title }
                 ),

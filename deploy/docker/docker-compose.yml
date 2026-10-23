@@ -674,6 +674,7 @@ services:
       # Signature/PaymentClient — nunca generar uno nuevo, o los tax identifiers ya cifrados
       # en la base con la clave vieja quedan indescifrables.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
       # Microservicio CloudStorage donde vive el archivo de import mientras se procesa.
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       # Credenciales de servicio (M2M) — solo para DownloadAsync/DeleteAsync del archivo de

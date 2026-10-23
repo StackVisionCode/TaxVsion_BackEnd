@@ -32,20 +32,35 @@ public static class FormRequestCompletedConsumer
                 return;
             await ClientFormCustomerNotifier.NotifyAsync(
                 Notification(evt, customerId),
-                customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct
+                customers,
+                policies,
+                gateway,
+                scribe,
+                dispatcher,
+                recipients,
+                portal,
+                hosts,
+                correlation,
+                ct
             );
         }
     }
 
-    private static ClientFormCustomerNotification Notification(FormRequestCompletedIntegrationEvent evt, Guid customerId) => new(
-        evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-        NotificationKinds.TasksFormRequestCompleted, TemplateKey,
-        "Your form was received", evt.Title,
-        new Dictionary<string, object?> { ["request_title"] = evt.Title },
-        new Dictionary<string, string>
-        {
-            ["title"] = evt.Title,
-            ["revisionNumber"] = evt.RevisionNumber.ToString(),
-        }
-    );
+    private static ClientFormCustomerNotification Notification(
+        FormRequestCompletedIntegrationEvent evt,
+        Guid customerId
+    ) =>
+        new(
+            evt.TenantId,
+            customerId,
+            evt.FormRequestId,
+            evt.EventId,
+            evt.OccurredOn,
+            NotificationKinds.TasksFormRequestCompleted,
+            TemplateKey,
+            "Your form was received",
+            evt.Title,
+            new Dictionary<string, object?> { ["request_title"] = evt.Title },
+            new Dictionary<string, string> { ["title"] = evt.Title, ["revisionNumber"] = evt.RevisionNumber.ToString() }
+        );
 }

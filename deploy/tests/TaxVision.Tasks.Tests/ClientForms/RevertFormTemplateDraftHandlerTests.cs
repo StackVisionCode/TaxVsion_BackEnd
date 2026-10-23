@@ -30,7 +30,15 @@ public sealed class RevertFormTemplateDraftHandlerTests
         );
 
         var result = await RevertFormTemplateDraftHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, version.VersionNumber, []),
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                version.VersionNumber,
+                [],
+                false
+            ),
+            engine,
             new MemoryFormTemplateRepository(template),
             new MemoryFormTemplateVersionRepository(version),
             new RecordingUnitOfWork(),

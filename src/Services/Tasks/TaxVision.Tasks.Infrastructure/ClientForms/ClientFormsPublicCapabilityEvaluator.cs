@@ -8,10 +8,7 @@ internal sealed class ClientFormsPublicCapabilityEvaluator(
     IFormIntakeBotProtection botProtection
 ) : IClientFormsPublicCapabilityEvaluator
 {
-    public async Task<bool> IsExternalParticipantAvailableAsync(
-        Guid tenantId,
-        CancellationToken ct = default
-    )
+    public async Task<bool> IsExternalParticipantAvailableAsync(Guid tenantId, CancellationToken ct = default)
     {
         var module = await availability.EvaluateAsync(tenantId, ct);
         if (!module.Enabled)

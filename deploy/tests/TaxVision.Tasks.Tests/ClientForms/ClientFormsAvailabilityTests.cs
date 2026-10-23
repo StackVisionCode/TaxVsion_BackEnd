@@ -33,12 +33,8 @@ public sealed class ClientFormsAvailabilityTests
         Assert.Equal(0, modules.Reads);
     }
 
-    public static TheoryData<string[]?> MissingPlannerCases => new()
-    {
-        null,
-        Array.Empty<string>(),
-        new[] { "wallet" },
-    };
+    public static TheoryData<string[]?> MissingPlannerCases =>
+        new() { null, Array.Empty<string>(), new[] { "wallet" } };
 
     [Theory]
     [MemberData(nameof(MissingPlannerCases))]
@@ -57,7 +53,10 @@ public sealed class ClientFormsAvailabilityTests
     {
         var evaluator = Evaluator(enabled: true, tenantEnabled: true, modules: ["PLANNER"]);
 
-        Assert.Equal(ClientFormsAvailability.Available, await evaluator.EvaluateAsync(FormTemplateHandlerTestDoubles.TenantId));
+        Assert.Equal(
+            ClientFormsAvailability.Available,
+            await evaluator.EvaluateAsync(FormTemplateHandlerTestDoubles.TenantId)
+        );
     }
 
     [Fact]
@@ -98,13 +97,17 @@ public sealed class ClientFormsAvailabilityTests
     {
         var repository = new MemoryFormModuleSettingsRepository();
         if (tenantEnabled)
-            repository.Add(FormModuleSettings.Create(
-                FormTemplateHandlerTestDoubles.TenantId,
-                true,
-                null,
-                FormTemplateHandlerTestDoubles.UserId,
-                DateTime.UtcNow
-            ).Value);
+            repository.Add(
+                FormModuleSettings
+                    .Create(
+                        FormTemplateHandlerTestDoubles.TenantId,
+                        true,
+                        null,
+                        FormTemplateHandlerTestDoubles.UserId,
+                        DateTime.UtcNow
+                    )
+                    .Value
+            );
         return new ClientFormsAvailabilityEvaluator(
             Options.Create(new ClientFormsOptions { Enabled = enabled }),
             repository,

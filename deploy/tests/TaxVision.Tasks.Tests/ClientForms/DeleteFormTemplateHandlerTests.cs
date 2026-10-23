@@ -14,7 +14,11 @@ public sealed class DeleteFormTemplateHandlerTests
         var unit = new RecordingUnitOfWork();
 
         var result = await DeleteFormTemplateHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id), templates, audit, unit, default
+            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id),
+            templates,
+            audit,
+            unit,
+            default
         );
 
         Assert.True(result.IsSuccess);

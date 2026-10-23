@@ -3,18 +3,25 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Mapping;
+using TaxVision.Tasks.ClientForms.Application.Actions;
+using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Mapping.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.Infrastructure.ClientForms.Attachments;
 using TaxVision.Tasks.Infrastructure.ClientForms.Audit;
+using TaxVision.Tasks.Infrastructure.ClientForms.Mapping;
+using TaxVision.Tasks.Infrastructure.ClientForms.Observability;
 using TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories;
 using TaxVision.Tasks.Infrastructure.ClientForms.Security;
 using TaxVision.Tasks.Infrastructure.CloudStorage;
+using TaxVision.Tasks.Infrastructure.Observability;
 using TaxVision.Tasks.Infrastructure.RateLimiting;
 
 namespace TaxVision.Tasks.Infrastructure.ClientForms;
@@ -31,6 +38,8 @@ public static class ClientFormsRegistration
         services.AddSingleton<IFormEngine>(provider => new FormEngine(
             provider.GetRequiredService<IOptions<ClientFormsOptions>>().Value.Limits
         ));
+        services.AddSingleton<IDataCollectionTargetCatalog>(_ => new ContractDataCollectionTargetCatalog());
+        services.AddScoped<IFormCatalogUsageReader, FormCatalogUsageReader>();
         services.AddScoped<IFormTemplateRepository, FormTemplateRepository>();
         services.AddScoped<IFormTemplateVersionRepository, FormTemplateVersionRepository>();
         services.AddScoped<IFormModuleSettingsRepository, FormModuleSettingsRepository>();
@@ -73,6 +82,16 @@ public static class ClientFormsRegistration
                 client.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+        services.AddHttpClient<IFormFileReassignmentClient, FormFileReassignmentClient>(
+            (provider, client) =>
+            {
+                var options = provider.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
+                client.BaseAddress = new Uri(options.BaseUrl.EndsWith('/') ? options.BaseUrl : options.BaseUrl + "/");
+                client.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddScoped<IFormActionAuthorizer, FormActionAuthorizer>();
+        services.AddScoped<FormActionPlanner>();
         services.AddScoped<IFormRequestVisibilityFilter, FormRequestVisibilityFilter>();
         services.AddScoped<IClientFormsCustomerReader, ClientFormsCustomerReader>();
         services.AddScoped<IClientFormsTaskReader, ClientFormsTaskReader>();
@@ -80,6 +99,10 @@ public static class ClientFormsRegistration
         services.AddScoped<ISensitiveValueProtector, SensitiveValueProtector>();
         services.AddScoped<FormAttachmentReconciler>();
         services.AddHostedService<FormAttachmentReconciliationJob>();
+        services.AddSingleton<ClientFormsMetrics>();
+        services.AddSingleton<IClientFormsMetrics>(provider => provider.GetRequiredService<ClientFormsMetrics>());
+        services.AddScoped<ClientFormsBacklogReader>();
+        services.AddHostedService<ClientFormsBacklogJob>();
         services.AddHttpContextAccessor();
         services.AddProtectedPayloadProtection(configuration);
         return services;

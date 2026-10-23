@@ -8,6 +8,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.DataCollection.Engine.Validation;
+using TaxVision.Tasks.Api.Authorization;
 using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Api.Requests.ClientForms;
 using TaxVision.Tasks.ClientForms.Application.Templates.Commands;
@@ -22,7 +23,8 @@ namespace TaxVision.Tasks.Api.Controllers.ClientForms;
 [ClientFormsEndpoint]
 [Route("tasks/forms/templates")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
+public sealed class FormTemplatesController(IMessageBus bus, FormPublisherCapabilitiesResolver capabilities)
+    : ControllerBase
 {
     [HttpGet]
     [HasPermission(TasksPermissions.FormTemplatesRead)]
@@ -123,7 +125,14 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
         if (!TryDecode(request.RowVersion, out var rowVersion))
             return BadRequest(RowVersionError);
         var result = await bus.InvokeAsync<Result<UpdateFormTemplateDraftOutcome>>(
-            new UpdateFormTemplateDraftCommand(tenantId, userId, id, request.Definition.GetRawText(), rowVersion),
+            new UpdateFormTemplateDraftCommand(
+                tenantId,
+                userId,
+                id,
+                request.Definition.GetRawText(),
+                rowVersion,
+                await capabilities.CanConfigureActionsAsync(User, ct)
+            ),
             ct
         );
         if (result.IsFailure)
@@ -139,7 +148,7 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Forbid();
         var result = await bus.InvokeAsync<Result<FormTemplateValidationResponse>>(
-            new ValidateFormTemplateQuery(tenantId, id),
+            new ValidateFormTemplateQuery(tenantId, id, await capabilities.ResolveAsync(User, ct)),
             ct
         );
         return ToActionResult(result);
@@ -155,7 +164,7 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
         if (!TryDecode(request.RowVersion, out var rowVersion))
             return BadRequest(RowVersionError);
         var result = await bus.InvokeAsync<Result<PublishFormTemplateOutcome>>(
-            new PublishFormTemplateCommand(tenantId, userId, id, rowVersion),
+            new PublishFormTemplateCommand(tenantId, userId, id, rowVersion, await capabilities.ResolveAsync(User, ct)),
             ct
         );
         if (result.IsFailure)
@@ -203,7 +212,13 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
         var result = await bus.InvokeAsync<Result<FormTemplateDetailResponse>>(
-            new DuplicateFormTemplateCommand(tenantId, userId, id, request.FromVersionNumber),
+            new DuplicateFormTemplateCommand(
+                tenantId,
+                userId,
+                id,
+                request.FromVersionNumber,
+                await capabilities.CanConfigureActionsAsync(User, ct)
+            ),
             ct
         );
         return result.IsFailure
@@ -221,7 +236,14 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
         if (!TryDecode(request.RowVersion, out var rowVersion))
             return BadRequest(RowVersionError);
         var result = await bus.InvokeAsync<Result<FormTemplateDetailResponse>>(
-            new RevertFormTemplateDraftCommand(tenantId, userId, id, request.VersionNumber, rowVersion),
+            new RevertFormTemplateDraftCommand(
+                tenantId,
+                userId,
+                id,
+                request.VersionNumber,
+                rowVersion,
+                await capabilities.CanConfigureActionsAsync(User, ct)
+            ),
             ct
         );
         return ToActionResult(result);

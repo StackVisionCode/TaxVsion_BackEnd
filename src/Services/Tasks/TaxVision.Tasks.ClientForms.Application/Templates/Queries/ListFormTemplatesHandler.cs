@@ -24,7 +24,15 @@ public static class ListFormTemplatesHandler
     {
         var page = Math.Max(1, query.Page);
         var size = Math.Clamp(query.PageSize, 1, 100);
-        var found = await templates.ListAsync(query.TenantId, query.Status, query.Purpose, query.Search, page, size, ct);
+        var found = await templates.ListAsync(
+            query.TenantId,
+            query.Status,
+            query.Purpose,
+            query.Search,
+            page,
+            size,
+            ct
+        );
         return new PagedResult<FormTemplateSummaryResponse>(
             found.Items.Select(FormTemplateSummaryResponse.From).ToArray(),
             found.Page,

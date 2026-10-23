@@ -721,10 +721,7 @@ public sealed class PermissionCatalogTests
             .Where(code => code.StartsWith("tasks.", StringComparison.Ordinal))
             .ToArray();
 
-        Assert.Equal(
-            [TasksPermissions.PortalClientRequests, TasksPermissions.PortalForms],
-            portalTaskDefaults
-        );
+        Assert.Equal([TasksPermissions.PortalClientRequests, TasksPermissions.PortalForms], portalTaskDefaults);
     }
 
     /// <summary>
@@ -832,14 +829,17 @@ public sealed class PermissionCatalogTests
 
         Assert.Equal(16, definitions.Length);
         Assert.Equal(16, definitions.Select(definition => definition.Id).Distinct().Count());
-        Assert.All(definitions, definition =>
-        {
-            Assert.Equal("tasks", definition.Module);
-            Assert.Equal("planner", definition.GatedModule);
-            Assert.False(string.IsNullOrWhiteSpace(definition.Description));
-            Assert.EndsWith(".", definition.Description);
-            Assert.False(definition.IsDangerous);
-        });
+        Assert.All(
+            definitions,
+            definition =>
+            {
+                Assert.Equal("tasks", definition.Module);
+                Assert.Equal("planner", definition.GatedModule);
+                Assert.False(string.IsNullOrWhiteSpace(definition.Description));
+                Assert.EndsWith(".", definition.Description);
+                Assert.False(definition.IsDangerous);
+            }
+        );
 
         string[] activeCodes =
         [
@@ -855,9 +855,13 @@ public sealed class PermissionCatalogTests
             TasksPermissions.FormRequestsSendExternal,
             TasksPermissions.FormIntakeLinksManage,
             TasksPermissions.FormConsentsManage,
+            TasksPermissions.FormTemplatesConfigureActions,
         ];
-        Assert.Equal(activeCodes.Order(), definitions.Where(item => !item.IsReserved).Select(item => item.Code).Order());
-        Assert.Equal(4, definitions.Count(item => item.IsReserved));
+        Assert.Equal(
+            activeCodes.Order(),
+            definitions.Where(item => !item.IsReserved).Select(item => item.Code).Order()
+        );
+        Assert.Equal(3, definitions.Count(item => item.IsReserved));
     }
 
     [Fact]
@@ -884,11 +888,7 @@ public sealed class PermissionCatalogTests
     [Fact]
     public void Client_form_platform_permissions_never_reach_tenant_bundles()
     {
-        string[] platformCodes =
-        [
-            TasksPermissions.FormsLibraryManage,
-            TasksPermissions.FormsPlatformManage,
-        ];
+        string[] platformCodes = [TasksPermissions.FormsLibraryManage, TasksPermissions.FormsPlatformManage];
         string[] tenantRoles = [Role.SystemTenantAdmin, Role.SystemEmployee, Role.SystemCustomerPortal];
 
         foreach (var code in platformCodes)
@@ -924,8 +924,8 @@ public sealed class PermissionCatalogTests
         );
 
         Assert.Equal(13, staffDefinitions.Count());
-        Assert.Equal(10, staffDefinitions.Count(definition => !definition.IsReserved));
-        Assert.Equal(3, staffDefinitions.Count(definition => definition.IsReserved));
+        Assert.Equal(11, staffDefinitions.Count(definition => !definition.IsReserved));
+        Assert.Equal(2, staffDefinitions.Count(definition => definition.IsReserved));
         // El preparador revisa y envía a externos; revelar, enlaces públicos y avisos son del admin.
         var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
         Assert.Contains(TasksPermissions.FormRequestsRead, employee);
@@ -934,10 +934,10 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(TasksPermissions.FormSubmissionsReveal, employee);
         Assert.DoesNotContain(TasksPermissions.FormIntakeLinksManage, employee);
         Assert.DoesNotContain(TasksPermissions.FormConsentsManage, employee);
+        Assert.DoesNotContain(TasksPermissions.FormTemplatesConfigureActions, employee);
         Assert.All(
             staffDefinitions,
-            definition =>
-                Assert.Equal(!definition.IsReserved, tenantAdmin.Contains(definition.Code))
+            definition => Assert.Equal(!definition.IsReserved, tenantAdmin.Contains(definition.Code))
         );
     }
 }

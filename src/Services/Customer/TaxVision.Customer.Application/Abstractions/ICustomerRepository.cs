@@ -69,6 +69,15 @@ public interface ICustomerRepository
 
     Task AddAsync(CustomerEntity customer, CancellationToken ct);
 
+    /// <summary>Cliente creado por esa operación de origen, sin filtrar por estado: archivado o con otro
+    /// email se sigue encontrando. Default null para no romper los fakes.</summary>
+    Task<Guid?> FindIdByOriginAsync(
+        Guid tenantId,
+        string sourceService,
+        Guid sourceReferenceId,
+        CancellationToken ct
+    ) => Task.FromResult<Guid?>(null);
+
     /// <summary>Carga en 1 query los clientes NO archivados del tenant cuyos ids estén en la colección, con
     /// sus asignaciones (Include) — para el reparto masivo: se mutan (AssignPreparer/GrantAccess) y se guardan.
     /// Tracked. Default vacío para no romper los fakes.</summary>

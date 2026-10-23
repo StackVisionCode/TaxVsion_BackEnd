@@ -1,6 +1,8 @@
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine.Answers;
+using TaxVision.DataCollection.Engine.Conditions;
 using TaxVision.DataCollection.Engine.Definitions;
+using TaxVision.DataCollection.Engine.Mapping;
 using TaxVision.DataCollection.Engine.Progress;
 using TaxVision.DataCollection.Engine.Serialization;
 using TaxVision.DataCollection.Engine.Validation;
@@ -20,4 +22,12 @@ public interface IFormEngine
     FormAnswers RemoveHiddenAnswers(FormDefinition definition, FormAnswers answers, VisibilityMap visibility);
     FormProgress CalculateProgress(FormDefinition definition, FormAnswers answers, VisibilityMap visibility);
     CanonicalDefinition Canonicalize(FormDefinition definition);
+    CanonicalRuleSets CanonicalizeRuleSets(FormDefinition definition);
+    ValidationReport ValidateMappings(
+        FormDefinition definition,
+        MappingCatalogSnapshot catalogSnapshot,
+        PublisherCapabilities publisherCapabilities
+    );
+    Result<FormRuleSets> ParseRuleSets(string mappingSetJson, string actionSetJson);
+    bool EvaluateCondition(FormDefinition definition, FormAnswers answers, Condition? condition);
 }

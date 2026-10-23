@@ -10,7 +10,8 @@ public sealed class ConditionLimitTests
     public void Rejects_more_than_fifty_condition_nodes()
     {
         var leaf = new Condition { Field = "fd_toggle000", Op = "isTrue" };
-        var branches = Enumerable.Range(0, 10)
+        var branches = Enumerable
+            .Range(0, 10)
             .Select(_ => new Condition { All = Enumerable.Repeat(leaf, 5).ToArray() })
             .ToArray();
         var definition = EngineTestFactory.WithComponents(

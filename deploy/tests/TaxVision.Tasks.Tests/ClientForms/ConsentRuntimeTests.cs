@@ -106,6 +106,7 @@ public sealed class ConsentRuntimeTests
             fixture.Engine,
             fixture.Audit,
             new ConflictingUnitOfWork(1, "Persistence.UniqueConstraint"),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -261,11 +262,13 @@ public sealed class ConsentRuntimeTests
             new NoIntakeLinks(),
             new FormConsentGate(fixture.Notices, fixture.Records),
             fixture.Records,
+            FormActionTestDoubles.Planner(fixture.Versions, fixture.Engine),
             Options.Create(new ClientFormsOptions()),
             fixture.Audit,
             fixture.UnitOfWork,
             new FakeMessageBus(),
             new FixedCorrelation(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -309,6 +312,7 @@ public sealed class ConsentRuntimeTests
             fixture.Engine,
             fixture.Audit,
             fixture.UnitOfWork,
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -330,6 +334,7 @@ public sealed class ConsentRuntimeTests
             fixture.Engine,
             fixture.Audit,
             fixture.UnitOfWork,
+            new RecordingClientFormsMetrics(),
             default
         );
 

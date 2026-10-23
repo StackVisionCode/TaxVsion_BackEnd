@@ -37,6 +37,6 @@ public sealed class ComponentRegistry
     }
 
     public IReadOnlyCollection<IComponentType> All => _all;
-    public bool TryGet(string name, out IComponentType componentType) =>
-        _types.TryGetValue(name, out componentType!);
+
+    public bool TryGet(string name, out IComponentType componentType) => _types.TryGetValue(name, out componentType!);
 }

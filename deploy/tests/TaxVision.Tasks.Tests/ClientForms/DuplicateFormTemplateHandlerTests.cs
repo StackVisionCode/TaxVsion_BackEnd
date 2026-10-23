@@ -13,8 +13,13 @@ public sealed class DuplicateFormTemplateHandlerTests
         var audit = new RecordingFormAuditLog();
 
         var result = await DuplicateFormTemplateHandler.Handle(
-            new(source.TenantId, FormTemplateHandlerTestDoubles.UserId, source.Id, null),
-            FormTemplateHandlerTestDoubles.Engine(), templates, new MemoryFormTemplateVersionRepository(), audit, new RecordingUnitOfWork(), default
+            new(source.TenantId, FormTemplateHandlerTestDoubles.UserId, source.Id, null, false),
+            FormTemplateHandlerTestDoubles.Engine(),
+            templates,
+            new MemoryFormTemplateVersionRepository(),
+            audit,
+            new RecordingUnitOfWork(),
+            default
         );
 
         Assert.True(result.IsSuccess);

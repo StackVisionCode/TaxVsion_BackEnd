@@ -10,6 +10,5 @@ public static class ListFormModuleSettingsHandler
         ListFormModuleSettingsQuery _,
         IFormModuleSettingsRepository repository,
         CancellationToken ct
-    ) =>
-        (await repository.ListAsync(ct)).Select(FormModuleSettingsResponse.From).ToArray();
+    ) => (await repository.ListAsync(ct)).Select(FormModuleSettingsResponse.From).ToArray();
 }

@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
 using TaxVision.DataCollection.Engine.Answers;
 using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.DataCollection.Engine.Validation;
+using TaxVision.Tasks.ClientForms.Application.Common;
+using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
@@ -22,6 +25,56 @@ public sealed record SavePortalFormDraftCommand(
 public static class SavePortalFormDraftHandler
 {
     public static async Task<Result<FormDraftSaveOutcome>> Handle(
+        SavePortalFormDraftCommand command,
+        IFormRequestRepository requests,
+        IFormTemplateVersionRepository versions,
+        IFormEngine engine,
+        IAnswersProtector protector,
+        IFormConsentGate consentGate,
+        IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    )
+    {
+        var started = Stopwatch.GetTimestamp();
+        var outcome = ClientFormsMetricValues.Error;
+        try
+        {
+            var result = await SaveDraftAsync(
+                command,
+                requests,
+                versions,
+                engine,
+                protector,
+                consentGate,
+                unitOfWork,
+                ct
+            );
+            outcome = OutcomeOf(result);
+            return result;
+        }
+        catch (ConflictException)
+        {
+            outcome = ClientFormsMetricValues.Conflict;
+            throw;
+        }
+        finally
+        {
+            metrics.RecordDraftSave(outcome, Stopwatch.GetElapsedTime(started));
+        }
+    }
+
+    // Un rechazo de negocio cuenta como inválido; "error" queda para lo que reventó.
+    private static string OutcomeOf(Result<FormDraftSaveOutcome> result)
+    {
+        if (result.IsSuccess)
+            return result.Value.Saved ? ClientFormsMetricValues.Ok : ClientFormsMetricValues.Invalid;
+        return result.Error.Code == FormRequestErrors.ConcurrencyConflict.Code
+            ? ClientFormsMetricValues.Conflict
+            : ClientFormsMetricValues.Invalid;
+    }
+
+    private static async Task<Result<FormDraftSaveOutcome>> SaveDraftAsync(
         SavePortalFormDraftCommand command,
         IFormRequestRepository requests,
         IFormTemplateVersionRepository versions,

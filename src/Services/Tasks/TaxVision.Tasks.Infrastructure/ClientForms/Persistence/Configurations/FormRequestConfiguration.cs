@@ -46,32 +46,78 @@ public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequ
         builder.Ignore(request => request.CustomerLink);
         builder.Ignore(request => request.EffectiveCustomerId);
 
-        builder.HasOne<FormTemplateVersion>()
+        builder
+            .HasOne<FormTemplateVersion>()
             .WithMany()
             .HasForeignKey(request => request.FormTemplateVersionId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(request => request.Submission)
+        builder
+            .HasMany(request => request.ActionRuns)
+            .WithOne()
+            .HasForeignKey(run => run.FormRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(request => request.ActionRuns).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(request => request.LatestRevision);
+        builder
+            .HasOne(request => request.Submission)
             .WithOne()
             .HasForeignKey<FormSubmission>(submission => submission.FormRequestId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(request => new { request.TenantId, request.CustomerId, request.Status })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.CustomerId,
+                request.Status,
+            })
             .HasFilter("[CustomerId] IS NOT NULL")
             .HasDatabaseName("IX_FormRequests_TenantId_CustomerId_Status");
-        builder.HasIndex(request => new { request.TenantId, request.ParticipantId, request.Status })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.ParticipantId,
+                request.Status,
+            })
             .HasFilter("[ParticipantId] IS NOT NULL")
             .HasDatabaseName("IX_FormRequests_TenantId_ParticipantId_Status");
-        builder.HasIndex(request => new { request.TenantId, request.ResponsibleUserId, request.Status })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.ResponsibleUserId,
+                request.Status,
+            })
             .HasDatabaseName("IX_FormRequests_TenantId_ResponsibleUserId_Status");
-        builder.HasIndex(request => new { request.TenantId, request.Status, request.DueAtUtc })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.Status,
+                request.DueAtUtc,
+            })
             .HasDatabaseName("IX_FormRequests_TenantId_Status_DueAtUtc");
-        builder.HasIndex(request => new { request.TenantId, request.FormTemplateId })
+        builder
+            .HasIndex(request => new { request.TenantId, request.FormTemplateId })
             .HasDatabaseName("IX_FormRequests_TenantId_FormTemplateId");
-        builder.HasIndex(request => new { request.TenantId, request.CustomerId, request.FormTemplateId })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.CustomerId,
+                request.FormTemplateId,
+            })
             .IsUnique()
             .HasFilter("[Status] IN (1, 2, 3) AND [CustomerId] IS NOT NULL")
             .HasDatabaseName("UX_FormRequests_OpenPerCustomerTemplate");
-        builder.HasIndex(request => new { request.TenantId, request.ParticipantId, request.FormTemplateId })
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.ParticipantId,
+                request.FormTemplateId,
+            })
             .IsUnique()
             .HasFilter("[Status] IN (1, 2, 3) AND [CustomerId] IS NULL AND [ParticipantId] IS NOT NULL")
             .HasDatabaseName("UX_FormRequests_OpenPerParticipantTemplate");

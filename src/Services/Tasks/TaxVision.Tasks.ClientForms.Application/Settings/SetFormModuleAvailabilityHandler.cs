@@ -33,7 +33,13 @@ public static class SetFormModuleAvailabilityHandler
             return Result.Failure<FormModuleSettingsResponse>(FormModuleSettingsErrors.IntakeLinksNotReady);
         var settings = await repository.GetAsync(command.TenantId, ct);
         var changed = settings is null
-            ? FormModuleSettings.Create(command.TenantId, command.Enabled, command.Note, command.ByUserId, DateTime.UtcNow)
+            ? FormModuleSettings.Create(
+                command.TenantId,
+                command.Enabled,
+                command.Note,
+                command.ByUserId,
+                DateTime.UtcNow
+            )
             : Update(settings, command);
         if (changed.IsFailure)
             return Result.Failure<FormModuleSettingsResponse>(changed.Error);
@@ -47,16 +53,15 @@ public static class SetFormModuleAvailabilityHandler
         return Result.Success(FormModuleSettingsResponse.From(changed.Value));
     }
 
-    private static Result ApplyCapabilities(
-        FormModuleSettings settings,
-        SetFormModuleAvailabilityCommand command
-    )
+    private static Result ApplyCapabilities(FormModuleSettings settings, SetFormModuleAvailabilityCommand command)
     {
-        if (command.ExternalParticipantsEnabled is null
+        if (
+            command.ExternalParticipantsEnabled is null
             && command.IntakeLinksEnabled is null
             && command.AutoCustomerCreationEnabled is null
             && command.SignatureStepEnabled is null
-            && command.PushNotificationsEnabled is null)
+            && command.PushNotificationsEnabled is null
+        )
             return Result.Success();
 
         return settings.SetCapabilities(

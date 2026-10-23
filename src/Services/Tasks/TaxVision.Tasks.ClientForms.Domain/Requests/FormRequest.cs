@@ -7,6 +7,8 @@ namespace TaxVision.Tasks.ClientForms.Domain.Requests;
 
 public sealed class FormRequest : AggregateRoot
 {
+    private readonly List<FormActionRun> _actionRuns = [];
+
     private FormRequest() { }
 
     public FormParticipantKind ParticipantKind { get; private set; }
@@ -48,6 +50,9 @@ public sealed class FormRequest : AggregateRoot
     public DateTime LastActivityAtUtc { get; private set; }
     public FormSubmission? Submission { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
+    public IReadOnlyCollection<FormActionRun> ActionRuns => _actionRuns;
+
+    public FormSubmissionRevision? LatestRevision => Submission?.CurrentRevision(CurrentRevisionNumber);
 
     public FormParticipantRef Participant =>
         ParticipantKind == FormParticipantKind.Customer
@@ -539,6 +544,175 @@ public sealed class FormRequest : AggregateRoot
             return Result.Failure(FormRequestErrors.NotFound);
         revision.MarkPdfFailed();
         return Result.Success();
+    }
+
+    public Result<FormActionRun> RequestAction(string actionKey, string actionType, Guid commandId, DateTime nowUtc) =>
+        commandId == Guid.Empty
+            ? Result.Failure<FormActionRun>(FormActionRunErrors.Invalid)
+            : AddActionRun(actionKey, actionType, null, commandId, nowUtc);
+
+    // Termina sin emitir nada: Skipped (condición o disponibilidad) o Failed (no se pudo armar el comando).
+    public Result<FormActionRun> CloseActionWithoutCommand(
+        string actionKey,
+        string actionType,
+        FormActionRunStatus status,
+        string errorCode,
+        DateTime nowUtc
+    )
+    {
+        if (status is not (FormActionRunStatus.Skipped or FormActionRunStatus.Failed))
+            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
+        if (string.IsNullOrWhiteSpace(errorCode))
+            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
+        var run = AddActionRun(actionKey, actionType, null, null, nowUtc);
+        if (run.IsSuccess)
+            run.Value.CloseWithoutCommand(status, errorCode, nowUtc);
+        return run;
+    }
+
+    public Result<FormActionRun> GetRetryableAction(Guid runId)
+    {
+        var run = _actionRuns.Find(item => item.Id == runId);
+        if (run is null)
+            return Result.Failure<FormActionRun>(FormActionRunErrors.NotFound);
+        return run.IsRetryable ? Result.Success(run) : Result.Failure<FormActionRun>(FormActionRunErrors.NotRetryable);
+    }
+
+    // Mismo IdempotencyKey, Attempt + 1. Sin comando (failureCode), el intento nace fallido.
+    public Result<FormActionRun> RetryAction(Guid runId, Guid? commandId, string? failureCode, DateTime nowUtc)
+    {
+        var previous = GetRetryableAction(runId);
+        if (previous.IsFailure)
+            return previous;
+        if ((commandId is null) == string.IsNullOrWhiteSpace(failureCode) || commandId == Guid.Empty)
+            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
+        var next = AddActionRun(
+            previous.Value.ActionKey,
+            previous.Value.ActionType,
+            previous.Value.IdempotencyKey,
+            commandId,
+            nowUtc
+        );
+        if (next.IsFailure)
+            return next;
+        previous.Value.MarkRetried(nowUtc);
+        if (failureCode is not null)
+            next.Value.CloseWithoutCommand(FormActionRunStatus.Failed, failureCode, nowUtc);
+        return next;
+    }
+
+    public bool HasActiveAction(string actionType) =>
+        _actionRuns.Exists(run => run.ActionType == actionType && run.Status != FormActionRunStatus.Skipped);
+
+    public FormActionRun? LatestAction(string actionType) =>
+        _actionRuns.Find(run =>
+            run.ActionType == actionType && run.IsLatestAttempt && run.Status != FormActionRunStatus.Skipped
+        );
+
+    public FormActionRun? FindActionByCommand(Guid commandId) =>
+        commandId == Guid.Empty ? null : _actionRuns.Find(run => run.CommandId == commandId);
+
+    public Result<FormActionRunTransition> CompleteAction(
+        Guid commandId,
+        string resultKind,
+        Guid resultId,
+        string? warnings,
+        DateTime nowUtc
+    )
+    {
+        var run = FindActionByCommand(commandId);
+        if (run is null)
+            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.NotFound);
+        if (resultId == Guid.Empty || string.IsNullOrWhiteSpace(resultKind))
+            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.Invalid);
+        return Result.Success(run.Complete(resultKind, resultId, warnings, nowUtc));
+    }
+
+    public Result<FormActionRunTransition> RejectAction(
+        Guid commandId,
+        string errorCode,
+        Guid? existingCustomerId,
+        string? detail,
+        DateTime nowUtc
+    )
+    {
+        var run = FindActionByCommand(commandId);
+        if (run is null)
+            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.NotFound);
+        if (string.IsNullOrWhiteSpace(errorCode))
+            return Result.Failure<FormActionRunTransition>(FormActionRunErrors.Invalid);
+        return Result.Success(run.Reject(errorCode, existingCustomerId, detail, nowUtc));
+    }
+
+    // Adjuntos vigentes que todavía no pasaron al cliente vinculado.
+    public IReadOnlyList<Guid> FilesPendingOwnerReassignment()
+    {
+        var files = new List<Guid>();
+        if (
+            Submission is null
+            || ParticipantKind != FormParticipantKind.External
+            || CustomerLinkStatus != CustomerLinkStatus.Linked
+        )
+            return files;
+        foreach (var attachment in Submission.Attachments)
+        {
+            if (attachment.Status != FormAttachmentStatus.Detached && !attachment.OwnerReassignmentSettled)
+                files.Add(attachment.FileId);
+        }
+        return files;
+    }
+
+    public Result RecordFileReassignment(Guid fileId, string outcome, DateTime nowUtc)
+    {
+        if (!FormFileReassignmentOutcomes.IsKnown(outcome) || Submission is null)
+            return Result.Failure(FormRequestErrors.AttachmentNotFound);
+        var found = false;
+        foreach (var attachment in Submission.Attachments)
+        {
+            if (attachment.FileId != fileId || attachment.Status == FormAttachmentStatus.Detached)
+                continue;
+            attachment.RecordOwnerReassignment(outcome, nowUtc);
+            found = true;
+        }
+        return found ? Result.Success() : Result.Failure(FormRequestErrors.AttachmentNotFound);
+    }
+
+    private Result<FormActionRun> AddActionRun(
+        string actionKey,
+        string actionType,
+        string? idempotencyKey,
+        Guid? commandId,
+        DateTime nowUtc
+    )
+    {
+        if (
+            CurrentRevisionNumber < 1
+            || string.IsNullOrWhiteSpace(actionKey)
+            || actionKey.Length > FormActionRun.ActionKeyMaxLength
+            || string.IsNullOrWhiteSpace(actionType)
+            || actionType.Length > FormActionRun.ActionTypeMaxLength
+        )
+            return Result.Failure<FormActionRun>(FormActionRunErrors.Invalid);
+        var key = idempotencyKey ?? FormActionRun.IdempotencyKeyFor(Id, CurrentRevisionNumber, actionKey);
+        var attempt = 1;
+        foreach (var existing in _actionRuns)
+        {
+            if (existing.IdempotencyKey == key && existing.Attempt >= attempt)
+                attempt = existing.Attempt + 1;
+        }
+        var run = FormActionRun.Create(
+            TenantId,
+            Id,
+            CurrentRevisionNumber,
+            actionKey,
+            actionType,
+            key,
+            attempt,
+            commandId,
+            nowUtc
+        );
+        _actionRuns.Add(run);
+        return Result.Success(run);
     }
 
     public IReadOnlyCollection<(string OwnerType, Guid OwnerId)> ExpectedFileOwners()

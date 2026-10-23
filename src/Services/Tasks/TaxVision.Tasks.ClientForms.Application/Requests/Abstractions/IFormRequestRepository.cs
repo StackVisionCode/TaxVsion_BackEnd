@@ -1,5 +1,5 @@
-using BuildingBlocks.Results;
 using BuildingBlocks.Common;
+using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Requests.Queries;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 
@@ -29,11 +29,17 @@ public interface IFormRequestRepository
         Guid templateId,
         CancellationToken ct = default
     ) => Task.FromResult<FormRequest?>(null);
-    Task<int> CountIntakeSubmissionsAsync(
+
+    // Otra request abierta del cliente para la plantilla: la que impide vincular esta.
+    Task<Guid?> FindOpenRequestIdAsync(
         Guid tenantId,
-        DateTime sinceUtc,
+        Guid customerId,
+        Guid templateId,
+        Guid exceptRequestId,
         CancellationToken ct = default
-    ) => Task.FromResult(0);
+    ) => Task.FromResult<Guid?>(null);
+    Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
+        Task.FromResult(0);
     Task<IReadOnlyList<FormRequest>> ListOpenByCustomerAsync(
         Guid tenantId,
         Guid customerId,

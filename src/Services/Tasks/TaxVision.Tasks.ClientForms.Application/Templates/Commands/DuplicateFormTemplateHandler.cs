@@ -1,7 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
-using TaxVision.DataCollection.Engine.Serialization;
+using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Responses;
@@ -15,7 +15,8 @@ public sealed record DuplicateFormTemplateCommand(
     Guid TenantId,
     Guid ByUserId,
     Guid TemplateId,
-    int? FromVersionNumber
+    int? FromVersionNumber,
+    bool CanConfigureActions
 );
 
 public static class DuplicateFormTemplateHandler
@@ -39,14 +40,7 @@ public static class DuplicateFormTemplateHandler
         var parsed = engine.ParseDefinition(json.Value);
         if (parsed.IsFailure)
             return Result.Failure<FormTemplateDetailResponse>(FormTemplateErrors.InvalidDefinition);
-        var canonical = engine.Canonicalize(parsed.Value);
-        var created = CreateCopy(
-            command,
-            source.Value,
-            engine,
-            canonical,
-            TemplateApplicationSupport.ToDomain(parsed.Value.Purpose)
-        );
+        var created = CreateCopy(command, source.Value, engine, parsed.Value);
         if (created.IsFailure)
             return Result.Failure<FormTemplateDetailResponse>(created.Error);
         templates.Add(created.Value);
@@ -80,11 +74,18 @@ public static class DuplicateFormTemplateHandler
         DuplicateFormTemplateCommand command,
         FormTemplate source,
         IFormEngine engine,
-        CanonicalDefinition canonical,
-        FormPurpose purpose
+        FormDefinition definition
     )
     {
-        var document = TemplateApplicationSupport.Document(engine, canonical);
+        var allowed = TemplateApplicationSupport.EnsureRuleSetsAllowed(
+            engine,
+            null,
+            definition,
+            command.CanConfigureActions
+        );
+        if (allowed.IsFailure)
+            return Result.Failure<FormTemplate>(allowed.Error);
+        var document = TemplateApplicationSupport.Document(engine, engine.Canonicalize(definition));
         if (document.IsFailure)
             return Result.Failure<FormTemplate>(document.Error);
         return FormTemplate.Create(
@@ -93,7 +94,7 @@ public static class DuplicateFormTemplateHandler
             source.Description,
             document.Value.Document,
             document.Value.Hash,
-            purpose,
+            TemplateApplicationSupport.ToDomain(definition.Purpose),
             command.ByUserId,
             DateTime.UtcNow
         );

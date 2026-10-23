@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Hosting;
 using BuildingBlocks.Web.Observability;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using TaxVision.Connectors.Infrastructure.Persistence;
@@ -49,7 +50,7 @@ public static class MailboxListenerProgram
             // Solo publica: sin handlers, sin colas propias y sin outbox (el aviso es descartable,
             // la reconciliación cubre lo que se pierda).
             options.Discovery.DisableConventionalDiscovery();
-            options.UseRabbitMq(rabbitUri).AutoProvision();
+            options.UseTaxVisionRabbitMq(rabbitUri);
             options.PublishMessage<ConnectorsMailboxChangeDetectedIntegrationEvent>().ToRabbitExchange(EventsExchange);
             options.PublishMessage<ConnectorsMailboxAuthFailedIntegrationEvent>().ToRabbitExchange(EventsExchange);
         });

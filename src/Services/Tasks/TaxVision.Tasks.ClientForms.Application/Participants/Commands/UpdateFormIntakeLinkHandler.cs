@@ -1,10 +1,12 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Participants;
+using TaxVision.Tasks.ClientForms.Domain.Versions;
 
 namespace TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 
@@ -15,6 +17,8 @@ public static class UpdateFormIntakeLinkHandler
         IClientFormsPublicCapabilityEvaluator capabilities,
         IFormIntakeLinkRepository links,
         IFormTemplateVersionRepository versions,
+        IFormResponsibleUserValidator responsibleUsers,
+        IFormActionAuthorizer authorizer,
         IFormExternalAccessSecurity security,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
@@ -32,7 +36,7 @@ public static class UpdateFormIntakeLinkHandler
             return Failure(FormParticipantErrors.IntakeLinkConcurrency);
 
         var token = command.Action == FormIntakeLinkAction.RegenerateToken ? security.GenerateProtectedToken() : null;
-        var changed = await ApplyAsync(link, command, token, versions, ct);
+        var changed = await ApplyAsync(link, command, token, new(versions, responsibleUsers, authorizer), ct);
         if (changed.IsFailure)
             return Failure(changed.Error);
         audit.Record(command.TenantId, link.FormTemplateId, null, FormAuditAction.IntakeLinkUpdated, command.ByUserId);
@@ -48,7 +52,7 @@ public static class UpdateFormIntakeLinkHandler
         FormIntakeLink link,
         UpdateFormIntakeLinkCommand command,
         FormProtectedToken? token,
-        IFormTemplateVersionRepository versions,
+        PinSources sources,
         CancellationToken ct
     )
     {
@@ -56,11 +60,36 @@ public static class UpdateFormIntakeLinkHandler
             return ApplySimple(link, command, token);
         if (!command.FormTemplateVersionId.HasValue)
             return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
-        var version = await versions.GetByIdAsync(command.TenantId, command.FormTemplateVersionId.Value, ct);
-        return version.IsFailure || version.Value.FormTemplateId != link.FormTemplateId
-            ? Result.Failure(FormParticipantErrors.IntakeLinkInvalid)
-            : link.PinVersion(version.Value.Id);
+        var version = await sources.Versions.GetByIdAsync(command.TenantId, command.FormTemplateVersionId.Value, ct);
+        if (version.IsFailure || version.Value.FormTemplateId != link.FormTemplateId)
+            return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
+        var responsible = await EnsureResponsibleAsync(link, version.Value, sources, ct);
+        return responsible.IsFailure ? responsible : link.PinVersion(version.Value.Id);
     }
+
+    // Igual que al crear el enlace: la versión nueva puede traer acciones que el responsable no puede ejecutar.
+    private static async Task<Result> EnsureResponsibleAsync(
+        FormIntakeLink link,
+        FormTemplateVersion version,
+        PinSources sources,
+        CancellationToken ct
+    )
+    {
+        if (!await sources.ResponsibleUsers.IsActiveAsync(link.TenantId, link.ResponsibleUserId, ct))
+            return Result.Failure(FormParticipantErrors.IntakeResponsibleUnavailable);
+        return await sources.Authorizer.EnsureResponsibleCanRunAsync(
+            link.TenantId,
+            link.ResponsibleUserId,
+            version,
+            ct
+        );
+    }
+
+    private sealed record PinSources(
+        IFormTemplateVersionRepository Versions,
+        IFormResponsibleUserValidator ResponsibleUsers,
+        IFormActionAuthorizer Authorizer
+    );
 
     private static Result ApplySimple(
         FormIntakeLink link,

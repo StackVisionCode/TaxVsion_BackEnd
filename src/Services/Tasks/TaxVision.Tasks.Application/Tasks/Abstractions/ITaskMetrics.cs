@@ -31,6 +31,4 @@ public interface ITaskMetrics
 
     /// <summary>Tareas que pasaron su vencimiento sin cerrarse.</summary>
     void RecordOverdue(int count);
-
-    void RecordClientFormsAttachmentsReconciled(int count, string source) { }
 }

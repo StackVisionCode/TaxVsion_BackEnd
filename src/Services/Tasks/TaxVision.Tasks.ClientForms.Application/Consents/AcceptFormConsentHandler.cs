@@ -22,6 +22,7 @@ public static class AcceptFormConsentHandler
         IFormEngine engine,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -45,7 +46,7 @@ public static class AcceptFormConsentHandler
         if (recorded.IsFailure)
             return Result.Failure<AcceptFormConsentResponse>(recorded.Error);
         if (recorded.Value.Created)
-            await AuditAsync(command, outcome, audit, unitOfWork, ct);
+            await AuditAsync(command, outcome, audit, unitOfWork, metrics, ct);
         var record = recorded.Value.Record;
         return Result.Success(new AcceptFormConsentResponse(record.Id, record.RecordedAtUtc));
     }
@@ -92,6 +93,7 @@ public static class AcceptFormConsentHandler
         FormConsentOutcome outcome,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -102,5 +104,6 @@ public static class AcceptFormConsentHandler
             command.Context.Actor
         );
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordConsent(outcome);
     }
 }

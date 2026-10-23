@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Mapping;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
@@ -10,6 +11,7 @@ using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.ClientForms.Domain.ValueObjects;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
+using TaxVision.Tasks.Infrastructure.ClientForms.Mapping;
 
 namespace TaxVision.Tasks.Tests.ClientForms;
 
@@ -21,7 +23,14 @@ internal static class FormTemplateHandlerTestDoubles
         {"schemaVersion":1,"title":"Client intake","purpose":"clientIntake","presentation":"wizard","settings":{"showProgress":true},"pages":[{"id":"pg_abcdefgh","title":"Page","description":null,"visibleWhen":null,"style":null,"sections":[{"id":"sc_abcdefgh","title":"Section","description":null,"visibleWhen":null,"repeat":null,"style":null,"components":[{"id":"fd_abcdefgh","type":"text","key":null,"label":"Name","help":null,"required":false,"requiredWhen":null,"visibleWhen":null,"dataClass":"personal","reportable":false,"prefill":null,"style":null,"props":{}}]}]}],"mappings":[],"actions":[]}
         """;
 
+    internal static readonly PublisherCapabilities Publisher = new(
+        new HashSet<string>(["customers.manage"], StringComparer.Ordinal),
+        false
+    );
+
     internal static IFormEngine Engine() => new FormEngine(new DataCollectionLimits());
+
+    internal static IDataCollectionTargetCatalog TargetCatalog() => new ContractDataCollectionTargetCatalog();
 
     internal static ConsentNotice IdentityNotice(Guid tenantId, Guid userId, DateTime nowUtc)
     {

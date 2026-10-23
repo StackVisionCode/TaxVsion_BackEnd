@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using TaxVision.Tenant.Domain.Enums;
 using Xunit;
 
 namespace TaxVision.Tenant.Tests.Integration;
@@ -20,13 +21,23 @@ public sealed class PublicBrandingTests : IClassFixture<TenantApiFactory>
     public async Task Unknown_slug_returns_the_system_brand_with_200_not_404()
     {
         var client = factory.CreateClient(); // anónimo, sin Authorization
+        var expectedPrimary = await SystemBrandProbe.ExpectedColorAsync(
+            factory,
+            BrandSurface.Crm,
+            BrandColorToken.Primary
+        );
+        var expectedAccent = await SystemBrandProbe.ExpectedColorAsync(
+            factory,
+            BrandSurface.Crm,
+            BrandColorToken.Accent
+        );
 
         var response = await client.GetAsync("/tenants/branding/public/definitely-not-an-office?surface=Crm");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("#1E466B", body.GetProperty("primary").GetString());
-        Assert.Equal("#67BAF4", body.GetProperty("accent").GetString());
+        Assert.Equal(expectedPrimary, body.GetProperty("primary").GetString());
+        Assert.Equal(expectedAccent, body.GetProperty("accent").GetString());
     }
 
     [Fact]

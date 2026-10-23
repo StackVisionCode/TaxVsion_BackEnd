@@ -5,15 +5,15 @@ namespace TaxVision.DataCollection.Engine.Tests;
 public sealed class ComponentRegistryTests
 {
     public static IEnumerable<object[]> Contracts() =>
-    [
-        ["text", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals" }],
-        ["number", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals", "gt", "gte", "lt", "lte" }],
-        ["select", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals", "in", "notIn" }],
-        ["yesNo", new[] { "isTrue", "isFalse", "isAnswered", "isNotAnswered" }],
-        ["checkbox", new[] { "isTrue", "isFalse" }],
-        ["checkboxGroup", new[] { "isAnswered", "isNotAnswered", "contains", "notContains" }],
-        ["file", new[] { "isAnswered", "isNotAnswered" }],
-    ];
+        [
+            ["text", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals" }],
+            ["number", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals", "gt", "gte", "lt", "lte" }],
+            ["select", new[] { "isAnswered", "isNotAnswered", "equals", "notEquals", "in", "notIn" }],
+            ["yesNo", new[] { "isTrue", "isFalse", "isAnswered", "isNotAnswered" }],
+            ["checkbox", new[] { "isTrue", "isFalse" }],
+            ["checkboxGroup", new[] { "isAnswered", "isNotAnswered", "contains", "notContains" }],
+            ["file", new[] { "isAnswered", "isNotAnswered" }],
+        ];
 
     [Theory]
     [MemberData(nameof(Contracts))]

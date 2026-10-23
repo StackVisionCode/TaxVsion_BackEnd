@@ -190,12 +190,170 @@ const progress = [
   fixture('visible required included', 'progress', conditionalDefinition, { fd_toggle000: true }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000', 'fd_detail000'], progress: { required: 2, answered: 1 } }),
 ];
 
-const groups = { structure, answers: answerCases, conditions, progress };
+const manage = ['customers.manage'];
+const target = (targetKey, entity, dataType, extra = {}) => ({
+  targetKey,
+  domain: 'Customer',
+  entity,
+  displayName: targetKey,
+  dataType,
+  sensitivity: 'personal',
+  status: 'active',
+  operations: ['CreateCustomer', 'UpdateCustomerProfile'],
+  requiredFor: [],
+  requiredPermissions: manage,
+  requiresTenantAdmin: false,
+  ...extra,
+});
+const catalog = {
+  catalogVersion: 1,
+  targets: [
+    target('customer.kind', 'Customer', 'enum', { sensitivity: 'general', enumValues: ['Individual', 'Business'], requiredFor: [{ operation: 'CreateCustomer' }] }),
+    target('customer.person.first_name', 'Customer', 'string', { maxLength: 80, requiredFor: [{ operation: 'CreateCustomer', kind: 'Individual' }] }),
+    target('customer.person.last_name', 'Customer', 'string', { maxLength: 80, requiredFor: [{ operation: 'CreateCustomer', kind: 'Individual' }] }),
+    target('customer.person.middle_name', 'Customer', 'string', { maxLength: 80 }),
+    target('customer.business.legal_name', 'Customer', 'string', { maxLength: 200, requiredFor: [{ operation: 'CreateCustomer', kind: 'Business' }] }),
+    target('customer.business.formation_date', 'Customer', 'date', { pastOnly: true }),
+    target('customer.date_of_birth', 'Customer', 'date'),
+    target('customer.primary_email', 'Customer', 'email', { maxLength: 254, requiredFor: [{ operation: 'CreateCustomer' }] }),
+    target('customer.primary_phone', 'Customer', 'phone'),
+    target('customer.language', 'Customer', 'enum', { sensitivity: 'general', enumValues: ['Es', 'En', 'Pt', 'Fr'], requiredFor: [{ operation: 'CreateCustomer' }] }),
+    target('customer.address.home', 'Address', 'address'),
+    target('customer.relation.dependents', 'Relation', 'collection', {
+      operations: ['UpdateCustomerProfile'],
+      fields: [
+        { name: 'first_name', dataType: 'string', maxLength: 80, required: true },
+        { name: 'last_name', dataType: 'string', maxLength: 80, required: true },
+        { name: 'date_of_birth', dataType: 'date' },
+      ],
+    }),
+    target('customer.fiscal.tax_identifier', 'FiscalProfile', 'taxId', { operations: ['UpdateCustomerProfile'], sensitivity: 'restricted', requiresTenantAdmin: true }),
+    target('customer.legacy.nickname', 'Customer', 'string', { maxLength: 80, status: 'deprecated' }),
+  ],
+  operations: [
+    { name: 'CreateCustomer', requiredPermissions: manage, requiresTenantAdmin: false, discriminatorTargetKey: 'customer.kind', configTargets: { kind: 'customer.kind', language: 'customer.language' } },
+    { name: 'UpdateCustomerProfile', requiredPermissions: manage, requiresTenantAdmin: false, discriminatorTargetKey: null, configTargets: {} },
+  ],
+};
+const staff = { permissions: manage, isTenantAdmin: false };
+const admin = { permissions: manage, isTenantAdmin: true };
+const mappingFixture = (name, def, expected = emptyExpected, capabilities = staff) => ({ name, mode: 'mappings', definition: def, catalog, capabilities, expected });
+const issues = (...pairs) => ({ valid: false, issues: pairs.map(([code, pointer]) => ({ code, path: pointer })) });
+const languageOptions = [{ value: 'spanish', label: 'Spanish' }, { value: 'english', label: 'English' }];
+const kindOptions = [{ value: 'individual', label: 'Individual' }, { value: 'business', label: 'Business' }];
+const onboardingComponents = [
+  component('text', { maxLength: 80 }, { id: 'fd_first0001', required: true, label: 'First name' }),
+  component('text', { maxLength: 80 }, { id: 'fd_last00001', required: true, label: 'Last name' }),
+  component('email', {}, { id: 'fd_email0001', required: true, label: 'Email' }),
+  component('phone', {}, { id: 'fd_phone0001', label: 'Phone' }),
+  component('date', { max: 'today' }, { id: 'fd_dob000001', label: 'Date of birth' }),
+  component('radio', { options: languageOptions }, { id: 'fd_lang00001', required: true, label: 'Language' }),
+  component('address', { country: 'US' }, { id: 'fd_addr00001', label: 'Home address' }),
+];
+const onboardingMappings = [
+  { componentId: 'fd_first0001', targetKey: 'customer.person.first_name', transform: 'trim' },
+  { componentId: 'fd_last00001', targetKey: 'customer.person.last_name', transform: 'trim' },
+  { componentId: 'fd_email0001', targetKey: 'customer.primary_email', transform: 'lowercase' },
+  { componentId: 'fd_phone0001', targetKey: 'customer.primary_phone' },
+  { componentId: 'fd_dob000001', targetKey: 'customer.date_of_birth' },
+  { componentId: 'fd_lang00001', targetKey: 'customer.language', optionMap: { spanish: 'Es', english: 'En' } },
+  { componentId: 'fd_addr00001', targetKey: 'customer.address.home' },
+];
+const createAction = (config = { kind: { constant: 'Individual' }, language: { mapped: true } }) => ({ key: 'create_client', type: 'createCustomer', trigger: 'onSubmit', config });
+const onboarding = ({ components = onboardingComponents, mappings = onboardingMappings, extraComponents = [], extraMappings = [], actions = [createAction()] } = {}) =>
+  definition([...components, ...extraComponents], { mappings: [...mappings, ...extraMappings], actions });
+const replaceAt = (items, index, value) => items.map((item, position) => (position === index ? value : item));
+const extra = (type, props, targetKey, overrides = {}) => ({
+  extraComponents: [component(type, props, { id: 'fd_extra0001', label: 'Extra', ...overrides })],
+  extraMappings: [{ componentId: 'fd_extra0001', targetKey }],
+});
+const kindRadio = component('radio', { options: kindOptions }, { id: 'fd_kind00001', required: true, label: 'Client type' });
+const kindMapping = { componentId: 'fd_kind00001', targetKey: 'customer.kind', optionMap: { individual: 'Individual', business: 'Business' } };
+const byKind = (value) => ({ requiredWhen: { field: 'fd_kind00001', op: 'equals', value } });
+const kindDefinition = ({ firstWhen = 'individual', legal = true } = {}) => definition([
+  kindRadio,
+  component('text', { maxLength: 80 }, { id: 'fd_first0001', label: 'First name', ...byKind(firstWhen) }),
+  component('text', { maxLength: 80 }, { id: 'fd_last00001', label: 'Last name', ...byKind('individual') }),
+  ...(legal ? [component('text', {}, { id: 'fd_legal0001', label: 'Legal business name', ...byKind('business') })] : []),
+  component('email', {}, { id: 'fd_email0001', required: true, label: 'Email' }),
+  component('radio', { options: languageOptions }, { id: 'fd_lang00001', required: true, label: 'Language' }),
+], {
+  mappings: [
+    kindMapping,
+    { componentId: 'fd_first0001', targetKey: 'customer.person.first_name' },
+    { componentId: 'fd_last00001', targetKey: 'customer.person.last_name' },
+    ...(legal ? [{ componentId: 'fd_legal0001', targetKey: 'customer.business.legal_name' }] : []),
+    { componentId: 'fd_email0001', targetKey: 'customer.primary_email' },
+    { componentId: 'fd_lang00001', targetKey: 'customer.language', optionMap: { spanish: 'Es', english: 'En' } },
+  ],
+  actions: [createAction({ kind: { mapped: true }, language: { mapped: true } })],
+});
+const dependents = (rowFields) => definition([], {
+  pages: [{
+    id: 'pg_abcdefgh',
+    title: 'Page',
+    sections: [{
+      id: 'sc_deps0001',
+      title: 'Dependents',
+      repeat: { minRows: 0, maxRows: 10, addLabel: 'Add dependent', rowLabel: 'Dependent' },
+      components: [
+        component('text', { maxLength: 80 }, { id: 'fd_depfirst1', required: true, label: 'First name' }),
+        component('text', { maxLength: 80 }, { id: 'fd_deplast01', required: true, label: 'Last name' }),
+        component('date', { max: 'today' }, { id: 'fd_depdob001', label: 'Date of birth' }),
+      ],
+    }],
+  }],
+  mappings: [{ componentId: 'sc_deps0001', targetKey: 'customer.relation.dependents', ...(rowFields ? { rowFields } : {}) }],
+  actions: [{ key: 'update_profile', type: 'updateCustomerProfile', trigger: 'manual' }],
+});
+const allDependentFields = { fd_depfirst1: 'first_name', fd_deplast01: 'last_name', fd_depdob001: 'date_of_birth' };
+
+const mappings = [
+  mappingFixture('onboarding maps to create customer', onboarding()),
+  mappingFixture('unknown target', onboarding({ mappings: replaceAt(onboardingMappings, 4, { componentId: 'fd_dob000001', targetKey: 'customer.favorite_color' }) }), issue('mapping.unknown_target', '/mappings/4/targetKey')),
+  mappingFixture('deprecated target', onboarding(extra('text', { maxLength: 80 }, 'customer.legacy.nickname')), issue('mapping.deprecated_target', '/mappings/7/targetKey')),
+  mappingFixture('number cannot map to text target', onboarding(extra('number', {}, 'customer.person.middle_name')), issue('mapping.type_mismatch', '/mappings/7/componentId')),
+  mappingFixture('file is not mappable', onboarding(extra('file', {}, 'customer.person.middle_name')), issue('mapping.type_mismatch', '/mappings/7/componentId')),
+  mappingFixture('text longer than target', onboarding(extra('text', { maxLength: 120 }, 'customer.person.middle_name')), issue('mapping.length_exceeds_target', '/mappings/7/componentId')),
+  mappingFixture('default text length exceeds target', onboarding(extra('text', {}, 'customer.person.middle_name')), issue('mapping.length_exceeds_target', '/mappings/7/componentId')),
+  mappingFixture('past only target needs today limit', onboarding(extra('date', {}, 'customer.business.formation_date')), issue('mapping.type_mismatch', '/mappings/7/componentId')),
+  mappingFixture('option map must cover every option', onboarding({ mappings: replaceAt(onboardingMappings, 5, { componentId: 'fd_lang00001', targetKey: 'customer.language', optionMap: { spanish: 'Es' } }) }), issue('mapping.option_map_incomplete', '/mappings/5/optionMap')),
+  mappingFixture('option map values must exist on target', onboarding({ mappings: replaceAt(onboardingMappings, 5, { componentId: 'fd_lang00001', targetKey: 'customer.language', optionMap: { spanish: 'Es', english: 'English' } }) }), issue('mapping.option_map_incomplete', '/mappings/5/optionMap')),
+  mappingFixture('transform not allowed for phone', onboarding({ mappings: replaceAt(onboardingMappings, 3, { componentId: 'fd_phone0001', targetKey: 'customer.primary_phone', transform: 'digitsOnly' }) }), issue('mapping.type_mismatch', '/mappings/3/transform')),
+  mappingFixture('repeater maps to collection with row fields', dependents(allDependentFields)),
+  mappingFixture('repeater must map required row fields', dependents({ fd_depfirst1: 'first_name', fd_depdob001: 'date_of_birth' }), issue('mapping.required_target_missing', '/mappings/0/rowFields')),
+  mappingFixture('repeater row field must exist', dependents({ ...allDependentFields, fd_depdob001: 'birthday' }), issue('mapping.unknown_target', '/mappings/0/rowFields/fd_depdob001')),
+  mappingFixture('repeater needs row fields', dependents(undefined), issue('mapping.type_mismatch', '/mappings/0/rowFields')),
+  mappingFixture('tax id only maps to restricted targets', onboarding(extra('taxId', { kinds: ['ssn'] }, 'customer.person.middle_name')), issue('mapping.sensitivity_mismatch', '/mappings/7/componentId')),
+  mappingFixture('restricted target only accepts tax id', onboarding(extra('text', { maxLength: 80 }, 'customer.fiscal.tax_identifier')), issue('mapping.sensitivity_mismatch', '/mappings/7/componentId'), admin),
+  mappingFixture('tax id maps to restricted target for admins', onboarding(extra('taxId', { kinds: ['ssn'] }, 'customer.fiscal.tax_identifier')), emptyExpected, admin),
+  mappingFixture('restricted target requires tenant admin', onboarding(extra('taxId', { kinds: ['ssn'] }, 'customer.fiscal.tax_identifier')), issue('mapping.permission_denied', '/mappings/7/targetKey')),
+  mappingFixture('publisher needs target and action permissions', onboarding(), issues(
+    ...onboardingMappings.map((_, index) => ['mapping.permission_denied', `/mappings/${index}/targetKey`]),
+    ['mapping.permission_denied', '/actions/0/type'],
+    ['mapping.permission_denied', '/actions/0/config/kind'],
+  ), { permissions: [], isTenantAdmin: false }),
+  mappingFixture('two fields cannot share a target', onboarding(extra('text', { maxLength: 80 }, 'customer.person.first_name', { required: true })), issue('mapping.duplicate_target', '/mappings/7/targetKey')),
+  mappingFixture('create customer requires email', onboarding({ mappings: onboardingMappings.filter((_, index) => index !== 2) }), issue('mapping.required_target_missing', '/actions/0')),
+  mappingFixture('kind constant must be a catalog value', onboarding({ actions: [createAction({ kind: { constant: 'Company' }, language: { mapped: true } })] }), issue('mapping.type_mismatch', '/actions/0/config/kind')),
+  mappingFixture('language constant covers the requirement', onboarding({ mappings: onboardingMappings.filter((_, index) => index !== 5), actions: [createAction({ kind: { constant: 'Individual' }, language: { constant: 'En' } })] })),
+  mappingFixture('constant and mapping cannot set the same target', onboarding({ extraComponents: [kindRadio], extraMappings: [kindMapping] }), issue('mapping.duplicate_target', '/actions/0/config/kind')),
+  mappingFixture('mapped source must be required', onboarding({ components: replaceAt(onboardingComponents, 2, component('email', {}, { id: 'fd_email0001', label: 'Email' })) }), issue('mapping.source_not_required', '/mappings/2/componentId')),
+  mappingFixture('requiredWhen unrelated to kind is not enough', onboarding({ components: replaceAt(onboardingComponents, 2, component('email', {}, { id: 'fd_email0001', label: 'Email', requiredWhen: { field: 'fd_first0001', op: 'isAnswered' } })) }), issue('mapping.source_not_required', '/mappings/2/componentId')),
+  mappingFixture('requiredWhen coherent with kind', kindDefinition()),
+  mappingFixture('requiredWhen for the wrong kind', kindDefinition({ firstWhen: 'business' }), issue('mapping.source_not_required', '/mappings/1/componentId')),
+  mappingFixture('business kind requires legal name', kindDefinition({ legal: false }), issue('mapping.required_target_missing', '/actions/0')),
+];
+
+const groups = { structure, answers: answerCases, conditions, progress, mappings };
 for (const [name, cases] of Object.entries(groups)) {
   const directory = path.join(root, name);
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(path.join(directory, 'cases.json'), `${JSON.stringify(cases, null, 2)}\n`, 'utf8');
 }
+
+const manifest = { fixtureSetVersion: 1, files: Object.keys(groups).map((name) => `${name}/cases.json`) };
+fs.writeFileSync(path.join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
 const count = Object.values(groups).reduce((total, cases) => total + cases.length, 0);
 if (count < 70) throw new Error(`Expected at least 70 fixtures, generated ${count}.`);

@@ -32,25 +32,40 @@ public static class FormRequestReminderDueConsumer
                 return;
             await ClientFormCustomerNotifier.NotifyAsync(
                 Notification(evt, customerId),
-                customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct
+                customers,
+                policies,
+                gateway,
+                scribe,
+                dispatcher,
+                recipients,
+                portal,
+                hosts,
+                correlation,
+                ct
             );
         }
     }
 
-    private static ClientFormCustomerNotification Notification(FormRequestReminderDueIntegrationEvent evt, Guid customerId) => new(
-        evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-        NotificationKinds.TasksFormRequestReminder, TemplateKey,
-        evt.IsOverdue ? "Your form is overdue" : "Form reminder", evt.Title,
-        new Dictionary<string, object?>
-        {
-            ["request_title"] = evt.Title,
-            ["due_date"] = evt.DueAtUtc,
-            ["is_overdue"] = evt.IsOverdue,
-        },
-        new Dictionary<string, string>
-        {
-            ["title"] = evt.Title,
-            ["isOverdue"] = evt.IsOverdue.ToString(),
-        }
-    );
+    private static ClientFormCustomerNotification Notification(
+        FormRequestReminderDueIntegrationEvent evt,
+        Guid customerId
+    ) =>
+        new(
+            evt.TenantId,
+            customerId,
+            evt.FormRequestId,
+            evt.EventId,
+            evt.OccurredOn,
+            NotificationKinds.TasksFormRequestReminder,
+            TemplateKey,
+            evt.IsOverdue ? "Your form is overdue" : "Form reminder",
+            evt.Title,
+            new Dictionary<string, object?>
+            {
+                ["request_title"] = evt.Title,
+                ["due_date"] = evt.DueAtUtc,
+                ["is_overdue"] = evt.IsOverdue,
+            },
+            new Dictionary<string, string> { ["title"] = evt.Title, ["isOverdue"] = evt.IsOverdue.ToString() }
+        );
 }

@@ -13,7 +13,11 @@ public sealed class FormTemplateVersionConfiguration : IEntityTypeConfiguration<
         builder.ToTable(
             "FormTemplateVersions",
             table =>
-                table.HasCheckConstraint("CK_FormTemplateVersions_Definition_IsJson", "ISJSON([DefinitionJson]) = 1")
+            {
+                table.HasCheckConstraint("CK_FormTemplateVersions_Definition_IsJson", "ISJSON([DefinitionJson]) = 1");
+                table.HasCheckConstraint("CK_FormTemplateVersions_MappingSet_IsJson", "ISJSON([MappingSetJson]) = 1");
+                table.HasCheckConstraint("CK_FormTemplateVersions_ActionSet_IsJson", "ISJSON([ActionSetJson]) = 1");
+            }
         );
         builder.HasKey(version => version.Id);
         builder.Property(version => version.Id).ValueGeneratedNever();
@@ -35,6 +39,10 @@ public sealed class FormTemplateVersionConfiguration : IEntityTypeConfiguration<
             .HasColumnName("ContentHash")
             .HasMaxLength(64)
             .IsRequired();
+        // Las versiones previas al mapeo no tenían reglas: se leen como conjuntos vacíos del catálogo 0.
+        builder.Property(version => version.MappingSetJson).IsRequired().HasDefaultValue("[]");
+        builder.Property(version => version.ActionSetJson).IsRequired().HasDefaultValue("[]");
+        builder.Property(version => version.TargetCatalogVersion).IsRequired().HasDefaultValue(0);
         builder
             .HasOne<FormTemplate>()
             .WithMany()

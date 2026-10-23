@@ -24,19 +24,19 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     IntakeLinksEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     AutoCustomerCreationEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     SignatureStepEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
-                    PushNotificationsEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
+                    PushNotificationsEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormModuleSettings", x => x.TenantId);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FormModuleSettings");
+            migrationBuilder.DropTable(name: "FormModuleSettings");
         }
     }
 }

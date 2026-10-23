@@ -8,8 +8,6 @@ public static class RichTextCanonicalizer
 
     public static string PlainText(RichTextDocument document) => RichTextValidator.PlainText(document);
 
-    public static IReadOnlyList<Validation.ValidationIssue> Validate(
-        RichTextDocument document,
-        int maxCharacters
-    ) => RichTextValidator.Validate(document, "/body", maxCharacters);
+    public static IReadOnlyList<Validation.ValidationIssue> Validate(RichTextDocument document, int maxCharacters) =>
+        RichTextValidator.Validate(document, "/body", maxCharacters);
 }

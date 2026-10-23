@@ -94,21 +94,25 @@ public sealed class NotificationCatalogArchitectureTests
             NotificationKinds.TasksFormAccessCode,
         };
         var mismatched = NotificationCatalog
-            .All.Where(entry => entry.IsMandatory
+            .All.Where(entry =>
+                entry.IsMandatory
                 && !entry.AllowedChannels.Contains(NotificationChannel.InApp)
-                && !mandatoryEmailOnly.Contains(entry.Kind))
+                && !mandatoryEmailOnly.Contains(entry.Kind)
+            )
             .Select(entry => entry.Kind)
             .ToArray();
 
         Assert.True(mismatched.Length == 0, $"Mandatory kinds que no habilitan InApp: {string.Join(", ", mismatched)}");
 
-        var invalidEmailOnly = NotificationCatalog.All
-            .Where(entry => mandatoryEmailOnly.Contains(entry.Kind))
-            .Where(entry => !entry.IsMandatory
-                || !entry.AllowedChannels.SetEquals([NotificationChannel.Email]))
+        var invalidEmailOnly = NotificationCatalog
+            .All.Where(entry => mandatoryEmailOnly.Contains(entry.Kind))
+            .Where(entry => !entry.IsMandatory || !entry.AllowedChannels.SetEquals([NotificationChannel.Email]))
             .Select(entry => entry.Kind)
             .ToArray();
-        Assert.True(invalidEmailOnly.Length == 0, $"Kinds externos con canales invalidos: {string.Join(", ", invalidEmailOnly)}");
+        Assert.True(
+            invalidEmailOnly.Length == 0,
+            $"Kinds externos con canales invalidos: {string.Join(", ", invalidEmailOnly)}"
+        );
     }
 
     private static IReadOnlyList<string> ConsumerFiles()

@@ -32,21 +32,40 @@ public static class FormRequestAssignedConsumer
                 return;
             await ClientFormCustomerNotifier.NotifyAsync(
                 Notification(evt, customerId),
-                customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct
+                customers,
+                policies,
+                gateway,
+                scribe,
+                dispatcher,
+                recipients,
+                portal,
+                hosts,
+                correlation,
+                ct
             );
         }
     }
 
-    private static ClientFormCustomerNotification Notification(FormRequestAssignedIntegrationEvent evt, Guid customerId) => new(
-        evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-        NotificationKinds.TasksFormRequestAssigned, TemplateKey,
-        "Your tax office requested information", evt.Title,
-        new Dictionary<string, object?>
-        {
-            ["request_title"] = evt.Title,
-            ["has_message"] = evt.HasMessage,
-            ["due_date"] = evt.DueAtUtc,
-        },
-        new Dictionary<string, string> { ["title"] = evt.Title }
-    );
+    private static ClientFormCustomerNotification Notification(
+        FormRequestAssignedIntegrationEvent evt,
+        Guid customerId
+    ) =>
+        new(
+            evt.TenantId,
+            customerId,
+            evt.FormRequestId,
+            evt.EventId,
+            evt.OccurredOn,
+            NotificationKinds.TasksFormRequestAssigned,
+            TemplateKey,
+            "Your tax office requested information",
+            evt.Title,
+            new Dictionary<string, object?>
+            {
+                ["request_title"] = evt.Title,
+                ["has_message"] = evt.HasMessage,
+                ["due_date"] = evt.DueAtUtc,
+            },
+            new Dictionary<string, string> { ["title"] = evt.Title }
+        );
 }

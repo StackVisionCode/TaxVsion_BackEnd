@@ -16,14 +16,8 @@ public sealed class FormParticipantReassignmentEndpointTests
         var action = controller.GetMethod(nameof(InternalFilesController.ReassignFormParticipant))!;
 
         Assert.Equal("internal/files", controller.GetCustomAttribute<RouteAttribute>()!.Template);
-        Assert.Equal(
-            "reassign-form-participant",
-            action.GetCustomAttribute<HttpPostAttribute>()!.Template
-        );
-        Assert.Equal(
-            [ActorType.Service],
-            controller.GetCustomAttribute<AllowActorTypesAttribute>()!.ActorTypes
-        );
+        Assert.Equal("reassign-form-participant", action.GetCustomAttribute<HttpPostAttribute>()!.Template);
+        Assert.Equal([ActorType.Service], controller.GetCustomAttribute<AllowActorTypesAttribute>()!.ActorTypes);
         Assert.Equal(
             HasPermissionAttribute.PolicyPrefix + CloudStoragePermissions.ReassignFormParticipant,
             action.GetCustomAttribute<HasPermissionAttribute>()!.Policy

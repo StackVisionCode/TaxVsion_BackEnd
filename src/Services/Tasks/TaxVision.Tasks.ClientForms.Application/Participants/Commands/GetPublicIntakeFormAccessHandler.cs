@@ -21,19 +21,33 @@ public static class GetPublicIntakeFormAccessHandler
     )
     {
         var link = await PublicIntakeFormAccess.LoadAsync(
-            query.IntakeToken, query.RequestHost, query.NowUtc,
-            links, security, hosts, capabilities, ct
+            query.IntakeToken,
+            query.RequestHost,
+            query.NowUtc,
+            links,
+            security,
+            hosts,
+            capabilities,
+            ct
         );
         if (link is null)
             return Result.Failure<PublicIntakeFormAccessResponse>(PublicIntakeFormErrors.NotFound);
         var version = await versions.GetByIdAsync(link.TenantId, link.FormTemplateVersionId, ct);
         var entryNotice = await EntryNoticeSupport.ResolvePinnedAsync(
-            link.TenantId, link.EntryNoticeId, link.EntryNoticeVersionNumber, notices, ct
+            link.TenantId,
+            link.EntryNoticeId,
+            link.EntryNoticeVersionNumber,
+            notices,
+            ct
         );
         return version.IsFailure || entryNotice is null
             ? Result.Failure<PublicIntakeFormAccessResponse>(PublicIntakeFormErrors.NotFound)
-            : Result.Success(new PublicIntakeFormAccessResponse(
-                version.Value.Title, query.RequestHost, EntryNoticeSupport.ToResponse(entryNotice)
-            ));
+            : Result.Success(
+                new PublicIntakeFormAccessResponse(
+                    version.Value.Title,
+                    query.RequestHost,
+                    EntryNoticeSupport.ToResponse(entryNotice)
+                )
+            );
     }
 }

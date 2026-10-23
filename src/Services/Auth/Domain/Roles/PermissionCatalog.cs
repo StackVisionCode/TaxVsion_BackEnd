@@ -2021,9 +2021,7 @@ public static class PermissionCatalog
             FormTemplatesConfigureActions,
             "tasks",
             "Configure data mapping and post-submission actions for client form templates.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000209"),

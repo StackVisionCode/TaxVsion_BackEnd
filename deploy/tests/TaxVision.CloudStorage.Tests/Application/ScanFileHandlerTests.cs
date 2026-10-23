@@ -65,9 +65,7 @@ public sealed class ScanFileHandlerTests
         infectedFixture.VirusScanner.Result = VirusScanResult.Infected("Eicar");
         await ScanAsync(infectedFixture);
 
-        var infected = Assert.Single(
-            infectedFixture.Bus.Published.OfType<FileInfectedDetectedIntegrationEvent>()
-        );
+        var infected = Assert.Single(infectedFixture.Bus.Published.OfType<FileInfectedDetectedIntegrationEvent>());
         Assert.Equal("Customer", infected.OwnerType);
         Assert.Equal(infectedFixture.CustomerId, infected.OwnerId);
         Assert.Equal("ClientForms", infected.FolderType);
@@ -180,11 +178,8 @@ public sealed class ScanFileHandlerTests
     {
         public ContentScanResult Result { get; set; } = result;
 
-        public Task<ContentScanResult> ScanAsync(
-            Stream content,
-            ContentScanContext context,
-            CancellationToken ct
-        ) => Task.FromResult(Result);
+        public Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct) =>
+            Task.FromResult(Result);
     }
 
     private sealed class StubInspector(InspectedContent result) : IFileContentInspector

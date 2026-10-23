@@ -28,7 +28,9 @@ public sealed class StrictJsonTests
     [Fact]
     public void Rejects_trailing_commas()
     {
-        var result = EngineTestFactory.Create().ParseDefinition(ValidJson().Replace("}]}", "}],}", StringComparison.Ordinal));
+        var result = EngineTestFactory
+            .Create()
+            .ParseDefinition(ValidJson().Replace("}]}", "}],}", StringComparison.Ordinal));
 
         Assert.Equal("definition.invalid_json", result.Error.Code);
     }
@@ -71,10 +73,14 @@ public sealed class StrictJsonTests
     [InlineData("\"title\":\"Client intake\",")]
     [InlineData("\"purpose\":\"clientIntake\",")]
     [InlineData("\"presentation\":\"wizard\",")]
-    [InlineData("\"pages\":[{\"id\":\"pg_abcdefgh\",\"title\":\"Page\",\"description\":null,\"visibleWhen\":null,\"style\":null,\"sections\":[{\"id\":\"sc_abcdefgh\",\"title\":\"Section\",\"description\":null,\"visibleWhen\":null,\"repeat\":null,\"style\":null,\"components\":[{\"id\":\"fd_abcdefgh\",\"type\":\"text\",\"key\":null,\"label\":\"Name\",\"help\":null,\"required\":false,\"requiredWhen\":null,\"visibleWhen\":null,\"dataClass\":\"personal\",\"reportable\":false,\"prefill\":null,\"style\":null,\"props\":{}}]}]}],")]
+    [InlineData(
+        "\"pages\":[{\"id\":\"pg_abcdefgh\",\"title\":\"Page\",\"description\":null,\"visibleWhen\":null,\"style\":null,\"sections\":[{\"id\":\"sc_abcdefgh\",\"title\":\"Section\",\"description\":null,\"visibleWhen\":null,\"repeat\":null,\"style\":null,\"components\":[{\"id\":\"fd_abcdefgh\",\"type\":\"text\",\"key\":null,\"label\":\"Name\",\"help\":null,\"required\":false,\"requiredWhen\":null,\"visibleWhen\":null,\"dataClass\":\"personal\",\"reportable\":false,\"prefill\":null,\"style\":null,\"props\":{}}]}]}],"
+    )]
     public void Rejects_missing_required_definition_members(string member)
     {
-        var result = EngineTestFactory.Create().ParseDefinition(ValidJson().Replace(member, string.Empty, StringComparison.Ordinal));
+        var result = EngineTestFactory
+            .Create()
+            .ParseDefinition(ValidJson().Replace(member, string.Empty, StringComparison.Ordinal));
 
         Assert.Equal("definition.invalid_json", result.Error.Code);
     }
@@ -89,6 +95,6 @@ public sealed class StrictJsonTests
 
     private static string ValidJson() =>
         """
-        {"schemaVersion":1,"title":"Client intake","purpose":"clientIntake","presentation":"wizard","settings":{"showProgress":true},"pages":[{"id":"pg_abcdefgh","title":"Page","description":null,"visibleWhen":null,"style":null,"sections":[{"id":"sc_abcdefgh","title":"Section","description":null,"visibleWhen":null,"repeat":null,"style":null,"components":[{"id":"fd_abcdefgh","type":"text","key":null,"label":"Name","help":null,"required":false,"requiredWhen":null,"visibleWhen":null,"dataClass":"personal","reportable":false,"prefill":null,"style":null,"props":{}}]}]}],"mappings":[],"actions":[]}
-        """;
+            {"schemaVersion":1,"title":"Client intake","purpose":"clientIntake","presentation":"wizard","settings":{"showProgress":true},"pages":[{"id":"pg_abcdefgh","title":"Page","description":null,"visibleWhen":null,"style":null,"sections":[{"id":"sc_abcdefgh","title":"Section","description":null,"visibleWhen":null,"repeat":null,"style":null,"components":[{"id":"fd_abcdefgh","type":"text","key":null,"label":"Name","help":null,"required":false,"requiredWhen":null,"visibleWhen":null,"dataClass":"personal","reportable":false,"prefill":null,"style":null,"props":{}}]}]}],"mappings":[],"actions":[]}
+            """;
 }

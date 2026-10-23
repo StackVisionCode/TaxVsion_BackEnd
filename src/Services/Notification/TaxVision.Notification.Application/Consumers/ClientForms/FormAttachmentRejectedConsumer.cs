@@ -30,7 +30,19 @@ public static class FormAttachmentRejectedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            await NotifyCustomerAsync(evt, customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct);
+            await NotifyCustomerAsync(
+                evt,
+                customers,
+                policies,
+                gateway,
+                scribe,
+                dispatcher,
+                recipients,
+                portal,
+                hosts,
+                correlation,
+                ct
+            );
             await NotifyStaffAsync(evt, dispatcher, assignments, recipients, correlation, ct);
         }
     }
@@ -54,9 +66,15 @@ public static class FormAttachmentRejectedConsumer
         var message = ClientMessage(evt.ReasonCode);
         await ClientFormCustomerNotifier.NotifyAsync(
             new ClientFormCustomerNotification(
-                evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-                NotificationKinds.TasksFormAttachmentRejected, TemplateKey,
-                "A file needs your attention", message,
+                evt.TenantId,
+                customerId,
+                evt.FormRequestId,
+                evt.EventId,
+                evt.OccurredOn,
+                NotificationKinds.TasksFormAttachmentRejected,
+                TemplateKey,
+                "A file needs your attention",
+                message,
                 new Dictionary<string, object?>
                 {
                     ["request_title"] = evt.Title,
@@ -65,7 +83,16 @@ public static class FormAttachmentRejectedConsumer
                 },
                 new Dictionary<string, string> { ["title"] = evt.Title }
             ),
-            customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct
+            customers,
+            policies,
+            gateway,
+            scribe,
+            dispatcher,
+            recipients,
+            portal,
+            hosts,
+            correlation,
+            ct
         );
     }
 
@@ -79,7 +106,12 @@ public static class FormAttachmentRejectedConsumer
     )
     {
         var recipients = await ClientFormStaffRecipients.ResolveRequesterForReadAsync(
-            evt.TenantId, evt.Participant.CustomerId, evt.RequestedByUserId, assignments, resolver, ct
+            evt.TenantId,
+            evt.Participant.CustomerId,
+            evt.RequestedByUserId,
+            assignments,
+            resolver,
+            ct
         );
         foreach (var userId in recipients)
         {
@@ -113,12 +145,16 @@ public static class FormAttachmentRejectedConsumer
         }
     }
 
-    private static string ClientMessage(string reasonCode) => reasonCode switch
-    {
-        "infected" => "The file couldn't be accepted because our security scan flagged it. Please upload a different copy.",
-        "blocked_by_policy" or "scan_failed" => "The file type or content isn't allowed. Please upload a PDF or an image.",
-        "not_owned" or "wrong_folder" => "The file couldn't be linked to this form. Please upload it again.",
-        "upload_incomplete" => "The upload didn't finish. Please try again.",
-        _ => "The file couldn't be accepted. Please upload it again.",
-    };
+    // También lo usa el aviso a externos: el mismo texto fijo por código, nunca texto libre.
+    internal static string ClientMessage(string reasonCode) =>
+        reasonCode switch
+        {
+            "infected" =>
+                "The file couldn't be accepted because our security scan flagged it. Please upload a different copy.",
+            "blocked_by_policy" or "scan_failed" =>
+                "The file type or content isn't allowed. Please upload a PDF or an image.",
+            "not_owned" or "wrong_folder" => "The file couldn't be linked to this form. Please upload it again.",
+            "upload_incomplete" => "The upload didn't finish. Please try again.",
+            _ => "The file couldn't be accepted. Please upload it again.",
+        };
 }

@@ -104,7 +104,8 @@ public sealed class FormTemplate : AggregateRoot
         FormPresentation presentation,
         int componentCount,
         Guid byUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        FormVersionRuleSets? ruleSets = null
     )
     {
         var active = EnsureActive();
@@ -132,7 +133,8 @@ public sealed class FormTemplate : AggregateRoot
             hash.Value,
             componentCount,
             byUserId,
-            nowUtc
+            nowUtc,
+            ruleSets
         );
         LatestVersionNumber = version.VersionNumber;
         LatestVersionId = version.Id;

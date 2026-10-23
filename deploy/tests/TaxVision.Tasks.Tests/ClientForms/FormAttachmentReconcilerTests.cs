@@ -26,10 +26,12 @@ public sealed class FormAttachmentReconcilerTests
         var fileId = Guid.NewGuid();
         await using var db = await SeedAsync(fileId);
         var (outbox, recorder) = RecordingDbContextOutbox.Create(db);
+        var metrics = new RecordingClientFormsMetrics();
 
-        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Infected, AlwaysDue, NeverExpires);
+        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Infected, AlwaysDue, NeverExpires, metrics);
 
         Assert.Equal(1, count);
+        Assert.Equal(["verdict:infected:reconciliation"], metrics.Recorded);
         Assert.Equal(1, recorder.Saves);
         Assert.Empty(recorder.Pending);
         var rejected = Assert.IsType<FormAttachmentRejectedIntegrationEvent>(Assert.Single(recorder.Flushed));
@@ -43,10 +45,12 @@ public sealed class FormAttachmentReconcilerTests
     {
         await using var db = await SeedAsync(Guid.NewGuid());
         var (outbox, recorder) = RecordingDbContextOutbox.Create(db);
+        var metrics = new RecordingClientFormsMetrics();
 
-        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Unknown, AlwaysDue, AlwaysDue);
+        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Unknown, AlwaysDue, AlwaysDue, metrics);
 
         Assert.Equal(1, count);
+        Assert.Equal(["verdict:unknown:reconciliation", "verdict:expired:reconciliation"], metrics.Recorded);
         var rejected = Assert.IsType<FormAttachmentRejectedIntegrationEvent>(Assert.Single(recorder.Flushed));
         Assert.Equal("upload_incomplete", rejected.ReasonCode);
     }
@@ -72,10 +76,12 @@ public sealed class FormAttachmentReconcilerTests
     {
         await using var db = await SeedAsync(Guid.NewGuid());
         var (outbox, recorder) = RecordingDbContextOutbox.Create(db);
+        var metrics = new RecordingClientFormsMetrics();
 
-        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Unknown, AlwaysDue, NeverExpires);
+        var count = await ReconcileAsync(outbox, RemoteFileScanStatus.Unknown, AlwaysDue, NeverExpires, metrics);
 
         Assert.Equal(0, count);
+        Assert.Equal(["verdict:unknown:reconciliation"], metrics.Recorded);
         Assert.Equal(0, recorder.Saves);
         Assert.Empty(recorder.Pending);
     }
@@ -84,7 +90,8 @@ public sealed class FormAttachmentReconcilerTests
         Wolverine.EntityFrameworkCore.IDbContextOutbox<TasksDbContext> outbox,
         RemoteFileScanStatus status,
         TimeSpan reconcileAfter,
-        TimeSpan pendingExpiry
+        TimeSpan pendingExpiry,
+        RecordingClientFormsMetrics? metrics = null
     )
     {
         var type = typeof(TasksDbContext).Assembly.GetType(ReconcilerType, throwOnError: true)!;
@@ -94,7 +101,7 @@ public sealed class FormAttachmentReconcilerTests
             new FixedFileStatus(status),
             new NoCustomers(),
             new NoOpCorrelationContext(),
-            new RecordingTaskMetrics(),
+            metrics ?? new RecordingClientFormsMetrics(),
             Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(type))
         )!;
         var task =

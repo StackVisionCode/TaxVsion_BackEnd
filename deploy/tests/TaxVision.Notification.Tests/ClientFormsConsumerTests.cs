@@ -440,6 +440,141 @@ public sealed class ClientFormsConsumerTests
         Assert.Equal("guest@example.com", queued.To);
     }
 
+    [Theory]
+    [InlineData(FormParticipantNotificationKinds.Returned, "task.form_participant_returned.v1")]
+    [InlineData(FormParticipantNotificationKinds.Completed, "task.form_participant_completed.v1")]
+    [InlineData(FormParticipantNotificationKinds.Cancelled, "task.form_participant_cancelled.v1")]
+    [InlineData(FormParticipantNotificationKinds.AttachmentRejected, "task.form_participant_attachment_rejected.v1")]
+    public async Task Participant_notice_uses_the_external_template_and_stays_confidential(string kind, string template)
+    {
+        var codec = RealCodec();
+        var command = ParticipantNotice(codec, kind, new Dictionary<string, string>());
+        var gateway = new EmailGateway();
+        var render = new RenderClient();
+
+        await FormParticipantNotificationRequestedConsumer.Handle(
+            command,
+            codec,
+            gateway,
+            render,
+            new Correlation(),
+            NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(template, render.EventKey);
+        Assert.Equal("Intake", render.Variables["form_title"]);
+        var queued = Assert.Single(gateway.Queued);
+        Assert.Equal("guest@example.com", queued.To);
+        Assert.True(queued.Confidential);
+        Assert.Equal(command.CommandId.ToString("N"), queued.IdempotencyKey);
+    }
+
+    [Fact]
+    public async Task Participant_attachment_notice_uses_the_fixed_message_for_the_reason_code()
+    {
+        var codec = RealCodec();
+        var render = new RenderClient();
+
+        await FormParticipantNotificationRequestedConsumer.Handle(
+            ParticipantNotice(
+                codec,
+                FormParticipantNotificationKinds.AttachmentRejected,
+                new Dictionary<string, string> { ["file_extension"] = "pdf", ["reason_code"] = "infected" }
+            ),
+            codec,
+            new EmailGateway(),
+            render,
+            new Correlation(),
+            NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal("pdf", render.Variables["file_extension"]);
+        Assert.Equal(
+            "The file couldn't be accepted because our security scan flagged it. Please upload a different copy.",
+            render.Variables["client_message"]
+        );
+    }
+
+    [Fact]
+    public async Task Participant_notice_with_an_unknown_kind_is_discarded_without_rendering()
+    {
+        var codec = RealCodec();
+        var gateway = new EmailGateway();
+        var render = new RenderClient();
+
+        await FormParticipantNotificationRequestedConsumer.Handle(
+            ParticipantNotice(codec, "reminder", new Dictionary<string, string>()),
+            codec,
+            gateway,
+            render,
+            new Correlation(),
+            NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, render.Calls);
+        Assert.Empty(gateway.Queued);
+    }
+
+    [Fact]
+    public async Task Participant_notice_bound_to_another_request_is_discarded_with_a_security_warning()
+    {
+        var codec = RealCodec();
+        var command = ParticipantNotice(
+            codec,
+            FormParticipantNotificationKinds.Completed,
+            new Dictionary<string, string>()
+        ) with
+        {
+            FormRequestId = Guid.NewGuid(),
+        };
+        var gateway = new EmailGateway();
+        var logger = new CapturingLogger<FormParticipantNotificationRequestedIntegrationEvent>();
+
+        await FormParticipantNotificationRequestedConsumer.Handle(
+            command,
+            codec,
+            gateway,
+            new RenderClient(),
+            new Correlation(),
+            logger,
+            CancellationToken.None
+        );
+
+        Assert.Empty(gateway.Queued);
+        var warning = Assert.Single(logger.Messages);
+        Assert.StartsWith("Security:", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("guest@example.com", warning, StringComparison.Ordinal);
+    }
+
+    private static FormParticipantNotificationRequestedIntegrationEvent ParticipantNotice(
+        IProtectedPayloadCodec codec,
+        string kind,
+        IReadOnlyDictionary<string, string> parameters
+    )
+    {
+        var tenantId = Guid.NewGuid();
+        var formRequestId = Guid.NewGuid();
+        var participant = ExternalParticipant(Guid.NewGuid());
+        var commandId = Guid.NewGuid();
+        return new FormParticipantNotificationRequestedIntegrationEvent
+        {
+            TenantId = tenantId,
+            CorrelationId = "corr-participant-notice",
+            CommandId = commandId,
+            FormRequestId = formRequestId,
+            Participant = participant,
+            Kind = kind,
+            Payload = codec.Protect(
+                ClientFormProtectedPayloadSchemas.ParticipantNotification,
+                new ProtectedPayloadBinding(tenantId, formRequestId, participant),
+                new FormParticipantNotificationPayload("guest@example.com", "Guest", "Intake", parameters)
+            ),
+        };
+    }
+
     private static ClientFormParticipant ExternalParticipant(Guid participantId) =>
         new() { Kind = "External", ParticipantId = participantId };
 

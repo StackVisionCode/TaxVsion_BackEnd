@@ -12,11 +12,9 @@ public sealed class EngineBehaviorTests
     public void Hidden_answers_are_preserved_in_draft_and_removed_for_submit()
     {
         var definition = ConditionalDefinition();
-        var answers = Answers(new Dictionary<string, object>
-        {
-            ["fd_toggle000"] = false,
-            ["fd_detail000"] = "keep while drafting",
-        });
+        var answers = Answers(
+            new Dictionary<string, object> { ["fd_toggle000"] = false, ["fd_detail000"] = "keep while drafting" }
+        );
         var engine = EngineTestFactory.Create();
 
         var visibility = engine.EvaluateVisibility(definition, answers);
@@ -33,10 +31,20 @@ public sealed class EngineBehaviorTests
         var definition = ConditionalDefinition();
         var engine = EngineTestFactory.Create();
         var hiddenAnswers = Answers(new Dictionary<string, object> { ["fd_toggle000"] = false });
-        var visibleAnswers = Answers(new Dictionary<string, object> { ["fd_toggle000"] = true, ["fd_detail000"] = "done" });
+        var visibleAnswers = Answers(
+            new Dictionary<string, object> { ["fd_toggle000"] = true, ["fd_detail000"] = "done" }
+        );
 
-        var hiddenProgress = engine.CalculateProgress(definition, hiddenAnswers, engine.EvaluateVisibility(definition, hiddenAnswers));
-        var visibleProgress = engine.CalculateProgress(definition, visibleAnswers, engine.EvaluateVisibility(definition, visibleAnswers));
+        var hiddenProgress = engine.CalculateProgress(
+            definition,
+            hiddenAnswers,
+            engine.EvaluateVisibility(definition, hiddenAnswers)
+        );
+        var visibleProgress = engine.CalculateProgress(
+            definition,
+            visibleAnswers,
+            engine.EvaluateVisibility(definition, visibleAnswers)
+        );
 
         Assert.Equal((1, 1), (hiddenProgress.Required, hiddenProgress.Answered));
         Assert.Equal((2, 2), (visibleProgress.Required, visibleProgress.Answered));
@@ -46,11 +54,19 @@ public sealed class EngineBehaviorTests
     public void Repeater_minimum_applies_only_on_submit()
     {
         var definition = RepeaterDefinition();
-        var answers = Answers(new Dictionary<string, object> { ["sc_repeat000"] = new { rows = Array.Empty<object>() } });
+        var answers = Answers(
+            new Dictionary<string, object> { ["sc_repeat000"] = new { rows = Array.Empty<object>() } }
+        );
         var engine = EngineTestFactory.Create();
 
-        Assert.DoesNotContain(engine.ValidateAnswers(definition, answers, AnswersValidationMode.Draft).Issues, issue => issue.Code == "answer.rows_below_min");
-        Assert.Contains(engine.ValidateAnswers(definition, answers, AnswersValidationMode.Submit).Issues, issue => issue.Code == "answer.rows_below_min");
+        Assert.DoesNotContain(
+            engine.ValidateAnswers(definition, answers, AnswersValidationMode.Draft).Issues,
+            issue => issue.Code == "answer.rows_below_min"
+        );
+        Assert.Contains(
+            engine.ValidateAnswers(definition, answers, AnswersValidationMode.Submit).Issues,
+            issue => issue.Code == "answer.rows_below_min"
+        );
     }
 
     [Fact]
@@ -83,13 +99,32 @@ public sealed class EngineBehaviorTests
                 Op = "countGte",
                 Value = JsonSerializer.SerializeToElement(1),
             },
-            Components = [new FormComponent { Id = "fd_later0000", Type = "text", Label = "Later field", Props = JsonSerializer.SerializeToElement(new { }) }],
+            Components =
+            [
+                new FormComponent
+                {
+                    Id = "fd_later0000",
+                    Type = "text",
+                    Label = "Later field",
+                    Props = JsonSerializer.SerializeToElement(new { }),
+                },
+            ],
         };
         var definition = EngineTestFactory.WithPages(
             repeat,
-            [new FormPage { Id = "pg_abcdefgh", Title = "Page", Sections = [repeat.Pages[0].Sections[0], later] }]
+            [
+                new FormPage
+                {
+                    Id = "pg_abcdefgh",
+                    Title = "Page",
+                    Sections = [repeat.Pages[0].Sections[0], later],
+                },
+            ]
         );
-        var rows = new[] { new { rowId = "rw_abcdefghij", values = new Dictionary<string, object> { ["fd_rowname00"] = "A" } } };
+        var rows = new[]
+        {
+            new { rowId = "rw_abcdefghij", values = new Dictionary<string, object> { ["fd_rowname00"] = "A" } },
+        };
         var answers = Answers(new Dictionary<string, object> { ["sc_repeat000"] = new { rows } });
 
         var visibility = EngineTestFactory.Create().EvaluateVisibility(definition, answers);
@@ -101,8 +136,14 @@ public sealed class EngineBehaviorTests
     [Fact]
     public void Canonical_hash_is_independent_of_props_key_order()
     {
-        var first = EngineTestFactory.Definition("text", JsonSerializer.Deserialize<JsonElement>("{\"maxLength\":200,\"minLength\":1}"));
-        var second = EngineTestFactory.Definition("text", JsonSerializer.Deserialize<JsonElement>("{\"minLength\":1,\"maxLength\":200}"));
+        var first = EngineTestFactory.Definition(
+            "text",
+            JsonSerializer.Deserialize<JsonElement>("{\"maxLength\":200,\"minLength\":1}")
+        );
+        var second = EngineTestFactory.Definition(
+            "text",
+            JsonSerializer.Deserialize<JsonElement>("{\"minLength\":1,\"maxLength\":200}")
+        );
         var engine = EngineTestFactory.Create();
 
         Assert.Equal(engine.Canonicalize(first).Sha256, engine.Canonicalize(second).Sha256);
@@ -111,7 +152,14 @@ public sealed class EngineBehaviorTests
 
     private static FormDefinition ConditionalDefinition()
     {
-        var toggle = new FormComponent { Id = "fd_toggle000", Type = "yesNo", Label = "Continue?", Required = true, Props = JsonSerializer.SerializeToElement(new { }) };
+        var toggle = new FormComponent
+        {
+            Id = "fd_toggle000",
+            Type = "yesNo",
+            Label = "Continue?",
+            Required = true,
+            Props = JsonSerializer.SerializeToElement(new { }),
+        };
         var detail = new FormComponent
         {
             Id = "fd_detail000",
@@ -143,8 +191,24 @@ public sealed class EngineBehaviorTests
                         {
                             Id = "sc_repeat000",
                             Title = "Rows",
-                            Repeat = new FormRepeat { MinRows = 1, MaxRows = 3, AddLabel = "Add row", RowLabel = "Row" },
-                            Components = [new FormComponent { Id = "fd_rowname00", Type = "text", Label = "Name", Required = true, Props = JsonSerializer.SerializeToElement(new { }) }],
+                            Repeat = new FormRepeat
+                            {
+                                MinRows = 1,
+                                MaxRows = 3,
+                                AddLabel = "Add row",
+                                RowLabel = "Row",
+                            },
+                            Components =
+                            [
+                                new FormComponent
+                                {
+                                    Id = "fd_rowname00",
+                                    Type = "text",
+                                    Label = "Name",
+                                    Required = true,
+                                    Props = JsonSerializer.SerializeToElement(new { }),
+                                },
+                            ],
                         },
                     ],
                 },
@@ -155,6 +219,10 @@ public sealed class EngineBehaviorTests
         new()
         {
             SchemaVersion = 1,
-            Values = values.ToDictionary(pair => pair.Key, pair => JsonSerializer.SerializeToElement(pair.Value), StringComparer.Ordinal),
+            Values = values.ToDictionary(
+                pair => pair.Key,
+                pair => JsonSerializer.SerializeToElement(pair.Value),
+                StringComparer.Ordinal
+            ),
         };
 }

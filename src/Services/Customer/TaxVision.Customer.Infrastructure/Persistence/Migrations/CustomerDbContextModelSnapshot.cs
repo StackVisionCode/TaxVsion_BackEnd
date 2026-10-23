@@ -7665,6 +7665,15 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("_originSourceReferenceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("OriginSourceReferenceId");
+
+                    b.Property<string>("_originSourceService")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("OriginSourceService");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "AssignedPreparerUserId");
@@ -7672,6 +7681,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OccupationId");
 
                     b.HasIndex("TenantId", "Status", "DisplayName");
+
+                    b.HasIndex("TenantId", "_originSourceService", "_originSourceReferenceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Customers_Tenant_Origin")
+                        .HasFilter("[OriginSourceReferenceId] IS NOT NULL");
 
                     b.ToTable("Customers", (string)null);
                 });

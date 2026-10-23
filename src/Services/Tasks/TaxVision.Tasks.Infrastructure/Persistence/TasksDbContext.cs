@@ -8,6 +8,13 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using TaxVision.Tasks.ClientForms.Domain.Audit;
+using TaxVision.Tasks.ClientForms.Domain.Consents;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
+using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Domain.Settings;
+using TaxVision.Tasks.ClientForms.Domain.Templates;
+using TaxVision.Tasks.ClientForms.Domain.Versions;
 using TaxVision.Tasks.Domain.Backfill;
 using TaxVision.Tasks.Domain.ClientRequests;
 using TaxVision.Tasks.Domain.Dependencies;
@@ -18,13 +25,6 @@ using TaxVision.Tasks.Domain.RateLimiting;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
-using TaxVision.Tasks.ClientForms.Domain.Audit;
-using TaxVision.Tasks.ClientForms.Domain.Templates;
-using TaxVision.Tasks.ClientForms.Domain.Settings;
-using TaxVision.Tasks.ClientForms.Domain.Versions;
-using TaxVision.Tasks.ClientForms.Domain.Requests;
-using TaxVision.Tasks.ClientForms.Domain.Participants;
-using TaxVision.Tasks.ClientForms.Domain.Consents;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence;
 
@@ -68,6 +68,8 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<FormSensitiveAnswer> FormSensitiveAnswers => Set<FormSensitiveAnswer>();
 
     public DbSet<FormFileScanVerdict> FormFileScanVerdicts => Set<FormFileScanVerdict>();
+
+    public DbSet<FormActionRun> FormActionRuns => Set<FormActionRun>();
 
     public DbSet<FormParticipant> FormParticipants => Set<FormParticipant>();
 

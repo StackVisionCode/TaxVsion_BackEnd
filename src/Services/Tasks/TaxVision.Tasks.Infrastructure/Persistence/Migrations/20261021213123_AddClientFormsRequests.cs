@@ -25,12 +25,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     OriginalName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
                     LastEventOccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormFileScanVerdicts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormRequests",
@@ -75,20 +76,28 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     ProfileUpdateStatus = table.Column<int>(type: "int", nullable: false),
                     LastActivityAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormRequests", x => x.Id);
-                    table.CheckConstraint("CK_FormRequests_CustomerLink", "([ParticipantKind] = 1 AND [CustomerLinkStatus] = 0 AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 0 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 1 AND [CustomerId] IS NOT NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 2 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NOT NULL)");
-                    table.CheckConstraint("CK_FormRequests_Participant", "([ParticipantKind] = 1 AND [CustomerId] IS NOT NULL AND [ParticipantId] IS NULL) OR ([ParticipantKind] = 2 AND [ParticipantId] IS NOT NULL AND [ResponsibleUserId] IS NOT NULL)");
+                    table.CheckConstraint(
+                        "CK_FormRequests_CustomerLink",
+                        "([ParticipantKind] = 1 AND [CustomerLinkStatus] = 0 AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 0 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 1 AND [CustomerId] IS NOT NULL AND [LinkBlockedCustomerId] IS NULL) OR ([ParticipantKind] = 2 AND [CustomerLinkStatus] = 2 AND [CustomerId] IS NULL AND [LinkBlockedCustomerId] IS NOT NULL)"
+                    );
+                    table.CheckConstraint(
+                        "CK_FormRequests_Participant",
+                        "([ParticipantKind] = 1 AND [CustomerId] IS NOT NULL AND [ParticipantId] IS NULL) OR ([ParticipantKind] = 2 AND [ParticipantId] IS NOT NULL AND [ResponsibleUserId] IS NOT NULL)"
+                    );
                     table.ForeignKey(
                         name: "FK_FormRequests_FormTemplateVersions_FormTemplateVersionId",
                         column: x => x.FormTemplateVersionId,
                         principalTable: "FormTemplateVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormSubmissions",
@@ -102,19 +111,24 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     DraftUpdatedByKind = table.Column<int>(type: "int", nullable: true),
                     DraftUpdatedByPortalUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     DraftUpdatedByParticipantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    DraftUpdatedBySessionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                    DraftUpdatedBySessionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormSubmissions", x => x.Id);
-                    table.CheckConstraint("CK_FormSubmissions_DraftUpdatedBy", "[DraftUpdatedByKind] IS NULL OR ([DraftUpdatedByKind] = 1 AND [DraftUpdatedByPortalUserId] IS NOT NULL AND [DraftUpdatedByParticipantId] IS NULL AND [DraftUpdatedBySessionId] IS NULL) OR ([DraftUpdatedByKind] = 2 AND [DraftUpdatedByPortalUserId] IS NULL AND [DraftUpdatedByParticipantId] IS NOT NULL AND [DraftUpdatedBySessionId] IS NOT NULL)");
+                    table.CheckConstraint(
+                        "CK_FormSubmissions_DraftUpdatedBy",
+                        "[DraftUpdatedByKind] IS NULL OR ([DraftUpdatedByKind] = 1 AND [DraftUpdatedByPortalUserId] IS NOT NULL AND [DraftUpdatedByParticipantId] IS NULL AND [DraftUpdatedBySessionId] IS NULL) OR ([DraftUpdatedByKind] = 2 AND [DraftUpdatedByPortalUserId] IS NULL AND [DraftUpdatedByParticipantId] IS NOT NULL AND [DraftUpdatedBySessionId] IS NOT NULL)"
+                    );
                     table.ForeignKey(
                         name: "FK_FormSubmissions_FormRequests_FormRequestId",
                         column: x => x.FormRequestId,
                         principalTable: "FormRequests",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormAttachments",
@@ -133,7 +147,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     RegisteredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ResolvedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     DetachedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -143,8 +157,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.FormSubmissionId,
                         principalTable: "FormSubmissions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormSensitiveAnswers",
@@ -163,19 +179,24 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     CapturedByPortalUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CapturedByParticipantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CapturedBySessionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    SupersededAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    SupersededAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormSensitiveAnswers", x => x.Id);
-                    table.CheckConstraint("CK_FormSensitiveAnswers_CapturedBy", "([CapturedByKind] = 1 AND [CapturedByPortalUserId] IS NOT NULL AND [CapturedByParticipantId] IS NULL AND [CapturedBySessionId] IS NULL) OR ([CapturedByKind] = 2 AND [CapturedByPortalUserId] IS NULL AND [CapturedByParticipantId] IS NOT NULL AND [CapturedBySessionId] IS NOT NULL)");
+                    table.CheckConstraint(
+                        "CK_FormSensitiveAnswers_CapturedBy",
+                        "([CapturedByKind] = 1 AND [CapturedByPortalUserId] IS NOT NULL AND [CapturedByParticipantId] IS NULL AND [CapturedBySessionId] IS NULL) OR ([CapturedByKind] = 2 AND [CapturedByPortalUserId] IS NULL AND [CapturedByParticipantId] IS NOT NULL AND [CapturedBySessionId] IS NOT NULL)"
+                    );
                     table.ForeignKey(
                         name: "FK_FormSensitiveAnswers_FormSubmissions_FormSubmissionId",
                         column: x => x.FormSubmissionId,
                         principalTable: "FormSubmissions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormSubmissionRevisions",
@@ -198,19 +219,24 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     CompletionNote = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     PdfStatus = table.Column<int>(type: "int", nullable: false),
                     PdfGenerationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    PdfFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                    PdfFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormSubmissionRevisions", x => x.Id);
-                    table.CheckConstraint("CK_FormSubmissionRevisions_SubmittedBy", "([SubmittedByKind] = 1 AND [SubmittedByPortalUserId] IS NOT NULL AND [SubmittedByParticipantId] IS NULL AND [SubmittedBySessionId] IS NULL) OR ([SubmittedByKind] = 2 AND [SubmittedByPortalUserId] IS NULL AND [SubmittedByParticipantId] IS NOT NULL AND [SubmittedBySessionId] IS NOT NULL)");
+                    table.CheckConstraint(
+                        "CK_FormSubmissionRevisions_SubmittedBy",
+                        "([SubmittedByKind] = 1 AND [SubmittedByPortalUserId] IS NOT NULL AND [SubmittedByParticipantId] IS NULL AND [SubmittedBySessionId] IS NULL) OR ([SubmittedByKind] = 2 AND [SubmittedByPortalUserId] IS NULL AND [SubmittedByParticipantId] IS NOT NULL AND [SubmittedBySessionId] IS NOT NULL)"
+                    );
                     table.ForeignKey(
                         name: "FK_FormSubmissionRevisions_FormSubmissions_FormSubmissionId",
                         column: x => x.FormSubmissionId,
                         principalTable: "FormSubmissions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormFieldComments",
@@ -220,7 +246,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     RevisionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ComponentId = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     RowId = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: true),
-                    Comment = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false)
+                    Comment = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -230,130 +256,138 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.RevisionId,
                         principalTable: "FormSubmissionRevisions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_FormAttachments_FileId",
-                table: "FormAttachments",
-                column: "FileId");
+            migrationBuilder.CreateIndex(name: "IX_FormAttachments_FileId", table: "FormAttachments", column: "FileId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAttachments_FormSubmissionId",
                 table: "FormAttachments",
-                column: "FormSubmissionId");
+                column: "FormSubmissionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormAttachments_Tenant_File_Active",
                 table: "FormAttachments",
                 columns: new[] { "TenantId", "FileId" },
                 unique: true,
-                filter: "[Status] <> 4");
+                filter: "[Status] <> 4"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormFieldComments_RevisionId",
                 table: "FormFieldComments",
-                column: "RevisionId");
+                column: "RevisionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormFileScanVerdicts_TenantId",
                 table: "FormFileScanVerdicts",
-                column: "TenantId");
+                column: "TenantId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_FormTemplateVersionId",
                 table: "FormRequests",
-                column: "FormTemplateVersionId");
+                column: "FormTemplateVersionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_TenantId_CustomerId_Status",
                 table: "FormRequests",
                 columns: new[] { "TenantId", "CustomerId", "Status" },
-                filter: "[CustomerId] IS NOT NULL");
+                filter: "[CustomerId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_TenantId_FormTemplateId",
                 table: "FormRequests",
-                columns: new[] { "TenantId", "FormTemplateId" });
+                columns: new[] { "TenantId", "FormTemplateId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_TenantId_ParticipantId_Status",
                 table: "FormRequests",
                 columns: new[] { "TenantId", "ParticipantId", "Status" },
-                filter: "[ParticipantId] IS NOT NULL");
+                filter: "[ParticipantId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_TenantId_ResponsibleUserId_Status",
                 table: "FormRequests",
-                columns: new[] { "TenantId", "ResponsibleUserId", "Status" });
+                columns: new[] { "TenantId", "ResponsibleUserId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormRequests_TenantId_Status_DueAtUtc",
                 table: "FormRequests",
-                columns: new[] { "TenantId", "Status", "DueAtUtc" });
+                columns: new[] { "TenantId", "Status", "DueAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormRequests_OpenPerCustomerTemplate",
                 table: "FormRequests",
                 columns: new[] { "TenantId", "CustomerId", "FormTemplateId" },
                 unique: true,
-                filter: "[Status] IN (1, 2, 3) AND [CustomerId] IS NOT NULL");
+                filter: "[Status] IN (1, 2, 3) AND [CustomerId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormRequests_OpenPerParticipantTemplate",
                 table: "FormRequests",
                 columns: new[] { "TenantId", "ParticipantId", "FormTemplateId" },
                 unique: true,
-                filter: "[Status] IN (1, 2, 3) AND [CustomerId] IS NULL AND [ParticipantId] IS NOT NULL");
+                filter: "[Status] IN (1, 2, 3) AND [CustomerId] IS NULL AND [ParticipantId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormSensitiveAnswers_Active",
                 table: "FormSensitiveAnswers",
                 columns: new[] { "FormSubmissionId", "ComponentId", "RowId" },
                 unique: true,
-                filter: "[SupersededAtUtc] IS NULL");
+                filter: "[SupersededAtUtc] IS NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormSubmissionRevisions_PdfGenerationId",
                 table: "FormSubmissionRevisions",
-                column: "PdfGenerationId");
+                column: "PdfGenerationId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormSubmissionRevisions_SubmissionId_Number",
                 table: "FormSubmissionRevisions",
                 columns: new[] { "FormSubmissionId", "RevisionNumber" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormSubmissions_FormRequestId",
                 table: "FormSubmissions",
                 column: "FormRequestId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FormAttachments");
+            migrationBuilder.DropTable(name: "FormAttachments");
 
-            migrationBuilder.DropTable(
-                name: "FormFieldComments");
+            migrationBuilder.DropTable(name: "FormFieldComments");
 
-            migrationBuilder.DropTable(
-                name: "FormFileScanVerdicts");
+            migrationBuilder.DropTable(name: "FormFileScanVerdicts");
 
-            migrationBuilder.DropTable(
-                name: "FormSensitiveAnswers");
+            migrationBuilder.DropTable(name: "FormSensitiveAnswers");
 
-            migrationBuilder.DropTable(
-                name: "FormSubmissionRevisions");
+            migrationBuilder.DropTable(name: "FormSubmissionRevisions");
 
-            migrationBuilder.DropTable(
-                name: "FormSubmissions");
+            migrationBuilder.DropTable(name: "FormSubmissions");
 
-            migrationBuilder.DropTable(
-                name: "FormRequests");
+            migrationBuilder.DropTable(name: "FormRequests");
         }
     }
 }

@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
@@ -31,6 +32,7 @@ public static class RevealFormSensitiveAnswerHandler
         IAnswersProtector answersProtector,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -39,14 +41,15 @@ public static class RevealFormSensitiveAnswerHandler
             found.IsSuccess
             && await visibility.CanViewAsync(command.TenantId, command.ByUserId, command.CanViewAll, found.Value, ct);
         if (!visible)
-            return await DeniedAsync(command, null, audit, unitOfWork, ct);
+            return await DeniedAsync(command, null, audit, unitOfWork, metrics, ct);
         var answer = FindSubmittedAnswer(found.Value, command.SensitiveAnswerId, answersProtector);
         if (answer is null)
-            return await DeniedAsync(command, found.Value, audit, unitOfWork, ct);
+            return await DeniedAsync(command, found.Value, audit, unitOfWork, metrics, ct);
 
         var raw = protector.Unprotect(new(answer.Protected.Cipher, answer.Protected.KeyVersion));
         RecordGranted(command, found.Value, answer, audit);
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordSensitiveReveal(ClientFormsMetricValues.Granted);
         return Result.Success(new RevealedFormSensitiveAnswerResponse(Format(raw, answer.Kind), answer.Kind));
     }
 
@@ -89,6 +92,7 @@ public static class RevealFormSensitiveAnswerHandler
         FormRequest? visibleRequest,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -103,6 +107,7 @@ public static class RevealFormSensitiveAnswerHandler
             RequestContext(command)
         );
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordSensitiveReveal(ClientFormsMetricValues.Denied);
         return Result.Failure<RevealedFormSensitiveAnswerResponse>(
             visibleRequest is null ? FormRequestErrors.NotFound : FormRequestErrors.SensitiveAnswerNotFound
         );

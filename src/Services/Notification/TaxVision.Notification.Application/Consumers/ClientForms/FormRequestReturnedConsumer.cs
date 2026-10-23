@@ -32,25 +32,40 @@ public static class FormRequestReturnedConsumer
                 return;
             await ClientFormCustomerNotifier.NotifyAsync(
                 Notification(evt, customerId),
-                customers, policies, gateway, scribe, dispatcher, recipients, portal, hosts, correlation, ct
+                customers,
+                policies,
+                gateway,
+                scribe,
+                dispatcher,
+                recipients,
+                portal,
+                hosts,
+                correlation,
+                ct
             );
         }
     }
 
-    private static ClientFormCustomerNotification Notification(FormRequestReturnedIntegrationEvent evt, Guid customerId) => new(
-        evt.TenantId, customerId, evt.FormRequestId, evt.EventId, evt.OccurredOn,
-        NotificationKinds.TasksFormRequestReturned, TemplateKey,
-        "Your tax office requested changes", "Sign in to read the notes from your office.",
-        new Dictionary<string, object?>
-        {
-            ["request_title"] = evt.Title,
-            ["comment_count"] = evt.FieldCommentCount,
-            ["due_date"] = evt.DueAtUtc,
-        },
-        new Dictionary<string, string>
-        {
-            ["title"] = evt.Title,
-            ["revisionNumber"] = evt.RevisionNumber.ToString(),
-        }
-    );
+    private static ClientFormCustomerNotification Notification(
+        FormRequestReturnedIntegrationEvent evt,
+        Guid customerId
+    ) =>
+        new(
+            evt.TenantId,
+            customerId,
+            evt.FormRequestId,
+            evt.EventId,
+            evt.OccurredOn,
+            NotificationKinds.TasksFormRequestReturned,
+            TemplateKey,
+            "Your tax office requested changes",
+            "Sign in to read the notes from your office.",
+            new Dictionary<string, object?>
+            {
+                ["request_title"] = evt.Title,
+                ["comment_count"] = evt.FieldCommentCount,
+                ["due_date"] = evt.DueAtUtc,
+            },
+            new Dictionary<string, string> { ["title"] = evt.Title, ["revisionNumber"] = evt.RevisionNumber.ToString() }
+        );
 }

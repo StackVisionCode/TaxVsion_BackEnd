@@ -36,7 +36,9 @@ public sealed class FormAttachmentConfiguration : IEntityTypeConfiguration<FormA
         builder.Property(attachment => attachment.ContentType).HasMaxLength(128).IsRequired();
         builder.Property(attachment => attachment.Status).HasConversion<int>().IsRequired();
         builder.Property(attachment => attachment.RejectionCode).HasMaxLength(32);
+        builder.Property(attachment => attachment.OwnerReassignment).HasMaxLength(24);
         builder.Ignore(attachment => attachment.Address);
+        builder.Ignore(attachment => attachment.OwnerReassignmentSettled);
         builder
             .HasOne<FormSubmission>()
             .WithMany(submission => submission.Attachments)

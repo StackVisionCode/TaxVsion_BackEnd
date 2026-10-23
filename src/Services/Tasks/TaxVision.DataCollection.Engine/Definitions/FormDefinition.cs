@@ -9,14 +9,18 @@ public sealed class FormDefinition
 {
     [JsonRequired]
     public int SchemaVersion { get; init; }
+
     [JsonRequired]
     public string Title { get; init; } = string.Empty;
     public RichTextDocument? Description { get; init; }
+
     [JsonRequired]
     public FormPurpose Purpose { get; init; }
+
     [JsonRequired]
     public FormPresentation Presentation { get; init; }
     public FormSettings Settings { get; init; } = new();
+
     [JsonRequired]
     public IReadOnlyList<FormPage> Pages { get; init; } = [];
     public IReadOnlyList<FormMapping> Mappings { get; init; } = [];
@@ -37,6 +41,7 @@ public sealed class FormPage
     public RichTextDocument? Description { get; init; }
     public Condition? VisibleWhen { get; init; }
     public FormStyle? Style { get; init; }
+
     [JsonRequired]
     public IReadOnlyList<FormSection> Sections { get; init; } = [];
 }
@@ -50,6 +55,7 @@ public sealed class FormSection
     public Condition? VisibleWhen { get; init; }
     public FormRepeat? Repeat { get; init; }
     public FormStyle? Style { get; init; }
+
     [JsonRequired]
     public IReadOnlyList<FormComponent> Components { get; init; } = [];
 }
@@ -66,6 +72,7 @@ public sealed class FormComponent
 {
     [JsonRequired]
     public string Id { get; init; } = string.Empty;
+
     [JsonRequired]
     public string Type { get; init; } = string.Empty;
     public string? Key { get; init; }
@@ -90,6 +97,7 @@ public sealed class FormMapping
 {
     [JsonRequired]
     public string ComponentId { get; init; } = string.Empty;
+
     [JsonRequired]
     public string TargetKey { get; init; } = string.Empty;
     public MappingTransform Transform { get; init; }
@@ -101,8 +109,10 @@ public sealed class FormAction
 {
     [JsonRequired]
     public string Key { get; init; } = string.Empty;
+
     [JsonRequired]
     public FormActionType Type { get; init; }
+
     [JsonRequired]
     public FormActionTrigger Trigger { get; init; }
     public Condition? Condition { get; init; }

@@ -105,6 +105,14 @@ public static class FormRequestErrors
         "FormRequest.PrefillNotAvailable",
         "Prefilling from another request is not available."
     );
+    public static readonly Error CustomerHasOpenRequest = new(
+        "FormRequest.CustomerHasOpenRequest",
+        "The customer already has an open request for this form template."
+    );
+    public static readonly Error ResponsibleNotAuthorized = new(
+        "FormRequest.ResponsibleNotAuthorized",
+        "The responsible user does not have the permissions required by this form's actions."
+    );
     public static readonly Error ConcurrencyConflict = new(
         "FormRequest.ConcurrencyConflict",
         "The request was modified by someone else."

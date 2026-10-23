@@ -13,7 +13,8 @@ public sealed record UpdateFormTemplateDraftCommand(
     Guid ByUserId,
     Guid TemplateId,
     string DefinitionJson,
-    byte[] RowVersion
+    byte[] RowVersion,
+    bool CanConfigureActions
 );
 
 public static class UpdateFormTemplateDraftHandler
@@ -37,17 +38,37 @@ public static class UpdateFormTemplateDraftHandler
             return Result.Success(
                 UpdateFormTemplateDraftOutcome.Invalid([TemplateApplicationSupport.ParseIssue(parsed.Error)])
             );
-        var safeText = StaffTextGuard.Validate(parsed.Value.Title);
-        if (safeText.IsFailure)
-            return Result.Failure<UpdateFormTemplateDraftOutcome>(safeText.Error);
-        var draftReport = engine.ValidateForDraft(parsed.Value);
-        if (!draftReport.IsValid)
-            return Result.Success(UpdateFormTemplateDraftOutcome.Invalid(draftReport.Issues));
+        var rejection = Reject(command, found.Value, parsed.Value, engine);
+        if (rejection is not null)
+            return rejection;
         var updated = ApplyDraft(command, found.Value, parsed.Value, engine);
         if (updated.IsFailure)
             return Result.Failure<UpdateFormTemplateDraftOutcome>(updated.Error);
         await unitOfWork.SaveChangesAsync(ct);
         return Saved(found.Value, parsed.Value, engine);
+    }
+
+    // Null si el borrador puede guardarse; si no, el error o los issues que lo impiden.
+    private static Result<UpdateFormTemplateDraftOutcome>? Reject(
+        UpdateFormTemplateDraftCommand command,
+        TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate template,
+        FormDefinition definition,
+        IFormEngine engine
+    )
+    {
+        var safeText = StaffTextGuard.Validate(definition.Title);
+        if (safeText.IsFailure)
+            return Result.Failure<UpdateFormTemplateDraftOutcome>(safeText.Error);
+        var ruleSets = TemplateApplicationSupport.EnsureRuleSetsAllowed(
+            engine,
+            template.Draft.Json,
+            definition,
+            command.CanConfigureActions
+        );
+        if (ruleSets.IsFailure)
+            return Result.Failure<UpdateFormTemplateDraftOutcome>(ruleSets.Error);
+        var draftReport = engine.ValidateForDraft(definition);
+        return draftReport.IsValid ? null : Result.Success(UpdateFormTemplateDraftOutcome.Invalid(draftReport.Issues));
     }
 
     private static Result ApplyDraft(

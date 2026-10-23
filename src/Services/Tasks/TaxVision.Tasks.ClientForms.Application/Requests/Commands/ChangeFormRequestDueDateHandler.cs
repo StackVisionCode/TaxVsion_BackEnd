@@ -17,12 +17,28 @@ public static class ChangeFormRequestDueDateHandler
         CancellationToken ct
     )
     {
-        var found = await ReviewSupport.LoadVisible(command.TenantId, command.ByUserId, command.CanViewAll, command.RequestId, requests, visibility, ct);
+        var found = await ReviewSupport.LoadVisible(
+            command.TenantId,
+            command.ByUserId,
+            command.CanViewAll,
+            command.RequestId,
+            requests,
+            visibility,
+            ct
+        );
         if (found.IsFailure)
             return Result.Failure<FormRequestResponse>(found.Error);
         if (!FormRequestApplicationSupport.RowVersionMatches(found.Value, command.RowVersion))
             return Result.Failure<FormRequestResponse>(FormRequestErrors.ConcurrencyConflict);
         var changed = found.Value.ChangeDueDate(command.DueAtUtc, command.ByUserId, command.NowUtc);
-        return await ReviewSupport.Save(changed, found.Value, "request.due_date_changed", command.ByUserId, audit, unitOfWork, ct);
+        return await ReviewSupport.Save(
+            changed,
+            found.Value,
+            "request.due_date_changed",
+            command.ByUserId,
+            audit,
+            unitOfWork,
+            ct
+        );
     }
 }

@@ -42,6 +42,7 @@ public sealed class FormFileScanResultConsumerTests
             new FakeMessageBus(),
             new TestCorrelationContext(),
             NullLogger<FormRequest>.Instance,
+            new RecordingClientFormsMetrics(),
             default
         );
 

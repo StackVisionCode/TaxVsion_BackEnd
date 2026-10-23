@@ -14,10 +14,7 @@ public sealed class PublicFormSessionContext
     public string RequestHost { get; set; } = string.Empty;
 }
 
-public sealed class FormSessionFilter(
-    IMessageBus bus,
-    PublicFormSessionContext sessionContext
-) : IAsyncActionFilter
+public sealed class FormSessionFilter(IMessageBus bus, PublicFormSessionContext sessionContext) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
@@ -45,10 +42,11 @@ public sealed class FormSessionFilter(
         await next();
     }
 
-    private static ObjectResult Unauthorized() => new(new Error(
-        "PublicForm.SessionInvalid",
-        "The form session is invalid or expired."
-    )) { StatusCode = StatusCodes.Status401Unauthorized };
+    private static ObjectResult Unauthorized() =>
+        new(new Error("PublicForm.SessionInvalid", "The form session is invalid or expired."))
+        {
+            StatusCode = StatusCodes.Status401Unauthorized,
+        };
 }
 
 internal static class PublicFormRequestHost

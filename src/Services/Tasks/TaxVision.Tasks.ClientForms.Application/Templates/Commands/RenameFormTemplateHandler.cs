@@ -32,7 +32,12 @@ public static class RenameFormTemplateHandler
         var metadata = TemplateApplicationSupport.Metadata(command.Name, command.Description);
         if (metadata.IsFailure)
             return Result.Failure<FormTemplateDetailResponse>(metadata.Error);
-        var renamed = found.Value.Rename(metadata.Value.Name, metadata.Value.Description, command.ByUserId, DateTime.UtcNow);
+        var renamed = found.Value.Rename(
+            metadata.Value.Name,
+            metadata.Value.Description,
+            command.ByUserId,
+            DateTime.UtcNow
+        );
         if (renamed.IsFailure)
             return Result.Failure<FormTemplateDetailResponse>(renamed.Error);
         await unitOfWork.SaveChangesAsync(ct);

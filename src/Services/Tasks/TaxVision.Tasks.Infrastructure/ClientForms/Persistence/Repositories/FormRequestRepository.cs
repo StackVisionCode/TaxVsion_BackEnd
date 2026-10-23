@@ -23,10 +23,12 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
     {
         var request = await context
             .FormRequests.IgnoreQueryFilters()
+            .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.SensitiveAnswers)
+            .Include(item => item.ActionRuns)
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == requestId, ct);
         return request is null ? Result.Failure<FormRequest>(FormRequestErrors.NotFound) : Result.Success(request);
     }
@@ -47,6 +49,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Revisions)
                     .ThenInclude(revision => revision.FieldComments)
+            .Include(item => item.ActionRuns)
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == requestId, ct);
         return request is null ? Result.Failure<FormRequest>(FormRequestErrors.NotFound) : Result.Success(request);
     }
@@ -106,6 +109,26 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
                     && item.Status != FormRequestStatus.Cancelled,
                 ct
             );
+
+    public Task<Guid?> FindOpenRequestIdAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid templateId,
+        Guid exceptRequestId,
+        CancellationToken ct = default
+    ) =>
+        context
+            .FormRequests.IgnoreQueryFilters()
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.CustomerId == customerId
+                && item.FormTemplateId == templateId
+                && item.Id != exceptRequestId
+                && item.Status != FormRequestStatus.Completed
+                && item.Status != FormRequestStatus.Cancelled
+            )
+            .Select(item => (Guid?)item.Id)
+            .FirstOrDefaultAsync(ct);
 
     public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
         context

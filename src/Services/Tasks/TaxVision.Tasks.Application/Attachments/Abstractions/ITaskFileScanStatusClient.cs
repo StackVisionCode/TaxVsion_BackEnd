@@ -21,15 +21,8 @@ public sealed record RemoteFileMetadata(
     string? OriginalName
 )
 {
-    public static RemoteFileMetadata Unknown { get; } = new(
-        RemoteFileScanStatus.Unknown,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null
-    );
+    public static RemoteFileMetadata Unknown { get; } =
+        new(RemoteFileScanStatus.Unknown, null, null, null, null, null, null);
 }
 
 /// <summary>

@@ -6,11 +6,7 @@ namespace TaxVision.DataCollection.Engine.Answers;
 
 internal static class AnswersSanitizer
 {
-    internal static FormAnswers RemoveHidden(
-        FormDefinition definition,
-        FormAnswers answers,
-        VisibilityMap visibility
-    )
+    internal static FormAnswers RemoveHidden(FormDefinition definition, FormAnswers answers, VisibilityMap visibility)
     {
         var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         foreach (var page in definition.Pages)
@@ -57,7 +53,9 @@ internal static class AnswersSanitizer
             var rowValues = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
             foreach (var component in section.Components)
             {
-                if (visibility.IsVisible(component.Id, row.RowId) && row.Values.TryGetValue(component.Id, out var value))
+                if (
+                    visibility.IsVisible(component.Id, row.RowId) && row.Values.TryGetValue(component.Id, out var value)
+                )
                     rowValues[component.Id] = value.Clone();
             }
             rows.Add(new { rowId = row.RowId, values = rowValues });

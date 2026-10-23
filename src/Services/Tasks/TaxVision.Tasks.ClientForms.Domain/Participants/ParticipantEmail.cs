@@ -13,7 +13,12 @@ public sealed record ParticipantEmail
         if (string.IsNullOrWhiteSpace(raw))
             return Result.Failure<ParticipantEmail>(FormParticipantErrors.InvalidEmail);
         var normalized = raw.Trim().ToLowerInvariant();
-        if (normalized.Length > 254 || !normalized.Contains('@') || normalized.StartsWith('@') || normalized.EndsWith('@'))
+        if (
+            normalized.Length > 254
+            || !normalized.Contains('@')
+            || normalized.StartsWith('@')
+            || normalized.EndsWith('@')
+        )
             return Result.Failure<ParticipantEmail>(FormParticipantErrors.InvalidEmail);
         return Result.Success(new ParticipantEmail(normalized));
     }

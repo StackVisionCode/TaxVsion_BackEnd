@@ -31,6 +31,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
         var codec = new CapturingPayloadCodec();
         var bus = new FakeMessageBus();
         var unitOfWork = new RecordingUnitOfWork();
+        var metrics = new RecordingClientFormsMetrics();
 
         var result = await RequestPublicDirectedFormChallengeHandler.Handle(
             new RequestPublicDirectedFormChallengeCommand("access-token", "office.test", Now),
@@ -47,10 +48,12 @@ public sealed class PublicDirectedFormAccessHandlerTests
             unitOfWork,
             bus,
             new NoOpCorrelationContext(),
+            metrics,
             default
         );
 
         Assert.True(result.IsSuccess);
+        Assert.Equal(["otp:issued"], metrics.Recorded);
         var message = Assert.IsType<FormAccessCodeDeliveryRequestedIntegrationEvent>(Assert.Single(bus.Published));
         Assert.Equal("test", message.CorrelationId);
         Assert.Equal(message.EventId, message.CommandId);
@@ -85,6 +88,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
             unitOfWork,
             bus,
             new NoOpCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -99,6 +103,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
         var fixture = Fixture();
         await IssueChallengeAsync(fixture);
         var unitOfWork = new RecordingUnitOfWork();
+        var metrics = new RecordingClientFormsMetrics();
 
         for (var attempt = 0; attempt < FormAccessChallenge.MaxAttempts; attempt++)
         {
@@ -116,6 +121,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
                 new FixedCapabilities(),
                 new RecordingFormAuditLog(),
                 unitOfWork,
+                metrics,
                 default
             );
             Assert.True(result.IsFailure);
@@ -127,6 +133,10 @@ public sealed class PublicDirectedFormAccessHandlerTests
         Assert.NotNull(challenge.BlockedUntilUtc);
         Assert.Equal(FormAccessChallenge.MaxAttempts, unitOfWork.Saves);
         Assert.Empty(fixture.Sessions.Items);
+        Assert.Equal(
+            [.. Enumerable.Repeat("otp:failed", FormAccessChallenge.MaxAttempts - 1), "otp:locked"],
+            metrics.Recorded
+        );
     }
 
     [Fact]
@@ -150,6 +160,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
             new FixedCapabilities(),
             new RecordingFormAuditLog(),
             unitOfWork,
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -358,6 +369,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
             new FixedCapabilities(),
             new RecordingFormAuditLog(),
             unitOfWork,
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -377,6 +389,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
             new RecordingUnitOfWork(),
             bus,
             new NoOpCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -419,6 +432,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
         Assert.True(result.IsSuccess);

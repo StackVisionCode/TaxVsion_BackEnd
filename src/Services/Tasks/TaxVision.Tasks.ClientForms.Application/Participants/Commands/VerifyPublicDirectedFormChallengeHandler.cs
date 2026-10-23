@@ -24,6 +24,7 @@ public static class VerifyPublicDirectedFormChallengeHandler
         IClientFormsPublicCapabilityEvaluator capabilities,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -39,7 +40,7 @@ public static class VerifyPublicDirectedFormChallengeHandler
             capabilities,
             ct
         );
-        var challenge = await VerifyCodeAsync(command, context, challenges, security, unitOfWork, ct);
+        var challenge = await VerifyCodeAsync(command, context, challenges, security, metrics, unitOfWork, ct);
         if (context is null || challenge is null || !RecordVerified(context, command.NowUtc))
             return Failed();
         return await OpenSessionAsync(
@@ -62,6 +63,7 @@ public static class VerifyPublicDirectedFormChallengeHandler
         PublicDirectedFormAccess.Context? context,
         IFormAccessChallengeRepository challenges,
         IFormExternalAccessSecurity security,
+        IClientFormsMetrics metrics,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -83,9 +85,15 @@ public static class VerifyPublicDirectedFormChallengeHandler
         if (challenge is null)
             return null;
         var matches = security.VerifyOtp(tenantId, context.Grant.Id, email, command.Code, challenge.CodeHash);
-        return await PublicFormChallengeVerification.VerifyAsync(challenge, matches, command.NowUtc, unitOfWork, ct)
-            ? challenge
-            : null;
+        var verified = await PublicFormChallengeVerification.VerifyAsync(
+            challenge,
+            matches,
+            command.NowUtc,
+            unitOfWork,
+            metrics,
+            ct
+        );
+        return verified ? challenge : null;
     }
 
     private static bool RecordVerified(PublicDirectedFormAccess.Context context, DateTime nowUtc) =>

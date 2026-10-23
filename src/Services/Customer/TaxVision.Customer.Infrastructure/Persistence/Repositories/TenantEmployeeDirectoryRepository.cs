@@ -4,8 +4,22 @@ using TaxVision.Customer.Domain.Employees;
 
 namespace TaxVision.Customer.Infrastructure.Persistence.Repositories;
 
-public sealed class TenantEmployeeDirectoryRepository(CustomerDbContext db) : ITenantEmployeeDirectoryRepository
+public sealed class TenantEmployeeDirectoryRepository(CustomerDbContext db)
+    : ITenantEmployeeDirectoryRepository,
+        ITenantEmployeeDirectoryReconciliationRepository
 {
+    public async Task<IReadOnlyDictionary<Guid, TenantEmployeeDirectoryEntry>> GetByUserIdsAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken ct = default
+    ) =>
+        // Lectura cross-tenant de la reconciliación: explícito por si la entidad pasa a ser ITenantOwned.
+        await db
+            .TenantEmployeeDirectoryEntries.IgnoreQueryFilters()
+            .Where(e => userIds.Contains(e.UserId))
+            .ToDictionaryAsync(e => e.UserId, ct);
+
+    public void Add(TenantEmployeeDirectoryEntry entry) => db.TenantEmployeeDirectoryEntries.Add(entry);
+
     public Task<TenantEmployeeDirectoryEntry?> GetByUserIdAsync(Guid userId, CancellationToken ct = default) =>
         db.TenantEmployeeDirectoryEntries.FirstOrDefaultAsync(e => e.UserId == userId, ct);
 

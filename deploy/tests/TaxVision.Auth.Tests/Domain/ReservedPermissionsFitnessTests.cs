@@ -16,10 +16,9 @@ public sealed class ReservedPermissionsFitnessTests
             TasksPermissions.FormRequestsExport,
             TasksPermissions.FormRequestsApplyProfile,
             TasksPermissions.FormsLibraryManage,
-            TasksPermissions.FormTemplatesConfigureActions,
         ];
-        var reserved = PermissionCatalog.All
-            .Where(definition => definition.IsReserved)
+        var reserved = PermissionCatalog
+            .All.Where(definition => definition.IsReserved)
             .Select(definition => definition.Code)
             .Order(StringComparer.Ordinal)
             .ToArray();

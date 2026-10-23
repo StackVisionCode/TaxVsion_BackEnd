@@ -6,10 +6,8 @@ using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 
 namespace TaxVision.Tasks.Infrastructure.ClientForms;
 
-public sealed class TurnstileFormIntakeBotProtection(
-    HttpClient httpClient,
-    IOptions<ClientFormsOptions> options
-) : IFormIntakeBotProtection
+public sealed class TurnstileFormIntakeBotProtection(HttpClient httpClient, IOptions<ClientFormsOptions> options)
+    : IFormIntakeBotProtection
 {
     private const int MaxTokenLength = 2048;
     private readonly ClientFormsBotProtectionOptions _options = options.Value.External.BotProtection;
@@ -44,9 +42,7 @@ public sealed class TurnstileFormIntakeBotProtection(
                 return false;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<TurnstileSiteVerifyResponse>(
-                cancellationToken: ct
-            );
+            var result = await response.Content.ReadFromJsonAsync<TurnstileSiteVerifyResponse>(cancellationToken: ct);
             return result is { Success: true }
                 && string.Equals(result.Action, _options.ExpectedAction, StringComparison.Ordinal);
         }

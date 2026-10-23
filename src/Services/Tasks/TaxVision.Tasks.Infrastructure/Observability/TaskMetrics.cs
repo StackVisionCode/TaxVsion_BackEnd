@@ -25,7 +25,6 @@ public sealed class TaskMetrics : ITaskMetrics, IDisposable
     private readonly Counter<long> _dependencyCycleRejectedTotal;
     private readonly Counter<long> _reconciliationCorrectionsTotal;
     private readonly Counter<long> _overdueTotal;
-    private readonly Counter<long> _clientFormsAttachmentsReconciledTotal;
     private readonly Histogram<double> _timeToCompleteSeconds;
 
     /// <param name="meterName">
@@ -53,10 +52,6 @@ public sealed class TaskMetrics : ITaskMetrics, IDisposable
         _overdueTotal = _meter.CreateCounter<long>(
             "task.overdue_total",
             description: "Tasks found past their due date and still open"
-        );
-        _clientFormsAttachmentsReconciledTotal = _meter.CreateCounter<long>(
-            "client_forms.attachments_reconciled_total",
-            description: "Client form attachments resolved outside the event path"
         );
         _timeToCompleteSeconds = _meter.CreateHistogram<double>(
             "task.time_to_complete_seconds",
@@ -87,12 +82,6 @@ public sealed class TaskMetrics : ITaskMetrics, IDisposable
     {
         if (count > 0)
             _overdueTotal.Add(count);
-    }
-
-    public void RecordClientFormsAttachmentsReconciled(int count, string source)
-    {
-        if (count > 0)
-            _clientFormsAttachmentsReconciledTotal.Add(count, new KeyValuePair<string, object?>("source", source));
     }
 
     public void Dispose() => _meter.Dispose();

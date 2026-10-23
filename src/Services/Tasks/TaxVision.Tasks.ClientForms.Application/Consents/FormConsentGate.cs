@@ -10,10 +10,8 @@ using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.ClientForms.Application.Consents;
 
-public sealed class FormConsentGate(
-    IConsentNoticeRepository notices,
-    IFormConsentRecordRepository records
-) : IFormConsentGate
+public sealed class FormConsentGate(IConsentNoticeRepository notices, IFormConsentRecordRepository records)
+    : IFormConsentGate
 {
     private static readonly ComponentRegistry Registry = new();
 
@@ -28,7 +26,8 @@ public sealed class FormConsentGate(
     {
         if (!alwaysProtected && (answers is null || !ContainsProtectedData(definition, answers)))
             return Result.Success();
-        var required = FormConsentDefinitionSupport.Read(definition)
+        var required = FormConsentDefinitionSupport
+            .Read(definition)
             .Where(item => item.Blocking && item.Mode == "acceptance" && item.Timing == "beforeCollection")
             .ToArray();
         return await EnsureAcceptedAsync(context, request, required, ConsentErrors.RequiredBeforeCollection, ct);
@@ -42,7 +41,8 @@ public sealed class FormConsentGate(
         CancellationToken ct
     )
     {
-        var required = FormConsentDefinitionSupport.Read(definition)
+        var required = FormConsentDefinitionSupport
+            .Read(definition)
             .Where(item => item.Blocking && item.Mode == "acceptance" && visibility.IsVisible(item.ComponentId))
             .ToArray();
         var accepted = await AcceptedAsync(context, request, required, ct);
@@ -57,9 +57,10 @@ public sealed class FormConsentGate(
         IReadOnlyList<FormConsentDefinition> required,
         Error error,
         CancellationToken ct
-    ) => (await AcceptedAsync(context, request, required, ct)).Count == required.Count
-        ? Result.Success()
-        : Result.Failure(error);
+    ) =>
+        (await AcceptedAsync(context, request, required, ct)).Count == required.Count
+            ? Result.Success()
+            : Result.Failure(error);
 
     private async Task<List<FormConsentRecord>> AcceptedAsync(
         ParticipantContext context,
@@ -73,13 +74,15 @@ public sealed class FormConsentGate(
         foreach (var consent in required)
         {
             var notice = await notices.GetByKeyAsync(context.TenantId, consent.NoticeKey, ct);
-            var match = notice is null ? null : existing.SingleOrDefault(item =>
-                item.ComponentId == consent.ComponentId
-                && item.ConsentNoticeId == notice.Id
-                && item.NoticeVersionNumber == consent.NoticeVersionNumber
-                && item.Outcome == FormConsentOutcome.Accepted
-                && MatchesParticipant(context, item)
-            );
+            var match = notice is null
+                ? null
+                : existing.SingleOrDefault(item =>
+                    item.ComponentId == consent.ComponentId
+                    && item.ConsentNoticeId == notice.Id
+                    && item.NoticeVersionNumber == consent.NoticeVersionNumber
+                    && item.Outcome == FormConsentOutcome.Accepted
+                    && MatchesParticipant(context, item)
+                );
             if (match is not null)
                 accepted.Add(match);
         }
@@ -90,11 +93,19 @@ public sealed class FormConsentGate(
     {
         foreach (var section in definition.Pages.SelectMany(page => page.Sections))
         {
-            if (section.Repeat is null && section.Components.Any(IsProtected)
-                && section.Components.Any(component => IsProtected(component) && answers.Values.ContainsKey(component.Id)))
+            if (
+                section.Repeat is null
+                && section.Components.Any(IsProtected)
+                && section.Components.Any(component =>
+                    IsProtected(component) && answers.Values.ContainsKey(component.Id)
+                )
+            )
                 return true;
-            if (section.Repeat is not null && section.Components.Any(IsProtected)
-                && answers.Values.ContainsKey(section.Id))
+            if (
+                section.Repeat is not null
+                && section.Components.Any(IsProtected)
+                && answers.Values.ContainsKey(section.Id)
+            )
                 return true;
         }
         return false;
@@ -104,9 +115,10 @@ public sealed class FormConsentGate(
     {
         if (!Registry.TryGet(component.Type, out var type) || type.Kind != ComponentKind.Input)
             return false;
-        return (component.DataClass ?? type.MinimumDataClass) is DataClass.Financial
-            or DataClass.Personal
-            or DataClass.Restricted;
+        return (component.DataClass ?? type.MinimumDataClass)
+            is DataClass.Financial
+                or DataClass.Personal
+                or DataClass.Restricted;
     }
 
     internal static bool MatchesParticipant(ParticipantContext context, FormConsentRecord record) =>

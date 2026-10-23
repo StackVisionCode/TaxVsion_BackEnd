@@ -17,13 +17,21 @@ public sealed class PublishFormTemplateHandlerTests
         var unit = new RecordingUnitOfWork();
 
         var result = await PublishFormTemplateHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, []),
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                [],
+                FormTemplateHandlerTestDoubles.Publisher
+            ),
             FormTemplateHandlerTestDoubles.Engine(),
             new MemoryFormTemplateRepository(template),
             versions,
             new MemoryConsentNoticeRepository(),
+            FormTemplateHandlerTestDoubles.TargetCatalog(),
             audit,
             unit,
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -71,13 +79,21 @@ public sealed class PublishFormTemplateHandlerTests
         var versions = new MemoryFormTemplateVersionRepository();
 
         var result = await PublishFormTemplateHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, []),
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                [],
+                FormTemplateHandlerTestDoubles.Publisher
+            ),
             engine,
             new MemoryFormTemplateRepository(template),
             versions,
             new MemoryConsentNoticeRepository(notice),
+            FormTemplateHandlerTestDoubles.TargetCatalog(),
             new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
+            new RecordingClientFormsMetrics(),
             default
         );
 

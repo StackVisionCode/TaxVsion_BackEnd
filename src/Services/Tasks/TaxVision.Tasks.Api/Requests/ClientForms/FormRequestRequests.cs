@@ -26,13 +26,23 @@ public sealed record AssignExternalFormRequestRequest(
 );
 
 public sealed record FormFieldCommentRequest(string ComponentId, string? RowId, string Comment);
-public sealed record ReturnFormRequestRequest(string Message, IReadOnlyList<FormFieldCommentRequest> FieldComments, string RowVersion);
+
+public sealed record ReturnFormRequestRequest(
+    string Message,
+    IReadOnlyList<FormFieldCommentRequest> FieldComments,
+    string RowVersion
+);
+
 public sealed record CompleteFormRequestRequest(string? InternalNote, string RowVersion);
+
 public sealed record CancelFormRequestRequest(string? Note, string RowVersion);
+
 public sealed record ChangeFormRequestDueDateRequest(DateTime? DueAtUtc, string RowVersion);
 
 public sealed record SavePortalFormDraftRequest(JsonElement Answers, string RowVersion);
+
 public sealed record SubmitPortalFormRequestRequest(string RowVersion);
+
 public sealed record RegisterPortalFormAttachmentRequest(
     string ComponentId,
     string? RowId,
@@ -41,6 +51,7 @@ public sealed record RegisterPortalFormAttachmentRequest(
     string ContentType,
     long SizeBytes
 );
+
 public sealed record CapturePortalSensitiveAnswerRequest(
     string ComponentId,
     string? RowId,

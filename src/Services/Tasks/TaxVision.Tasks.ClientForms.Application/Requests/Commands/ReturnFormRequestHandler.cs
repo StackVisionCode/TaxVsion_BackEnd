@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
 using TaxVision.DataCollection.Engine.Answers;
 using TaxVision.DataCollection.Engine.Definitions;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
@@ -25,6 +26,7 @@ public static class ReturnFormRequestHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -45,12 +47,15 @@ public static class ReturnFormRequestHandler
         var returned = ReturnForChanges(found.Value, command);
         if (returned.IsSuccess)
             await PublishReturnedAsync(found.Value, command.ByUserId, bus, correlation);
-        return await ReviewSupport.Save(
+        return await ReviewSupport.SaveReviewed(
             returned,
             found.Value,
             "request.returned",
+            ClientFormsMetricValues.Returned,
             command.ByUserId,
+            command.NowUtc,
             audit,
+            metrics,
             unitOfWork,
             ct
         );

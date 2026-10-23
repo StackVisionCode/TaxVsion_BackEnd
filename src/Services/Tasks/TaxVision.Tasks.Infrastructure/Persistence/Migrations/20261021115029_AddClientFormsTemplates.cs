@@ -29,12 +29,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     CorrelationId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     DetailsJson = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormAuditEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormTemplates",
@@ -62,13 +63,14 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     ArchivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ArchivedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormTemplates", x => x.Id);
                     table.CheckConstraint("CK_FormTemplates_Draft_IsJson", "ISJSON([DraftDefinitionJson]) = 1");
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormTemplateVersions",
@@ -86,7 +88,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     ComponentCount = table.Column<int>(type: "int", nullable: false),
                     PublishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     PublishedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -97,54 +99,59 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.FormTemplateId,
                         principalTable: "FormTemplates",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAuditEntries_TenantId_Request_OccurredAt",
                 table: "FormAuditEntries",
-                columns: new[] { "TenantId", "FormRequestId", "OccurredAtUtc" });
+                columns: new[] { "TenantId", "FormRequestId", "OccurredAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAuditEntries_TenantId_Template_OccurredAt",
                 table: "FormAuditEntries",
-                columns: new[] { "TenantId", "FormTemplateId", "OccurredAtUtc" });
+                columns: new[] { "TenantId", "FormTemplateId", "OccurredAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormTemplates_TenantId_Status_Name",
                 table: "FormTemplates",
-                columns: new[] { "TenantId", "Status", "Name" });
+                columns: new[] { "TenantId", "Status", "Name" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormTemplates_LibraryKey",
                 table: "FormTemplates",
                 column: "LibraryKey",
                 unique: true,
-                filter: "[LibraryKey] IS NOT NULL");
+                filter: "[LibraryKey] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormTemplateVersions_TenantId_TemplateId",
                 table: "FormTemplateVersions",
-                columns: new[] { "TenantId", "FormTemplateId" });
+                columns: new[] { "TenantId", "FormTemplateId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormTemplateVersions_TemplateId_VersionNumber",
                 table: "FormTemplateVersions",
                 columns: new[] { "FormTemplateId", "VersionNumber" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FormAuditEntries");
+            migrationBuilder.DropTable(name: "FormAuditEntries");
 
-            migrationBuilder.DropTable(
-                name: "FormTemplateVersions");
+            migrationBuilder.DropTable(name: "FormTemplateVersions");
 
-            migrationBuilder.DropTable(
-                name: "FormTemplates");
+            migrationBuilder.DropTable(name: "FormTemplates");
         }
     }
 }

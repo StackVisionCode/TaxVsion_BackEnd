@@ -13,8 +13,8 @@ public static class ListAssignableFormTemplatesHandler
         CancellationToken ct
     ) =>
         [
-            .. (await templates.ListAssignableAsync(query.TenantId, query.Search, ct)).Select(item =>
-                new AssignableFormTemplateResponse(
+            .. (await templates.ListAssignableAsync(query.TenantId, query.Search, ct)).Select(
+                item => new AssignableFormTemplateResponse(
                     item.Template.Id,
                     item.Template.Name.Value,
                     item.Template.Purpose,

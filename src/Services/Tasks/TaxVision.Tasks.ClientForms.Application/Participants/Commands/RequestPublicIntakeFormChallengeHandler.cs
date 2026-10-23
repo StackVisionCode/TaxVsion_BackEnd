@@ -31,6 +31,7 @@ public static class RequestPublicIntakeFormChallengeHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -58,6 +59,7 @@ public static class RequestPublicIntakeFormChallengeHandler
         challenges.Add(challenge.Challenge);
         await bus.PublishAsync(CodeDelivery(link, email.Value.Value, challenge, payloadCodec, correlation));
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordExternalOtp(ClientFormsMetricValues.OtpIssued);
         return Result.Success();
     }
 

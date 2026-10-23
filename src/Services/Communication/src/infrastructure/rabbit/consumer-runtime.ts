@@ -226,6 +226,8 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormAttachmentRejectedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestReminderDueIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent',
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;

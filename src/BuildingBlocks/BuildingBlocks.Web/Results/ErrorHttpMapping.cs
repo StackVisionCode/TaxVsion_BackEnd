@@ -87,6 +87,7 @@ public static class ErrorHttpMapping
             or "FormRequest.AttachmentNotFound"
             or "FormSensitiveAnswer.NotFound"
             or "FormLibrary.NotFound"
+            or "FormActionRun.NotFound"
             or "ConsentNotice.NotFound"
             or "ConsentNotice.VersionNotFound"
             or "Calendar.Appointment.NotFound"
@@ -144,7 +145,8 @@ public static class ErrorHttpMapping
             or "ShareLink.ShareLifetimeExceedsMax"
             // Client Forms: texto del staff con un identificador fiscal o de tarjeta, y prellenado aún no disponible.
             or "FormRequest.TextContainsSensitiveData"
-            or "FormRequest.PrefillNotAvailable" => StatusCodes.Status400BadRequest,
+            or "FormRequest.PrefillNotAvailable"
+            or "FormCatalogUsage.InvalidTargetKey" => StatusCodes.Status400BadRequest,
             "TenantDomain.ReservationConsumed"
             or "TenantDomain.ReservationExpired"
             or "TenantDomain.HostTaken"
@@ -185,7 +187,12 @@ public static class ErrorHttpMapping
             or "FormRequest.ProfileUpdateAlreadyApproved"
             or "FormRequest.CustomerUnavailable"
             or "FormRequest.TemplateNotPublished"
-            or "FormRequest.AttachmentAlreadyRegistered" => StatusCodes.Status409Conflict,
+            or "FormRequest.AttachmentAlreadyRegistered"
+            // Acciones posteriores al envío: reintento no admitido o vínculo todavía en conflicto.
+            or "FormActionRun.NotRetryable"
+            or "FormActionRun.NotAvailable"
+            or "FormRequest.CustomerHasOpenRequest"
+            or "FormRequest.LinkNotBlocked" => StatusCodes.Status409Conflict,
             "ConsentNotice.Archived"
             or "ConsentNotice.KeyTaken"
             or "ConsentNotice.ConcurrencyConflict"
@@ -316,6 +323,8 @@ public static class ErrorHttpMapping
             or "ShareLink.ElevatedPermissionRequiresManage"
             or "Note.Forbidden"
             or "Task.Forbidden"
+            // Sin configure_actions se edita el formulario pero no su mapeo de datos ni sus acciones.
+            or "FormTemplate.ConfigureActionsRequired"
             or "Task.Timer.NotOwner"
             or "Auth.UserInactive"
             or "Onboarding.SessionEmailMismatch"
@@ -446,7 +455,9 @@ public static class ErrorHttpMapping
             or "intake.entry_notice_required"
             or "PaymentMethod.UnsupportedForCheckout"
             or "PaymentMethod.UnsupportedByProvider"
-            or "PayPal.CheckoutSession.MethodUnsupported" => StatusCodes.Status422UnprocessableEntity,
+            or "PayPal.CheckoutSession.MethodUnsupported"
+            // El responsable elegido no podría ejecutar las acciones de la plantilla.
+            or "FormRequest.ResponsibleNotAuthorized" => StatusCodes.Status422UnprocessableEntity,
             "PaymentProvider.NotConfigured" => StatusCodes.Status502BadGateway,
             // PEP del Wallet (Campaigns F4): saldo insuficiente para enviar la campaña → 402 Payment
             // Required (el front lo detecta por el code y muestra "faltan $X" + recarga). Si el Wallet no

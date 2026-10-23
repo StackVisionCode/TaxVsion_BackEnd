@@ -44,11 +44,22 @@ public sealed class FormIntakeLink : AggregateRoot
     )
     {
         var normalizedName = name?.Trim();
-        if (tenantId == Guid.Empty || string.IsNullOrWhiteSpace(normalizedName) || normalizedName.Length > 120
-            || templateId == Guid.Empty || versionId == Guid.Empty || entryNoticeId == Guid.Empty
-            || entryNoticeVersionNumber < 1 || responsibleUserId == Guid.Empty
-            || createdByUserId == Guid.Empty || string.IsNullOrWhiteSpace(tokenHash) || tokenLast4.Length != 4
-            || string.IsNullOrWhiteSpace(tokenCipher) || expiresAtUtc <= nowUtc || maxSubmissions is <= 0)
+        if (
+            tenantId == Guid.Empty
+            || string.IsNullOrWhiteSpace(normalizedName)
+            || normalizedName.Length > 120
+            || templateId == Guid.Empty
+            || versionId == Guid.Empty
+            || entryNoticeId == Guid.Empty
+            || entryNoticeVersionNumber < 1
+            || responsibleUserId == Guid.Empty
+            || createdByUserId == Guid.Empty
+            || string.IsNullOrWhiteSpace(tokenHash)
+            || tokenLast4.Length != 4
+            || string.IsNullOrWhiteSpace(tokenCipher)
+            || expiresAtUtc <= nowUtc
+            || maxSubmissions is <= 0
+        )
             return Result.Failure<FormIntakeLink>(FormParticipantErrors.IntakeLinkInvalid);
         var link = new FormIntakeLink
         {
@@ -90,8 +101,12 @@ public sealed class FormIntakeLink : AggregateRoot
 
     public Result Resume(DateTime nowUtc)
     {
-        if (Status != FormIntakeLinkStatus.Paused || ExpiresAtUtc <= nowUtc
-            || !EntryNoticeId.HasValue || !EntryNoticeVersionNumber.HasValue)
+        if (
+            Status != FormIntakeLinkStatus.Paused
+            || ExpiresAtUtc <= nowUtc
+            || !EntryNoticeId.HasValue
+            || !EntryNoticeVersionNumber.HasValue
+        )
             return Result.Failure(FormParticipantErrors.IntakeLinkUnavailable);
         Status = FormIntakeLinkStatus.Active;
         return Result.Success();
@@ -123,8 +138,12 @@ public sealed class FormIntakeLink : AggregateRoot
 
     public Result RegenerateToken(string hash, string last4, string cipher, short keyVersion)
     {
-        if (Status == FormIntakeLinkStatus.Revoked || string.IsNullOrWhiteSpace(hash) || last4.Length != 4
-            || string.IsNullOrWhiteSpace(cipher))
+        if (
+            Status == FormIntakeLinkStatus.Revoked
+            || string.IsNullOrWhiteSpace(hash)
+            || last4.Length != 4
+            || string.IsNullOrWhiteSpace(cipher)
+        )
             return Result.Failure(FormParticipantErrors.IntakeLinkInvalid);
         TokenHash = hash;
         TokenLast4 = last4;

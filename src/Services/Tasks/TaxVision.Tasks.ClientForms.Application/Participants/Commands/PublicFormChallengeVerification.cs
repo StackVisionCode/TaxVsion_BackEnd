@@ -1,5 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Common;
+using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Participants;
 
@@ -31,12 +33,19 @@ internal static class PublicFormChallengeVerification
         bool codeMatches,
         DateTime nowUtc,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
         if (challenge.Verify(codeMatches, nowUtc).IsSuccess)
+        {
+            metrics.RecordExternalOtp(ClientFormsMetricValues.OtpVerified);
             return true;
+        }
         await TrySaveAsync(unitOfWork, ct);
+        metrics.RecordExternalOtp(
+            challenge.IsBlockedAt(nowUtc) ? ClientFormsMetricValues.OtpLocked : ClientFormsMetricValues.OtpFailed
+        );
         return false;
     }
 

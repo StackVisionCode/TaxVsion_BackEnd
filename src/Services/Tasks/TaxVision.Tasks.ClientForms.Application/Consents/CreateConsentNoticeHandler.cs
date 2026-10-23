@@ -30,13 +30,7 @@ public static class CreateConsentNoticeHandler
         if (created.IsFailure)
             return Result.Failure<ConsentNoticeResponse>(created.Error);
         notices.Add(created.Value);
-        audit.Record(
-            command.TenantId,
-            null,
-            null,
-            FormAuditAction.ConsentNoticeCreated,
-            command.ByUserId
-        );
+        audit.Record(command.TenantId, null, null, FormAuditAction.ConsentNoticeCreated, command.ByUserId);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(ConsentNoticeResponse.From(created.Value));
     }

@@ -22,27 +22,44 @@ public static class GetPublicDirectedFormAccessHandler
     )
     {
         var context = await PublicDirectedFormAccess.LoadAsync(
-            query.AccessToken, query.RequestHost, query.NowUtc, grants, requests, participants,
-            security, hostValidator, capabilities, ct
+            query.AccessToken,
+            query.RequestHost,
+            query.NowUtc,
+            grants,
+            requests,
+            participants,
+            security,
+            hostValidator,
+            capabilities,
+            ct
         );
         if (context is null)
             return Result.Failure<PublicDirectedFormAccessResponse>(PublicDirectedFormAccessErrors.NotFound);
-        var entryNotice = await EntryNoticeSupport.ResolvePinnedAsync(
+        var entryNotice = await ResolveEntryNoticeAsync(context, notices, ct);
+        if (entryNotice is null)
+            return Result.Failure<PublicDirectedFormAccessResponse>(PublicDirectedFormAccessErrors.NotFound);
+        return Result.Success(
+            new PublicDirectedFormAccessResponse(
+                context.Request.Title,
+                query.RequestHost,
+                MaskEmail(context.Participant.Email),
+                EntryNoticeSupport.ToResponse(entryNotice)
+            )
+        );
+    }
+
+    private static Task<EntryNoticeSelection?> ResolveEntryNoticeAsync(
+        PublicDirectedFormAccess.Context context,
+        IConsentNoticeRepository notices,
+        CancellationToken ct
+    ) =>
+        EntryNoticeSupport.ResolvePinnedAsync(
             context.Grant.TenantId,
             context.Grant.EntryNoticeId,
             context.Grant.EntryNoticeVersionNumber,
             notices,
             ct
         );
-        if (entryNotice is null)
-            return Result.Failure<PublicDirectedFormAccessResponse>(PublicDirectedFormAccessErrors.NotFound);
-        return Result.Success(new PublicDirectedFormAccessResponse(
-            context.Request.Title,
-            query.RequestHost,
-            MaskEmail(context.Participant.Email),
-            EntryNoticeSupport.ToResponse(entryNotice)
-        ));
-    }
 
     private static string MaskEmail(string email)
     {

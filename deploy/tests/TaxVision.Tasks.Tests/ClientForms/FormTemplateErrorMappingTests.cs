@@ -39,6 +39,14 @@ public sealed class FormTemplateErrorMappingTests
     [Theory]
     [InlineData("FormRequest.TextContainsSensitiveData")]
     [InlineData("FormRequest.PrefillNotAvailable")]
+    [InlineData("FormCatalogUsage.InvalidTargetKey")]
     public void Invalid_staff_input_maps_to_400(string code) =>
         Assert.Equal(StatusCodes.Status400BadRequest, new Error(code, "invalid").ToHttpStatusCode());
+
+    [Fact]
+    public void Changing_rules_without_configure_actions_maps_to_403() =>
+        Assert.Equal(
+            StatusCodes.Status403Forbidden,
+            new Error("FormTemplate.ConfigureActionsRequired", "denied").ToHttpStatusCode()
+        );
 }

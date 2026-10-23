@@ -35,16 +35,18 @@ internal sealed class FormExternalUploadClient(
         {
             using var message = new HttpRequestMessage(HttpMethod.Post, "storage/files/uploads")
             {
-                Content = JsonContent.Create(new
-                {
-                    request.OriginalName,
-                    request.ContentType,
-                    request.SizeBytes,
-                    request.OwnerType,
-                    request.OwnerId,
-                    FolderType = "ClientForms",
-                    TaxYear = (int?)null,
-                }),
+                Content = JsonContent.Create(
+                    new
+                    {
+                        request.OriginalName,
+                        request.ContentType,
+                        request.SizeBytes,
+                        request.OwnerType,
+                        request.OwnerId,
+                        FolderType = "ClientForms",
+                        TaxYear = (int?)null,
+                    }
+                ),
             };
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await httpClient.SendAsync(message, ct);
@@ -53,12 +55,9 @@ internal sealed class FormExternalUploadClient(
             var body = await response.Content.ReadFromJsonAsync<InitiatedUploadDto>(Json, ct);
             return body is null
                 ? Result.Failure<ExternalFormUploadResponse>(Unavailable)
-                : Result.Success(new ExternalFormUploadResponse(
-                    body.FileId,
-                    body.UploadUrl,
-                    body.FormData,
-                    body.ExpiresAtUtc
-                ));
+                : Result.Success(
+                    new ExternalFormUploadResponse(body.FileId, body.UploadUrl, body.FormData, body.ExpiresAtUtc)
+                );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {

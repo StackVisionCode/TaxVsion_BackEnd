@@ -101,10 +101,7 @@ internal static class EngineTestFactory
             SchemaVersion = 1,
             Values = value is null
                 ? new Dictionary<string, JsonElement>()
-                : new Dictionary<string, JsonElement>
-                {
-                    ["fd_abcdefgh"] = JsonSerializer.SerializeToElement(value),
-                },
+                : new Dictionary<string, JsonElement> { ["fd_abcdefgh"] = JsonSerializer.SerializeToElement(value) },
         };
 
     private static bool IsInput(string type) =>

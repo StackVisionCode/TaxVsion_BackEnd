@@ -664,6 +664,101 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.ToTable("FormParticipants", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormActionRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActionKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CommandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ErrorDetail")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("ExistingCustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResultRefId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResultRefKind")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("RetriedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Warnings")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "RequestedAtUtc")
+                        .HasDatabaseName("IX_FormActionRuns_Status_RequestedAtUtc");
+
+                    b.HasIndex("TenantId", "CommandId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormActionRuns_Tenant_Command")
+                        .HasFilter("[CommandId] IS NOT NULL");
+
+                    b.HasIndex("FormRequestId", "IdempotencyKey", "Attempt")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FormActionRuns_Request_Key_Attempt");
+
+                    b.ToTable("FormActionRuns", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormActionRuns_Command", "([Status] = 5 AND [CommandId] IS NULL) OR ([Status] = 4) OR ([Status] IN (1, 2, 3) AND [CommandId] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormAttachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -692,6 +787,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("FormSubmissionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("OwnerReassignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OwnerReassignment")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
 
                     b.Property<DateTime>("RegisteredAtUtc")
                         .HasColumnType("datetime2");
@@ -1247,6 +1349,12 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ActionSetJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
                     b.Property<int>("ComponentCount")
                         .HasColumnType("int");
 
@@ -1264,6 +1372,12 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FormTemplateId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("MappingSetJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
                     b.Property<int>("Presentation")
                         .HasColumnType("int");
 
@@ -1278,6 +1392,11 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("int");
+
+                    b.Property<int>("TargetCatalogVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -1301,7 +1420,11 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.ToTable("FormTemplateVersions", null, t =>
                         {
+                            t.HasCheckConstraint("CK_FormTemplateVersions_ActionSet_IsJson", "ISJSON([ActionSetJson]) = 1");
+
                             t.HasCheckConstraint("CK_FormTemplateVersions_Definition_IsJson", "ISJSON([DefinitionJson]) = 1");
+
+                            t.HasCheckConstraint("CK_FormTemplateVersions_MappingSet_IsJson", "ISJSON([MappingSetJson]) = 1");
                         });
                 });
 
@@ -2149,6 +2272,15 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormActionRun", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", null)
+                        .WithMany("ActionRuns")
+                        .HasForeignKey("FormRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormAttachment", b =>
                 {
                     b.HasOne("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmission", null)
@@ -2747,6 +2879,8 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormRequest", b =>
                 {
+                    b.Navigation("ActionRuns");
+
                     b.Navigation("Submission");
                 });
 

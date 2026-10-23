@@ -11,7 +11,16 @@ public sealed class GetFormTemplateHandlerTests
         var template = FormTemplateHandlerTestDoubles.Template();
         var engine = FormTemplateHandlerTestDoubles.Engine();
         var parsed = engine.ParseDefinition(template.Draft.Json).Value;
-        var version = template.Publish(engine.Canonicalize(parsed), parsed.Title, FormPresentation.Wizard, 1, FormTemplateHandlerTestDoubles.UserId, DateTime.UtcNow).Value;
+        var version = template
+            .Publish(
+                engine.Canonicalize(parsed),
+                parsed.Title,
+                FormPresentation.Wizard,
+                1,
+                FormTemplateHandlerTestDoubles.UserId,
+                DateTime.UtcNow
+            )
+            .Value;
 
         var result = await GetFormTemplateHandler.Handle(
             new(template.TenantId, template.Id),

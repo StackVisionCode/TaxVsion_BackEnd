@@ -16,20 +16,13 @@ internal static class RichTextValidator
         ["sans", "serif", "script1", "script2"],
         StringComparer.Ordinal
     );
-    private static readonly HashSet<string> Marks = new(
-        ["bold", "italic", "underline"],
-        StringComparer.Ordinal
-    );
+    private static readonly HashSet<string> Marks = new(["bold", "italic", "underline"], StringComparer.Ordinal);
     private static readonly HashSet<string> Colors = new(
         ["ink", "secondary", "muted", "brand", "accent", "success", "warning", "danger", "info"],
         StringComparer.Ordinal
     );
 
-    internal static IReadOnlyList<ValidationIssue> Validate(
-        RichTextDocument? document,
-        string path,
-        int maxCharacters
-    )
+    internal static IReadOnlyList<ValidationIssue> Validate(RichTextDocument? document, string path, int maxCharacters)
     {
         if (document is null)
             return [];
@@ -66,7 +59,13 @@ internal static class RichTextValidator
                 {
                     if (block.Items[itemIndex].Count == 0)
                         AddInvalidNode(issues, $"{blockPath}/items/{itemIndex}", "List items cannot be empty.");
-                    ValidateInlines(block.Items[itemIndex], $"{blockPath}/items/{itemIndex}", issues, ref characterCount, true);
+                    ValidateInlines(
+                        block.Items[itemIndex],
+                        $"{blockPath}/items/{itemIndex}",
+                        issues,
+                        ref characterCount,
+                        true
+                    );
                 }
             }
             else
@@ -120,15 +119,25 @@ internal static class RichTextValidator
             }
 
             characterCount += node.Text?.Length ?? 0;
-            if (node.Marks.Count != node.Marks.Distinct(StringComparer.Ordinal).Count()
+            if (
+                node.Marks.Count != node.Marks.Distinct(StringComparer.Ordinal).Count()
                 || node.Marks.Any(mark => !Marks.Contains(mark))
-                || (node.Color is not null && !Colors.Contains(node.Color)))
+                || (node.Color is not null && !Colors.Contains(node.Color))
+            )
                 AddInvalidNode(issues, nodePath, "Rich text mark is not supported.");
 
             if (node.Type == "link")
             {
                 if (!Uri.TryCreate(node.Href, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-                    issues.Add(new ValidationIssue("richtext.invalid_link", $"{nodePath}/href", null, null, "Only HTTPS links are allowed."));
+                    issues.Add(
+                        new ValidationIssue(
+                            "richtext.invalid_link",
+                            $"{nodePath}/href",
+                            null,
+                            null,
+                            "Only HTTPS links are allowed."
+                        )
+                    );
                 if (node.Text is not null || node.Children.Count == 0)
                     AddInvalidNode(issues, nodePath, "Links require child text and cannot contain direct text.");
                 ValidateInlines(node.Children, $"{nodePath}/children", issues, ref characterCount, false);

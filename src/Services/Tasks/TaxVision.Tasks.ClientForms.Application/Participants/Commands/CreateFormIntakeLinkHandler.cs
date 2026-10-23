@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
@@ -18,6 +19,7 @@ public static class CreateFormIntakeLinkHandler
         CreateFormIntakeLinkCommand command,
         IClientFormsPublicCapabilityEvaluator capabilities,
         IFormResponsibleUserValidator responsibleUsers,
+        IFormActionAuthorizer authorizer,
         IFormTemplateRepository templates,
         IFormTemplateVersionRepository versions,
         IConsentNoticeRepository notices,
@@ -32,7 +34,7 @@ public static class CreateFormIntakeLinkHandler
             return Failure(FormParticipantErrors.IntakeLinkUnavailable);
         if (!await responsibleUsers.IsActiveAsync(command.TenantId, command.ResponsibleUserId, ct))
             return Failure(FormParticipantErrors.IntakeResponsibleUnavailable);
-        var sources = await LoadSourcesAsync(command, templates, versions, notices, ct);
+        var sources = await LoadSourcesAsync(command, templates, versions, notices, authorizer, ct);
         if (sources.IsFailure)
             return Failure(sources.Error);
 
@@ -59,12 +61,22 @@ public static class CreateFormIntakeLinkHandler
         IFormTemplateRepository templates,
         IFormTemplateVersionRepository versions,
         IConsentNoticeRepository notices,
+        IFormActionAuthorizer authorizer,
         CancellationToken ct
     )
     {
         var version = await LoadVersionAsync(command, templates, versions, ct);
         if (version.IsFailure)
             return Result.Failure<(FormTemplateVersion, EntryNoticeSelection)>(version.Error);
+        // El responsable del enlace ejecutará las acciones de la plantilla: debe tener sus permisos.
+        var authorized = await authorizer.EnsureResponsibleCanRunAsync(
+            command.TenantId,
+            command.ResponsibleUserId,
+            version.Value,
+            ct
+        );
+        if (authorized.IsFailure)
+            return Result.Failure<(FormTemplateVersion, EntryNoticeSelection)>(authorized.Error);
         var entryNotice = await EntryNoticeSupport.ResolveForCreationAsync(
             command.TenantId,
             command.EntryNoticeKey,

@@ -13,6 +13,7 @@ public sealed class ValidateFormTemplateHandlerTests
             new(template.TenantId, template.Id),
             FormTemplateHandlerTestDoubles.Engine(),
             new MemoryFormTemplateRepository(template),
+            FormTemplateHandlerTestDoubles.TargetCatalog(),
             default
         );
 

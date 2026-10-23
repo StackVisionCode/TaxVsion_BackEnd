@@ -32,9 +32,16 @@ public sealed class FormAccessSession : AggregateRoot
     {
         var ip = clientIp?.Trim();
         var agent = userAgent?.Trim();
-        if (tenantId == Guid.Empty || formRequestId == Guid.Empty || participantId == Guid.Empty
-            || string.IsNullOrWhiteSpace(tokenHash) || string.IsNullOrWhiteSpace(ip) || ip.Length > 64
-            || string.IsNullOrWhiteSpace(agent) || agent.Length > 512)
+        if (
+            tenantId == Guid.Empty
+            || formRequestId == Guid.Empty
+            || participantId == Guid.Empty
+            || string.IsNullOrWhiteSpace(tokenHash)
+            || string.IsNullOrWhiteSpace(ip)
+            || ip.Length > 64
+            || string.IsNullOrWhiteSpace(agent)
+            || agent.Length > 512
+        )
             return Result.Failure<FormAccessSession>(FormParticipantErrors.SessionInvalid);
         var session = new FormAccessSession
         {
@@ -53,9 +60,7 @@ public sealed class FormAccessSession : AggregateRoot
     }
 
     public bool IsActiveAt(DateTime nowUtc) =>
-        !RevokedAtUtc.HasValue
-        && nowUtc < ExpiresAtUtc
-        && nowUtc < CreatedAtUtc.Add(AbsoluteTimeout);
+        !RevokedAtUtc.HasValue && nowUtc < ExpiresAtUtc && nowUtc < CreatedAtUtc.Add(AbsoluteTimeout);
 
     public Result Touch(DateTime nowUtc)
     {

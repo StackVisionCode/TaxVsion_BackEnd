@@ -45,7 +45,17 @@ internal static class ClientFormCustomerNotifier
     )
     {
         var host = await hosts.ResolveHostAsync(notification.TenantId, ct);
-        await SendEmailAsync(notification, host, customers, contactPolicies, gateway, scribe, portal.Value, correlation, ct);
+        await SendEmailAsync(
+            notification,
+            host,
+            customers,
+            contactPolicies,
+            gateway,
+            scribe,
+            portal.Value,
+            correlation,
+            ct
+        );
         await RecordPortalAsync(notification, dispatcher, recipients, correlation, ct);
     }
 
@@ -61,13 +71,15 @@ internal static class ClientFormCustomerNotifier
         CancellationToken ct
     )
     {
-        if (!await CustomerContactPolicyFilter.AllowsAsync(
-            notification.TenantId,
-            notification.CustomerId,
-            CustomerContactChannel.Email,
-            contactPolicies,
-            ct
-        ))
+        if (
+            !await CustomerContactPolicyFilter.AllowsAsync(
+                notification.TenantId,
+                notification.CustomerId,
+                CustomerContactChannel.Email,
+                contactPolicies,
+                ct
+            )
+        )
             return;
         var customer = await customers.GetByCustomerIdAsync(notification.TenantId, notification.CustomerId, ct);
         if (customer is not { IsActive: true } || customer.NormalizedEmail.Length == 0)
@@ -78,12 +90,9 @@ internal static class ClientFormCustomerNotifier
             ["customer_name"] = customer.DisplayName,
             ["portal_link"] = TenantEmailLinks.ClientForm(host, portal, notification.FormRequestId),
         };
-        var render = (await scribe.RenderAsync(
-            notification.TemplateKey,
-            notification.TenantId,
-            variables,
-            ct
-        )).EnsureRendered(notification.TemplateKey);
+        var render = (
+            await scribe.RenderAsync(notification.TemplateKey, notification.TenantId, variables, ct)
+        ).EnsureRendered(notification.TemplateKey);
         await gateway.QueueEmailAsync(
             render.ToDispatchRequest(
                 notification.TenantId,

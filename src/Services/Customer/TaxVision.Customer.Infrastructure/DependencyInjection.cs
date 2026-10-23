@@ -11,6 +11,7 @@ using Minio;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.RateLimiting.Abstractions;
+using TaxVision.Customer.Infrastructure.Employees;
 using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Permissions;
 using TaxVision.Customer.Infrastructure.Persistence;
@@ -44,6 +45,10 @@ public static class InfrastructureRegistration
 
         services.AddSingleton<ISensitiveDataProtector, AesGcmSensitiveDataProtector>();
 
+        // Comandos de formularios de cliente: payload cifrado con la clave compartida y lock de alta por email.
+        services.AddProtectedPayloadProtection(config);
+        services.AddScoped<ICustomerCreationLock, SqlCustomerCreationLock>();
+
         // ---- Imports (bulk) ----
         services.AddScoped<ICustomerImportRepository, CustomerImportRepository>();
         services.AddScoped<ICustomerImportReadService, CustomerImportReadService>();
@@ -56,6 +61,9 @@ public static class InfrastructureRegistration
         // Archivo de import en CloudStorage (reemplaza CustomerImportFiles/IImportFileStore) —
         // sube directo a MinIO con credenciales propias; descarga/borrado via HTTP+M2M.
         services.AddOptions<ServiceAuthClientOptions>().Bind(config.GetSection(ServiceAuthClientOptions.SectionName));
+        services
+            .AddOptions<EmployeeDirectoryReconciliationOptions>()
+            .Bind(config.GetSection(EmployeeDirectoryReconciliationOptions.SectionName));
         services.AddOptions<CloudStorageClientOptions>().Bind(config.GetSection(CloudStorageClientOptions.SectionName));
         services.AddOptions<CustomerMinioOptions>().Bind(config.GetSection(CustomerMinioOptions.SectionName));
 
@@ -151,6 +159,19 @@ public static class InfrastructureRegistration
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
+
+        // Directorio de empleados: reconciliación periódica con el staff de Auth (usuarios anteriores a la
+        // proyección y eventos perdidos). Solo token de servicio de PlatformTenant.
+        services.AddScoped<ITenantEmployeeDirectoryReconciliationRepository, TenantEmployeeDirectoryRepository>();
+        services.AddHttpClient<IAuthStaffDirectoryClient, AuthStaffDirectoryClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<EmployeeDirectoryReconciliationJob>();
 
         // Acceso al portal de un cliente: Auth crea/reenvía la invitación y devuelve el desenlace.
         services.AddHttpClient<ICustomerPortalAccessClient, CustomerPortalAccessClient>(

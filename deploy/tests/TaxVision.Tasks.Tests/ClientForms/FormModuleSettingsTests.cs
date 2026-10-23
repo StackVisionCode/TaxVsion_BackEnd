@@ -31,13 +31,15 @@ public sealed class FormModuleSettingsTests
     [Fact]
     public void Disabling_clears_enabled_timestamp()
     {
-        var settings = FormModuleSettings.Create(
-            FormTemplateHandlerTestDoubles.TenantId,
-            true,
-            null,
-            FormTemplateHandlerTestDoubles.UserId,
-            DateTime.UtcNow
-        ).Value;
+        var settings = FormModuleSettings
+            .Create(
+                FormTemplateHandlerTestDoubles.TenantId,
+                true,
+                null,
+                FormTemplateHandlerTestDoubles.UserId,
+                DateTime.UtcNow
+            )
+            .Value;
 
         var result = settings.SetAvailability(false, null, FormTemplateHandlerTestDoubles.UserId, DateTime.UtcNow);
 

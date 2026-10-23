@@ -12,8 +12,18 @@ public sealed class UpdateFormTemplateDraftHandlerTests
         var unit = new RecordingUnitOfWork();
 
         var result = await UpdateFormTemplateDraftHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, "{\"schemaVersion\":1,\"unknown\":true}", []),
-            FormTemplateHandlerTestDoubles.Engine(), new MemoryFormTemplateRepository(template), unit, default
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                "{\"schemaVersion\":1,\"unknown\":true}",
+                [],
+                true
+            ),
+            FormTemplateHandlerTestDoubles.Engine(),
+            new MemoryFormTemplateRepository(template),
+            unit,
+            default
         );
 
         Assert.True(result.IsSuccess);
@@ -27,8 +37,18 @@ public sealed class UpdateFormTemplateDraftHandlerTests
     {
         var template = FormTemplateHandlerTestDoubles.Template();
         var result = await UpdateFormTemplateDraftHandler.Handle(
-            new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, FormTemplateHandlerTestDoubles.ValidDefinition, [1]),
-            FormTemplateHandlerTestDoubles.Engine(), new MemoryFormTemplateRepository(template), new RecordingUnitOfWork(), default
+            new(
+                template.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                template.Id,
+                FormTemplateHandlerTestDoubles.ValidDefinition,
+                [1],
+                true
+            ),
+            FormTemplateHandlerTestDoubles.Engine(),
+            new MemoryFormTemplateRepository(template),
+            new RecordingUnitOfWork(),
+            default
         );
 
         Assert.Equal(FormTemplateErrors.ConcurrencyConflict, result.Error);

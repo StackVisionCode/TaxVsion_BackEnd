@@ -39,6 +39,7 @@ public sealed record ArchiveConsentNoticeCommand(
 );
 
 public sealed record GetConsentNoticeQuery(Guid TenantId, Guid NoticeId);
+
 public sealed record ListConsentNoticesQuery(Guid TenantId);
 
 public sealed record ConsentNoticeVersionResponse(
@@ -51,15 +52,16 @@ public sealed record ConsentNoticeVersionResponse(
     Guid PublishedByUserId
 )
 {
-    public static ConsentNoticeVersionResponse From(ConsentNoticeVersion version) => new(
-        version.VersionNumber,
-        version.Language,
-        version.BodyJson,
-        version.TextSnapshot,
-        version.ContentHash,
-        version.PublishedAtUtc,
-        version.PublishedByUserId
-    );
+    public static ConsentNoticeVersionResponse From(ConsentNoticeVersion version) =>
+        new(
+            version.VersionNumber,
+            version.Language,
+            version.BodyJson,
+            version.TextSnapshot,
+            version.ContentHash,
+            version.PublishedAtUtc,
+            version.PublishedByUserId
+        );
 }
 
 public sealed record ConsentNoticeResponse(
@@ -74,17 +76,19 @@ public sealed record ConsentNoticeResponse(
     string RowVersion
 )
 {
-    public static ConsentNoticeResponse From(ConsentNotice notice) => new(
-        notice.Id,
-        notice.Key,
-        notice.Title,
-        notice.Purpose,
-        notice.Status,
-        notice.LatestVersionNumber,
-        notice.Versions.OrderByDescending(item => item.VersionNumber)
-            .Select(ConsentNoticeVersionResponse.From)
-            .ToArray(),
-        notice.CreatedAtUtc,
-        Convert.ToBase64String(notice.RowVersion)
-    );
+    public static ConsentNoticeResponse From(ConsentNotice notice) =>
+        new(
+            notice.Id,
+            notice.Key,
+            notice.Title,
+            notice.Purpose,
+            notice.Status,
+            notice.LatestVersionNumber,
+            notice
+                .Versions.OrderByDescending(item => item.VersionNumber)
+                .Select(ConsentNoticeVersionResponse.From)
+                .ToArray(),
+            notice.CreatedAtUtc,
+            Convert.ToBase64String(notice.RowVersion)
+        );
 }

@@ -3,6 +3,8 @@ using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.ClientForms.Application.Common;
+using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using Wolverine;
@@ -20,6 +22,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     ) =>
         ApplyAsync(
@@ -43,6 +46,7 @@ public static class FormFileScanResultConsumer
             bus,
             correlation,
             logger,
+            metrics,
             ct
         );
 
@@ -55,6 +59,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     ) =>
         ApplyAsync(
@@ -75,6 +80,7 @@ public static class FormFileScanResultConsumer
             bus,
             correlation,
             logger,
+            metrics,
             ct
         );
 
@@ -87,6 +93,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     ) =>
         ApplyAsync(
@@ -107,6 +114,7 @@ public static class FormFileScanResultConsumer
             bus,
             correlation,
             logger,
+            metrics,
             ct
         );
 
@@ -119,6 +127,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     ) =>
         ApplyAsync(
@@ -139,6 +148,7 @@ public static class FormFileScanResultConsumer
             bus,
             correlation,
             logger,
+            metrics,
             ct
         );
 
@@ -151,6 +161,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     ) =>
         ApplyAsync(
@@ -163,6 +174,7 @@ public static class FormFileScanResultConsumer
             bus,
             correlation,
             logger,
+            metrics,
             ct
         );
 
@@ -176,6 +188,7 @@ public static class FormFileScanResultConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<FormRequest> logger,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -206,8 +219,25 @@ public static class FormFileScanResultConsumer
             );
 
             if (projectionChanged || requestChanged)
-                await unitOfWork.SaveChangesAsync(ct);
+                await SaveAsync(signal, requestChanged, unitOfWork, metrics, ct);
         }
+    }
+
+    // Solo cuenta el veredicto que llegó a algún adjunto, igual que la reconciliación.
+    private static async Task SaveAsync(
+        FormFileScanSignal signal,
+        bool appliedToAttachment,
+        IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    )
+    {
+        await unitOfWork.SaveChangesAsync(ct);
+        if (appliedToAttachment)
+            metrics.RecordAttachmentVerdict(
+                ClientFormsMetricValues.Of(signal.Status),
+                ClientFormsMetricValues.SourceEvent
+            );
     }
 
     // El borrado no trae carpeta: se procesa y decide lo ya proyectado. Otra carpeta no es de Client Forms.

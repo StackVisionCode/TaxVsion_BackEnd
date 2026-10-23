@@ -7,6 +7,7 @@ public sealed class FormAnswers
 {
     [JsonRequired]
     public int SchemaVersion { get; init; }
+
     [JsonRequired]
     public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = new Dictionary<string, JsonElement>();
 

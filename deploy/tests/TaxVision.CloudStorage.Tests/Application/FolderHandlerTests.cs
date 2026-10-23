@@ -425,7 +425,9 @@ public sealed class FolderHandlerTests
                 customerId,
                 FolderType.ClientForms,
                 null,
-                ObjectKey.Create($"tenants/{tenantId:N}/customer/{customerId:N}/client-forms/{Guid.NewGuid():N}.pdf").Value,
+                ObjectKey
+                    .Create($"tenants/{tenantId:N}/customer/{customerId:N}/client-forms/{Guid.NewGuid():N}.pdf")
+                    .Value,
                 "form.pdf",
                 "application/pdf",
                 10,

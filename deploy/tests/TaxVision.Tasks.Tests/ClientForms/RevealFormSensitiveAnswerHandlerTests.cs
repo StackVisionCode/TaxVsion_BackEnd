@@ -95,6 +95,7 @@ public sealed class RevealFormSensitiveAnswerHandlerTests
             new PlainAnswersProtector(),
             audit,
             unitOfWork,
+            new RecordingClientFormsMetrics(),
             default
         );
 

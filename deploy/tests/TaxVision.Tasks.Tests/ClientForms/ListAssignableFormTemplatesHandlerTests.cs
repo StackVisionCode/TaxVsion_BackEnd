@@ -12,10 +12,19 @@ public sealed class ListAssignableFormTemplatesHandlerTests
         var draft = FormTemplateHandlerTestDoubles.Template();
         var engine = FormTemplateHandlerTestDoubles.Engine();
         var parsed = engine.ParseDefinition(published.Draft.Json).Value;
-        published.Publish(engine.Canonicalize(parsed), parsed.Title, FormPresentation.Wizard, 1, FormTemplateHandlerTestDoubles.UserId, DateTime.UtcNow);
+        published.Publish(
+            engine.Canonicalize(parsed),
+            parsed.Title,
+            FormPresentation.Wizard,
+            1,
+            FormTemplateHandlerTestDoubles.UserId,
+            DateTime.UtcNow
+        );
 
         var result = await ListAssignableFormTemplatesHandler.Handle(
-            new(FormTemplateHandlerTestDoubles.TenantId, null), new MemoryFormTemplateRepository(published, draft), default
+            new(FormTemplateHandlerTestDoubles.TenantId, null),
+            new MemoryFormTemplateRepository(published, draft),
+            default
         );
 
         Assert.Single(result);

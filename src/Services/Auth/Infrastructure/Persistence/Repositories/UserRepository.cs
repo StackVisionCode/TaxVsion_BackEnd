@@ -251,4 +251,39 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
         return new PagedResult<CustomerPortalAccountReconciliationResponse>(items, page, size, total);
     }
+
+    // The controller restricts this cross-tenant query to the platform service.
+    public async Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        if (page < 1)
+            page = 1;
+        if (size < 1)
+            size = 200;
+
+        var query = db
+            .Users.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(u => u.ActorType == UserActorType.TenantAdmin || u.ActorType == UserActorType.TenantEmployee);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(u => u.TenantId)
+            .ThenBy(u => u.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(u => new StaffUserReconciliationResponse(
+                u.TenantId,
+                u.Id,
+                u.ActorType.ToString(),
+                u.IsActive,
+                u.Status == UserStatus.Offboarded
+            ))
+            .ToListAsync(ct);
+
+        return new PagedResult<StaffUserReconciliationResponse>(items, page, size, total);
+    }
 }

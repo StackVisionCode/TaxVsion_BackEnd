@@ -12,6 +12,9 @@ public sealed record UpdateFormTemplateDraftOutcome(
     public static UpdateFormTemplateDraftOutcome Invalid(IReadOnlyList<ValidationIssue> issues) =>
         new(false, null, null, issues);
 
-    public static UpdateFormTemplateDraftOutcome Saved(string rowVersion, string draftHash, IReadOnlyList<ValidationIssue> issues) =>
-        new(true, rowVersion, draftHash, issues);
+    public static UpdateFormTemplateDraftOutcome Saved(
+        string rowVersion,
+        string draftHash,
+        IReadOnlyList<ValidationIssue> issues
+    ) => new(true, rowVersion, draftHash, issues);
 }

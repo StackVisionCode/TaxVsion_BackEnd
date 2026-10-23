@@ -10,6 +10,8 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Api.Requests.ClientForms;
+using TaxVision.Tasks.ClientForms.Application.Actions;
+using TaxVision.Tasks.ClientForms.Application.Actions.Commands;
 using TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Commands;
@@ -304,6 +306,61 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         Response.Headers.CacheControl = "no-store";
         return Ok(result.Value);
     }
+
+    // Arranque manual del alta del cliente; también reintenta el último intento si su resultado lo admite.
+    [HttpPost("{id:guid}/actions/create-customer")]
+    [HasPermission(TasksPermissions.FormRequestsReview)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> StartCustomerCreation(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!await permissions.HasPermissionAsync(User, CustomersPermissions.Manage, ct))
+            return Forbid();
+        return ToAcceptedResult(
+            await bus.InvokeAsync<Result<FormActionRunResponse>>(
+                new StartFormCustomerCreationCommand(tenantId, userId, await CanViewAllAsync(ct), id, DateTime.UtcNow),
+                ct
+            )
+        );
+    }
+
+    // Solo desde un resultado definitivo que garantiza que no se hizo nada; nunca desde Requested.
+    [HttpPost("{id:guid}/actions/{runId:guid}/retry")]
+    [HasPermission(TasksPermissions.FormRequestsReview)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> RetryAction(Guid id, Guid runId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!await permissions.HasPermissionAsync(User, CustomersPermissions.Manage, ct))
+            return Forbid();
+        return ToAcceptedResult(
+            await bus.InvokeAsync<Result<FormActionRunResponse>>(
+                new RetryFormActionRunCommand(tenantId, userId, await CanViewAllAsync(ct), id, runId, DateTime.UtcNow),
+                ct
+            )
+        );
+    }
+
+    // Reusa el cliente ya creado: nunca vuelve a llamar a Customer. Idempotente.
+    [HttpPost("{id:guid}/customer-link/retry")]
+    [HasPermission(TasksPermissions.FormRequestsReview)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> RetryCustomerLink(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new RetryFormCustomerLinkCommand(tenantId, userId, await CanViewAllAsync(ct), id, DateTime.UtcNow),
+                ct
+            )
+        );
+    }
+
+    private IActionResult ToAcceptedResult<T>(Result<T> result) =>
+        result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Accepted(result.Value);
 
     private string? UserAgent()
     {

@@ -10,24 +10,21 @@ public sealed record FormParticipantRef
     public Guid? CustomerId { get; private init; }
     public Guid? ParticipantId { get; private init; }
 
-    public static FormParticipantRef Customer(Guid customerId) => new()
-    {
-        Kind = FormParticipantKind.Customer,
-        CustomerId = customerId,
-    };
+    public static FormParticipantRef Customer(Guid customerId) =>
+        new() { Kind = FormParticipantKind.Customer, CustomerId = customerId };
 
-    public static FormParticipantRef External(Guid participantId) => new()
-    {
-        Kind = FormParticipantKind.External,
-        ParticipantId = participantId,
-    };
+    public static FormParticipantRef External(Guid participantId) =>
+        new() { Kind = FormParticipantKind.External, ParticipantId = participantId };
 
-    public bool IsValid => Kind switch
-    {
-        FormParticipantKind.Customer => CustomerId is not null && CustomerId != Guid.Empty && ParticipantId is null,
-        FormParticipantKind.External => ParticipantId is not null && ParticipantId != Guid.Empty && CustomerId is null,
-        _ => false,
-    };
+    public bool IsValid =>
+        Kind switch
+        {
+            FormParticipantKind.Customer => CustomerId is not null && CustomerId != Guid.Empty && ParticipantId is null,
+            FormParticipantKind.External => ParticipantId is not null
+                && ParticipantId != Guid.Empty
+                && CustomerId is null,
+            _ => false,
+        };
 }
 
 public sealed record CustomerLinkState
@@ -41,19 +38,17 @@ public sealed record CustomerLinkState
 
     public static CustomerLinkState None() => new() { Status = CustomerLinkStatus.None };
 
-    public static CustomerLinkState Linked(Guid customerId) => new()
-    {
-        Status = CustomerLinkStatus.Linked,
-        CustomerId = customerId,
-    };
+    public static CustomerLinkState Linked(Guid customerId) =>
+        new() { Status = CustomerLinkStatus.Linked, CustomerId = customerId };
 
-    public static CustomerLinkState Blocked(Guid customerId, string reason, Guid? conflictingRequestId) => new()
-    {
-        Status = CustomerLinkStatus.Blocked,
-        CustomerId = customerId,
-        Reason = reason,
-        ConflictingRequestId = conflictingRequestId,
-    };
+    public static CustomerLinkState Blocked(Guid customerId, string reason, Guid? conflictingRequestId) =>
+        new()
+        {
+            Status = CustomerLinkStatus.Blocked,
+            CustomerId = customerId,
+            Reason = reason,
+            ConflictingRequestId = conflictingRequestId,
+        };
 }
 
 public sealed class FormActor
@@ -65,29 +60,36 @@ public sealed class FormActor
     public Guid? ParticipantId { get; private set; }
     public Guid? SessionId { get; private set; }
 
-    public static FormActor PortalUser(Guid portalUserId) => new()
-    {
-        Kind = FormActorKind.PortalUser,
-        PortalUserId = portalUserId,
-    };
+    public static FormActor PortalUser(Guid portalUserId) =>
+        new() { Kind = FormActorKind.PortalUser, PortalUserId = portalUserId };
 
-    public static FormActor ExternalSession(Guid participantId, Guid sessionId) => new()
-    {
-        Kind = FormActorKind.ExternalSession,
-        ParticipantId = participantId,
-        SessionId = sessionId,
-    };
+    public static FormActor ExternalSession(Guid participantId, Guid sessionId) =>
+        new()
+        {
+            Kind = FormActorKind.ExternalSession,
+            ParticipantId = participantId,
+            SessionId = sessionId,
+        };
 
-    public FormActor Copy() => Kind == FormActorKind.PortalUser
-        ? PortalUser(PortalUserId ?? Guid.Empty)
-        : ExternalSession(ParticipantId ?? Guid.Empty, SessionId ?? Guid.Empty);
+    public FormActor Copy() =>
+        Kind == FormActorKind.PortalUser
+            ? PortalUser(PortalUserId ?? Guid.Empty)
+            : ExternalSession(ParticipantId ?? Guid.Empty, SessionId ?? Guid.Empty);
 
-    public bool IsValid => Kind switch
-    {
-        FormActorKind.PortalUser => PortalUserId is not null && PortalUserId != Guid.Empty && ParticipantId is null && SessionId is null,
-        FormActorKind.ExternalSession => PortalUserId is null && ParticipantId is not null && ParticipantId != Guid.Empty && SessionId is not null && SessionId != Guid.Empty,
-        _ => false,
-    };
+    public bool IsValid =>
+        Kind switch
+        {
+            FormActorKind.PortalUser => PortalUserId is not null
+                && PortalUserId != Guid.Empty
+                && ParticipantId is null
+                && SessionId is null,
+            FormActorKind.ExternalSession => PortalUserId is null
+                && ParticipantId is not null
+                && ParticipantId != Guid.Empty
+                && SessionId is not null
+                && SessionId != Guid.Empty,
+            _ => false,
+        };
 }
 
 public sealed record FormAnswerAddress(string ComponentId, string? RowId)

@@ -45,6 +45,10 @@ public static class FormTemplateErrors
         "FormTemplate.InvalidPresentation",
         "The form presentation is invalid."
     );
+    public static readonly Error ConfigureActionsRequired = new(
+        "FormTemplate.ConfigureActionsRequired",
+        "You do not have permission to change the data mapping or the actions of this form."
+    );
     public static readonly Error InvalidLibraryOrigin = new(
         "FormTemplate.InvalidLibraryOrigin",
         "The library origin is invalid."

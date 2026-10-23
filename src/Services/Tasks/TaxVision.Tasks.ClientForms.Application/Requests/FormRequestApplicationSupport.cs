@@ -65,8 +65,12 @@ internal static class FormRequestApplicationSupport
                     if (item.TryGetProperty("fileId", out var node) && node.TryGetGuid(out var id))
                         files.Add(id);
             }
-            else if (value.Component.Type == "taxId" && value.Value.ValueKind == JsonValueKind.Object
-                && value.Value.TryGetProperty("sensitiveRef", out var node) && node.TryGetGuid(out var id))
+            else if (
+                value.Component.Type == "taxId"
+                && value.Value.ValueKind == JsonValueKind.Object
+                && value.Value.TryGetProperty("sensitiveRef", out var node)
+                && node.TryGetGuid(out var id)
+            )
                 sensitive.Add(id);
         }
         return (files, sensitive);
@@ -88,12 +92,18 @@ internal static class FormRequestApplicationSupport
 
     internal static bool HasRow(FormAnswers answers, FormDefinition definition, string componentId, string rowId)
     {
-        var section = definition.Pages
-            .SelectMany(page => page.Sections)
-            .FirstOrDefault(item => item.Repeat is not null && item.Components.Any(component => component.Id == componentId));
-        if (section is null || !answers.Values.TryGetValue(section.Id, out var raw)
-            || raw.ValueKind != JsonValueKind.Object || !raw.TryGetProperty("rows", out var rows)
-            || rows.ValueKind != JsonValueKind.Array)
+        var section = definition
+            .Pages.SelectMany(page => page.Sections)
+            .FirstOrDefault(item =>
+                item.Repeat is not null && item.Components.Any(component => component.Id == componentId)
+            );
+        if (
+            section is null
+            || !answers.Values.TryGetValue(section.Id, out var raw)
+            || raw.ValueKind != JsonValueKind.Object
+            || !raw.TryGetProperty("rows", out var rows)
+            || rows.ValueKind != JsonValueKind.Array
+        )
             return false;
         return rows.EnumerateArray().Any(row => row.TryGetProperty("rowId", out var node) && node.GetString() == rowId);
     }
@@ -110,13 +120,20 @@ internal static class FormRequestApplicationSupport
                 continue;
             }
 
-            if (!answers.Values.TryGetValue(section.Id, out var raw) || raw.ValueKind != JsonValueKind.Object
-                || !raw.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array)
+            if (
+                !answers.Values.TryGetValue(section.Id, out var raw)
+                || raw.ValueKind != JsonValueKind.Object
+                || !raw.TryGetProperty("rows", out var rows)
+                || rows.ValueKind != JsonValueKind.Array
+            )
                 continue;
             foreach (var row in rows.EnumerateArray())
             {
-                if (!row.TryGetProperty("rowId", out var rowIdNode) || !row.TryGetProperty("values", out var values)
-                    || values.ValueKind != JsonValueKind.Object)
+                if (
+                    !row.TryGetProperty("rowId", out var rowIdNode)
+                    || !row.TryGetProperty("values", out var values)
+                    || values.ValueKind != JsonValueKind.Object
+                )
                     continue;
                 var rowId = rowIdNode.GetString();
                 foreach (var component in section.Components)
@@ -144,7 +161,9 @@ internal static class FormRequestApplicationSupport
                 && candidate.Status != FormAttachmentStatus.Detached
             );
             if (attachment is null)
-                issues.Add(Issue("answer.attachment_not_registered", value, "The attachment is not registered for this field."));
+                issues.Add(
+                    Issue("answer.attachment_not_registered", value, "The attachment is not registered for this field.")
+                );
             else if (requireReady && attachment.Status == FormAttachmentStatus.Pending)
                 issues.Add(Issue("answer.attachment_pending", value, "The attachment is still being processed."));
             else if (requireReady && attachment.Status == FormAttachmentStatus.Rejected)
@@ -170,16 +189,17 @@ internal static class FormRequestApplicationSupport
         if (answer is null && requireReady)
             issues.Add(Issue("answer.sensitive_missing", value, "The sensitive answer is not available."));
         else if (answer is null)
-            issues.Add(Issue("answer.sensitive_not_registered", value, "The sensitive answer is not registered for this field."));
+            issues.Add(
+                Issue(
+                    "answer.sensitive_not_registered",
+                    value,
+                    "The sensitive answer is not registered for this field."
+                )
+            );
     }
 
-    private static ValidationIssue Issue(string code, AddressedValue value, string message) => new(
-        code,
-        $"/values/{value.Component.Id}",
-        value.Component.Id,
-        value.RowId,
-        message
-    );
+    private static ValidationIssue Issue(string code, AddressedValue value, string message) =>
+        new(code, $"/values/{value.Component.Id}", value.Component.Id, value.RowId, message);
 
     private sealed record AddressedValue(FormComponent Component, string? RowId, JsonElement Value);
 }

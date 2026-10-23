@@ -3744,10 +3744,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Code = "tasks.form_templates.configure_actions",
                             Description = "Configure data mapping and post-submission actions for client form templates.",
                             GatedModule = "planner",
-                            IsAssignableByTenant = false,
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
-                            IsReserved = true,
+                            IsReserved = false,
                             MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false

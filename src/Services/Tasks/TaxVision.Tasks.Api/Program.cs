@@ -24,11 +24,12 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Tasks.Api.Authorization;
+using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Application;
 using TaxVision.Tasks.Infrastructure;
 using TaxVision.Tasks.Infrastructure.Observability;
 using TaxVision.Tasks.Infrastructure.Persistence;
-using TaxVision.Tasks.Api.Filters;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -51,6 +52,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<ClientFormsAccessFilter>();
 builder.Services.AddScoped<FormSessionFilter>();
 builder.Services.AddScoped<PublicFormSessionContext>();
+builder.Services.AddScoped<FormPublisherCapabilitiesResolver>();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
@@ -59,10 +61,15 @@ builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
-// TaskMetrics.MeterName va como meter adicional: AddTaxVisionOpenTelemetry solo registra
+// TaskMetrics y ClientFormsMetrics van como meters adicionales: AddTaxVisionOpenTelemetry solo registra
 // AddMeter(serviceName), y un Meter propio no declarado acá no exporta nada — los contadores suben
 // en memoria y el panel queda vacío sin ningún error.
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tasks-service", TaskMetrics.MeterName);
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "tasks-service",
+    TaskMetrics.MeterName,
+    ClientFormsMetrics.MeterName
+);
 
 // Autorización por permiso: [HasPermission("tasks.read")]. Los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -133,7 +140,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
@@ -177,6 +184,17 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<FormAccessCodeDeliveryRequestedIntegrationEvent>()
         .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<FormParticipantNotificationRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<CustomerCreationFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("customer-client-form-commands");
+
+    // Local y durable: la reasignación HTTP de archivos se reintenta fuera de la transacción que vinculó.
+    options
+        .LocalQueueFor<TaxVision.Tasks.ClientForms.Application.Actions.ReassignParticipantFilesRequested>()
+        .UseDurableInbox();
 
     // Contratos de Reminder, no de Task: los define Reminder y Task sólo los publica.
     options.PublishMessage<ReminderRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

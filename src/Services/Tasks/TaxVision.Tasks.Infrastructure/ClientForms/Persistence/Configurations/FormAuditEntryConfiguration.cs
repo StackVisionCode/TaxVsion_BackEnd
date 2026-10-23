@@ -18,7 +18,21 @@ public sealed class FormAuditEntryConfiguration : IEntityTypeConfiguration<FormA
         builder.Property(entry => entry.UserAgent).HasMaxLength(512);
         builder.Property(entry => entry.CorrelationId).HasMaxLength(64).IsRequired();
         builder.Property(entry => entry.DetailsJson).HasMaxLength(2000);
-        builder.HasIndex(entry => new { entry.TenantId, entry.FormRequestId, entry.OccurredAtUtc }).HasDatabaseName("IX_FormAuditEntries_TenantId_Request_OccurredAt");
-        builder.HasIndex(entry => new { entry.TenantId, entry.FormTemplateId, entry.OccurredAtUtc }).HasDatabaseName("IX_FormAuditEntries_TenantId_Template_OccurredAt");
+        builder
+            .HasIndex(entry => new
+            {
+                entry.TenantId,
+                entry.FormRequestId,
+                entry.OccurredAtUtc,
+            })
+            .HasDatabaseName("IX_FormAuditEntries_TenantId_Request_OccurredAt");
+        builder
+            .HasIndex(entry => new
+            {
+                entry.TenantId,
+                entry.FormTemplateId,
+                entry.OccurredAtUtc,
+            })
+            .HasDatabaseName("IX_FormAuditEntries_TenantId_Template_OccurredAt");
     }
 }

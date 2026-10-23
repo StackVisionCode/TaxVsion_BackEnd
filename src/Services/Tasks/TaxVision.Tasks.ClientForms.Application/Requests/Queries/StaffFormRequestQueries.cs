@@ -1,6 +1,7 @@
 using System.Text.Json;
-using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Application.Actions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
+using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.ClientForms.Application.Requests.Queries;
 
@@ -95,5 +96,7 @@ public sealed record StaffFormRequestDetailResponse(
     JsonElement? LatestRevisionAnswers,
     IReadOnlyList<StaffFormAttachmentResponse> Attachments,
     IReadOnlyList<FormConsentEvidenceResponse> Consents,
-    IReadOnlyList<FormRequestTimelineEntryResponse> Timeline
+    IReadOnlyList<FormRequestTimelineEntryResponse> Timeline,
+    IReadOnlyList<FormActionRunResponse> ActionRuns,
+    FormCustomerLinkResponse CustomerLink
 );

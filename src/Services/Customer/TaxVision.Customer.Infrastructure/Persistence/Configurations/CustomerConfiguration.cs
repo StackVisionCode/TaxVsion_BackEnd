@@ -1,11 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TaxVision.Customer.Domain.Customers.ValueObjects;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Infrastructure.Persistence.Configurations;
 
 public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCustomer>
 {
+    // Propiedades de EF sobre los campos privados del aggregate: el nombre tiene que ser el del campo.
+    public const string OriginSourceService = "_originSourceService";
+    public const string OriginSourceReferenceId = "_originSourceReferenceId";
+
     public void Configure(EntityTypeBuilder<DomainCustomer> b)
     {
         b.ToTable("Customers");
@@ -25,6 +30,17 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.LastModifiedByUserId);
         b.Property(c => c.ArchivedAtUtc);
         b.Property(c => c.ArchivedByUserId);
+
+        // Origen técnico del alta: columnas de la raíz para que el índice único lleve TenantId.
+        b.Ignore(c => c.Origin);
+        b.Property<string?>(OriginSourceService)
+            .HasColumnName("OriginSourceService")
+            .HasMaxLength(CustomerOrigin.SourceServiceMaxLength);
+        b.Property<Guid?>(OriginSourceReferenceId).HasColumnName("OriginSourceReferenceId");
+        b.HasIndex(nameof(DomainCustomer.TenantId), OriginSourceService, OriginSourceReferenceId)
+            .IsUnique()
+            .HasDatabaseName("UX_Customers_Tenant_Origin")
+            .HasFilter("[OriginSourceReferenceId] IS NOT NULL");
 
         // ---- Owned types: VOs embebidos como columnas dentro de Customers ----
 

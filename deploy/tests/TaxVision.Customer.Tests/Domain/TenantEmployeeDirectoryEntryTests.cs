@@ -72,4 +72,64 @@ public sealed class TenantEmployeeDirectoryEntryTests
 
         Assert.False(entry.IsEligiblePreparer);
     }
+
+    [Fact]
+    public void A_reconciled_offboarded_user_enters_already_offboarded()
+    {
+        var entry = TenantEmployeeDirectoryEntry.CreateReconciled(
+            UserId,
+            TenantId,
+            "TenantEmployee",
+            isActive: true,
+            isOffboarded: true
+        );
+
+        Assert.True(entry.IsOffboarded);
+        Assert.False(entry.IsActive);
+        Assert.False(entry.IsEligiblePreparer);
+    }
+
+    [Fact]
+    public void A_reconciled_admin_keeps_its_type_so_it_is_recognized_as_admin()
+    {
+        var entry = TenantEmployeeDirectoryEntry.CreateReconciled(
+            UserId,
+            TenantId,
+            "TenantAdmin",
+            isActive: true,
+            isOffboarded: false
+        );
+
+        Assert.Equal("TenantAdmin", entry.ActorType);
+        Assert.True(entry.IsEligiblePreparer);
+    }
+
+    [Fact]
+    public void Reconciling_aligns_the_type_and_the_activity_with_Auth()
+    {
+        var entry = TenantEmployeeDirectoryEntry.Create(UserId, TenantId, "PlatformAdmin", isActive: false);
+
+        Assert.True(entry.ReconcileWith("TenantAdmin", isActive: true));
+
+        Assert.Equal("TenantAdmin", entry.ActorType);
+        Assert.True(entry.IsEligiblePreparer);
+    }
+
+    [Fact]
+    public void Reconciling_an_entry_that_already_matches_changes_nothing()
+    {
+        var entry = TenantEmployeeDirectoryEntry.Create(UserId, TenantId, "TenantEmployee", isActive: true);
+
+        Assert.False(entry.ReconcileWith("TenantEmployee", isActive: true));
+    }
+
+    [Fact]
+    public void Reconciling_never_revives_an_offboarded_employee()
+    {
+        var entry = TenantEmployeeDirectoryEntry.Create(UserId, TenantId, "TenantEmployee", isActive: true);
+        entry.MarkOffboarded();
+
+        Assert.False(entry.ReconcileWith("TenantEmployee", isActive: true));
+        Assert.False(entry.IsEligiblePreparer);
+    }
 }

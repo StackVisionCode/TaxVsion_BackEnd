@@ -48,7 +48,10 @@ public static class FormActionFailedConsumer
                     "A form action needs attention",
                     FallbackBody: evt.ActionType,
                     ResourceId: evt.FormRequestId.ToString(),
-                    ResourceContext: new Dictionary<string, string> { ["formRequestId"] = evt.FormRequestId.ToString() },
+                    ResourceContext: new Dictionary<string, string>
+                    {
+                        ["formRequestId"] = evt.FormRequestId.ToString(),
+                    },
                     Params: new Dictionary<string, string>
                     {
                         ["actionType"] = evt.ActionType,

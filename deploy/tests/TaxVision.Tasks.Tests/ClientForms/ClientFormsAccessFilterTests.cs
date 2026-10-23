@@ -20,6 +20,7 @@ public sealed class ClientFormsAccessFilterTests
         "PortalFormAvailabilityController.Get",
         "FormPlatformController.List",
         "FormPlatformController.Set",
+        "FormCatalogUsageController.Get",
         "FormIntakeLinksController.Pause",
         "FormIntakeLinksController.Revoke",
     ];

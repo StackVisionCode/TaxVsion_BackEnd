@@ -8210,6 +8210,14 @@ muertos en las DLQ de Node que nunca había visto nadie.
 **Hay una sola `wolverine-dead-letter-queue` para los 17 servicios .NET.** Node tiene la suya por
 servicio (`communication-events.dlq`, `communication-transcript-worker.dlq`).
 
+**Publicar con confirmaciones.** Todo servicio abre RabbitMQ con
+`options.UseTaxVisionRabbitMq(rabbitUri)` (`BuildingBlocks.Web/Hosting/RabbitMqTransportExtensions.cs`),
+nunca con `UseRabbitMq(...)` directo; lo exige `RabbitMqTransportExtensionsTests`. Wolverine 6.14
+abre los canales sin confirmaciones de publicación y da por enviado lo que el broker rechaza
+después: el outbox borraba la fila y el mensaje se perdía sin reintento (medido en T-2 de Client
+Forms con un 403). Con confirmaciones, el rechazo llega como error de envío, la fila se queda y
+Wolverine reintenta.
+
 ## 48.1b La política de fallo, en un solo sitio (H-15)
 
 Los 17 `Program.cs` llamaban a `Policies.OnException<Exception>().RetryWithCooldown(1s, 5s, 15s)`
@@ -8306,14 +8314,27 @@ curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST "http://localhost:15672/a
 3. **Corregir el handler y desplegarlo.** Re-encolar antes de arreglar solo repite el fallo y
    vuelve a llenar la DLQ.
 
-4. **Re-encolar** con un shovel temporal de la DLQ a la cola de origen:
+4. **Re-encolar con `tools/DlqReplay`**, nunca con un shovel:
 
 ```bash
-curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT "http://localhost:15672/api/parameters/shovel/%2F/drenar-dlq" -H "content-type: application/json" -d '{"value":{"src-protocol":"amqp091","src-uri":"amqp://","src-queue":"wolverine-dead-letter-queue","dest-protocol":"amqp091","dest-uri":"amqp://","dest-queue":"auth-tenant-events","src-delete-after":"queue-length"}}'
+export RABBITMQ_URI="amqp://$RABBITMQ_USER:$RABBITMQ_PASSWORD@localhost:5672"
+dotnet run --project tools/DlqReplay -- list --type CustomerCreationFromFormRequested
+dotnet run --project tools/DlqReplay -- replay --queue customer-client-form-commands --type CustomerCreationFromFormRequested --dry-run
+dotnet run --project tools/DlqReplay -- replay --queue customer-client-form-commands --type CustomerCreationFromFormRequested
 ```
 
-   `src-delete-after: queue-length` para el shovel al vaciar lo que había al empezar, sin quedarse
-   drenando lo que llegue después. Borrar el parámetro al terminar.
+   Elige los mensajes por `--id`, `--type` o `--source`, los publica en `--queue` con un
+   **message_id nuevo** (el original va en la cabecera `replayed-from-id`) y saca cada uno de la DLQ
+   solo cuando el broker confirma el reenvío. Lo que no se elige vuelve a la DLQ intacto.
+
+   **Por qué no un shovel:** al mandar a la DLQ un mensaje de un inbox durable, Wolverine deja su
+   fila en `wolverine_incoming_envelopes` como `Handled` durante 5 minutos. Un shovel conserva el
+   message_id, y dentro de esa ventana el inbox lo toma por duplicado
+   (`DuplicateIncomingEnvelopeException`), lo confirma y lo descarta: **el mensaje se pierde** y no
+   vuelve a la DLQ. Medido en T-7 de Client Forms (2026-10-23) y con una sonda: el reenvío con el
+   mismo id a los 20 s se perdió y el de `DlqReplay` se procesó. El id nuevo es seguro porque un
+   mensaje de la DLQ nunca se confirmó: todos sus intentos se revirtieron. Además, el shovel movía
+   **toda** la DLQ compartida a una sola cola.
 
 5. **Verificar** que la DLQ queda a 0 y que la alerta se apaga sola.
 

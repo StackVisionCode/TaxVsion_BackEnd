@@ -77,16 +77,19 @@ public sealed class FormRequestStaffCommandTests
     {
         var (request, version) = Submitted();
         var bus = new FakeMessageBus();
+        var metrics = new RecordingClientFormsMetrics();
 
         var result = await Return(
             request,
             version,
             "Please review",
             [new FormFieldCommentInput(new FormAnswerAddress(FileComponent, null), "Upload the signed copy.")],
-            bus
+            bus,
+            metrics
         );
 
         Assert.True(result.IsSuccess);
+        Assert.Equal(["reviewed:returned:True"], metrics.Recorded);
         Assert.Equal(FormRequestStatus.Returned, request.Status);
         Assert.IsType<FormRequestReturnedIntegrationEvent>(Assert.Single(bus.Published));
     }
@@ -102,10 +105,12 @@ public sealed class FormRequestStaffCommandTests
             new FixedRequestVisibility(true),
             null!,
             null!,
+            null!,
             new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
             new TestCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -166,6 +171,7 @@ public sealed class FormRequestStaffCommandTests
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
             new TestCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -174,7 +180,8 @@ public sealed class FormRequestStaffCommandTests
         TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion version,
         string message,
         IReadOnlyList<FormFieldCommentInput> comments,
-        FakeMessageBus? bus = null
+        FakeMessageBus? bus = null,
+        RecordingClientFormsMetrics? metrics = null
     ) =>
         ReturnFormRequestHandler.Handle(
             new ReturnFormRequestCommand(
@@ -196,6 +203,7 @@ public sealed class FormRequestStaffCommandTests
             new RecordingUnitOfWork(),
             bus ?? new FakeMessageBus(),
             new TestCorrelationContext(),
+            metrics ?? new RecordingClientFormsMetrics(),
             default
         );
 

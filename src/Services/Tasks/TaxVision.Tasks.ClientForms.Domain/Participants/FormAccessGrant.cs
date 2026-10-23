@@ -31,9 +31,15 @@ public sealed class FormAccessGrant : AggregateRoot
         DateTime nowUtc
     )
     {
-        if (tenantId == Guid.Empty || formRequestId == Guid.Empty || entryNoticeId == Guid.Empty
-            || entryNoticeVersionNumber < 1 || string.IsNullOrWhiteSpace(tokenHash)
-            || tokenLast4.Length != 4 || expiresAtUtc <= nowUtc)
+        if (
+            tenantId == Guid.Empty
+            || formRequestId == Guid.Empty
+            || entryNoticeId == Guid.Empty
+            || entryNoticeVersionNumber < 1
+            || string.IsNullOrWhiteSpace(tokenHash)
+            || tokenLast4.Length != 4
+            || expiresAtUtc <= nowUtc
+        )
             return Result.Failure<FormAccessGrant>(FormParticipantErrors.AccessGrantInvalid);
         var grant = new FormAccessGrant
         {
@@ -51,10 +57,8 @@ public sealed class FormAccessGrant : AggregateRoot
         return Result.Success(grant);
     }
 
-    public bool IsAvailableAt(DateTime nowUtc) => !RevokedAtUtc.HasValue
-        && EntryNoticeId.HasValue
-        && EntryNoticeVersionNumber.HasValue
-        && nowUtc < ExpiresAtUtc;
+    public bool IsAvailableAt(DateTime nowUtc) =>
+        !RevokedAtUtc.HasValue && EntryNoticeId.HasValue && EntryNoticeVersionNumber.HasValue && nowUtc < ExpiresAtUtc;
 
     public Result Rotate(string tokenHash, string tokenLast4, DateTime expiresAtUtc, DateTime nowUtc)
     {

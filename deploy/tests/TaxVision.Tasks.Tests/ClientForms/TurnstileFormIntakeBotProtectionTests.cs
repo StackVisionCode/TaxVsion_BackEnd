@@ -37,10 +37,7 @@ public sealed class TurnstileFormIntakeBotProtectionTests
     [Fact]
     public async Task Response_for_another_action_is_rejected()
     {
-        var handler = new RecordingHandler(
-            HttpStatusCode.OK,
-            "{\"success\":true,\"action\":\"another_action\"}"
-        );
+        var handler = new RecordingHandler(HttpStatusCode.OK, "{\"success\":true,\"action\":\"another_action\"}");
         var protection = Create(handler, "secret");
 
         Assert.False(await protection.VerifyAsync("turnstile-token", "203.0.113.10"));
@@ -56,30 +53,23 @@ public sealed class TurnstileFormIntakeBotProtectionTests
         Assert.Equal(0, handler.Calls);
     }
 
-    private static TurnstileFormIntakeBotProtection Create(
-        HttpMessageHandler handler,
-        string? secretKey
-    ) => new(
-        new HttpClient(handler),
-        Options.Create(
-            new ClientFormsOptions
-            {
-                External = new ClientFormsExternalOptions
+    private static TurnstileFormIntakeBotProtection Create(HttpMessageHandler handler, string? secretKey) =>
+        new(
+            new HttpClient(handler),
+            Options.Create(
+                new ClientFormsOptions
                 {
-                    BotProtection = new ClientFormsBotProtectionOptions
+                    External = new ClientFormsExternalOptions
                     {
-                        SecretKey = secretKey,
+                        BotProtection = new ClientFormsBotProtectionOptions { SecretKey = secretKey },
                     },
-                },
-            }
-        )
-    );
+                }
+            )
+        );
 
-    private static string SuccessResponse() =>
-        "{\"success\":true,\"action\":\"client_forms_intake\"}";
+    private static string SuccessResponse() => "{\"success\":true,\"action\":\"client_forms_intake\"}";
 
-    private sealed class RecordingHandler(HttpStatusCode statusCode, string responseBody)
-        : HttpMessageHandler
+    private sealed class RecordingHandler(HttpStatusCode statusCode, string responseBody) : HttpMessageHandler
     {
         public int Calls { get; private set; }
         public string LastBody { get; private set; } = string.Empty;

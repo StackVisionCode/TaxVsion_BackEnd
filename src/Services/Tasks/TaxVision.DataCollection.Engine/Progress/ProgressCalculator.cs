@@ -43,9 +43,13 @@ internal sealed class ProgressCalculator(ComponentRegistry registry)
     {
         foreach (var component in section.Components)
         {
-            if (!visibility.IsVisible(component.Id) || index.Components[component.Id].ComponentType?.Kind != ComponentKind.Input)
+            if (
+                !visibility.IsVisible(component.Id)
+                || index.Components[component.Id].ComponentType?.Kind != ComponentKind.Input
+            )
                 continue;
-            var isRequired = component.Required
+            var isRequired =
+                component.Required
                 || component.RequiredWhen is not null
                     && ConditionEvaluator.Evaluate(component.RequiredWhen, answers, index, visibility);
             if (!isRequired)
@@ -69,11 +73,22 @@ internal sealed class ProgressCalculator(ComponentRegistry registry)
         {
             foreach (var component in section.Components)
             {
-                if (!visibility.IsVisible(component.Id, row.RowId) || index.Components[component.Id].ComponentType?.Kind != ComponentKind.Input)
+                if (
+                    !visibility.IsVisible(component.Id, row.RowId)
+                    || index.Components[component.Id].ComponentType?.Kind != ComponentKind.Input
+                )
                     continue;
-                var isRequired = component.Required
+                var isRequired =
+                    component.Required
                     || component.RequiredWhen is not null
-                        && ConditionEvaluator.Evaluate(component.RequiredWhen, answers, index, visibility, row.RowId, row.Values);
+                        && ConditionEvaluator.Evaluate(
+                            component.RequiredWhen,
+                            answers,
+                            index,
+                            visibility,
+                            row.RowId,
+                            row.Values
+                        );
                 if (!isRequired)
                     continue;
                 required++;

@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
-using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -211,7 +211,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, NotificationDbContext>();
@@ -241,9 +241,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<InAppNotificationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    options
-        .ListenToRabbitQueue("notification-client-form-commands")
-        .UseDurableInbox();
+    options.ListenToRabbitQueue("notification-client-form-commands").UseDurableInbox();
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options

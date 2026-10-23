@@ -1,12 +1,6 @@
 namespace TaxVision.DataCollection.Engine.Validation;
 
-public sealed record ValidationIssue(
-    string Code,
-    string Path,
-    string? ComponentId,
-    string? RowId,
-    string Message
-);
+public sealed record ValidationIssue(string Code, string Path, string? ComponentId, string? RowId, string Message);
 
 public class ValidationReport
 {

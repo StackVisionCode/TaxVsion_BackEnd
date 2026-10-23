@@ -3,7 +3,9 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.DataCollection.Engine.Validation;
+using TaxVision.Tasks.ClientForms.Application.Actions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
@@ -36,11 +38,13 @@ public static class SubmitPortalFormRequestHandler
         IFormIntakeLinkRepository intakeLinks,
         IFormConsentGate consentGate,
         IFormConsentRecordRepository consentRecords,
+        FormActionPlanner planner,
         IOptions<ClientFormsOptions> options,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -60,18 +64,19 @@ public static class SubmitPortalFormRequestHandler
             return Result.Failure<FormSubmitOutcome>(submit.Error);
         if (intakeLink.Value?.RegisterSubmission(command.NowUtc).IsFailure == true)
             return Result.Failure<FormSubmitOutcome>(FormParticipantErrors.IntakeLimitReached);
-        RecordSubmitted(command, found.Value, audit);
-        await bus.PublishAsync(
-            await FormRequestIntegrationEventFactory.SubmittedAsync(
-                found.Value,
-                submit.Value,
-                customers,
-                correlation.CorrelationId,
-                ct
-            )
+        var tally = await AnnounceAsync(
+            command,
+            found.Value,
+            submit.Value,
+            check.Value,
+            planner,
+            customers,
+            audit,
+            bus,
+            correlation,
+            ct
         );
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(FormSubmitOutcome.Success(found.Value));
+        return await SaveAsync(command, found.Value, intakeLink.Value is not null, tally, unitOfWork, metrics, ct);
     }
 
     private static async Task<Result<FormRequest>> LoadAsync(
@@ -181,6 +186,61 @@ public static class SubmitPortalFormRequestHandler
             ct
         );
         return bound.IsFailure ? Result.Failure<FormSubmissionRevision>(bound.Error) : submit;
+    }
+
+    // Las acciones y el hecho del envío salen por el mismo bus: se confirman con la transición o nada.
+    private static async Task<FormActionRunTally> AnnounceAsync(
+        SubmitPortalFormRequestCommand command,
+        FormRequest request,
+        FormSubmissionRevision revision,
+        FormSubmitCheck check,
+        FormActionPlanner planner,
+        IClientFormsCustomerReader customers,
+        IFormAuditLog audit,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        RecordSubmitted(command, request, audit);
+        var tally = await planner.PlanAsync(
+            request,
+            FormActionTrigger.OnSubmit,
+            check.Sanitized,
+            bus,
+            command.NowUtc,
+            ct
+        );
+        await bus.PublishAsync(
+            await FormRequestIntegrationEventFactory.SubmittedAsync(
+                request,
+                revision,
+                customers,
+                correlation.CorrelationId,
+                ct
+            )
+        );
+        return tally;
+    }
+
+    // Solo se mide lo confirmado: el envío, la captación y los runs que planificó.
+    private static async Task<Result<FormSubmitOutcome>> SaveAsync(
+        SubmitPortalFormRequestCommand command,
+        FormRequest request,
+        bool fromIntakeLink,
+        FormActionRunTally tally,
+        IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    )
+    {
+        await unitOfWork.SaveChangesAsync(ct);
+        var resubmission = request.CurrentRevisionNumber > 1;
+        metrics.RecordSubmitted(resubmission, resubmission ? null : command.NowUtc - request.RequestedAtUtc);
+        if (fromIntakeLink)
+            metrics.RecordIntakeSubmitted();
+        tally.Record(request, metrics);
+        return Result.Success(FormSubmitOutcome.Success(request));
     }
 
     private static void RecordSubmitted(

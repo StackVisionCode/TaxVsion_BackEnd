@@ -21,11 +21,8 @@ public sealed class FormTemplatesSecurityTests
 {
     private sealed class DeniedPermissionsSource : IUserPermissionsSource
     {
-        public Task<bool> HasPermissionAsync(
-            ClaimsPrincipal user,
-            string permission,
-            CancellationToken ct = default
-        ) => Task.FromResult(false);
+        public Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permission, CancellationToken ct = default) =>
+            Task.FromResult(false);
     }
 
     [Fact]
@@ -45,10 +42,16 @@ public sealed class FormTemplatesSecurityTests
         var update = typeof(FormTemplatesController).GetMethod(nameof(FormTemplatesController.UpdateDraft))!;
         var publish = typeof(FormTemplatesController).GetMethod(nameof(FormTemplatesController.Publish))!;
 
-        Assert.Equal("perm:" + TasksPermissions.FormTemplatesManage, update.GetCustomAttribute<HasPermissionAttribute>()!.Policy);
+        Assert.Equal(
+            "perm:" + TasksPermissions.FormTemplatesManage,
+            update.GetCustomAttribute<HasPermissionAttribute>()!.Policy
+        );
         var sizeLimit = (IRequestSizeLimitMetadata)update.GetCustomAttribute<RequestSizeLimitAttribute>()!;
         Assert.Equal(600_000, sizeLimit.MaxRequestBodySize);
-        Assert.Equal("perm:" + TasksPermissions.FormTemplatesPublish, publish.GetCustomAttribute<HasPermissionAttribute>()!.Policy);
+        Assert.Equal(
+            "perm:" + TasksPermissions.FormTemplatesPublish,
+            publish.GetCustomAttribute<HasPermissionAttribute>()!.Policy
+        );
     }
 
     [Fact]
@@ -83,11 +86,7 @@ public sealed class FormTemplatesSecurityTests
             [new Claim(ClaimNames.ActorType, ActorType.TenantEmployee.ToString())],
             "Test"
         );
-        var context = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(identity),
-            RequestServices = provider,
-        };
+        var context = new DefaultHttpContext { User = new ClaimsPrincipal(identity), RequestServices = provider };
         context.Response.Body = new MemoryStream();
         var policy = await provider.GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync(policyName);
         var authorization = provider.GetRequiredService<IAuthorizationService>();

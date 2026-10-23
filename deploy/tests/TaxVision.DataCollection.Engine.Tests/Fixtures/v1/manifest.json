@@ -4,6 +4,7 @@
     "structure/cases.json",
     "answers/cases.json",
     "conditions/cases.json",
-    "progress/cases.json"
+    "progress/cases.json",
+    "mappings/cases.json"
   ]
 }

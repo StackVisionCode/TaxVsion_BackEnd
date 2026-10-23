@@ -15,7 +15,10 @@ public sealed class RestoreFormTemplateHandlerTests
 
         var result = await RestoreFormTemplateHandler.Handle(
             new(template.TenantId, FormTemplateHandlerTestDoubles.UserId, template.Id, []),
-            new MemoryFormTemplateRepository(template), audit, new RecordingUnitOfWork(), default
+            new MemoryFormTemplateRepository(template),
+            audit,
+            new RecordingUnitOfWork(),
+            default
         );
 
         Assert.True(result.IsSuccess);

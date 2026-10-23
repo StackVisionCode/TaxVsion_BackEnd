@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using TaxVision.Tenant.Domain.Enums;
 using Xunit;
 
 namespace TaxVision.Tenant.Tests.Integration;
@@ -21,16 +22,21 @@ public sealed class PlatformBrandingAuthTests : IClassFixture<TenantApiFactory>
     public async Task Platform_admin_can_read_the_system_brand()
     {
         var client = ClientFor("PlatformAdmin");
+        var expectedPrimary = await SystemBrandProbe.ExpectedColorAsync(
+            factory,
+            BrandSurface.Crm,
+            BrandColorToken.Primary
+        );
 
         var response = await client.GetAsync("/platform/branding/Crm");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        // La marca del sistema sembrada (Fase 1): primary #1E466B.
+        // La marca del sistema guardada en la base (no la sembrada: puede haberse cambiado).
         var primary = body.GetProperty("colors")
             .EnumerateArray()
             .Single(c => c.GetProperty("token").GetString() == "Primary");
-        Assert.Equal("#1E466B", primary.GetProperty("value").GetString());
+        Assert.Equal(expectedPrimary, primary.GetProperty("value").GetString());
     }
 
     [Fact]

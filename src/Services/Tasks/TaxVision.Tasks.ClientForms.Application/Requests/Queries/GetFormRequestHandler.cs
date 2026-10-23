@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.ClientForms.Application.Actions;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
@@ -37,7 +38,14 @@ public static class GetFormRequestHandler
 
         var timeline = await reads.ListTimelineAsync(query.TenantId, query.RequestId, ct);
         var consents = await consentRecords.ListForRequestAsync(query.TenantId, query.RequestId, ct);
-        var response = Build(found.Value, version.Value.Definition.Json, protector, consents, timeline);
+        var actions = await FormActionRunViews.ForStaffAsync(
+            found.Value,
+            query.ActorUserId,
+            query.CanViewAll,
+            visibility,
+            ct
+        );
+        var response = Build(found.Value, version.Value.Definition.Json, protector, consents, timeline, actions);
         await audit.RecordAnswersViewedAsync(
             query.TenantId,
             query.RequestId,
@@ -55,7 +63,8 @@ public static class GetFormRequestHandler
         string definitionJson,
         IAnswersProtector protector,
         IReadOnlyList<TaxVision.Tasks.ClientForms.Domain.Consents.FormConsentRecord> consents,
-        IReadOnlyList<FormRequestTimelineEntryResponse> timeline
+        IReadOnlyList<FormRequestTimelineEntryResponse> timeline,
+        IReadOnlyList<FormActionRunResponse> actions
     )
     {
         var revisions =
@@ -76,7 +85,9 @@ public static class GetFormRequestHandler
             answers,
             MapAttachments(request),
             consents.Select(FormConsentEvidenceResponse.From).ToArray(),
-            timeline
+            timeline,
+            actions,
+            FormCustomerLinkResponse.From(request)
         );
     }
 

@@ -12,10 +12,12 @@ internal static class ExternalFormAttachmentSupport
         if (!props.TryGetProperty("allowedTypes", out var allowed) || allowed.ValueKind != JsonValueKind.Array)
             return true;
         var extension = Path.GetExtension(name).ToLowerInvariant();
-        return allowed.EnumerateArray().Any(item =>
-            string.Equals(item.GetString(), contentType, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(item.GetString(), extension, StringComparison.OrdinalIgnoreCase)
-        );
+        return allowed
+            .EnumerateArray()
+            .Any(item =>
+                string.Equals(item.GetString(), contentType, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.GetString(), extension, StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     internal static int ReadMaxFiles(JsonElement props, int fallback) =>
@@ -36,7 +38,6 @@ internal static class ExternalFormAttachmentSupport
         if (string.IsNullOrWhiteSpace(rowId) || string.IsNullOrWhiteSpace(answersJson))
             return false;
         var answers = engine.ParseAnswers(answersJson);
-        return answers.IsSuccess
-            && FormRequestApplicationSupport.HasRow(answers.Value, definition, componentId, rowId);
+        return answers.IsSuccess && FormRequestApplicationSupport.HasRow(answers.Value, definition, componentId, rowId);
     }
 }

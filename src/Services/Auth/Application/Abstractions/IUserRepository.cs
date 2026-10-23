@@ -77,4 +77,12 @@ public interface IUserRepository
         int size,
         CancellationToken ct = default
     ) => Task.FromResult(new PagedResult<CustomerPortalAccountReconciliationResponse>([], page, size, 0));
+
+    /// <summary>Backfill cross-tenant del staff (TenantAdmin y TenantEmployee, en cualquier estado) — siembra el
+    /// directorio de empleados de Customer. Default vacío para no forzar a los fakes de tests.</summary>
+    Task<PagedResult<StaffUserReconciliationResponse>> ListStaffUsersForReconciliationAsync(
+        int page,
+        int size,
+        CancellationToken ct = default
+    ) => Task.FromResult(new PagedResult<StaffUserReconciliationResponse>([], page, size, 0));
 }

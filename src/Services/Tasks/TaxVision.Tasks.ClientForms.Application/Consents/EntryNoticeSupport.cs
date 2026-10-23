@@ -4,12 +4,7 @@ using TaxVision.Tasks.ClientForms.Domain.Consents;
 
 namespace TaxVision.Tasks.ClientForms.Application.Consents;
 
-public sealed record PublicEntryNoticeResponse(
-    string Title,
-    string Language,
-    JsonElement Body,
-    string ContentHash
-);
+public sealed record PublicEntryNoticeResponse(string Title, string Language, JsonElement Body, string ContentHash);
 
 internal sealed record EntryNoticeSelection(ConsentNotice Notice, ConsentNoticeVersion Version);
 
@@ -25,12 +20,13 @@ internal static class EntryNoticeSupport
         if (string.IsNullOrWhiteSpace(key))
             return null;
         var notice = await notices.GetByKeyAsync(tenantId, key, ct);
-        if (notice is null || notice.Status != ConsentNoticeStatus.Active
-            || notice.Purpose != ConsentNoticePurpose.IdentityVerification)
+        if (
+            notice is null
+            || notice.Status != ConsentNoticeStatus.Active
+            || notice.Purpose != ConsentNoticePurpose.IdentityVerification
+        )
             return null;
-        var version = notice.Versions.SingleOrDefault(item =>
-            item.VersionNumber == notice.LatestVersionNumber
-        );
+        var version = notice.Versions.SingleOrDefault(item => item.VersionNumber == notice.LatestVersionNumber);
         return version is null ? null : new EntryNoticeSelection(notice, version);
     }
 
@@ -51,10 +47,11 @@ internal static class EntryNoticeSupport
             : new EntryNoticeSelection(notice, version);
     }
 
-    internal static PublicEntryNoticeResponse ToResponse(EntryNoticeSelection selection) => new(
-        selection.Notice.Title,
-        selection.Version.Language,
-        JsonDocument.Parse(selection.Version.BodyJson).RootElement.Clone(),
-        selection.Version.ContentHash
-    );
+    internal static PublicEntryNoticeResponse ToResponse(EntryNoticeSelection selection) =>
+        new(
+            selection.Notice.Title,
+            selection.Version.Language,
+            JsonDocument.Parse(selection.Version.BodyJson).RootElement.Clone(),
+            selection.Version.ContentHash
+        );
 }

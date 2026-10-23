@@ -31,11 +31,20 @@ public sealed partial class ConsentNoticeVersion : TenantEntity
     {
         var normalizedLanguage = language?.Trim();
         var normalizedText = textSnapshot?.Trim();
-        if (tenantId == Guid.Empty || noticeId == Guid.Empty || versionNumber < 1 || byUserId == Guid.Empty
-            || string.IsNullOrWhiteSpace(normalizedLanguage) || !LanguagePattern().IsMatch(normalizedLanguage)
-            || string.IsNullOrWhiteSpace(bodyJson) || bodyJson.Length > 100_000
-            || string.IsNullOrWhiteSpace(normalizedText) || normalizedText.Length > 20_000
-            || string.IsNullOrWhiteSpace(contentHash) || !HashPattern().IsMatch(contentHash))
+        if (
+            tenantId == Guid.Empty
+            || noticeId == Guid.Empty
+            || versionNumber < 1
+            || byUserId == Guid.Empty
+            || string.IsNullOrWhiteSpace(normalizedLanguage)
+            || !LanguagePattern().IsMatch(normalizedLanguage)
+            || string.IsNullOrWhiteSpace(bodyJson)
+            || bodyJson.Length > 100_000
+            || string.IsNullOrWhiteSpace(normalizedText)
+            || normalizedText.Length > 20_000
+            || string.IsNullOrWhiteSpace(contentHash)
+            || !HashPattern().IsMatch(contentHash)
+        )
             return Result.Failure<ConsentNoticeVersion>(ConsentErrors.NoticeInvalid);
 
         var version = new ConsentNoticeVersion

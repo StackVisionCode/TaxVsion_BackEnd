@@ -6,6 +6,7 @@ public sealed class RichTextDocument
 {
     [JsonRequired]
     public string Type { get; init; } = string.Empty;
+
     [JsonRequired]
     public IReadOnlyList<RichTextBlock> Blocks { get; init; } = [];
 }

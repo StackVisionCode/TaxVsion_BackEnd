@@ -17,6 +17,10 @@ public sealed class Customer : TenantEntity
     private readonly List<CustomerRelation> _relations = [];
     private readonly List<CustomerAssignment> _assignments = [];
 
+    // El origen se persiste en columnas de la raíz: el índice único necesita TenantId en la misma entidad.
+    private string? _originSourceService;
+    private Guid? _originSourceReferenceId;
+
     private Customer() { }
 
     public CustomerKind Kind { get; private set; }
@@ -44,6 +48,11 @@ public sealed class Customer : TenantEntity
     public Guid? LastModifiedByUserId { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
     public Guid? ArchivedByUserId { get; private set; }
+
+    public CustomerOrigin? Origin =>
+        _originSourceReferenceId is { } referenceId
+            ? CustomerOrigin.Create(_originSourceService!, referenceId).Value
+            : null;
 
     public IReadOnlyCollection<CustomerAddress> Addresses => _addresses.AsReadOnly();
     public IReadOnlyCollection<CustomerContactPoint> ContactPoints => _contactPoints.AsReadOnly();
@@ -110,6 +119,20 @@ public sealed class Customer : TenantEntity
         };
         customer.SetTenant(tenantId);
         return Result.Success(customer);
+    }
+
+    /// <summary>Se fija una sola vez, en la misma transacción del alta; nunca se reescribe.</summary>
+    public Result RecordOrigin(CustomerOrigin origin)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        if (_originSourceReferenceId is not null)
+            return Result.Failure(
+                new Error("Customer.OriginAlreadyRecorded", "The customer origin is already recorded.")
+            );
+
+        _originSourceService = origin.SourceService;
+        _originSourceReferenceId = origin.SourceReferenceId;
+        return Result.Success();
     }
 
     private void Touch(Guid byUserId)

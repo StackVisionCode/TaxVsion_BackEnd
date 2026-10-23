@@ -23,16 +23,17 @@ public sealed class FormSensitiveAnswer : BaseEntity
         ProtectedTaxIdentifier value,
         FormActor actor,
         DateTime nowUtc
-    ) => new()
-    {
-        FormSubmissionId = submissionId,
-        ComponentId = address.ComponentId,
-        RowId = address.RowId,
-        Kind = kind,
-        Protected = value,
-        CapturedAtUtc = nowUtc,
-        CapturedBy = actor.Copy(),
-    };
+    ) =>
+        new()
+        {
+            FormSubmissionId = submissionId,
+            ComponentId = address.ComponentId,
+            RowId = address.RowId,
+            Kind = kind,
+            Protected = value,
+            CapturedAtUtc = nowUtc,
+            CapturedBy = actor.Copy(),
+        };
 
     internal void Supersede(DateTime nowUtc) => SupersededAtUtc ??= nowUtc;
 }

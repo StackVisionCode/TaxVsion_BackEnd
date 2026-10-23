@@ -81,6 +81,24 @@ internal static class TemplateApplicationSupport
             ],
         };
 
+    // Sin configure_actions se edita todo menos el mapeo y las acciones: se comparan contra el borrador actual.
+    internal static Result EnsureRuleSetsAllowed(
+        IFormEngine engine,
+        string? currentJson,
+        FormDefinition next,
+        bool canConfigureActions
+    )
+    {
+        if (canConfigureActions)
+            return Result.Success();
+        var proposed = engine.CanonicalizeRuleSets(next);
+        var current = currentJson is null ? null : engine.ParseDefinition(currentJson);
+        var unchanged = current is { IsSuccess: true }
+            ? proposed == engine.CanonicalizeRuleSets(current.Value)
+            : proposed.IsEmpty;
+        return unchanged ? Result.Success() : Result.Failure(FormTemplateErrors.ConfigureActionsRequired);
+    }
+
     internal static ValidationIssue ParseIssue(Error error) => new(error.Code, "$", null, null, error.Message);
 
     internal static DomainPurpose ToDomain(EnginePurpose purpose) => (DomainPurpose)(int)purpose;

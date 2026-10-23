@@ -41,6 +41,7 @@ public static class AssignFormRequestHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -64,6 +65,7 @@ public static class AssignFormRequestHandler
         audit.Record(command.TenantId, command.TemplateId, created.Value.Id, "request.assigned", command.ByUserId);
         await bus.PublishAsync(FormRequestIntegrationEventFactory.Assigned(created.Value, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordRequestAssigned();
         return Result.Success(FormRequestResponse.From(created.Value));
     }
 

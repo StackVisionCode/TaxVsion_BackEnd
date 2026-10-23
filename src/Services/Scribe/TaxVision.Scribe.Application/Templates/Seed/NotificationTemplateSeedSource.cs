@@ -34,7 +34,7 @@ public sealed record NotificationTemplateSeed(
     // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
     // v18 (por plantilla): subscription.recurring_charge_failed reescrito — un correo por cada cobro
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
-    int ContentVersion = 19,
+    int ContentVersion = 20,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -103,6 +103,10 @@ public static class NotificationTemplateSeedSource
             FormRequestCompleted,
             FormAttachmentRejected,
             FormRequestReminder,
+            FormParticipantReturned,
+            FormParticipantCompleted,
+            FormParticipantCancelled,
+            FormParticipantAttachmentRejected,
             SharedFileInvited,
             MeetingInvitation,
         ];
@@ -162,6 +166,10 @@ public static class NotificationTemplateSeedSource
         ["task.form_request_completed.v1"] = "Your tax office received and completed your form.",
         ["task.form_attachment_rejected.v1"] = "A file needs to be uploaded again.",
         ["task.form_request_reminder.v1"] = "A form requested by your tax office is still waiting.",
+        ["task.form_participant_returned.v1"] = "Your tax office asked you to update a form you sent.",
+        ["task.form_participant_completed.v1"] = "Your tax office received your form.",
+        ["task.form_participant_cancelled.v1"] = "A form request from your tax office was cancelled.",
+        ["task.form_participant_attachment_rejected.v1"] = "A file you uploaded needs to be sent again.",
         ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
         ["communication.meeting.invitation"] = "You've been invited to a meeting — join with the link inside.",
     };
@@ -2147,6 +2155,94 @@ public static class NotificationTemplateSeedSource
                 ("due_date", VariableType.Date, false, null, "Optional due date."),
                 ("is_overdue", VariableType.Bool, true, null, "Whether the form is overdue."),
                 ("portal_link", VariableType.Url, true, null, "Client form URL."),
+            ]
+        );
+
+    // Avisos a un participante externo sin vincular (P-14.7). No hay portal ni enlace: el token se guarda
+    // hasheado, así que se le remite al enlace del correo de acceso o a pedirle a la oficina que lo reenvíe.
+    private static NotificationTemplateSeed FormParticipantReturned { get; } =
+        new(
+            EventKey: "task.form_participant_returned.v1",
+            TemplateKey: "task.form_participant_returned.v1",
+            Name: "Client Forms - Changes requested (external)",
+            Subject: "Changes requested: {{ form_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Changes are needed</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Your tax office asked for changes on {{ comment_count }} item(s) in <strong>{{ form_title }}</strong>.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">Open the secure link from the email we sent you earlier to read their notes. If the link expired, ask your office to send you a new one.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("comment_count", VariableType.Number, true, null, "Number of field comments."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormParticipantCompleted { get; } =
+        new(
+            EventKey: "task.form_participant_completed.v1",
+            TemplateKey: "task.form_participant_completed.v1",
+            Name: "Client Forms - Form completed (external)",
+            Subject: "Received: {{ form_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Your form was received</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Your tax office marked <strong>{{ form_title }}</strong> as complete. Thank you. You don't need to do anything else.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormParticipantCancelled { get; } =
+        new(
+            EventKey: "task.form_participant_cancelled.v1",
+            TemplateKey: "task.form_participant_cancelled.v1",
+            Name: "Client Forms - Form cancelled (external)",
+            Subject: "Cancelled: {{ form_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">This form request was cancelled</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Your tax office cancelled <strong>{{ form_title }}</strong>. The link you received no longer works, and you don't need to do anything else. If you think this is a mistake, contact your office.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormParticipantAttachmentRejected { get; } =
+        new(
+            EventKey: "task.form_participant_attachment_rejected.v1",
+            TemplateKey: "task.form_participant_attachment_rejected.v1",
+            Name: "Client Forms - File rejected (external)",
+            Subject: "A file you uploaded couldn't be accepted",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Please upload a file again</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">One of your files (.{{ file_extension }}) for <strong>{{ form_title }}</strong> couldn't be accepted.</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{{ client_message }}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">Open the secure link from the email we sent you earlier to upload it again. If the link expired, ask your office to send you a new one.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("file_extension", VariableType.String, true, null, "Safe file extension only."),
+                ("client_message", VariableType.String, true, null, "Fixed message selected from the rejection code."),
             ]
         );
 

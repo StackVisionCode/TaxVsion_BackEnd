@@ -57,5 +57,7 @@ public sealed record DataCollectionTarget(
     DataCollectionTargetStatus Status,
     int TargetSchemaVersion,
     int IntroducedIn,
-    int? DeprecatedIn = null
+    int? DeprecatedIn = null,
+    IReadOnlyList<DataCollectionTargetField>? Fields = null,
+    IReadOnlyList<DataCollectionLegacyValueMap>? LegacyValueMaps = null
 );

@@ -70,7 +70,10 @@ public sealed class JsonProtectedPayloadCodec(IRotatingSecretProtector protector
             && intakeLinkId != Guid.Empty
             && binding.FormRequestId is null
             && binding.Participant is null;
-        return binding.TenantId != Guid.Empty && requestBound != intakeBound && binding.ChallengeId != Guid.Empty;
+        return binding.TenantId != Guid.Empty
+            && requestBound != intakeBound
+            && binding.ChallengeId != Guid.Empty
+            && (binding.IdempotencyKey is null || !string.IsNullOrWhiteSpace(binding.IdempotencyKey));
     }
 
     private static string Pack(RotatingProtectedSecret value) =>

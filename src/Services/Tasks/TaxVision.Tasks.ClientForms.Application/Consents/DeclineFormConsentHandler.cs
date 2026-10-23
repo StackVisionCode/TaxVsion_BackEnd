@@ -24,6 +24,7 @@ public static class DeclineFormConsentHandler
         IFormEngine engine,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -45,7 +46,7 @@ public static class DeclineFormConsentHandler
         if (recorded.IsFailure)
             return Result.Failure<DeclineFormConsentResponse>(recorded.Error);
         if (recorded.Value.Created)
-            await AuditAsync(command, audit, unitOfWork, ct);
+            await AuditAsync(command, audit, unitOfWork, metrics, ct);
         var record = recorded.Value.Record;
         return Result.Success(new DeclineFormConsentResponse(record.Id, record.RecordedAtUtc));
     }
@@ -109,6 +110,7 @@ public static class DeclineFormConsentHandler
         DeclineFormConsentCommand command,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
@@ -119,5 +121,6 @@ public static class DeclineFormConsentHandler
             command.Context.Actor
         );
         await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordConsent(FormConsentOutcome.Declined);
     }
 }

@@ -28,11 +28,12 @@ public static class VerifyPublicIntakeFormChallengeHandler
         IClientFormsPublicCapabilityEvaluator capabilities,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
         var link = await LoadLinkAsync(command, links, security, hosts, capabilities, ct);
-        var challenge = await VerifyCodeAsync(command, link, challenges, security, unitOfWork, ct);
+        var challenge = await VerifyCodeAsync(command, link, challenges, security, metrics, unitOfWork, ct);
         if (link is null || challenge is null)
             return Failed();
         var participant = await ResolveParticipantAsync(
@@ -91,6 +92,7 @@ public static class VerifyPublicIntakeFormChallengeHandler
         FormIntakeLink? link,
         IFormAccessChallengeRepository challenges,
         IFormExternalAccessSecurity security,
+        IClientFormsMetrics metrics,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -111,9 +113,15 @@ public static class VerifyPublicIntakeFormChallengeHandler
         if (challenge is null)
             return null;
         var matches = security.VerifyOtp(link.TenantId, link.Id, email, command.Code, challenge.CodeHash);
-        return await PublicFormChallengeVerification.VerifyAsync(challenge, matches, command.NowUtc, unitOfWork, ct)
-            ? challenge
-            : null;
+        var verified = await PublicFormChallengeVerification.VerifyAsync(
+            challenge,
+            matches,
+            command.NowUtc,
+            unitOfWork,
+            metrics,
+            ct
+        );
+        return verified ? challenge : null;
     }
 
     // Reutiliza el participante sin vincular del email o lo crea; queda verificado.

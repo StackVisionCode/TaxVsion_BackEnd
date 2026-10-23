@@ -1,11 +1,17 @@
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Mapping;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Responses;
 
 namespace TaxVision.Tasks.ClientForms.Application.Templates.Queries;
 
-public sealed record ValidateFormTemplateQuery(Guid TenantId, Guid TemplateId);
+// Con Capabilities también reporta la cobertura del mapeo, igual que al publicar.
+public sealed record ValidateFormTemplateQuery(
+    Guid TenantId,
+    Guid TemplateId,
+    PublisherCapabilities? Capabilities = null
+);
 
 public static class ValidateFormTemplateHandler
 {
@@ -13,6 +19,7 @@ public static class ValidateFormTemplateHandler
         ValidateFormTemplateQuery query,
         IFormEngine engine,
         IFormTemplateRepository templates,
+        IDataCollectionTargetCatalog targetCatalog,
         CancellationToken ct
     )
     {
@@ -24,6 +31,10 @@ public static class ValidateFormTemplateHandler
             return Result.Success(
                 new FormTemplateValidationResponse([TemplateApplicationSupport.ParseIssue(parsed.Error)])
             );
-        return Result.Success(new FormTemplateValidationResponse(engine.ValidateForPublish(parsed.Value).Issues));
+        var report = engine.ValidateForPublish(parsed.Value);
+        if (!report.IsValid || query.Capabilities is null)
+            return Result.Success(new FormTemplateValidationResponse(report.Issues));
+        var mappings = engine.ValidateMappings(parsed.Value, targetCatalog.GetSnapshot(), query.Capabilities);
+        return Result.Success(new FormTemplateValidationResponse(mappings.Issues));
     }
 }

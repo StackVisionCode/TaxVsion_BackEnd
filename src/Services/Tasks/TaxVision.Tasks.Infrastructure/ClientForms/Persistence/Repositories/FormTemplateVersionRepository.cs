@@ -17,10 +17,16 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     )
     {
-        var version = await context.FormTemplateVersions.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(
-            item => item.TenantId == tenantId && item.FormTemplateId == templateId && item.VersionNumber == versionNumber,
-            ct
-        );
+        var version = await context
+            .FormTemplateVersions.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                item =>
+                    item.TenantId == tenantId
+                    && item.FormTemplateId == templateId
+                    && item.VersionNumber == versionNumber,
+                ct
+            );
         return version is null
             ? Result.Failure<FormTemplateVersion>(FormTemplateVersionErrors.NotFound)
             : Result.Success(version);
@@ -31,7 +37,9 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
         Guid templateId,
         CancellationToken ct = default
     ) =>
-        await context.FormTemplateVersions.IgnoreQueryFilters().AsNoTracking()
+        await context
+            .FormTemplateVersions.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.FormTemplateId == templateId)
             .OrderByDescending(item => item.VersionNumber)
             .ToListAsync(ct);
@@ -42,10 +50,10 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     )
     {
-        var version = await context.FormTemplateVersions.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(
-            item => item.TenantId == tenantId && item.Id == versionId,
-            ct
-        );
+        var version = await context
+            .FormTemplateVersions.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == versionId, ct);
         return version is null
             ? Result.Failure<FormTemplateVersion>(FormTemplateVersionErrors.NotFound)
             : Result.Success(version);

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Permissions;
@@ -127,7 +128,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CustomerDbContext>();
@@ -154,6 +155,9 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // Comandos de formularios de cliente: punto a punto, nunca enlazada al fanout.
+    options.ListenToRabbitQueue("customer-client-form-commands").UseDurableInbox();
+
     options.PublishMessage<CustomerArchivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -165,6 +169,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerPreparerAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPreparerUnassignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerAssignmentsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerCreationFromFormCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerCreationFromFormRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
     // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

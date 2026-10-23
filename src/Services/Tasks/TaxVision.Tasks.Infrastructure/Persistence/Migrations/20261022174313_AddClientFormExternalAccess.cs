@@ -24,7 +24,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     LastUsedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     IssueCount = table.Column<int>(type: "int", nullable: false),
                     IssuedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -34,8 +34,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.FormRequestId,
                         principalTable: "FormRequests",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormIntakeLinks",
@@ -57,7 +59,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -67,14 +69,17 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.FormTemplateVersionId,
                         principalTable: "FormTemplateVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Restrict
+                    );
                     table.ForeignKey(
                         name: "FK_FormIntakeLinks_FormTemplates_FormTemplateId",
                         column: x => x.FormTemplateId,
                         principalTable: "FormTemplates",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormParticipants",
@@ -91,12 +96,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     LinkedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     Source = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormParticipants", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormAccessChallenges",
@@ -112,25 +118,31 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     Attempts = table.Column<int>(type: "int", nullable: false),
                     BlockedUntilUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ConsumedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormAccessChallenges", x => x.Id);
-                    table.CheckConstraint("CK_FormAccessChallenges_Source", "([GrantId] IS NOT NULL AND [IntakeLinkId] IS NULL) OR ([GrantId] IS NULL AND [IntakeLinkId] IS NOT NULL)");
+                    table.CheckConstraint(
+                        "CK_FormAccessChallenges_Source",
+                        "([GrantId] IS NOT NULL AND [IntakeLinkId] IS NULL) OR ([GrantId] IS NULL AND [IntakeLinkId] IS NOT NULL)"
+                    );
                     table.ForeignKey(
                         name: "FK_FormAccessChallenges_FormAccessGrants_GrantId",
                         column: x => x.GrantId,
                         principalTable: "FormAccessGrants",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Restrict
+                    );
                     table.ForeignKey(
                         name: "FK_FormAccessChallenges_FormIntakeLinks_IntakeLinkId",
                         column: x => x.IntakeLinkId,
                         principalTable: "FormIntakeLinks",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FormAccessSessions",
@@ -146,7 +158,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     ClientIp = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     UserAgent = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: false),
                     RevokedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -156,122 +168,136 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         column: x => x.ParticipantId,
                         principalTable: "FormParticipants",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Restrict
+                    );
                     table.ForeignKey(
                         name: "FK_FormAccessSessions_FormRequests_FormRequestId",
                         column: x => x.FormRequestId,
                         principalTable: "FormRequests",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessChallenges_GrantId",
                 table: "FormAccessChallenges",
                 column: "GrantId",
-                filter: "[GrantId] IS NOT NULL");
+                filter: "[GrantId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessChallenges_IntakeLinkId",
                 table: "FormAccessChallenges",
                 column: "IntakeLinkId",
-                filter: "[IntakeLinkId] IS NOT NULL");
+                filter: "[IntakeLinkId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessChallenges_Tenant_Email_Issued",
                 table: "FormAccessChallenges",
-                columns: new[] { "TenantId", "Email", "IssuedAtUtc" });
+                columns: new[] { "TenantId", "Email", "IssuedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessGrants_FormRequestId",
                 table: "FormAccessGrants",
-                column: "FormRequestId");
+                column: "FormRequestId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormAccessGrants_Tenant_Request",
                 table: "FormAccessGrants",
                 columns: new[] { "TenantId", "FormRequestId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormAccessGrants_TokenHash",
                 table: "FormAccessGrants",
                 column: "TokenHash",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessSessions_FormRequestId",
                 table: "FormAccessSessions",
-                column: "FormRequestId");
+                column: "FormRequestId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessSessions_ParticipantId",
                 table: "FormAccessSessions",
-                column: "ParticipantId");
+                column: "ParticipantId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormAccessSessions_Tenant_Request_Expires",
                 table: "FormAccessSessions",
-                columns: new[] { "TenantId", "FormRequestId", "ExpiresAtUtc" });
+                columns: new[] { "TenantId", "FormRequestId", "ExpiresAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormAccessSessions_TokenHash",
                 table: "FormAccessSessions",
                 column: "SessionTokenHash",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormIntakeLinks_FormTemplateId",
                 table: "FormIntakeLinks",
-                column: "FormTemplateId");
+                column: "FormTemplateId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormIntakeLinks_FormTemplateVersionId",
                 table: "FormIntakeLinks",
-                column: "FormTemplateVersionId");
+                column: "FormTemplateVersionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormIntakeLinks_Tenant_Status",
                 table: "FormIntakeLinks",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormIntakeLinks_TokenHash",
                 table: "FormIntakeLinks",
                 column: "TokenHash",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FormParticipants_Tenant_LinkedCustomer",
                 table: "FormParticipants",
                 columns: new[] { "TenantId", "LinkedCustomerId" },
-                filter: "[LinkedCustomerId] IS NOT NULL");
+                filter: "[LinkedCustomerId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_FormParticipants_Tenant_Email_Unlinked",
                 table: "FormParticipants",
                 columns: new[] { "TenantId", "Email" },
                 unique: true,
-                filter: "[LinkedCustomerId] IS NULL");
+                filter: "[LinkedCustomerId] IS NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "FormAccessChallenges");
+            migrationBuilder.DropTable(name: "FormAccessChallenges");
 
-            migrationBuilder.DropTable(
-                name: "FormAccessSessions");
+            migrationBuilder.DropTable(name: "FormAccessSessions");
 
-            migrationBuilder.DropTable(
-                name: "FormAccessGrants");
+            migrationBuilder.DropTable(name: "FormAccessGrants");
 
-            migrationBuilder.DropTable(
-                name: "FormIntakeLinks");
+            migrationBuilder.DropTable(name: "FormIntakeLinks");
 
-            migrationBuilder.DropTable(
-                name: "FormParticipants");
+            migrationBuilder.DropTable(name: "FormParticipants");
         }
     }
 }

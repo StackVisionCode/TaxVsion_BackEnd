@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.Tasks.ClientForms.Application.Actions.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
@@ -85,6 +86,7 @@ public sealed class PublicIntakeFormAccessHandlerTests
             new FixedCapabilities(),
             new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -130,6 +132,7 @@ public sealed class PublicIntakeFormAccessHandlerTests
             new FixedCapabilities(),
             new RecordingFormAuditLog(),
             new ConflictingUnitOfWork(1, "Persistence.UniqueConstraint"),
+            new RecordingClientFormsMetrics(),
             default
         );
 
@@ -155,6 +158,85 @@ public sealed class PublicIntakeFormAccessHandlerTests
         Assert.Equal(FormIntakeLinkStatus.Revoked, fixture.Link.Status);
     }
 
+    [Fact]
+    public async Task Pinning_a_version_revalidates_that_the_responsible_is_active_and_can_run_its_actions()
+    {
+        var versionId = Fixture().Link.FormTemplateVersionId;
+
+        var inactive = Fixture();
+        var unauthorized = Fixture();
+        var allowed = Fixture();
+        var inactiveResult = await PinAsync(
+            inactive,
+            new ResponsibleActivity(false),
+            new FixedAuthorizer(Result.Success())
+        );
+        var unauthorizedResult = await PinAsync(
+            unauthorized,
+            new ResponsibleActivity(true),
+            new FixedAuthorizer(Result.Failure(FormRequestErrors.ResponsibleNotAuthorized))
+        );
+        var allowedResult = await PinAsync(
+            allowed,
+            new ResponsibleActivity(true),
+            new FixedAuthorizer(Result.Success())
+        );
+
+        Assert.Equal(FormParticipantErrors.IntakeResponsibleUnavailable, inactiveResult.Error);
+        Assert.Equal(FormRequestErrors.ResponsibleNotAuthorized, unauthorizedResult.Error);
+        Assert.True(allowedResult.IsSuccess);
+        Assert.NotEqual(Guid.Empty, versionId);
+    }
+
+    private static Task<Result<FormIntakeLinkTokenResponse>> PinAsync(
+        FixtureState fixture,
+        IFormResponsibleUserValidator responsibleUsers,
+        IFormActionAuthorizer authorizer
+    ) =>
+        UpdateFormIntakeLinkHandler.Handle(
+            new UpdateFormIntakeLinkCommand(
+                TenantId,
+                UserId,
+                fixture.Link.Id,
+                FormIntakeLinkAction.PinVersion,
+                fixture.Link.FormTemplateVersionId,
+                [],
+                Now.AddMinutes(1)
+            ),
+            new FixedCapabilities(),
+            fixture.Links,
+            fixture.Versions,
+            responsibleUsers,
+            authorizer,
+            fixture.Security,
+            new RecordingFormAuditLog(),
+            new RecordingUnitOfWork(),
+            default
+        );
+
+    private sealed class ResponsibleActivity(bool active) : IFormResponsibleUserValidator
+    {
+        public Task<bool> IsActiveAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            Task.FromResult(active);
+
+        public Task<bool> HasPermissionsAsync(
+            Guid tenantId,
+            Guid userId,
+            IReadOnlyCollection<string> permissions,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+    }
+
+    private sealed class FixedAuthorizer(Result outcome) : IFormActionAuthorizer
+    {
+        public Task<Result> EnsureResponsibleCanRunAsync(
+            Guid tenantId,
+            Guid responsibleUserId,
+            FormTemplateVersion version,
+            CancellationToken ct = default
+        ) => Task.FromResult(outcome);
+    }
+
     private static Task<Result<FormIntakeLinkTokenResponse>> UpdateLinkAsync(
         FixtureState fixture,
         FormIntakeLinkAction action,
@@ -165,6 +247,8 @@ public sealed class PublicIntakeFormAccessHandlerTests
             capabilities,
             fixture.Links,
             fixture.Versions,
+            new ResponsibleActivity(true),
+            new FixedAuthorizer(Result.Success()),
             fixture.Security,
             new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
@@ -202,6 +286,7 @@ public sealed class PublicIntakeFormAccessHandlerTests
             new RecordingUnitOfWork(),
             bus,
             new NoOpCorrelationContext(),
+            new RecordingClientFormsMetrics(),
             default
         );
 

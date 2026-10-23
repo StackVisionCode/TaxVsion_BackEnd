@@ -17,6 +17,9 @@ public sealed class FormTemplateVersion : AggregateRoot
     public FormDefinitionDocument Definition { get; private set; } = default!;
     public ContentHash ContentHash { get; private set; } = default!;
     public int ComponentCount { get; private set; }
+    public string MappingSetJson { get; private set; } = "[]";
+    public string ActionSetJson { get; private set; } = "[]";
+    public int TargetCatalogVersion { get; private set; }
     public DateTime PublishedAtUtc { get; private set; }
     public Guid PublishedByUserId { get; private set; }
 
@@ -31,9 +34,11 @@ public sealed class FormTemplateVersion : AggregateRoot
         ContentHash contentHash,
         int componentCount,
         Guid publishedByUserId,
-        DateTime publishedAtUtc
+        DateTime publishedAtUtc,
+        FormVersionRuleSets? ruleSets = null
     )
     {
+        ruleSets ??= FormVersionRuleSets.Empty;
         var version = new FormTemplateVersion
         {
             FormTemplateId = formTemplateId,
@@ -45,6 +50,9 @@ public sealed class FormTemplateVersion : AggregateRoot
             Definition = definition,
             ContentHash = contentHash,
             ComponentCount = componentCount,
+            MappingSetJson = ruleSets.MappingSetJson,
+            ActionSetJson = ruleSets.ActionSetJson,
+            TargetCatalogVersion = ruleSets.TargetCatalogVersion,
             PublishedAtUtc = publishedAtUtc,
             PublishedByUserId = publishedByUserId,
         };

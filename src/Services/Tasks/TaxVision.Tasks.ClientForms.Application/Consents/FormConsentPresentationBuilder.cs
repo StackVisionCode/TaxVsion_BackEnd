@@ -30,19 +30,21 @@ public static class FormConsentPresentationBuilder
                 && item.NoticeVersionNumber == consent.NoticeVersionNumber
                 && FormConsentGate.MatchesParticipant(context, item)
             );
-            result.Add(new FormConsentPresentationResponse(
-                consent.ComponentId,
-                consent.NoticeKey,
-                consent.NoticeVersionNumber,
-                consent.Mode,
-                consent.Timing,
-                consent.AcceptanceText,
-                consent.Blocking,
-                version.Language,
-                JsonDocument.Parse(version.BodyJson).RootElement.Clone(),
-                version.ContentHash,
-                record is null ? null : FormConsentEvidenceResponse.From(record)
-            ));
+            result.Add(
+                new FormConsentPresentationResponse(
+                    consent.ComponentId,
+                    consent.NoticeKey,
+                    consent.NoticeVersionNumber,
+                    consent.Mode,
+                    consent.Timing,
+                    consent.AcceptanceText,
+                    consent.Blocking,
+                    version.Language,
+                    JsonDocument.Parse(version.BodyJson).RootElement.Clone(),
+                    version.ContentHash,
+                    record is null ? null : FormConsentEvidenceResponse.From(record)
+                )
+            );
         }
         return result;
     }

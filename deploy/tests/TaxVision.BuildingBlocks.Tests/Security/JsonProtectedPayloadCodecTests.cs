@@ -140,6 +140,42 @@ public sealed class JsonProtectedPayloadCodecTests
     }
 
     [Fact]
+    public void Rejects_payload_moved_to_a_command_with_another_idempotency_key()
+    {
+        var codec = Codec(Key(), version: 1);
+        var binding = Binding() with { IdempotencyKey = "request:r1:create_client" };
+        var payload = codec.Protect(ClientFormProtectedPayloadSchemas.CustomerCreation, binding, new Content("x", 1));
+
+        Assert.Throws<CryptographicException>(() =>
+            codec.Unprotect<Content>(
+                payload,
+                ClientFormProtectedPayloadSchemas.CustomerCreation,
+                binding with
+                {
+                    IdempotencyKey = "request:r2:create_client",
+                }
+            )
+        );
+        Assert.Throws<CryptographicException>(() =>
+            codec.Unprotect<Content>(
+                payload,
+                ClientFormProtectedPayloadSchemas.CustomerCreation,
+                binding with
+                {
+                    IdempotencyKey = null,
+                }
+            )
+        );
+        Assert.Throws<ArgumentException>(() =>
+            codec.Protect("code.v1", binding with { IdempotencyKey = " " }, new Content("x", 1))
+        );
+        Assert.Equal(
+            new Content("x", 1),
+            codec.Unprotect<Content>(payload, ClientFormProtectedPayloadSchemas.CustomerCreation, binding)
+        );
+    }
+
+    [Fact]
     public void Incoherent_binding_from_the_envelope_is_a_validation_failure_not_an_argument_error()
     {
         var codec = Codec(Key(), version: 1);

@@ -30,14 +30,7 @@ public static class PublishConsentNoticeVersionHandler
         var bodyJson = RichTextCanonicalizer.Canonicalize(command.Body);
         var text = RichTextCanonicalizer.PlainText(command.Body).Trim();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(bodyJson))).ToLowerInvariant();
-        var published = notice.Publish(
-            command.Language,
-            bodyJson,
-            text,
-            hash,
-            command.ByUserId,
-            command.NowUtc
-        );
+        var published = notice.Publish(command.Language, bodyJson, text, hash, command.ByUserId, command.NowUtc);
         if (published.IsFailure)
             return Failure(published.Error);
         audit.Record(command.TenantId, null, null, FormAuditAction.ConsentNoticePublished, command.ByUserId);
@@ -45,6 +38,5 @@ public static class PublishConsentNoticeVersionHandler
         return Result.Success(ConsentNoticeResponse.From(notice));
     }
 
-    private static Result<ConsentNoticeResponse> Failure(Error error) =>
-        Result.Failure<ConsentNoticeResponse>(error);
+    private static Result<ConsentNoticeResponse> Failure(Error error) => Result.Failure<ConsentNoticeResponse>(error);
 }

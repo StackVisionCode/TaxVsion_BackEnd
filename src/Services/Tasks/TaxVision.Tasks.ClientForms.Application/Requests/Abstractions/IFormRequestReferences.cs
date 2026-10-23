@@ -9,10 +9,5 @@ public sealed record ClientFormsCustomerRecord(Guid CustomerId, bool IsActive, s
 
 public interface IClientFormsTaskReader
 {
-    Task<bool> BelongsToCustomerAsync(
-        Guid tenantId,
-        Guid taskId,
-        Guid customerId,
-        CancellationToken ct = default
-    );
+    Task<bool> BelongsToCustomerAsync(Guid tenantId, Guid taskId, Guid customerId, CancellationToken ct = default);
 }

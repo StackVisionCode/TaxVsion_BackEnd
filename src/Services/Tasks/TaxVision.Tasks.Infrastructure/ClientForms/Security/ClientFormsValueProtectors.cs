@@ -15,17 +15,19 @@ internal sealed class AnswersProtector(IRotatingSecretProtector protector) : IAn
 
     public string Unprotect(ProtectedAnswers value) => protector.Unprotect(Unpack(value.Cipher, value.KeyVersion));
 
-    internal static string Pack(RotatingProtectedSecret value) => JsonSerializer.Serialize(
-        new PackedSecret(
-            Convert.ToBase64String(value.Ciphertext),
-            Convert.ToBase64String(value.Nonce),
-            Convert.ToBase64String(value.Tag)
-        )
-    );
+    internal static string Pack(RotatingProtectedSecret value) =>
+        JsonSerializer.Serialize(
+            new PackedSecret(
+                Convert.ToBase64String(value.Ciphertext),
+                Convert.ToBase64String(value.Nonce),
+                Convert.ToBase64String(value.Tag)
+            )
+        );
 
     internal static RotatingProtectedSecret Unpack(string value, short keyVersion)
     {
-        var packed = JsonSerializer.Deserialize<PackedSecret>(value)
+        var packed =
+            JsonSerializer.Deserialize<PackedSecret>(value)
             ?? throw new InvalidOperationException("The protected value is invalid.");
         return new RotatingProtectedSecret(
             Convert.FromBase64String(packed.Ciphertext),

@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
@@ -159,6 +160,41 @@ public sealed class FormRequestParticipantMutationTests
     }
 
     [Fact]
+    public async Task Draft_save_is_measured_as_ok_and_a_stale_row_version_as_conflict()
+    {
+        var version = Version();
+        var request = CustomerRequest(version);
+        var metrics = new RecordingClientFormsMetrics();
+        const string json = "{\"schemaVersion\":1,\"values\":{}}";
+
+        var saved = await SaveDraftAsync(request, version, json, request.RowVersion, metrics);
+        var stale = await SaveDraftAsync(request, version, json, [9, 9, 9], metrics);
+
+        Assert.True(saved.Value.Saved);
+        Assert.Equal(FormRequestErrors.ConcurrencyConflict, stale.Error);
+        Assert.Equal(["draft:ok", "draft:conflict"], metrics.Recorded);
+    }
+
+    private static Task<Result<FormDraftSaveOutcome>> SaveDraftAsync(
+        FormRequest request,
+        TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion version,
+        string json,
+        byte[] rowVersion,
+        RecordingClientFormsMetrics metrics
+    ) =>
+        SavePortalFormDraftHandler.Handle(
+            new SavePortalFormDraftCommand(Portal(request), request.Id, json, rowVersion, Now),
+            new SingleFormRequestRepository(request),
+            new MemoryFormTemplateVersionRepository(version),
+            FormTemplateHandlerTestDoubles.Engine(),
+            new PlainFormAnswersProtector(),
+            ConsentGate(),
+            new RowVersionBumpingUnitOfWork(request),
+            metrics,
+            default
+        );
+
+    [Fact]
     public async Task Draft_keeps_the_server_last4_and_kind_instead_of_the_client_values()
     {
         var version = Version();
@@ -185,6 +221,7 @@ public sealed class FormRequestParticipantMutationTests
             new PlainFormAnswersProtector(),
             ConsentGate(),
             new RowVersionBumpingUnitOfWork(request),
+            new RecordingClientFormsMetrics(),
             default
         );
 

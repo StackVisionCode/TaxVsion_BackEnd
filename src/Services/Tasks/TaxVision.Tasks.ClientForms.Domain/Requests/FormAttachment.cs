@@ -18,7 +18,13 @@ public sealed class FormAttachment : TenantEntity
     public DateTime RegisteredAtUtc { get; private set; }
     public DateTime? ResolvedAtUtc { get; private set; }
     public DateTime? DetachedAtUtc { get; private set; }
+    public string? OwnerReassignment { get; private set; }
+    public DateTime? OwnerReassignedAtUtc { get; private set; }
     public FormAnswerAddress Address => new(ComponentId, RowId);
+
+    // Ya es del cliente: no hace falta volver a pedir la reasignación.
+    public bool OwnerReassignmentSettled =>
+        OwnerReassignment is FormFileReassignmentOutcomes.Reassigned or FormFileReassignmentOutcomes.AlreadyApplied;
 
     internal static FormAttachment Create(
         Guid tenantId,
@@ -97,6 +103,12 @@ public sealed class FormAttachment : TenantEntity
         Status = FormAttachmentStatus.Rejected;
         RejectionCode = "upload_incomplete";
         ResolvedAtUtc = nowUtc;
+    }
+
+    internal void RecordOwnerReassignment(string outcome, DateTime nowUtc)
+    {
+        OwnerReassignment = outcome;
+        OwnerReassignedAtUtc = nowUtc;
     }
 
     internal void Detach(DateTime nowUtc)
