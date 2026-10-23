@@ -1447,5 +1447,256 @@
         }
       ]
     }
+  },
+  {
+    "name": "signature instructions reject javascript link",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "signatureStep",
+                  "props": {
+                    "documentSource": "submissionSummary",
+                    "verification": "emailOtp",
+                    "instructions": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "children": [
+                            {
+                              "type": "link",
+                              "href": "javascript:alert(1)",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "text": "Sign"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "key": "sign",
+          "type": "requestSignature",
+          "trigger": "onSubmit"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "richtext.invalid_link",
+          "path": "/pages/0/sections/0/components/0/props/instructions/blocks/0/children/0/href"
+        }
+      ]
+    }
+  },
+  {
+    "name": "signature instructions reject unknown block",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "signatureStep",
+                  "props": {
+                    "documentSource": "submissionSummary",
+                    "verification": "emailOtp",
+                    "instructions": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "table",
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "key": "sign",
+          "type": "requestSignature",
+          "trigger": "onSubmit"
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "richtext.invalid_node",
+          "path": "/pages/0/sections/0/components/0/props/instructions/blocks/0"
+        }
+      ]
+    }
+  },
+  {
+    "name": "non-integer prop rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {
+                    "maxLength": 2.5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "props.out_of_range",
+          "path": "/pages/0/sections/0/components/0/props/maxLength"
+        }
+      ]
+    }
+  },
+  {
+    "name": "integer prop above int range rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "textarea",
+                  "label": "Answer",
+                  "props": {
+                    "rows": 10000000000
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "props.out_of_range",
+          "path": "/pages/0/sections/0/components/0/props/rows"
+        }
+      ]
+    }
+  },
+  {
+    "name": "id with trailing newline rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh\n",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "id.invalid_format",
+          "path": "/pages/0/id"
+        }
+      ]
+    }
   }
 ]

@@ -28,6 +28,9 @@ public sealed class EventBasedEmailDispatchGateway(
     ILogger<EventBasedEmailDispatchGateway> logger
 ) : IEmailDispatchGateway
 {
+    // Cola propia de Postmaster (Postmaster.Api/Program.cs): recibe igual lo que llega por el fanout.
+    public const string PostmasterQueue = "postmaster-events";
+
     public async Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
     {
         // Idempotencia real (bug encontrado en la verificación E2E de PayFlow): si Wolverine
@@ -143,7 +146,10 @@ public sealed class EventBasedEmailDispatchGateway(
         };
 
         // PublishAsync + SaveChanges en el mismo scope → outbox transaccional (durable).
-        await publisher.PublishAsync(evt, ct);
+        if (request.Confidential)
+            await publisher.SendToQueueAsync(PostmasterQueue, evt, ct);
+        else
+            await publisher.PublishAsync(evt, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(

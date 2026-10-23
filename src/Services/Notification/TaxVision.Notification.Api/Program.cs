@@ -4,6 +4,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -239,6 +240,10 @@ builder.Host.UseWolverine(options =>
     // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
     options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<InAppNotificationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    options
+        .ListenToRabbitQueue("notification-client-form-commands")
+        .UseDurableInbox();
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options

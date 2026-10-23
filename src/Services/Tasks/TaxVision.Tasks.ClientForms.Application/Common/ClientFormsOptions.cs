@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Extensions.Options;
 using TaxVision.DataCollection.Engine;
 
 namespace TaxVision.Tasks.ClientForms.Application.Common;
@@ -10,50 +11,18 @@ public sealed class ClientFormsOptions
     public bool Enabled { get; init; }
 
     [Required]
+    [ValidateObjectMembers]
     public DataCollectionLimits Limits { get; init; } = new();
 
     [Required]
+    [ValidateObjectMembers]
     public ClientFormsAttachmentOptions Attachments { get; init; } = new();
 
     [Required]
+    [ValidateObjectMembers]
     public ClientFormsReminderOptions Reminders { get; init; } = new();
 
     [Required]
+    [ValidateObjectMembers]
     public ClientFormsExternalOptions External { get; init; } = new();
-}
-
-public sealed class ClientFormsExternalOptions
-{
-    [Range(1, 100_000)]
-    public int MaxIntakeSubmissionsPerTenantPerDay { get; init; } = 200;
-
-    [Range(1, 100_000)]
-    public int MaxOtpIssuesPerTenantPerHour { get; init; } = 300;
-}
-
-public sealed class ClientFormsAttachmentOptions
-{
-    [Range(1, 1440)]
-    public int PendingExpiryMinutes { get; init; } = 60;
-
-    [Range(1, 1440)]
-    public int ReconciliationIntervalMinutes { get; init; } = 5;
-
-    [Range(1, 1440)]
-    public int ReconcileAfterMinutes { get; init; } = 10;
-}
-
-public sealed class ClientFormsReminderOptions
-{
-    public bool Enabled { get; init; } = true;
-    public int[] DaysBeforeDue { get; init; } = [3, 1];
-
-    [Range(1, 365)]
-    public int OverdueEveryDays { get; init; } = 3;
-
-    [Range(1, 100)]
-    public int MaxReminders { get; init; } = 5;
-
-    [Range(1, 1440)]
-    public int JobIntervalMinutes { get; init; } = 60;
 }

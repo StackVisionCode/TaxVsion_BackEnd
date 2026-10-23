@@ -24,17 +24,26 @@ public sealed class FormEngine : IFormEngine
         _limits = limits;
         var registry = new ComponentRegistry();
         _structure = new StructureValidator(limits, registry);
-        _visibility = new VisibilityEvaluator(registry);
+        _visibility = new VisibilityEvaluator(limits, registry);
         _answers = new AnswersValidator(limits, registry);
         _progress = new ProgressCalculator(registry);
     }
 
+    public DataCollectionLimits Limits => _limits;
+
     public Result<FormDefinition> ParseDefinition(string json) =>
-        Parse<FormDefinition>(json, _limits.MaxDefinitionBytes, IssueCodes.DefinitionTooLarge, IssueCodes.DefinitionInvalidJson);
+        Parse<FormDefinition>(
+            json,
+            _limits.MaxDefinitionBytes,
+            IssueCodes.DefinitionTooLarge,
+            IssueCodes.DefinitionInvalidJson
+        );
 
-    public ValidationReport ValidateForDraft(FormDefinition definition) => _structure.Validate(definition, publish: false);
+    public ValidationReport ValidateForDraft(FormDefinition definition) =>
+        _structure.Validate(definition, publish: false);
 
-    public ValidationReport ValidateForPublish(FormDefinition definition) => _structure.Validate(definition, publish: true);
+    public ValidationReport ValidateForPublish(FormDefinition definition) =>
+        _structure.Validate(definition, publish: true);
 
     public Result<FormAnswers> ParseAnswers(string json) =>
         Parse<FormAnswers>(json, _limits.MaxAnswersBytes, IssueCodes.AnswersTooLarge, IssueCodes.AnswersInvalidJson);
@@ -52,17 +61,11 @@ public sealed class FormEngine : IFormEngine
         return _answers.Validate(definition, answers, visibility, mode);
     }
 
-    public FormAnswers RemoveHiddenAnswers(
-        FormDefinition definition,
-        FormAnswers answers,
-        VisibilityMap visibility
-    ) => AnswersSanitizer.RemoveHidden(definition, answers, visibility);
+    public FormAnswers RemoveHiddenAnswers(FormDefinition definition, FormAnswers answers, VisibilityMap visibility) =>
+        AnswersSanitizer.RemoveHidden(definition, answers, visibility);
 
-    public FormProgress CalculateProgress(
-        FormDefinition definition,
-        FormAnswers answers,
-        VisibilityMap visibility
-    ) => _progress.Calculate(definition, answers, visibility);
+    public FormProgress CalculateProgress(FormDefinition definition, FormAnswers answers, VisibilityMap visibility) =>
+        _progress.Calculate(definition, answers, visibility);
 
     public CanonicalDefinition Canonicalize(FormDefinition definition) => CanonicalJson.From(definition);
 

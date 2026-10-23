@@ -57,6 +57,16 @@ public static class ReassignFileOwnerHandler
                 return;
             }
 
+            // Un participante externo solo recibe archivos por el flujo propio de Client Forms.
+            if (ownerType == OwnerType.FormParticipant)
+            {
+                logger.LogWarning(
+                    "ReassignFileOwner {FileId}: FormParticipant is not a valid destination owner — dropping.",
+                    evt.FileId
+                );
+                return;
+            }
+
             var reassigned = file.ReassignOwner(ownerType, evt.NewOwnerId, clock.UtcNow);
             if (reassigned.IsFailure)
             {

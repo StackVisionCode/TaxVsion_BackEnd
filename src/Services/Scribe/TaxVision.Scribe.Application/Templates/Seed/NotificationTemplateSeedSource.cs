@@ -34,7 +34,7 @@ public sealed record NotificationTemplateSeed(
     // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
     // v18 (por plantilla): subscription.recurring_charge_failed reescrito — un correo por cada cobro
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
-    int ContentVersion = 18,
+    int ContentVersion = 19,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
@@ -96,6 +96,13 @@ public static class NotificationTemplateSeedSource
             AppointmentCancelled,
             ClientRequestCreated,
             ClientRequestDocumentRejected,
+            FormAccessLink,
+            FormAccessCode,
+            FormRequestAssigned,
+            FormRequestReturned,
+            FormRequestCompleted,
+            FormAttachmentRejected,
+            FormRequestReminder,
             SharedFileInvited,
             MeetingInvitation,
         ];
@@ -148,6 +155,13 @@ public static class NotificationTemplateSeedSource
         ["calendar.appointment_cancelled.v1"] = "Your appointment was cancelled. Here's what happened.",
         ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
         ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
+        ["task.form_access_link.v1"] = "Open the secure link inside to verify your identity and complete the form.",
+        ["task.form_access_code.v1"] = "Use this one-time code to continue securely. It expires soon.",
+        ["task.form_request_assigned.v1"] = "Your tax office needs information from you.",
+        ["task.form_request_returned.v1"] = "Your tax office asked you to update a submitted form.",
+        ["task.form_request_completed.v1"] = "Your tax office received and completed your form.",
+        ["task.form_attachment_rejected.v1"] = "A file needs to be uploaded again.",
+        ["task.form_request_reminder.v1"] = "A form requested by your tax office is still waiting.",
         ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
         ["communication.meeting.invitation"] = "You've been invited to a meeting — join with the link inside.",
     };
@@ -1970,6 +1984,169 @@ public static class NotificationTemplateSeedSource
                 ),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormAccessLink { get; } =
+        new(
+            EventKey: "task.form_access_link.v1",
+            TemplateKey: "task.form_access_link.v1",
+            Name: "Client Forms - External access link",
+            Subject: "Secure form: {{ form_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">A secure form is ready</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Your tax office asked you to complete <strong>{{ form_title }}</strong>. You will verify your identity by email before any information is shown.</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">This link expires on {{ expires_at }} UTC.</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ access_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Open secure form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("access_link", VariableType.Url, true, null, "Public form access URL."),
+                ("expires_at", VariableType.String, true, null, "Access link expiry in UTC."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormAccessCode { get; } =
+        new(
+            EventKey: "task.form_access_code.v1",
+            TemplateKey: "task.form_access_code.v1",
+            Name: "Client Forms - Verification code",
+            Subject: "Your verification code for {{ form_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Verify your identity</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Use this one-time code to continue with <strong>{{ form_title }}</strong>.</td></tr>
+              <tr><td style="padding:18px 0;font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:38px;font-weight:bold;letter-spacing:6px;color:#1E466B;">{{ code }}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">The code expires on {{ expires_at }} UTC. If you did not request it, you can ignore this email.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("code", VariableType.String, true, null, "Six-digit verification code."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("expires_at", VariableType.String, true, null, "Code expiry in UTC."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormRequestAssigned { get; } =
+        new(
+            EventKey: "task.form_request_assigned.v1",
+            TemplateKey: "task.form_request_assigned.v1",
+            Name: "Client Forms - Form assigned",
+            Subject: "Action needed: {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">A form is ready for you</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ customer_name }}</strong>, your tax office asked you to complete <strong>{{ request_title }}</strong>.</td></tr>
+              {% if has_message %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">Your office left you a note. Sign in to read it.</td></tr>{% endif %}
+              {% if due_date %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">Due: <strong>{{ due_date }}</strong></td></tr>{% endif %}
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Open form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("has_message", VariableType.Bool, false, null, "Whether the office left a note."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormRequestReturned { get; } =
+        new(
+            EventKey: "task.form_request_returned.v1",
+            TemplateKey: "task.form_request_returned.v1",
+            Name: "Client Forms - Changes requested",
+            Subject: "Changes requested: {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Changes are needed</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ customer_name }}</strong>, your office asked for changes on {{ comment_count }} item(s) in <strong>{{ request_title }}</strong>. Sign in to see their notes.</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Open form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("comment_count", VariableType.Number, true, null, "Number of field comments."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormRequestCompleted { get; } =
+        new(
+            EventKey: "task.form_request_completed.v1",
+            TemplateKey: "task.form_request_completed.v1",
+            Name: "Client Forms - Form completed",
+            Subject: "Received: {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Your form was received</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ customer_name }}</strong>, your office marked <strong>{{ request_title }}</strong> as complete. Thank you.</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Open form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormAttachmentRejected { get; } =
+        new(
+            EventKey: "task.form_attachment_rejected.v1",
+            TemplateKey: "task.form_attachment_rejected.v1",
+            Name: "Client Forms - File rejected",
+            Subject: "A file you uploaded couldn't be accepted",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">Please upload a file again</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ customer_name }}</strong>, one of your files (.{{ file_extension }}) for <strong>{{ request_title }}</strong> couldn't be accepted.</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{{ client_message }}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Upload again</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("file_extension", VariableType.String, true, null, "Safe file extension only."),
+                ("client_message", VariableType.String, true, null, "Fixed message selected from the rejection code."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+            ]
+        );
+
+    private static NotificationTemplateSeed FormRequestReminder { get; } =
+        new(
+            EventKey: "task.form_request_reminder.v1",
+            TemplateKey: "task.form_request_reminder.v1",
+            Name: "Client Forms - Form reminder",
+            Subject: "Reminder: {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if is_overdue %}This form is overdue{% else %}A form is waiting for you{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">Hi <strong>{{ customer_name }}</strong>, please complete <strong>{{ request_title }}</strong>.</td></tr>
+              {% if due_date %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">Due: <strong>{{ due_date }}</strong></td></tr>{% endif %}
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Open form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("is_overdue", VariableType.Bool, true, null, "Whether the form is overdue."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
             ]
         );
 

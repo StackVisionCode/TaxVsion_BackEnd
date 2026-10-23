@@ -14,6 +14,17 @@ public sealed record AssignFormRequestRequest(
     Guid? PrefillFromRequestId
 );
 
+public sealed record AssignExternalFormRequestRequest(
+    string Email,
+    string? FullName,
+    Guid TemplateId,
+    string EntryNoticeKey,
+    string? Title,
+    string? MessageToClient,
+    DateTime? DueAtUtc,
+    int? TaxYear
+);
+
 public sealed record FormFieldCommentRequest(string ComponentId, string? RowId, string Comment);
 public sealed record ReturnFormRequestRequest(string Message, IReadOnlyList<FormFieldCommentRequest> FieldComments, string RowVersion);
 public sealed record CompleteFormRequestRequest(string? InternalNote, string RowVersion);

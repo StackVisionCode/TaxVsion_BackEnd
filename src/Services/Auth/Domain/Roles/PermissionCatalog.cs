@@ -53,6 +53,7 @@ public static class PermissionCatalog
     public const string CloudStorageFileUpload = CloudStoragePermissions.FileUpload;
     public const string CloudStorageFileDownload = CloudStoragePermissions.FileDownload;
     public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
+    public const string CloudStorageReassignFormParticipant = CloudStoragePermissions.ReassignFormParticipant;
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
     public const string CloudStorageAuditView = CloudStoragePermissions.AuditView;
     public const string CloudStorageRecycleBinManage = CloudStoragePermissions.RecycleBinManage;
@@ -663,6 +664,15 @@ public static class PermissionCatalog
             "cloudstorage",
             "Delete files",
             false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000212"),
+            CloudStorageReassignFormParticipant,
+            "cloudstorage",
+            "Reassign Client Forms files from an external participant to a customer",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000027"),
@@ -1939,9 +1949,7 @@ public static class PermissionCatalog
             FormRequestsRead,
             "tasks",
             "View client form requests and the answers of assigned clients.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000200"),
@@ -1955,9 +1963,7 @@ public static class PermissionCatalog
             FormRequestsReview,
             "tasks",
             "Review submitted client forms, request changes and complete them.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000202"),
@@ -1982,9 +1988,7 @@ public static class PermissionCatalog
             FormSubmissionsReveal,
             "tasks",
             "Reveal sensitive tax identifiers submitted in client forms.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000205"),
@@ -2026,27 +2030,21 @@ public static class PermissionCatalog
             FormRequestsSendExternal,
             "tasks",
             "Send client forms to people who are not registered clients yet.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000210"),
             FormIntakeLinksManage,
             "tasks",
             "Manage public intake links for client forms.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000211"),
             FormConsentsManage,
             "tasks",
             "Manage consent notices used in client forms.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         // Marca del SISTEMA: solo PlatformAdmin. PlatformOnly excluye este permiso del bundle del
         // rol "Tenant Admin"; IsAssignableByTenant: false impide que un rol custom lo incluya.
@@ -2254,6 +2252,11 @@ public static class PermissionCatalog
                 FormTemplatesManage,
                 FormTemplatesPublish,
                 FormRequestsManage,
+                // Ver, revisar y enviar a externos es el trabajo diario del preparador; revelar el SSN,
+                // los enlaces públicos y los avisos de consentimiento quedan para el admin.
+                FormRequestsRead,
+                FormRequestsReview,
+                FormRequestsSendExternal,
                 // El preparador agenda con sus clientes y bloquea su propia agenda. Fuera quedan
                 // manage_all y types.manage: configuracion de la firma.
                 CalendarRead,

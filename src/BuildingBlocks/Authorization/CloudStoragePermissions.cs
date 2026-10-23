@@ -6,6 +6,7 @@ public static class CloudStoragePermissions
     public const string FileUpload = "cloudstorage.file.upload";
     public const string FileDownload = "cloudstorage.file.download";
     public const string FileDelete = "cloudstorage.file.delete";
+    public const string ReassignFormParticipant = "cloudstorage.file.reassign_form_participant";
     public const string SettingsManage = "cloudstorage.settings.manage";
     public const string AuditView = "cloudstorage.audit.view";
     public const string RecycleBinManage = "cloudstorage.recyclebin.manage";

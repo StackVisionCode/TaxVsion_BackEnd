@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Responses;
 
@@ -7,14 +8,20 @@ public sealed record ListFormTemplateVersionsQuery(Guid TenantId, Guid TemplateI
 
 public static class ListFormTemplateVersionsHandler
 {
-    public static async Task<IReadOnlyList<FormTemplateVersionSummaryResponse>> Handle(
+    // Una plantilla inexistente o de otro tenant es 404, no una lista vacía.
+    public static async Task<Result<IReadOnlyList<FormTemplateVersionSummaryResponse>>> Handle(
         ListFormTemplateVersionsQuery query,
+        IFormTemplateRepository templates,
         IFormTemplateVersionRepository versions,
         CancellationToken ct
-    ) =>
-        [
-            .. (await versions.ListAsync(query.TenantId, query.TemplateId, ct)).Select(
-                FormTemplateVersionSummaryResponse.From
-            ),
-        ];
+    )
+    {
+        var template = await templates.GetByIdAsync(query.TenantId, query.TemplateId, ct);
+        if (template.IsFailure)
+            return Result.Failure<IReadOnlyList<FormTemplateVersionSummaryResponse>>(template.Error);
+        var found = await versions.ListAsync(query.TenantId, query.TemplateId, ct);
+        return Result.Success<IReadOnlyList<FormTemplateVersionSummaryResponse>>([
+            .. found.Select(FormTemplateVersionSummaryResponse.From),
+        ]);
+    }
 }

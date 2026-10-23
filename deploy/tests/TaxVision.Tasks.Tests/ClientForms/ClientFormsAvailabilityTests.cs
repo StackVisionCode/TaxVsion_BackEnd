@@ -2,6 +2,7 @@ using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Options;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Settings;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
 using TaxVision.Tasks.Infrastructure.ClientForms;
 
@@ -59,6 +60,35 @@ public sealed class ClientFormsAvailabilityTests
         Assert.Equal(ClientFormsAvailability.Available, await evaluator.EvaluateAsync(FormTemplateHandlerTestDoubles.TenantId));
     }
 
+    [Fact]
+    public async Task Intake_links_cannot_be_enabled_without_ready_bot_protection()
+    {
+        var repository = new MemoryFormModuleSettingsRepository();
+        var audit = new RecordingFormAuditLog();
+        var unitOfWork = new RecordingUnitOfWork();
+
+        var result = await SetFormModuleAvailabilityHandler.Handle(
+            new SetFormModuleAvailabilityCommand(
+                FormTemplateHandlerTestDoubles.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                true,
+                null,
+                IntakeLinksEnabled: true
+            ),
+            repository,
+            audit,
+            new UnavailableBotProtection(),
+            unitOfWork,
+            default
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FormModuleSettingsErrors.IntakeLinksNotReady, result.Error);
+        Assert.Empty(repository.Items);
+        Assert.Empty(audit.Actions);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
     private static ClientFormsAvailabilityEvaluator Evaluator(
         bool enabled,
         bool tenantEnabled,
@@ -81,6 +111,14 @@ public sealed class ClientFormsAvailabilityTests
             modulesReader ?? new MemoryModulesReader(modules)
         );
     }
+}
+
+internal sealed class UnavailableBotProtection : IFormIntakeBotProtection
+{
+    public bool IsReady => false;
+
+    public Task<bool> VerifyAsync(string token, string clientIp, CancellationToken ct = default) =>
+        Task.FromResult(false);
 }
 
 internal sealed class MemoryModulesReader(IReadOnlyList<string>? modules) : ITenantEntitlementModulesReader

@@ -22,4 +22,5 @@ public enum NotificationResourceType
     SupportTicket,
     Seats,
     Document,
+    FormRequest,
 }

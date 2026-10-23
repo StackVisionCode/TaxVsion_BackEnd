@@ -33,7 +33,7 @@ public sealed class ClientFormsAccessFilter(IClientFormsAvailabilityEvaluator av
     {
         if (action is not ControllerActionDescriptor descriptor)
             return false;
-        if (descriptor.ControllerTypeInfo.Namespace?.Contains(".ClientForms", StringComparison.Ordinal) != true)
+        if (!descriptor.ControllerTypeInfo.IsDefined(typeof(ClientFormsEndpointAttribute), true))
             return false;
         return !descriptor.MethodInfo.IsDefined(typeof(SkipClientFormsAccessAttribute), true)
             && !descriptor.ControllerTypeInfo.IsDefined(typeof(SkipClientFormsAccessAttribute), true);
@@ -52,7 +52,8 @@ public sealed class ClientFormsAccessFilter(IClientFormsAvailabilityEvaluator av
                 ["code"] = code,
                 ["reason"] = code,
                 ["message"] = "Client Forms is not available for this tenant.",
-                ["correlationId"] = context.Response.Headers[CorrelationIdMiddleware.Header].FirstOrDefault()
+                ["correlationId"] =
+                    context.Response.Headers[CorrelationIdMiddleware.Header].FirstOrDefault()
                     ?? context.Request.Headers[CorrelationIdMiddleware.Header].FirstOrDefault(),
             },
         };

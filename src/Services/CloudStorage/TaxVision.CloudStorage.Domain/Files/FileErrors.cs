@@ -40,6 +40,18 @@ public static class FileErrors
         "File.ExclusiveToClientForms",
         "Client Forms files cannot be moved or reassigned. Copy the file instead."
     );
+    public static readonly Error ClientFormsDestinationNotAllowed = new(
+        "File.ClientFormsDestinationNotAllowed",
+        "Files cannot be copied into Client Forms. That folder only receives form uploads."
+    );
+    public static readonly Error OwnerMismatch = new(
+        "File.OwnerMismatch",
+        "The file owner does not match the expected owner."
+    );
+    public static readonly Error InvalidReassignmentRequest = new(
+        "File.InvalidReassignmentRequest",
+        "The reassignment request is invalid."
+    );
 
     /// <summary>
     /// Antes esto caia en UnsupportedType junto con extension/content-type invalidos —

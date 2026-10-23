@@ -26,6 +26,15 @@ public static class TenantEmailLinks
     public static string ClientDocuments(string? tenantHost, PortalOptions portal) =>
         $"{ClientBase(tenantHost, portal)}/client/documents";
 
+    public static string ClientForms(string? tenantHost, PortalOptions portal) =>
+        $"{ClientBase(tenantHost, portal)}/client/forms";
+
+    public static string ClientForm(string? tenantHost, PortalOptions portal, Guid formRequestId) =>
+        $"{ClientForms(tenantHost, portal)}/{formRequestId:D}";
+
+    public static string PublicFormAccess(string? tenantHost, PortalOptions portal, string token) =>
+        $"{StaffBase(tenantHost, portal)}/f/{token}";
+
     /// <summary>
     /// Enlace público de firma bajo el subdominio de la oficina:
     /// <c>https://{host}/signature/public/{token}</c>. El firmante es anónimo y la página se

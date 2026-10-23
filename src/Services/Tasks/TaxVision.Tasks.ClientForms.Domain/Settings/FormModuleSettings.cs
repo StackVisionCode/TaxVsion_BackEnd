@@ -19,7 +19,13 @@ public sealed class FormModuleSettings : TenantEntity
     public bool SignatureStepEnabled { get; private set; }
     public bool PushNotificationsEnabled { get; private set; }
 
-    public static Result<FormModuleSettings> Create(Guid tenantId, bool enabled, string? note, Guid byUserId, DateTime nowUtc)
+    public static Result<FormModuleSettings> Create(
+        Guid tenantId,
+        bool enabled,
+        string? note,
+        Guid byUserId,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty || byUserId == Guid.Empty)
             return Result.Failure<FormModuleSettings>(FormModuleSettingsErrors.InvalidOwner);
@@ -42,17 +48,25 @@ public sealed class FormModuleSettings : TenantEntity
         Note = normalizedNote;
         return Result.Success();
     }
-}
 
-public static class FormModuleSettingsErrors
-{
-    public static readonly Error InvalidOwner = new(
-        "FormModuleSettings.InvalidOwner",
-        "Tenant and platform operator are required."
-    );
+    public Result SetCapabilities(
+        bool externalParticipantsEnabled,
+        bool intakeLinksEnabled,
+        bool autoCustomerCreationEnabled,
+        bool signatureStepEnabled,
+        bool pushNotificationsEnabled,
+        Guid byUserId
+    )
+    {
+        if (byUserId == Guid.Empty)
+            return Result.Failure(FormModuleSettingsErrors.InvalidSetting);
 
-    public static readonly Error InvalidSetting = new(
-        "FormModuleSettings.InvalidSetting",
-        "The module setting is invalid."
-    );
+        ExternalParticipantsEnabled = externalParticipantsEnabled;
+        IntakeLinksEnabled = intakeLinksEnabled;
+        AutoCustomerCreationEnabled = autoCustomerCreationEnabled;
+        SignatureStepEnabled = signatureStepEnabled;
+        PushNotificationsEnabled = pushNotificationsEnabled;
+        EnabledByUserId = byUserId;
+        return Result.Success();
+    }
 }

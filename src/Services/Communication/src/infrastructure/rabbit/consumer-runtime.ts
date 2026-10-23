@@ -218,6 +218,15 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'signature.signer.verification.challenge_issued.v1',
   'signature.document.sealed.v1',
   'signature.request.sealing_completed.v1',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestAssignedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestSubmittedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestReturnedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestCompletedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestCancelledIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormAttachmentRejectedIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormRequestReminderDueIntegrationEvent',
+  'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent',
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 

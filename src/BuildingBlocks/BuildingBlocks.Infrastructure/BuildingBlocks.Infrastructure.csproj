@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\BuildingBlocks.csproj" />
     <ProjectReference Include="..\Authorization\BuildingBlocks.Authorization.csproj" />
+    <ProjectReference Include="..\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

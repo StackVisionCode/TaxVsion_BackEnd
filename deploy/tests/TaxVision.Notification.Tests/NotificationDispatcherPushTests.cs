@@ -152,6 +152,9 @@ public sealed class NotificationDispatcherPushTests
     {
         public Task PublishAsync<T>(T message, CancellationToken ct = default)
             where T : class => Task.CompletedTask;
+
+        public Task SendToQueueAsync<T>(string queueName, T message, CancellationToken ct = default)
+            where T : class => Task.CompletedTask;
     }
 
     // ------------------------------------------------------------------

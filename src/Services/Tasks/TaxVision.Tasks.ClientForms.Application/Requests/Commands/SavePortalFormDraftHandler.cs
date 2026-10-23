@@ -1,7 +1,10 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Answers;
+using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.DataCollection.Engine.Validation;
+using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
@@ -24,15 +27,14 @@ public static class SavePortalFormDraftHandler
         IFormTemplateVersionRepository versions,
         IFormEngine engine,
         IAnswersProtector protector,
+        IFormConsentGate consentGate,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
-        var found = await requests.GetForCommandAsync(command.Context.TenantId, command.RequestId, ct);
-        if (found.IsFailure || !FormRequestApplicationSupport.Matches(command.Context, found.Value))
-            return Result.Failure<FormDraftSaveOutcome>(FormRequestErrors.NotFound);
-        if (!FormRequestApplicationSupport.RowVersionMatches(found.Value, command.RowVersion))
-            return Result.Failure<FormDraftSaveOutcome>(FormRequestErrors.ConcurrencyConflict);
+        var found = await LoadAsync(command, requests, ct);
+        if (found.IsFailure)
+            return Result.Failure<FormDraftSaveOutcome>(found.Error);
         var version = await versions.GetByIdAsync(command.Context.TenantId, found.Value.FormTemplateVersionId, ct);
         if (version.IsFailure)
             return Result.Failure<FormDraftSaveOutcome>(FormRequestErrors.TemplateNotPublished);
@@ -40,16 +42,65 @@ public static class SavePortalFormDraftHandler
         var answers = engine.ParseAnswers(command.AnswersJson);
         if (definition.IsFailure || answers.IsFailure)
             return Result.Success(FormDraftSaveOutcome.Invalid([InvalidPayload()]));
+        var consent = await consentGate.EnsureBeforeCollectionAsync(
+            command.Context,
+            found.Value,
+            definition.Value,
+            answers.Value,
+            false,
+            ct
+        );
+        if (consent.IsFailure)
+            return Result.Failure<FormDraftSaveOutcome>(consent.Error);
+        return await SaveAsync(
+            command,
+            found.Value,
+            definition.Value,
+            answers.Value,
+            engine,
+            protector,
+            unitOfWork,
+            ct
+        );
+    }
 
-        var visibility = engine.EvaluateVisibility(definition.Value, answers.Value);
-        var issues = engine.ValidateAnswers(definition.Value, answers.Value, AnswersValidationMode.Draft).Issues
-            .Concat(FormRequestApplicationSupport.ValidateReferences(definition.Value, answers.Value, found.Value, false))
+    private static async Task<Result<FormRequest>> LoadAsync(
+        SavePortalFormDraftCommand command,
+        IFormRequestRepository requests,
+        CancellationToken ct
+    )
+    {
+        var found = await requests.GetForCommandAsync(command.Context.TenantId, command.RequestId, ct);
+        if (found.IsFailure || !FormRequestApplicationSupport.Matches(command.Context, found.Value))
+            return Result.Failure<FormRequest>(FormRequestErrors.NotFound);
+        return FormRequestApplicationSupport.RowVersionMatches(found.Value, command.RowVersion)
+            ? found
+            : Result.Failure<FormRequest>(FormRequestErrors.ConcurrencyConflict);
+    }
+
+    // Valida tipos y referencias; solo un borrador limpio se cifra y se guarda.
+    private static async Task<Result<FormDraftSaveOutcome>> SaveAsync(
+        SavePortalFormDraftCommand command,
+        FormRequest request,
+        FormDefinition definition,
+        FormAnswers answers,
+        IFormEngine engine,
+        IAnswersProtector protector,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var issues = engine
+            .ValidateAnswers(definition, answers, AnswersValidationMode.Draft)
+            .Issues.Concat(FormRequestApplicationSupport.ValidateReferences(definition, answers, request, false))
             .ToArray();
         if (issues.Length > 0)
             return Result.Success(FormDraftSaveOutcome.Invalid(issues));
-        var progress = engine.CalculateProgress(definition.Value, answers.Value, visibility);
-        var save = found.Value.SaveDraft(
-            protector.Protect(FormRequestApplicationSupport.Serialize(answers.Value)),
+        var visibility = engine.EvaluateVisibility(definition, answers);
+        var progress = engine.CalculateProgress(definition, answers, visibility);
+        var canonical = FormSensitiveAnswerCanonicalizer.Apply(definition, answers, request);
+        var save = request.SaveDraft(
+            protector.Protect(FormRequestApplicationSupport.Serialize(canonical)),
             (int)progress.Percentage,
             command.Context.Actor,
             command.NowUtc
@@ -57,14 +108,9 @@ public static class SavePortalFormDraftHandler
         if (save.IsFailure)
             return Result.Failure<FormDraftSaveOutcome>(save.Error);
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(FormDraftSaveOutcome.Success(found.Value, command.NowUtc));
+        return Result.Success(FormDraftSaveOutcome.Success(request, command.NowUtc));
     }
 
-    private static ValidationIssue InvalidPayload() => new(
-        "answer.invalid_json",
-        "/",
-        null,
-        null,
-        "The answer payload is invalid."
-    );
+    private static ValidationIssue InvalidPayload() =>
+        new("answer.invalid_json", "/", null, null, "The answer payload is invalid.");
 }

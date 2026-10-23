@@ -5,7 +5,6 @@ using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Responses;
-using TaxVision.Tasks.ClientForms.Domain.ValueObjects;
 
 namespace TaxVision.Tasks.ClientForms.Application.Templates.Commands;
 
@@ -35,25 +34,39 @@ public static class UpdateFormTemplateDraftHandler
             return Result.Failure<UpdateFormTemplateDraftOutcome>(concurrency.Error);
         var parsed = engine.ParseDefinition(command.DefinitionJson);
         if (parsed.IsFailure)
-            return Result.Success(UpdateFormTemplateDraftOutcome.Invalid([TemplateApplicationSupport.ParseIssue(parsed.Error)]));
+            return Result.Success(
+                UpdateFormTemplateDraftOutcome.Invalid([TemplateApplicationSupport.ParseIssue(parsed.Error)])
+            );
         var safeText = StaffTextGuard.Validate(parsed.Value.Title);
         if (safeText.IsFailure)
             return Result.Failure<UpdateFormTemplateDraftOutcome>(safeText.Error);
         var draftReport = engine.ValidateForDraft(parsed.Value);
         if (!draftReport.IsValid)
             return Result.Success(UpdateFormTemplateDraftOutcome.Invalid(draftReport.Issues));
-        var canonical = engine.Canonicalize(parsed.Value);
-        var updated = found.Value.UpdateDraft(
-            new FormDefinitionDocument(canonical.Json),
-            ContentHash.Create(canonical.Sha256).Value,
-            TemplateApplicationSupport.ToDomain(parsed.Value.Purpose),
-            command.ByUserId,
-            DateTime.UtcNow
-        );
+        var updated = ApplyDraft(command, found.Value, parsed.Value, engine);
         if (updated.IsFailure)
             return Result.Failure<UpdateFormTemplateDraftOutcome>(updated.Error);
         await unitOfWork.SaveChangesAsync(ct);
         return Saved(found.Value, parsed.Value, engine);
+    }
+
+    private static Result ApplyDraft(
+        UpdateFormTemplateDraftCommand command,
+        TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate template,
+        FormDefinition definition,
+        IFormEngine engine
+    )
+    {
+        var document = TemplateApplicationSupport.Document(engine, engine.Canonicalize(definition));
+        if (document.IsFailure)
+            return Result.Failure(document.Error);
+        return template.UpdateDraft(
+            document.Value.Document,
+            document.Value.Hash,
+            TemplateApplicationSupport.ToDomain(definition.Purpose),
+            command.ByUserId,
+            DateTime.UtcNow
+        );
     }
 
     private static Result<UpdateFormTemplateDraftOutcome> Saved(

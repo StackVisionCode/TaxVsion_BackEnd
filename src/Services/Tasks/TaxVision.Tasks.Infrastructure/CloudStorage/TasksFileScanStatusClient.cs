@@ -63,6 +63,44 @@ internal sealed class TasksFileScanStatusClient(
         }
     }
 
+    public async Task<RemoteFileMetadata> GetFileMetadataAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+            return RemoteFileMetadata.Unknown;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"storage/files/{fileId:D}");
+            request.Headers.Authorization = new("Bearer", token);
+            using var response = await httpClient.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return RemoteFileMetadata.Unknown;
+
+            var dto = await response.Content.ReadFromJsonAsync<FileMetadataDto>(Json, ct);
+            return dto is null
+                ? RemoteFileMetadata.Unknown
+                : new RemoteFileMetadata(
+                    Map(dto.Status),
+                    dto.OwnerType,
+                    dto.OwnerId,
+                    dto.FolderType,
+                    dto.DetectedContentType ?? dto.DeclaredContentType,
+                    dto.SizeBytes,
+                    dto.OriginalName
+                );
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Could not read metadata for file {FileId} from CloudStorage.", fileId);
+            return RemoteFileMetadata.Unknown;
+        }
+    }
+
     /// <summary>
     /// Los estados intermedios del escaneo caen en <c>Unknown</c> a propósito: el archivo todavía
     /// puede acabar disponible o rechazado, y adelantar el veredicto sería inventarlo.
@@ -78,4 +116,15 @@ internal sealed class TasksFileScanStatusClient(
         };
 
     private sealed record ScanStatusDto(string? Status);
+
+    private sealed record FileMetadataDto(
+        string? OwnerType,
+        Guid? OwnerId,
+        string? FolderType,
+        string? OriginalName,
+        string? DeclaredContentType,
+        string? DetectedContentType,
+        long? SizeBytes,
+        string? Status
+    );
 }

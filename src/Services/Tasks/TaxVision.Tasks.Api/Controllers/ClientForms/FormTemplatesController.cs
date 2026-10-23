@@ -8,6 +8,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.DataCollection.Engine.Validation;
+using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Api.Requests.ClientForms;
 using TaxVision.Tasks.ClientForms.Application.Templates.Commands;
 using TaxVision.Tasks.ClientForms.Application.Templates.Queries;
@@ -18,6 +19,7 @@ using Wolverine;
 namespace TaxVision.Tasks.Api.Controllers.ClientForms;
 
 [ApiController]
+[ClientFormsEndpoint]
 [Route("tasks/forms/templates")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
@@ -243,8 +245,8 @@ public sealed class FormTemplatesController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Forbid();
-        return Ok(
-            await bus.InvokeAsync<IReadOnlyList<FormTemplateVersionSummaryResponse>>(
+        return ToActionResult(
+            await bus.InvokeAsync<Result<IReadOnlyList<FormTemplateVersionSummaryResponse>>>(
                 new ListFormTemplateVersionsQuery(tenantId, id),
                 ct
             )

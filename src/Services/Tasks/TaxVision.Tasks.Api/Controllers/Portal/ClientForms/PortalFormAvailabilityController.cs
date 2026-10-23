@@ -10,6 +10,7 @@ using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 namespace TaxVision.Tasks.Api.Controllers.Portal.ClientForms;
 
 [ApiController]
+[ClientFormsEndpoint]
 [Route("tasks/portal/forms/availability")]
 [AllowActorTypes(ActorType.CustomerPortal)]
 [SkipClientFormsAccess]

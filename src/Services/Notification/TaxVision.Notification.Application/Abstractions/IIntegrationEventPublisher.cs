@@ -9,4 +9,8 @@ public interface IIntegrationEventPublisher
 {
     Task PublishAsync<T>(T message, CancellationToken ct = default)
         where T : class;
+
+    /// <summary>Envío punto a punto a la cola de un servicio, sin pasar por el fanout.</summary>
+    Task SendToQueueAsync<T>(string queueName, T message, CancellationToken ct = default)
+        where T : class;
 }

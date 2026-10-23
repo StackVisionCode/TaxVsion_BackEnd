@@ -84,13 +84,8 @@
       "values": {}
     },
     "expected": {
-      "valid": false,
-      "issues": [
-        {
-          "code": "answer.required",
-          "path": "/values/fd_abcdefgh"
-        }
-      ],
+      "valid": true,
+      "issues": [],
       "visible": [
         "pg_abcdefgh",
         "sc_abcdefgh",
@@ -211,13 +206,8 @@
       }
     },
     "expected": {
-      "valid": false,
-      "issues": [
-        {
-          "code": "answer.required",
-          "path": "/values/fd_detail000"
-        }
-      ],
+      "valid": true,
+      "issues": [],
       "visible": [
         "pg_abcdefgh",
         "sc_abcdefgh",

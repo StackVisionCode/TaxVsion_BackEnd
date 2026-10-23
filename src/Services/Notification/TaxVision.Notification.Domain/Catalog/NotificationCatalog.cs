@@ -6,6 +6,7 @@ namespace TaxVision.Notification.Domain.Catalog;
 public static class NotificationCatalog
 {
     private static readonly IReadOnlySet<NotificationChannel> InApp = Channels(NotificationChannel.InApp);
+    private static readonly IReadOnlySet<NotificationChannel> Email = Channels(NotificationChannel.Email);
     private static readonly IReadOnlySet<NotificationChannel> InAppEmail = Channels(
         NotificationChannel.InApp,
         NotificationChannel.Email
@@ -329,6 +330,116 @@ public static class NotificationCatalog
             true,
             "task",
             NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestAssigned,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.CustomerPortal,
+            Transactional,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestSubmitted,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InApp,
+            false,
+            "form_request",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestReturned,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.CustomerPortal,
+            Transactional,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestCompleted,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.CustomerPortal,
+            Transactional,
+            false,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestCancelled,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.CustomerPortal,
+            InApp,
+            false,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormAttachmentRejected,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.CustomerPortal,
+            Transactional,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormAttachmentRejectedStaff,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "form_request",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.TasksFormRequestReminder,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.CustomerPortal,
+            Transactional,
+            false,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormAccessLink,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormAccessCode,
+            NotificationCatalogCategory.Security,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormActionFailed,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "form_request",
+            NotificationAction.Review
         ),
         Entry(
             NotificationKinds.RemindersDue,

@@ -49,20 +49,22 @@ public sealed class FormRequest : AggregateRoot
     public FormSubmission? Submission { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
 
-    public FormParticipantRef Participant => ParticipantKind == FormParticipantKind.Customer
-        ? FormParticipantRef.Customer(CustomerId ?? Guid.Empty)
-        : FormParticipantRef.External(ParticipantId ?? Guid.Empty);
+    public FormParticipantRef Participant =>
+        ParticipantKind == FormParticipantKind.Customer
+            ? FormParticipantRef.Customer(CustomerId ?? Guid.Empty)
+            : FormParticipantRef.External(ParticipantId ?? Guid.Empty);
 
-    public CustomerLinkState CustomerLink => CustomerLinkStatus switch
-    {
-        CustomerLinkStatus.Linked => CustomerLinkState.Linked(CustomerId ?? Guid.Empty),
-        CustomerLinkStatus.Blocked => CustomerLinkState.Blocked(
-            LinkBlockedCustomerId ?? Guid.Empty,
-            LinkBlockedReason ?? string.Empty,
-            LinkConflictingRequestId
-        ),
-        _ => CustomerLinkState.None(),
-    };
+    public CustomerLinkState CustomerLink =>
+        CustomerLinkStatus switch
+        {
+            CustomerLinkStatus.Linked => CustomerLinkState.Linked(CustomerId ?? Guid.Empty),
+            CustomerLinkStatus.Blocked => CustomerLinkState.Blocked(
+                LinkBlockedCustomerId ?? Guid.Empty,
+                LinkBlockedReason ?? string.Empty,
+                LinkConflictingRequestId
+            ),
+            _ => CustomerLinkState.None(),
+        };
 
     public Guid? EffectiveCustomerId => CustomerId;
 
@@ -88,15 +90,21 @@ public sealed class FormRequest : AggregateRoot
             return Result.Failure<FormRequest>(FormRequestErrors.InvalidParticipant);
         if (version.TenantId != tenantId)
             return Result.Failure<FormRequest>(FormRequestErrors.VersionMismatch);
-        if (participant.Kind == FormParticipantKind.External
-            && (!responsibleUserId.HasValue || responsibleUserId.Value == Guid.Empty))
+        if (
+            participant.Kind == FormParticipantKind.External
+            && (!responsibleUserId.HasValue || responsibleUserId.Value == Guid.Empty)
+        )
             return Result.Failure<FormRequest>(FormRequestErrors.ResponsibleUserRequired);
         if (participant.Kind == FormParticipantKind.External && (taskId.HasValue || prefillSourceRequestId.HasValue))
             return Result.Failure<FormRequest>(FormRequestErrors.TaskRequiresCustomer);
-        if (origin == FormRequestOrigin.IntakeLink
-            && (participant.Kind != FormParticipantKind.External
+        if (
+            origin == FormRequestOrigin.IntakeLink
+            && (
+                participant.Kind != FormParticipantKind.External
                 || !intakeLinkId.HasValue
-                || intakeLinkId.Value == Guid.Empty))
+                || intakeLinkId.Value == Guid.Empty
+            )
+        )
             return Result.Failure<FormRequest>(FormRequestErrors.IntakeLinkRequired);
         if (origin == FormRequestOrigin.Directed && intakeLinkId.HasValue)
             return Result.Failure<FormRequest>(FormRequestErrors.IntakeLinkRequired);
@@ -138,15 +146,17 @@ public sealed class FormRequest : AggregateRoot
         request.SetTenant(tenantId);
         if (prefilledDraft is not null)
             request.Submission = FormSubmission.Create(request.Id, prefilledDraft, nowUtc);
-        request.AddDomainEvent(new FormRequestAssigned(
-            request.Id,
-            tenantId,
-            participant.Kind,
-            participant.CustomerId,
-            participant.ParticipantId,
-            requestedByUserId,
-            nowUtc
-        ));
+        request.AddDomainEvent(
+            new FormRequestAssigned(
+                request.Id,
+                tenantId,
+                participant.Kind,
+                participant.CustomerId,
+                participant.ParticipantId,
+                requestedByUserId,
+                nowUtc
+            )
+        );
         return Result.Success(request);
     }
 
@@ -192,8 +202,16 @@ public sealed class FormRequest : AggregateRoot
         var editable = EnsureEditable();
         if (editable.IsFailure)
             return Result.Failure<FormAttachment>(editable.Error);
-        if (fileId == Guid.Empty || sizeBytes < 0 || string.IsNullOrWhiteSpace(displayName) || displayName.Length > 255
-            || string.IsNullOrWhiteSpace(contentType) || contentType.Length > 128 || maxForField < 1 || maxPerSubmission < 1)
+        if (
+            fileId == Guid.Empty
+            || sizeBytes < 0
+            || string.IsNullOrWhiteSpace(displayName)
+            || displayName.Length > 255
+            || string.IsNullOrWhiteSpace(contentType)
+            || contentType.Length > 128
+            || maxForField < 1
+            || maxPerSubmission < 1
+        )
             return Result.Failure<FormAttachment>(FormRequestErrors.InvalidComponent);
 
         Submission ??= FormSubmission.Create(Id, null, nowUtc);
@@ -234,14 +252,18 @@ public sealed class FormRequest : AggregateRoot
             return FileVerdictOutcome.Ignored;
 
         var overall = FileVerdictOutcome.Ignored;
-        foreach (var attachment in Submission.Attachments.Where(item => item.FileId == fileId))
+        foreach (var attachment in Submission.Attachments)
         {
+            if (attachment.FileId != fileId)
+                continue;
             var previousStatus = attachment.Status;
             var outcome = attachment.ApplyVerdict(verdict, ExpectedFileOwners(), nowUtc);
             if (outcome != FileVerdictOutcome.Ignored)
                 overall = outcome;
             if (outcome == FileVerdictOutcome.Rejected && previousStatus != FormAttachmentStatus.Rejected)
-                AddDomainEvent(new FormAttachmentRejected(Id, TenantId, attachment.Id, fileId, attachment.RejectionCode!, nowUtc));
+                AddDomainEvent(
+                    new FormAttachmentRejected(Id, TenantId, attachment.Id, fileId, attachment.RejectionCode!, nowUtc)
+                );
         }
         if (overall != FileVerdictOutcome.Ignored)
             Touch(nowUtc);
@@ -252,14 +274,27 @@ public sealed class FormRequest : AggregateRoot
     {
         if (Submission is null)
             return 0;
-        var stale = Submission.Attachments
-            .Where(item => item.Status == FormAttachmentStatus.Pending && item.RegisteredAtUtc < olderThanUtc)
-            .ToList();
-        foreach (var attachment in stale)
+        var expired = 0;
+        foreach (var attachment in Submission.Attachments)
+        {
+            if (attachment.Status != FormAttachmentStatus.Pending || attachment.RegisteredAtUtc >= olderThanUtc)
+                continue;
             attachment.Expire(nowUtc);
-        if (stale.Count > 0)
+            expired++;
+            AddDomainEvent(
+                new FormAttachmentRejected(
+                    Id,
+                    TenantId,
+                    attachment.Id,
+                    attachment.FileId,
+                    attachment.RejectionCode!,
+                    nowUtc
+                )
+            );
+        }
+        if (expired > 0)
             Touch(nowUtc);
-        return stale.Count;
+        return expired;
     }
 
     public Result<FormSensitiveAnswer> CaptureSensitiveAnswer(
@@ -313,16 +348,18 @@ public sealed class FormRequest : AggregateRoot
         Status = FormRequestStatus.Submitted;
         LastSubmittedAtUtc = nowUtc;
         Touch(nowUtc);
-        AddDomainEvent(new FormRequestSubmitted(
-            Id,
-            TenantId,
-            revisionNumber,
-            actor.Kind,
-            actor.PortalUserId,
-            actor.ParticipantId,
-            revisionNumber > 1,
-            nowUtc
-        ));
+        AddDomainEvent(
+            new FormRequestSubmitted(
+                Id,
+                TenantId,
+                revisionNumber,
+                actor.Kind,
+                actor.PortalUserId,
+                actor.ParticipantId,
+                revisionNumber > 1,
+                nowUtc
+            )
+        );
         return result;
     }
 
@@ -337,8 +374,12 @@ public sealed class FormRequest : AggregateRoot
         if (revision.IsFailure)
             return Result.Failure(revision.Error);
         var normalized = message?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 2000 || comments.Count > 100
-            || comments.Any(item => string.IsNullOrWhiteSpace(item.Comment) || item.Comment.Trim().Length > 1000))
+        if (
+            string.IsNullOrWhiteSpace(normalized)
+            || normalized.Length > 2000
+            || comments.Count > 100
+            || HasInvalidComments(comments)
+        )
             return Result.Failure(FormRequestErrors.InvalidMessage);
         revision.Value.Return(normalized, comments, byUserId, nowUtc);
         Status = FormRequestStatus.Returned;
@@ -378,7 +419,9 @@ public sealed class FormRequest : AggregateRoot
         CancelReason = FormCancelReason.StaffCancelled;
         CancelNote = normalized;
         Touch(nowUtc);
-        AddDomainEvent(new FormRequestCancelled(Id, TenantId, FormCancelReason.StaffCancelled, FirstOpenedAtUtc.HasValue, nowUtc));
+        AddDomainEvent(
+            new FormRequestCancelled(Id, TenantId, FormCancelReason.StaffCancelled, FirstOpenedAtUtc.HasValue, nowUtc)
+        );
         return Result.Success();
     }
 
@@ -463,7 +506,12 @@ public sealed class FormRequest : AggregateRoot
     {
         if (CustomerLinkStatus != CustomerLinkStatus.Blocked || LinkBlockedCustomerId is null)
             return Result.Failure<CustomerLinkResult>(FormRequestErrors.LinkNotBlocked);
-        return TryAttachCustomer(LinkBlockedCustomerId.Value, customerHasOpenRequestForTemplate, conflictingRequestId, nowUtc);
+        return TryAttachCustomer(
+            LinkBlockedCustomerId.Value,
+            customerHasOpenRequestForTemplate,
+            conflictingRequestId,
+            nowUtc
+        );
     }
 
     public Result MarkPdfRequested(int revisionNumber, Guid generationId)
@@ -477,7 +525,7 @@ public sealed class FormRequest : AggregateRoot
 
     public Result LinkPdf(Guid generationId, Guid fileId)
     {
-        var revision = Submission?.Revisions.SingleOrDefault(item => item.PdfGenerationId == generationId);
+        var revision = Submission?.RevisionForPdf(generationId);
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
         revision.LinkPdf(fileId);
@@ -486,7 +534,7 @@ public sealed class FormRequest : AggregateRoot
 
     public Result MarkPdfFailed(Guid generationId)
     {
-        var revision = Submission?.Revisions.SingleOrDefault(item => item.PdfGenerationId == generationId);
+        var revision = Submission?.RevisionForPdf(generationId);
         if (revision is null)
             return Result.Failure(FormRequestErrors.NotFound);
         revision.MarkPdfFailed();
@@ -502,9 +550,20 @@ public sealed class FormRequest : AggregateRoot
         return [("FormParticipant", ParticipantId!.Value)];
     }
 
-    private Result EnsureEditable() => Status is FormRequestStatus.Pending or FormRequestStatus.Returned
-        ? Result.Success()
-        : Result.Failure(FormRequestErrors.NotEditable);
+    private static bool HasInvalidComments(IReadOnlyCollection<FormFieldCommentInput> comments)
+    {
+        foreach (var item in comments)
+        {
+            if (string.IsNullOrWhiteSpace(item.Comment) || item.Comment.Trim().Length > 1000)
+                return true;
+        }
+        return false;
+    }
+
+    public Result EnsureEditable() =>
+        Status is FormRequestStatus.Pending or FormRequestStatus.Returned
+            ? Result.Success()
+            : Result.Failure(FormRequestErrors.NotEditable);
 
     private Result EnsureActor(FormActor actor)
     {

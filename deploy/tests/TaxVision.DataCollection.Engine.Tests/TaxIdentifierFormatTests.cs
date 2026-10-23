@@ -28,4 +28,31 @@ public sealed class TaxIdentifierFormatTests
     {
         Assert.Equal(expected, TaxIdentifierFormat.TryNormalize(value, kind, out _));
     }
+
+    [Theory]
+    [InlineData("My SSN is 123-45-6789", true)]
+    [InlineData("EIN 12-3456789", true)]
+    [InlineData("id 123456789", true)]
+    [InlineData("000000000", false)]
+    [InlineData("1234-56-78901", false)]
+    [InlineData("Order 1234567890", false)]
+    [InlineData("Unit 12, floor 3, ref 123456", false)]
+    [InlineData("١٢٣-٤٥-٦٧٨٩", false)]
+    public void Tax_identifier_guard_matches_spec_patterns_on_digit_runs(string text, bool expected)
+    {
+        Assert.Equal(expected, TaxIdentifierFormat.LooksLikeTaxIdentifier(text));
+    }
+
+    [Theory]
+    [InlineData("4111 1111 1111 1111", true)]
+    [InlineData("4111-1111-1111-1111", true)]
+    [InlineData("4111111111111111 5551234", true)]
+    [InlineData("4111111111111112", false)]
+    [InlineData("41111111111111115551234", false)]
+    [InlineData("Call 4111 1111 now, then 1111 1111", false)]
+    [InlineData("٤١١١١١١١١١١١١١١١", false)]
+    public void Card_guard_needs_13_to_19_contiguous_digits_passing_luhn(string text, bool expected)
+    {
+        Assert.Equal(expected, SensitivePatternGuard.LooksLikeCardNumber(text));
+    }
 }

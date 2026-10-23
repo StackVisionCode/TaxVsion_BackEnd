@@ -34,7 +34,31 @@ public sealed class StructureValidatorTests
         var definition = EngineTestFactory.Definition();
         definition = EngineTestFactory.WithPages(
             definition,
-            [definition.Pages[0], new FormPage { Id = secondPageId, Title = "Second", Sections = [new FormSection { Id = "sc_ijklmnop", Components = [new FormComponent { Id = "fd_ijklmnop", Type = "text", Label = "Other", Props = JsonSerializer.SerializeToElement(new { }) }] }] }]
+            [
+                definition.Pages[0],
+                new FormPage
+                {
+                    Id = secondPageId,
+                    Title = "Second",
+                    Sections =
+                    [
+                        new FormSection
+                        {
+                            Id = "sc_ijklmnop",
+                            Components =
+                            [
+                                new FormComponent
+                                {
+                                    Id = "fd_ijklmnop",
+                                    Type = "text",
+                                    Label = "Other",
+                                    Props = JsonSerializer.SerializeToElement(new { }),
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
         );
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
@@ -52,7 +76,31 @@ public sealed class StructureValidatorTests
             Title = source.Title,
             Purpose = source.Purpose,
             Presentation = FormPresentation.SinglePage,
-            Pages = [source.Pages[0], new FormPage { Id = "pg_ijklmnop", Sections = [new FormSection { Id = "sc_ijklmnop", Components = [new FormComponent { Id = "fd_ijklmnop", Type = "text", Label = "Other", Props = JsonSerializer.SerializeToElement(new { }) }] }] }],
+            Pages =
+            [
+                source.Pages[0],
+                new FormPage
+                {
+                    Id = "pg_ijklmnop",
+                    Sections =
+                    [
+                        new FormSection
+                        {
+                            Id = "sc_ijklmnop",
+                            Components =
+                            [
+                                new FormComponent
+                                {
+                                    Id = "fd_ijklmnop",
+                                    Type = "text",
+                                    Label = "Other",
+                                    Props = JsonSerializer.SerializeToElement(new { }),
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
         };
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
@@ -120,7 +168,13 @@ public sealed class StructureValidatorTests
             Props = JsonSerializer.SerializeToElement(new { }),
             VisibleWhen = new Condition { Field = "fd_ijklmnop", Op = "isTrue" },
         };
-        var second = new FormComponent { Id = "fd_ijklmnop", Type = "yesNo", Label = "Later", Props = JsonSerializer.SerializeToElement(new { }) };
+        var second = new FormComponent
+        {
+            Id = "fd_ijklmnop",
+            Type = "yesNo",
+            Label = "Later",
+            Props = JsonSerializer.SerializeToElement(new { }),
+        };
         var definition = EngineTestFactory.WithComponents(first, second);
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
@@ -131,7 +185,10 @@ public sealed class StructureValidatorTests
     [Fact]
     public void Signature_step_requires_action()
     {
-        var definition = EngineTestFactory.Definition("signatureStep", new { documentSource = "submissionSummary", verification = "emailOtp" });
+        var definition = EngineTestFactory.Definition(
+            "signatureStep",
+            new { documentSource = "submissionSummary", verification = "emailOtp" }
+        );
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
 
@@ -145,7 +202,93 @@ public sealed class StructureValidatorTests
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
 
-        Assert.Contains(report.Issues, issue => issue.Code == "props.out_of_range" && issue.Path.EndsWith("/maxLength", StringComparison.Ordinal));
+        Assert.Contains(
+            report.Issues,
+            issue => issue.Code == "props.out_of_range" && issue.Path.EndsWith("/maxLength", StringComparison.Ordinal)
+        );
+    }
+
+    [Theory]
+    [InlineData("text", "{\"maxLength\":2.5}", "/props/maxLength")]
+    [InlineData("textarea", "{\"rows\":10000000000}", "/props/rows")]
+    [InlineData("file", "{\"maxFileBytes\":1.5}", "/props/maxFileBytes")]
+    [InlineData("number", "{\"min\":1e40}", "/props/min")]
+    public void Rejects_numeric_props_that_would_fall_back_to_defaults(string type, string props, string pathSuffix)
+    {
+        var definition = EngineTestFactory.Definition(type, JsonSerializer.Deserialize<JsonElement>(props));
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.Contains(
+            report.Issues,
+            issue => issue.Code == "props.out_of_range" && issue.Path.EndsWith(pathSuffix, StringComparison.Ordinal)
+        );
+    }
+
+    [Theory]
+    [InlineData("{\"maxLength\":200.0}")]
+    [InlineData("{\"maxLength\":2e2}")]
+    public void Accepts_integral_numbers_written_as_decimals(string props)
+    {
+        var definition = EngineTestFactory.Definition("text", JsonSerializer.Deserialize<JsonElement>(props));
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.True(report.IsValid, string.Join(Environment.NewLine, report.Issues.Select(issue => issue.Code)));
+    }
+
+    [Theory]
+    [InlineData("select", "in", "[\"first\",\"third\"]", false)]
+    [InlineData("select", "notIn", "[\"first\"]", true)]
+    [InlineData("select", "equals", "5", false)]
+    [InlineData("checkboxGroup", "contains", "\"third\"", false)]
+    [InlineData("checkboxGroup", "notContains", "\"second\"", true)]
+    [InlineData("number", "gt", "\"10\"", false)]
+    [InlineData("number", "lte", "10.5", true)]
+    [InlineData("currency", "equals", "true", false)]
+    [InlineData("date", "gte", "\"10/20/2026\"", false)]
+    [InlineData("date", "lt", "\"2026-02-30\"", false)]
+    [InlineData("date", "lt", "\"2026-02-28\"", true)]
+    [InlineData("text", "equals", "5", false)]
+    [InlineData("email", "notEquals", "\"a@example.com\"", true)]
+    public void Condition_value_must_match_the_referenced_field(string type, string op, string value, bool valid)
+    {
+        var props = type is "select" or "checkboxGroup"
+            ? JsonSerializer.SerializeToElement(
+                new
+                {
+                    options = new[]
+                    {
+                        new { value = "first", label = "First" },
+                        new { value = "second", label = "Second" },
+                    },
+                }
+            )
+            : JsonSerializer.SerializeToElement(new { });
+        var source = new FormComponent
+        {
+            Id = "fd_abcdefgh",
+            Type = type,
+            Label = "Source",
+            Props = props,
+        };
+        var dependent = new FormComponent
+        {
+            Id = "fd_ijklmnop",
+            Type = "yesNo",
+            Label = "Dependent",
+            Props = JsonSerializer.SerializeToElement(new { }),
+            VisibleWhen = new Condition
+            {
+                Field = source.Id,
+                Op = op,
+                Value = JsonSerializer.Deserialize<JsonElement>(value),
+            },
+        };
+
+        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.WithComponents(source, dependent));
+
+        Assert.Equal(valid, !report.Issues.Any(issue => issue.Code == "condition.value_invalid"));
     }
 
     [Fact]
@@ -201,7 +344,10 @@ public sealed class StructureValidatorTests
 
         var report = EngineTestFactory.Create().ValidateForPublish(definition);
 
-        Assert.Contains(report.Issues, issue => issue.Code == "props.unknown" && issue.Path.EndsWith("/endpoint", StringComparison.Ordinal));
+        Assert.Contains(
+            report.Issues,
+            issue => issue.Code == "props.unknown" && issue.Path.EndsWith("/endpoint", StringComparison.Ordinal)
+        );
     }
 
     [Fact]

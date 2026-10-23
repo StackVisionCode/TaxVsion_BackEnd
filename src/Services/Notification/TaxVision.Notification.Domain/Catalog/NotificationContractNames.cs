@@ -34,6 +34,7 @@ public static class NotificationContractNames
         [NotificationResourceType.SupportTicket] = "support_ticket",
         [NotificationResourceType.Seats] = "seats",
         [NotificationResourceType.Document] = "document",
+        [NotificationResourceType.FormRequest] = "form_request",
     }.ToFrozenDictionary();
 
     public static string For(NotificationResourceType resourceType) => ResourceTypes[resourceType];

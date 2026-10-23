@@ -132,9 +132,21 @@ public sealed class ProtectedTaxIdentifier
     public string Last4 { get; private set; } = string.Empty;
 
     public static Result<ProtectedTaxIdentifier> Create(string cipher, short keyVersion, string last4) =>
-        string.IsNullOrWhiteSpace(cipher) || keyVersion <= 0 || last4.Length != 4 || !last4.All(char.IsAsciiDigit)
+        string.IsNullOrWhiteSpace(cipher) || keyVersion <= 0 || !IsLast4(last4)
             ? Result.Failure<ProtectedTaxIdentifier>(FormRequestErrors.InvalidTaxIdentifier)
             : Result.Success(new ProtectedTaxIdentifier(cipher, keyVersion, last4));
+
+    private static bool IsLast4(string value)
+    {
+        if (value.Length != 4)
+            return false;
+        foreach (var character in value)
+        {
+            if (!char.IsAsciiDigit(character))
+                return false;
+        }
+        return true;
+    }
 }
 
 public sealed record FormFileVerdict(

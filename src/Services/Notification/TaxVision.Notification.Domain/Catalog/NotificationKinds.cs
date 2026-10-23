@@ -36,6 +36,17 @@ public static class NotificationKinds
     public const string TasksClientRequestFulfilled = "tasks.client_request_fulfilled";
     public const string TasksClientRequestDocumentRejected = "tasks.client_request_document_rejected";
     public const string TasksWaitingOnClient = "tasks.waiting_on_client";
+    public const string TasksFormRequestAssigned = "tasks.form_request_assigned";
+    public const string TasksFormRequestSubmitted = "tasks.form_request_submitted";
+    public const string TasksFormRequestReturned = "tasks.form_request_returned";
+    public const string TasksFormRequestCompleted = "tasks.form_request_completed";
+    public const string TasksFormRequestCancelled = "tasks.form_request_cancelled";
+    public const string TasksFormAttachmentRejected = "tasks.form_attachment_rejected";
+    public const string TasksFormAttachmentRejectedStaff = "tasks.form_attachment_rejected_staff";
+    public const string TasksFormRequestReminder = "tasks.form_request_reminder";
+    public const string TasksFormAccessLink = "tasks.form_access_link";
+    public const string TasksFormAccessCode = "tasks.form_access_code";
+    public const string TasksFormActionFailed = "tasks.form_action_failed";
     public const string RemindersDue = "reminders.due";
 
     public const string CalendarAppointmentScheduled = "calendar.appointment_scheduled";

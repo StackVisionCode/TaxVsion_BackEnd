@@ -23,6 +23,8 @@ using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
+using TaxVision.Tasks.ClientForms.Domain.Consents;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence;
 
@@ -66,6 +68,22 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<FormSensitiveAnswer> FormSensitiveAnswers => Set<FormSensitiveAnswer>();
 
     public DbSet<FormFileScanVerdict> FormFileScanVerdicts => Set<FormFileScanVerdict>();
+
+    public DbSet<FormParticipant> FormParticipants => Set<FormParticipant>();
+
+    public DbSet<FormIntakeLink> FormIntakeLinks => Set<FormIntakeLink>();
+
+    public DbSet<FormAccessGrant> FormAccessGrants => Set<FormAccessGrant>();
+
+    public DbSet<FormAccessChallenge> FormAccessChallenges => Set<FormAccessChallenge>();
+
+    public DbSet<FormAccessSession> FormAccessSessions => Set<FormAccessSession>();
+
+    public DbSet<ConsentNotice> ConsentNotices => Set<ConsentNotice>();
+
+    public DbSet<ConsentNoticeVersion> ConsentNoticeVersions => Set<ConsentNoticeVersion>();
+
+    public DbSet<FormConsentRecord> FormConsentRecords => Set<FormConsentRecord>();
 
     // Nadie las escribe desde Task: las mantiene el bus y las lee ProjectionPermissionsSource.
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();

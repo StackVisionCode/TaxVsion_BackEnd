@@ -11,14 +11,11 @@ public sealed record FormDraftSaveOutcome(
     IReadOnlyList<ValidationIssue> Issues
 )
 {
-    public static FormDraftSaveOutcome Invalid(IReadOnlyList<ValidationIssue> issues) => new(false, null, null, null, issues);
-    public static FormDraftSaveOutcome Success(FormRequest request, DateTime savedAtUtc) => new(
-        true,
-        Convert.ToBase64String(request.RowVersion),
-        savedAtUtc,
-        request.DraftProgressPercent,
-        []
-    );
+    public static FormDraftSaveOutcome Invalid(IReadOnlyList<ValidationIssue> issues) =>
+        new(false, null, null, null, issues);
+
+    public static FormDraftSaveOutcome Success(FormRequest request, DateTime savedAtUtc) =>
+        new(true, Convert.ToBase64String(request.RowVersion), savedAtUtc, request.DraftProgressPercent, []);
 }
 
 public sealed record FormSubmitOutcome(
@@ -29,14 +26,16 @@ public sealed record FormSubmitOutcome(
     IReadOnlyList<ValidationIssue> Issues
 )
 {
-    public static FormSubmitOutcome Invalid(IReadOnlyList<ValidationIssue> issues) => new(false, null, null, null, issues);
-    public static FormSubmitOutcome Success(FormRequest request) => new(
-        true,
-        request.Status,
-        request.CurrentRevisionNumber,
-        Convert.ToBase64String(request.RowVersion),
-        []
-    );
+    public static FormSubmitOutcome Invalid(IReadOnlyList<ValidationIssue> issues) =>
+        new(false, null, null, null, issues);
+
+    public static FormSubmitOutcome Success(FormRequest request) =>
+        new(true, request.Status, request.CurrentRevisionNumber, Convert.ToBase64String(request.RowVersion), []);
 }
 
-public sealed record CapturedSensitiveAnswerResponse(Guid SensitiveRef, string Last4, FormTaxIdentifierKind Kind);
+public sealed record CapturedSensitiveAnswerResponse(
+    Guid SensitiveRef,
+    string Last4,
+    FormTaxIdentifierKind Kind,
+    string RowVersion
+);

@@ -1,15 +1,15 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
-using BuildingBlocks.Persistence;
-using Microsoft.EntityFrameworkCore;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
-using Wolverine;
+using TaxVision.Tasks.Infrastructure.Persistence;
+using Wolverine.EntityFrameworkCore;
 
 namespace TaxVision.Tasks.Infrastructure.Jobs;
 
@@ -61,10 +61,10 @@ internal sealed class OverdueTaskSweepJob(
     }
 
     /// <summary>
-    /// Trozos chicos y <b>guardar antes de publicar</b>. Otro job del servicio corrige contadores
-    /// sobre estas mismas filas, así que el <c>rowversion</c> cambia bajo los pies del barrido: en un
-    /// lote grande una sola colisión tira el guardado entero. Publicar primero dejaría los avisos
-    /// fuera y la marca sin escribir — el aviso repetido que la marca existe para impedir.
+    /// Trozos chicos y <b>marca y aviso en la misma transacción</b>. Otro job del servicio corrige
+    /// contadores sobre estas mismas filas, así que el <c>rowversion</c> cambia bajo los pies del
+    /// barrido: en un lote grande una sola colisión tira el guardado entero. Los avisos van por el
+    /// outbox de EF, así que solo salen si la marca se escribió, y nunca se pierden después de escribirla.
     /// </summary>
     private const int ChunkSize = 25;
 
@@ -92,8 +92,7 @@ internal sealed class OverdueTaskSweepJob(
     {
         using var scope = scopeFactory.CreateScope();
         var tasks = scope.ServiceProvider.GetRequiredService<ITaskRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<TasksDbContext>>();
         var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
         var metrics = scope.ServiceProvider.GetRequiredService<ITaskMetrics>();
 
@@ -102,20 +101,20 @@ internal sealed class OverdueTaskSweepJob(
         if (marked.Count == 0)
             return 0;
 
+        foreach (var task in marked)
+            await outbox.PublishAsync(BuildEvent(task, correlation.CorrelationId));
+
         try
         {
-            await unitOfWork.SaveChangesAsync(ct);
+            await outbox.SaveChangesAndFlushMessagesAsync(ct);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (ConflictException ex) when (ex.Code == "Persistence.ConcurrencyConflict")
         {
-            // Alguien tocó una de estas filas mientras tanto. Siguen sin marca, así que el barrido
-            // siguiente las recoge; avisar ahora sería avisar dos veces.
+            // Alguien tocó una de estas filas mientras tanto. Siguen sin marca y sus avisos no salieron:
+            // el barrido siguiente las recoge.
             logger.LogDebug("OverdueTaskSweepJob skipped {Count} task(s) modified concurrently.", marked.Count);
             return 0;
         }
-
-        foreach (var task in marked)
-            await bus.PublishAsync(BuildEvent(task, correlation.CorrelationId));
 
         metrics.RecordOverdue(marked.Count);
         return marked.Count;

@@ -20,11 +20,21 @@ public sealed class RichTextTests
                 new
                 {
                     type = "paragraph",
-                    children = new[] { new { type = "link", href, children = new[] { new { type = "text", text = "Link" } } } },
+                    children = new[]
+                    {
+                        new
+                        {
+                            type = "link",
+                            href,
+                            children = new[] { new { type = "text", text = "Link" } },
+                        },
+                    },
                 },
             },
         };
-        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
 
         Assert.Contains(report.Issues, issue => issue.Code == "richtext.invalid_link");
     }
@@ -32,10 +42,42 @@ public sealed class RichTextTests
     [Fact]
     public void Rejects_unknown_rich_text_nodes()
     {
-        var richText = new { type = "doc", blocks = new[] { new { type = "image", children = Array.Empty<object>() } } };
-        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
+        var richText = new
+        {
+            type = "doc",
+            blocks = new[] { new { type = "image", children = Array.Empty<object>() } },
+        };
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
 
         Assert.Contains(report.Issues, issue => issue.Code == "richtext.invalid_node");
+    }
+
+    [Theory]
+    [InlineData(
+        "{\"type\":\"paragraph\",\"children\":[{\"type\":\"link\",\"href\":\"javascript:alert(1)\",\"children\":[{\"type\":\"text\",\"text\":\"Sign\"}]}]}",
+        "richtext.invalid_link"
+    )]
+    [InlineData(
+        "{\"type\":\"paragraph\",\"children\":[{\"type\":\"link\",\"href\":\"data:text/html,x\",\"children\":[{\"type\":\"text\",\"text\":\"Sign\"}]}]}",
+        "richtext.invalid_link"
+    )]
+    [InlineData("{\"type\":\"table\",\"children\":[{\"type\":\"text\",\"text\":\"Cell\"}]}", "richtext.invalid_node")]
+    public void Signature_step_instructions_are_validated_as_rich_text(string block, string expectedCode)
+    {
+        var props = JsonSerializer.Deserialize<JsonElement>(
+            $$$"""{"documentSource":"submissionSummary","verification":"emailOtp","instructions":{"type":"doc","blocks":[{{{block}}}]}}"""
+        );
+
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("signatureStep", props));
+
+        Assert.Contains(
+            report.Issues,
+            issue => issue.Code == expectedCode && issue.Path.Contains("/props/instructions/", StringComparison.Ordinal)
+        );
     }
 
     [Fact]
@@ -44,9 +86,14 @@ public sealed class RichTextTests
         var richText = new
         {
             type = "doc",
-            blocks = new[] { new { type = "paragraph", children = new[] { new { type = "text", text = "<img onerror=alert(1)>" } } } },
+            blocks = new[]
+            {
+                new { type = "paragraph", children = new[] { new { type = "text", text = "<img onerror=alert(1)>" } } },
+            },
         };
-        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
 
         Assert.DoesNotContain(report.Issues, issue => issue.Code.StartsWith("richtext.", StringComparison.Ordinal));
     }
@@ -68,7 +115,9 @@ public sealed class RichTextTests
             },
         };
 
-        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
 
         Assert.Contains(report.Issues, issue => issue.Code == "richtext.invalid_node");
     }
@@ -105,7 +154,9 @@ public sealed class RichTextTests
             },
         };
 
-        var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
+        var report = EngineTestFactory
+            .Create()
+            .ValidateForPublish(EngineTestFactory.Definition("paragraph", new { text = richText }));
 
         Assert.Contains(report.Issues, issue => issue.Code == "richtext.invalid_node");
     }

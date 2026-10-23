@@ -4,24 +4,19 @@ using Xunit;
 
 namespace TaxVision.Auth.Tests.Domain;
 
-/// <summary>CAT-F0.6. Solo permite los contratos reservados aprobados para Client Forms.</summary>
+/// <summary>CAT-F0.6. Un permiso reservado se vende en la pantalla de roles sin gatear nada: solo se
+/// toleran los de Client Forms cuyo endpoint todavía no existe. Cuando el endpoint exista, se libera.</summary>
 public sealed class ReservedPermissionsFitnessTests
 {
     [Fact]
-    public void Only_approved_client_form_contracts_are_reserved()
+    public void Only_client_form_permissions_without_an_endpoint_are_reserved()
     {
         string[] approved =
         [
-            TasksPermissions.FormRequestsRead,
-            TasksPermissions.FormRequestsReview,
             TasksPermissions.FormRequestsExport,
             TasksPermissions.FormRequestsApplyProfile,
-            TasksPermissions.FormSubmissionsReveal,
             TasksPermissions.FormsLibraryManage,
             TasksPermissions.FormTemplatesConfigureActions,
-            TasksPermissions.FormRequestsSendExternal,
-            TasksPermissions.FormIntakeLinksManage,
-            TasksPermissions.FormConsentsManage,
         ];
         var reserved = PermissionCatalog.All
             .Where(definition => definition.IsReserved)

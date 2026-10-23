@@ -14,7 +14,8 @@ public sealed class FormFieldCommentConfiguration : IEntityTypeConfiguration<For
         builder.Property(comment => comment.ComponentId).HasMaxLength(32).IsRequired();
         builder.Property(comment => comment.RowId).HasMaxLength(32);
         builder.Property(comment => comment.Comment).HasMaxLength(1000).IsRequired();
-        builder.HasOne<FormSubmissionRevision>()
+        builder
+            .HasOne<FormSubmissionRevision>()
             .WithMany(revision => revision.FieldComments)
             .HasForeignKey(comment => comment.RevisionId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -36,15 +37,21 @@ public sealed class FormAttachmentConfiguration : IEntityTypeConfiguration<FormA
         builder.Property(attachment => attachment.Status).HasConversion<int>().IsRequired();
         builder.Property(attachment => attachment.RejectionCode).HasMaxLength(32);
         builder.Ignore(attachment => attachment.Address);
-        builder.HasOne<FormSubmission>()
+        builder
+            .HasOne<FormSubmission>()
             .WithMany(submission => submission.Attachments)
             .HasForeignKey(attachment => attachment.FormSubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.HasIndex(attachment => new { attachment.TenantId, attachment.FileId })
+        builder
+            .HasIndex(attachment => new { attachment.TenantId, attachment.FileId })
             .IsUnique()
             .HasFilter("[Status] <> 4")
             .HasDatabaseName("UX_FormAttachments_Tenant_File_Active");
         builder.HasIndex(attachment => attachment.FileId).HasDatabaseName("IX_FormAttachments_FileId");
+        // La reconciliación busca los pendientes más viejos que el corte.
+        builder
+            .HasIndex(attachment => new { attachment.Status, attachment.RegisteredAtUtc })
+            .HasDatabaseName("IX_FormAttachments_Status_RegisteredAtUtc");
     }
 }
 
@@ -54,11 +61,12 @@ public sealed class FormSensitiveAnswerConfiguration : IEntityTypeConfiguration<
     {
         builder.ToTable(
             "FormSensitiveAnswers",
-            table => table.HasCheckConstraint(
-                "CK_FormSensitiveAnswers_CapturedBy",
-                "([CapturedByKind] = 1 AND [CapturedByPortalUserId] IS NOT NULL AND [CapturedByParticipantId] IS NULL AND [CapturedBySessionId] IS NULL) OR "
-                    + "([CapturedByKind] = 2 AND [CapturedByPortalUserId] IS NULL AND [CapturedByParticipantId] IS NOT NULL AND [CapturedBySessionId] IS NOT NULL)"
-            )
+            table =>
+                table.HasCheckConstraint(
+                    "CK_FormSensitiveAnswers_CapturedBy",
+                    "([CapturedByKind] = N'PortalUser' AND [CapturedByPortalUserId] IS NOT NULL AND [CapturedByParticipantId] IS NULL AND [CapturedBySessionId] IS NULL) OR "
+                        + "([CapturedByKind] = N'ExternalSession' AND [CapturedByPortalUserId] IS NULL AND [CapturedByParticipantId] IS NOT NULL AND [CapturedBySessionId] IS NOT NULL)"
+                )
         );
         builder.HasKey(answer => answer.Id);
         builder.Property(answer => answer.Id).ValueGeneratedNever();
@@ -66,11 +74,18 @@ public sealed class FormSensitiveAnswerConfiguration : IEntityTypeConfiguration<
         builder.Property(answer => answer.RowId).HasMaxLength(32);
         builder.Property(answer => answer.Kind).HasConversion<int>().IsRequired();
         builder.Ignore(answer => answer.Address);
-        builder.HasOne<FormSubmission>()
+        builder
+            .HasOne<FormSubmission>()
             .WithMany(submission => submission.SensitiveAnswers)
             .HasForeignKey(answer => answer.FormSubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.HasIndex(answer => new { answer.FormSubmissionId, answer.ComponentId, answer.RowId })
+        builder
+            .HasIndex(answer => new
+            {
+                answer.FormSubmissionId,
+                answer.ComponentId,
+                answer.RowId,
+            })
             .IsUnique()
             .HasFilter("[SupersededAtUtc] IS NULL")
             .HasDatabaseName("UX_FormSensitiveAnswers_Active");
@@ -87,7 +102,12 @@ public sealed class FormSensitiveAnswerConfiguration : IEntityTypeConfiguration<
             answer => answer.CapturedBy,
             owned =>
             {
-                owned.Property(actor => actor.Kind).HasConversion<int>().HasColumnName("CapturedByKind").IsRequired();
+                owned
+                    .Property(actor => actor.Kind)
+                    .HasConversion<string>()
+                    .HasMaxLength(24)
+                    .HasColumnName("CapturedByKind")
+                    .IsRequired();
                 owned.Property(actor => actor.PortalUserId).HasColumnName("CapturedByPortalUserId");
                 owned.Property(actor => actor.ParticipantId).HasColumnName("CapturedByParticipantId");
                 owned.Property(actor => actor.SessionId).HasColumnName("CapturedBySessionId");

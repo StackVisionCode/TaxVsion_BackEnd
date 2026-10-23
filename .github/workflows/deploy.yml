@@ -513,7 +513,6 @@ jobs:
           NOTES_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.NOTES_ASSIGNMENT_VISIBILITY_ENABLED }}
           CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CAMPAIGNS_ASSIGNMENT_VISIBILITY_ENABLED }}
           TASKS_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.TASKS_ASSIGNMENT_VISIBILITY_ENABLED }}
-          TASKS_CLIENT_FORMS_ENABLED=${{ secrets.TASKS_CLIENT_FORMS_ENABLED }}
           COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED }}
           CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED=${{ secrets.CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED }}
 
@@ -661,6 +660,11 @@ jobs:
           CAMPAIGN_EMAIL_API_FROM_ADDRESS=${{ secrets.CAMPAIGN_EMAIL_API_FROM_ADDRESS }}
           CAMPAIGN_EMAIL_API_FROM_NAME=${{ secrets.CAMPAIGN_EMAIL_API_FROM_NAME }}
           CAMPAIGN_EMAIL_MAX_PER_MIN=${{ secrets.CAMPAIGN_EMAIL_MAX_PER_MIN }}
+          # Tasks Client Forms: Turnstile server-side para enlaces publicos de captacion.
+          # Vacio mantiene IntakeLinksEnabled cerrado.
+          TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
+          # Tasks Client Forms: flag global del módulo. Vacío o "false" = apagado.
+          TASKS_CLIENT_FORMS_ENABLED=${{ secrets.TASKS_CLIENT_FORMS_ENABLED }}
           EOF
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este

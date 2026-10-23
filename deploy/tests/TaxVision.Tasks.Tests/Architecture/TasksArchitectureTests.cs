@@ -1,8 +1,8 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
-using BuildingBlocks.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -30,9 +30,8 @@ public sealed class TasksArchitectureTests
     private static readonly Assembly ApiAssembly = typeof(Program).Assembly;
     private static readonly Assembly ApplicationAssembly = typeof(AssemblyMarker).Assembly;
     private static readonly Assembly DomainAssembly = typeof(TaskItem).Assembly;
-    private static readonly Assembly ClientFormsApplicationAssembly = typeof(
-        TaxVision.Tasks.ClientForms.Application.Templates.Commands.CreateFormTemplateHandler
-    ).Assembly;
+    private static readonly Assembly ClientFormsApplicationAssembly =
+        typeof(TaxVision.Tasks.ClientForms.Application.Templates.Commands.CreateFormTemplateHandler).Assembly;
     private static readonly Assembly ClientFormsDomainAssembly = typeof(FormTemplate).Assembly;
     private static readonly Assembly EngineAssembly = typeof(IFormEngine).Assembly;
 
@@ -128,7 +127,10 @@ public sealed class TasksArchitectureTests
             .HaveDependencyOn(forbiddenNamespace)
             .GetResult();
 
-        Assert.True(result.IsSuccessful, $"Client Forms Application depends on {forbiddenNamespace}: " + Describe(result));
+        Assert.True(
+            result.IsSuccessful,
+            $"Client Forms Application depends on {forbiddenNamespace}: " + Describe(result)
+        );
     }
 
     [Theory]
@@ -144,7 +146,10 @@ public sealed class TasksArchitectureTests
             .GetResult();
 
         Assert.True(domain.IsSuccessful, $"Tasks Domain depends on {forbiddenNamespace}: " + Describe(domain));
-        Assert.True(application.IsSuccessful, $"Tasks Application depends on {forbiddenNamespace}: " + Describe(application));
+        Assert.True(
+            application.IsSuccessful,
+            $"Tasks Application depends on {forbiddenNamespace}: " + Describe(application)
+        );
     }
 
     [Theory]
@@ -162,13 +167,43 @@ public sealed class TasksArchitectureTests
     [Fact]
     public void Client_forms_domain_should_not_use_linq_or_status_shortcuts()
     {
-        var forbidden = new Regex(@"\.(Where|Select|Any|All|First|FirstOrDefault|Single|OrderBy|Sum|ToList|ToArray|Count)\s*\(|\bChangeStatus\s*\(");
         var violations = SourceFiles("TaxVision.Tasks.ClientForms.Domain")
-            .SelectMany(file => File.ReadAllLines(file).Index().Where(line => forbidden.IsMatch(line.Item)).Select(line => $"{Path.GetFileName(file)}:{line.Index + 1}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .SelectMany(file =>
+                File.ReadAllLines(file)
+                    .Index()
+                    .Where(line => !line.Item.TrimStart().StartsWith("//") && DomainLinqPattern.IsMatch(line.Item))
+                    .Select(line => $"{Path.GetFileName(file)}:{line.Index + 1} «{line.Item.Trim()}»")
+            )
             .ToArray();
 
         Assert.Empty(violations);
     }
+
+    /// <summary>
+    /// El regex no ve un operador invocado sin punto ni uno que llegue por un alias; el IL sí.
+    /// </summary>
+    [Fact]
+    public void Client_forms_domain_should_not_reference_linq()
+    {
+        var result = Types
+            .InAssembly(ClientFormsDomainAssembly)
+            .ShouldNot()
+            .HaveDependencyOn("System.Linq")
+            .GetResult();
+
+        Assert.True(result.IsSuccessful, "Client Forms Domain usa LINQ: " + Describe(result));
+    }
+
+    // Operadores de Enumerable con límite de palabra: «.AnyPending(» o «.Counter(» no cuentan. Math.Min/Max y
+    // string.Concat no son LINQ, y un Contains con literal es el de string.
+    private static readonly Regex DomainLinqPattern = new(
+        @"(?<!\b(?:Math|string|String))\.(?:Where|Select|SelectMany|Any|All|First|FirstOrDefault|Single|SingleOrDefault|Last|LastOrDefault|ElementAt|ElementAtOrDefault|OrderBy|OrderByDescending|ThenBy|ThenByDescending|GroupBy|ToLookup|Sum|Min|Max|MinBy|MaxBy|Average|Count|LongCount|Aggregate|ToList|ToArray|ToDictionary|ToHashSet|Distinct|DistinctBy|Skip|SkipWhile|Take|TakeWhile|Cast|OfType|Concat|Except|ExceptBy|Intersect|IntersectBy|Union|UnionBy|Zip|SequenceEqual|DefaultIfEmpty|AsEnumerable)\b\s*(?:<[^<>()]*>)?\s*\("
+            + @"|\.Contains\s*\(\s*(?!['""])"
+            + @"|^\s*using\s+(?:static\s+)?System\.Linq\b"
+            + @"|\bChangeStatus\s*\(",
+        RegexOptions.Compiled
+    );
 
     [Fact]
     public void Logs_should_never_name_sensitive_form_values()
@@ -178,7 +213,12 @@ public sealed class TasksArchitectureTests
             RegexOptions.IgnoreCase
         );
         var violations = ServiceSourceFiles()
-            .SelectMany(file => File.ReadAllLines(file).Index().Where(line => sensitiveTemplate.IsMatch(line.Item)).Select(line => $"{Path.GetFileName(file)}:{line.Index + 1}"))
+            .SelectMany(file =>
+                File.ReadAllLines(file)
+                    .Index()
+                    .Where(line => sensitiveTemplate.IsMatch(line.Item))
+                    .Select(line => $"{Path.GetFileName(file)}:{line.Index + 1}")
+            )
             .ToArray();
 
         Assert.Empty(violations);
@@ -190,25 +230,84 @@ public sealed class TasksArchitectureTests
         var sensitive = new Regex("answers?|ssn|taxidentifier|cipher|plaintext|rawvalue", RegexOptions.IgnoreCase);
         var violations = typeof(IntegrationEvent)
             .Assembly.GetTypes()
-            .Where(type => type.Namespace?.StartsWith("BuildingBlocks.Messaging.ClientForms", StringComparison.Ordinal) == true)
+            .Where(type =>
+                type.Namespace?.StartsWith("BuildingBlocks.Messaging.ClientForms", StringComparison.Ordinal) == true
+            )
             .Where(type => typeof(IntegrationEvent).IsAssignableFrom(type))
-            .SelectMany(type => type.GetProperties().Where(property => sensitive.IsMatch(property.Name)).Select(property => $"{type.Name}.{property.Name}"))
+            .SelectMany(type =>
+                type.GetProperties()
+                    .Where(property => sensitive.IsMatch(property.Name))
+                    .Select(property => $"{type.Name}.{property.Name}")
+            )
             .ToArray();
 
         Assert.Empty(violations);
     }
 
+    /// <summary>
+    /// Un listado nunca lleva respuestas ni valores sensibles. Se miran los DTO que devuelve cada
+    /// <c>List*Handler</c>, los que se llaman como listado en cualquier namespace de Client Forms y,
+    /// de forma transitiva, los DTO que cuelgan de ellos.
+    /// </summary>
     [Fact]
     public void Client_form_list_dtos_should_not_expose_answers()
     {
-        var violations = ClientFormsApplicationAssembly
-            .GetTypes()
-            .Where(type => type.Namespace?.Contains(".Responses", StringComparison.Ordinal) == true)
-            .Where(type => type.Name.Contains("Summary", StringComparison.Ordinal) || type.Name.Contains("List", StringComparison.Ordinal))
-            .SelectMany(type => type.GetProperties().Where(property => property.Name.Contains("Answers", StringComparison.OrdinalIgnoreCase)).Select(property => $"{type.Name}.{property.Name}"))
+        var sensitive = new Regex("answers?|ssn|taxidentifier|cipher|plaintext|rawvalue", RegexOptions.IgnoreCase);
+        var listDtos = ListDtoRoots().SelectMany(ClientFormsDtoClosure).Distinct().ToArray();
+        var violations = listDtos
+            .SelectMany(type =>
+                type.GetProperties()
+                    .Where(property => sensitive.IsMatch(property.Name))
+                    .Select(property => $"{type.FullName}.{property.Name}")
+            )
             .ToArray();
 
+        Assert.True(listDtos.Length > 0, "No se encontró ningún DTO de listado: el barrido dejó de ver los handlers.");
         Assert.Empty(violations);
+    }
+
+    private static IEnumerable<Type> ListDtoRoots()
+    {
+        var types = ClientFormsApplicationAssembly.GetTypes();
+        var byHandler = types
+            .Where(type =>
+                type.Name.StartsWith("List", StringComparison.Ordinal)
+                && type.Name.EndsWith("Handler", StringComparison.Ordinal)
+            )
+            .SelectMany(type =>
+                type.GetMethods(BindingFlags.Public | BindingFlags.Static).Where(method => method.Name == "Handle")
+            )
+            .Select(method => method.ReturnType);
+        var byName = types.Where(type =>
+            type.Namespace?.StartsWith("TaxVision.Tasks.ClientForms.Application", StringComparison.Ordinal) == true
+            && (
+                type.Name.Contains("Summary", StringComparison.Ordinal)
+                || type.Name.Contains("ListItem", StringComparison.Ordinal)
+            )
+        );
+        return byHandler.Concat(byName);
+    }
+
+    // Abre Task<>, Result<>, PagedResult<> y colecciones hasta los DTO propios, y sigue por sus propiedades.
+    private static IEnumerable<Type> ClientFormsDtoClosure(Type root)
+    {
+        var seen = new HashSet<Type>();
+        var pending = new Stack<Type>([root]);
+        while (pending.Count > 0)
+        {
+            var type = pending.Pop();
+            if (!seen.Add(type))
+                continue;
+            if (type.IsArray)
+                pending.Push(type.GetElementType()!);
+            foreach (var argument in type.IsGenericType ? type.GetGenericArguments() : [])
+                pending.Push(argument);
+            if (type.Assembly != ClientFormsApplicationAssembly || type.IsEnum || type.IsInterface)
+                continue;
+            yield return type;
+            foreach (var property in type.GetProperties())
+                pending.Push(property.PropertyType);
+        }
     }
 
     /// <summary>
@@ -236,7 +335,10 @@ public sealed class TasksArchitectureTests
         Assert.True(violations.Count == 0, "Un handler por archivo: " + string.Join(" | ", violations));
     }
 
-    /// <summary>Ningún <c>Handle</c> pasa de 30 líneas de cuerpo. El número medido va en el mensaje.</summary>
+    /// <summary>
+    /// Ningún <c>Handle</c> pasa de 30 líneas de cuerpo, y en un handler o consumer tampoco ningún otro
+    /// método: un <c>Handle</c> de una línea que delega en un privado enorme no cumple la regla.
+    /// </summary>
     [Fact]
     public void No_Handle_method_should_exceed_the_body_line_budget()
     {
@@ -244,6 +346,13 @@ public sealed class TasksArchitectureTests
 
         foreach (var file in ApplicationSourceFiles())
         foreach (var (methodName, bodyLines) in MeasureHandleBodies(File.ReadAllLines(file)))
+        {
+            if (bodyLines > MaxHandleBodyLines)
+                violations.Add($"{Path.GetFileName(file)}.{methodName} = {bodyLines} líneas");
+        }
+
+        foreach (var file in HandlerAndConsumerSourceFiles())
+        foreach (var (methodName, bodyLines) in MeasureMemberBodies(File.ReadAllLines(file)))
         {
             if (bodyLines > MaxHandleBodyLines)
                 violations.Add($"{Path.GetFileName(file)}.{methodName} = {bodyLines} líneas");
@@ -257,7 +366,7 @@ public sealed class TasksArchitectureTests
     }
 
     private static readonly Regex HandlerDeclarationPattern = new(
-        @"^\s*(?:public|internal)\s+(?:static\s+|sealed\s+|abstract\s+|partial\s+)*class\s+(?<name>\w+(?:Handler|Consumer))\b",
+        @"^(?<indent>[ \t]*)(?:public|internal)\s+(?:static\s+|sealed\s+|abstract\s+|partial\s+)*class\s+(?<name>\w+(?:Handler|Consumer))\b",
         RegexOptions.Multiline | RegexOptions.Compiled
     );
 
@@ -306,6 +415,62 @@ public sealed class TasksArchitectureTests
 
         return -1;
     }
+
+    /// <summary>
+    /// Todo cuerpo con llaves de un handler o consumer, sea público o privado, estático o no. No depende de
+    /// reconocer la firma: toma cada llave sola a la indentación de miembro y cuenta hasta su cierre.
+    /// </summary>
+    private static IEnumerable<(string MethodName, int BodyLines)> MeasureMemberBodies(string[] lines)
+    {
+        foreach (Match declaration in HandlerDeclarationPattern.Matches(string.Join('\n', lines)))
+        {
+            var memberIndent = declaration.Groups["indent"].Value + "    ";
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (lines[index].TrimEnd() != memberIndent + "{")
+                    continue;
+
+                var close = Array.FindIndex(lines, index + 1, line => line.TrimEnd() == memberIndent + "}");
+                if (close < 0)
+                    break;
+
+                yield return (
+                    $"{declaration.Groups["name"].Value}.{MemberNameBefore(lines, index, memberIndent)}",
+                    close - index - 1
+                );
+                index = close;
+            }
+        }
+    }
+
+    /// <summary>La firma es la última línea a indentación de miembro antes de la llave que no cierra paréntesis.</summary>
+    private static string MemberNameBefore(string[] lines, int openBrace, string memberIndent)
+    {
+        for (var index = openBrace - 1; index >= 0; index--)
+        {
+            var line = lines[index];
+            if (!line.StartsWith(memberIndent, StringComparison.Ordinal) || line.Length == memberIndent.Length)
+                continue;
+            var first = line[memberIndent.Length];
+            if (first == ' ' || first == ')')
+                continue;
+
+            var name = MemberNamePattern.Match(line);
+            return name.Success ? name.Groups["name"].Value : line.Trim();
+        }
+
+        return "?";
+    }
+
+    private static readonly Regex MemberNamePattern = new(@"(?<name>\w+)\s*(?:<[^()]*>)?\s*\(", RegexOptions.Compiled);
+
+    private static IEnumerable<string> HandlerAndConsumerSourceFiles() =>
+        ApplicationSourceFiles()
+            .Concat(SourceFiles("TaxVision.Tasks.Infrastructure"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}"))
+            .Where(file => HandlerDeclarationPattern.IsMatch(File.ReadAllText(file)));
 
     [Fact]
     public void No_comment_should_reference_the_plan()
@@ -409,13 +574,15 @@ public sealed class TasksArchitectureTests
     [Theory]
     [InlineData("Minio")]
     [InlineData("AmazonS3")]
-    [InlineData("IFormFile")]
+    [InlineData(@"\bIFormFile(?:Collection)?\b")]
     public void Task_should_never_touch_file_bytes(string forbidden)
     {
         // Barrido propio: ServiceSourceFiles() salta la capa Api, que es justo por donde entraría un
-        // IFormFile si alguien decidiera recibir el archivo acá en vez de en CloudStorage.
+        // IFormFile si alguien decidiera recibir el archivo acá en vez de en CloudStorage. El límite de
+        // palabra deja pasar nombres como IFormFileScanVerdictRepository.
+        var pattern = new Regex(forbidden);
         var offenders = AllServiceSourceFiles()
-            .Where(file => File.ReadAllText(file).Contains(forbidden, StringComparison.Ordinal))
+            .Where(file => pattern.IsMatch(File.ReadAllText(file)))
             .Select(Path.GetFileName)
             .ToList();
 
@@ -424,6 +591,30 @@ public sealed class TasksArchitectureTests
             $"«{forbidden}» no tiene lugar en Task —el byte vive en CloudStorage—: " + string.Join(", ", offenders)
         );
     }
+
+    /// <summary>El mismo guardrail por reflexión: ni un parámetro de acción ni una propiedad suya es un archivo.</summary>
+    [Fact]
+    public void Api_actions_should_never_receive_file_bytes()
+    {
+        var offenders = ControllerTypes(ApiAssembly)
+            .SelectMany(controller => Actions(controller).Select(action => (controller, action)))
+            .SelectMany(entry =>
+                entry.action.GetParameters().Select(parameter => (entry.controller, entry.action, parameter))
+            )
+            .Where(entry =>
+                IsFileType(entry.parameter.ParameterType)
+                || entry.parameter.ParameterType.GetProperties().Any(property => IsFileType(property.PropertyType))
+            )
+            .Select(entry => $"{entry.controller.Name}.{entry.action.Name}({entry.parameter.Name})")
+            .ToList();
+
+        Assert.True(offenders.Count == 0, "El byte vive en CloudStorage: " + string.Join(", ", offenders));
+    }
+
+    private static bool IsFileType(Type type) =>
+        typeof(Microsoft.AspNetCore.Http.IFormFile).IsAssignableFrom(type)
+        || typeof(Microsoft.AspNetCore.Http.IFormFileCollection).IsAssignableFrom(type)
+        || typeof(IEnumerable<Microsoft.AspNetCore.Http.IFormFile>).IsAssignableFrom(type);
 
     [Fact]
     public void Raw_sql_should_stay_where_it_was_justified()

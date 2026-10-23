@@ -35,9 +35,25 @@ internal sealed partial class StructureValidator
     private void ValidateRoot(FormDefinition definition, bool publish, ICollection<ValidationIssue> issues)
     {
         if (definition.SchemaVersion != 1)
-            Add(issues, "definition.unsupported_schema_version", "/schemaVersion", null, "Only schema version 1 is supported.");
-        if (string.IsNullOrWhiteSpace(definition.Title) || definition.Title.Length > 200 || definition.Title.Any(char.IsControl))
-            Add(issues, "props.out_of_range", "/title", null, "Definition title must contain 1 to 200 plain-text characters.");
+            Add(
+                issues,
+                "definition.unsupported_schema_version",
+                "/schemaVersion",
+                null,
+                "Only schema version 1 is supported."
+            );
+        if (
+            string.IsNullOrWhiteSpace(definition.Title)
+            || definition.Title.Length > 200
+            || definition.Title.Any(char.IsControl)
+        )
+            Add(
+                issues,
+                "props.out_of_range",
+                "/title",
+                null,
+                "Definition title must contain 1 to 200 plain-text characters."
+            );
         foreach (var issue in RichTextValidator.Validate(definition.Description, "/description", 2_000))
             issues.Add(issue);
         if (!publish)
@@ -47,7 +63,13 @@ internal sealed partial class StructureValidator
         if (definition.Pages.Count > _limits.MaxPages)
             Add(issues, "limits.too_many_pages", "/pages", null, "Definition has too many pages.");
         if (definition.Presentation == FormPresentation.SinglePage && definition.Pages.Count != 1)
-            Add(issues, "page.single_page_violation", "/pages", null, "Single-page forms must contain exactly one page.");
+            Add(
+                issues,
+                "page.single_page_violation",
+                "/pages",
+                null,
+                "Single-page forms must contain exactly one page."
+            );
     }
 
     private void ValidateDocument(
@@ -71,7 +93,13 @@ internal sealed partial class StructureValidator
             order++;
             ValidateId(page.Id, PageIdPattern(), pagePath, ids, issues);
             if (publish && definition.Presentation == FormPresentation.Wizard && string.IsNullOrWhiteSpace(page.Title))
-                Add(issues, "page.title_required", $"{pagePath}/title", null, "Page title is required in wizard presentation.");
+                Add(
+                    issues,
+                    "page.title_required",
+                    $"{pagePath}/title",
+                    null,
+                    "Page title is required in wizard presentation."
+                );
             if (page.Title?.Length > 120)
                 Add(issues, "props.out_of_range", $"{pagePath}/title", null, "Page title is too long.");
             foreach (var issue in RichTextValidator.Validate(page.Description, $"{pagePath}/description", 2_000))
@@ -81,7 +109,13 @@ internal sealed partial class StructureValidator
                 conditionValidator.Validate(page.VisibleWhen, $"{pagePath}/visibleWhen", order, null, index, issues);
 
             if (publish && page.Sections.Count is < 1)
-                Add(issues, "limits.too_many_sections", $"{pagePath}/sections", null, "At least one section is required.");
+                Add(
+                    issues,
+                    "limits.too_many_sections",
+                    $"{pagePath}/sections",
+                    null,
+                    "At least one section is required."
+                );
             if (page.Sections.Count > _limits.MaxSectionsPerPage)
                 Add(issues, "limits.too_many_sections", $"{pagePath}/sections", null, "Page has too many sections.");
 
@@ -98,7 +132,18 @@ internal sealed partial class StructureValidator
                     var component = section.Components[componentIndex];
                     var componentPath = $"{sectionPath}/components/{componentIndex}";
                     order++;
-                    ValidateComponent(component, componentPath, order, section, index, ids, keys, conditionValidator, publish, issues);
+                    ValidateComponent(
+                        component,
+                        componentPath,
+                        order,
+                        section,
+                        index,
+                        ids,
+                        keys,
+                        conditionValidator,
+                        publish,
+                        issues
+                    );
                     if (component.Type == "signatureStep")
                         signatureSteps++;
                 }
@@ -139,14 +184,30 @@ internal sealed partial class StructureValidator
         if (section.Repeat is not null)
         {
             var repeat = section.Repeat;
-            if (repeat.MinRows < 0 || repeat.MaxRows < 1 || repeat.MinRows > repeat.MaxRows || repeat.MaxRows > _limits.MaxRepeaterRows)
+            if (
+                repeat.MinRows < 0
+                || repeat.MaxRows < 1
+                || repeat.MinRows > repeat.MaxRows
+                || repeat.MaxRows > _limits.MaxRepeaterRows
+            )
                 Add(issues, "repeater.invalid_bounds", $"{path}/repeat", null, "Repeater row bounds are invalid.");
-            if (string.IsNullOrWhiteSpace(repeat.AddLabel) || repeat.AddLabel.Length > 60 || string.IsNullOrWhiteSpace(repeat.RowLabel) || repeat.RowLabel.Length > 60)
+            if (
+                string.IsNullOrWhiteSpace(repeat.AddLabel)
+                || repeat.AddLabel.Length > 60
+                || string.IsNullOrWhiteSpace(repeat.RowLabel)
+                || repeat.RowLabel.Length > 60
+            )
                 Add(issues, "repeater.invalid_bounds", $"{path}/repeat", null, "Repeater labels are invalid.");
         }
 
         if (publish && section.Components.Count is < 1)
-            Add(issues, "limits.too_many_components", $"{path}/components", null, "At least one component is required.");
+            Add(
+                issues,
+                "limits.too_many_components",
+                $"{path}/components",
+                null,
+                "At least one component is required."
+            );
         if (section.Components.Count > _limits.MaxComponentsPerSection)
             Add(issues, "limits.too_many_components", $"{path}/components", null, "Section has too many components.");
     }
@@ -184,11 +245,29 @@ internal sealed partial class StructureValidator
             return;
 
         _properties.Validate(component, componentType, path, issues);
-        conditionValidator.Validate(component.VisibleWhen, $"{path}/visibleWhen", order, section.Repeat is null ? null : section.Id, index, issues);
-        conditionValidator.Validate(component.RequiredWhen, $"{path}/requiredWhen", order, section.Repeat is null ? null : section.Id, index, issues);
+        conditionValidator.Validate(
+            component.VisibleWhen,
+            $"{path}/visibleWhen",
+            order,
+            section.Repeat is null ? null : section.Id,
+            index,
+            issues
+        );
+        conditionValidator.Validate(
+            component.RequiredWhen,
+            $"{path}/requiredWhen",
+            order,
+            section.Repeat is null ? null : section.Id,
+            index,
+            issues
+        );
     }
 
-    private static void ValidateMappings(FormDefinition definition, DefinitionIndex index, ICollection<ValidationIssue> issues)
+    private static void ValidateMappings(
+        FormDefinition definition,
+        DefinitionIndex index,
+        ICollection<ValidationIssue> issues
+    )
     {
         var mappedComponents = new HashSet<string>(StringComparer.Ordinal);
         for (var mappingIndex = 0; mappingIndex < definition.Mappings.Count; mappingIndex++)
@@ -196,11 +275,29 @@ internal sealed partial class StructureValidator
             var mapping = definition.Mappings[mappingIndex];
             var path = $"/mappings/{mappingIndex}";
             if (!index.Components.ContainsKey(mapping.ComponentId) && !index.Sections.ContainsKey(mapping.ComponentId))
-                Add(issues, "mapping.invalid_target", $"{path}/componentId", mapping.ComponentId, "Mapping source was not found.");
+                Add(
+                    issues,
+                    "mapping.invalid_target",
+                    $"{path}/componentId",
+                    mapping.ComponentId,
+                    "Mapping source was not found."
+                );
             if (string.IsNullOrWhiteSpace(mapping.TargetKey))
-                Add(issues, "mapping.invalid_target", $"{path}/targetKey", mapping.ComponentId, "Mapping target is required.");
+                Add(
+                    issues,
+                    "mapping.invalid_target",
+                    $"{path}/targetKey",
+                    mapping.ComponentId,
+                    "Mapping target is required."
+                );
             if (!mappedComponents.Add(mapping.ComponentId))
-                Add(issues, "mapping.duplicate_target", path, mapping.ComponentId, "A component can be mapped only once in v1.");
+                Add(
+                    issues,
+                    "mapping.duplicate_target",
+                    path,
+                    mapping.ComponentId,
+                    "A component can be mapped only once in v1."
+                );
         }
     }
 
@@ -223,7 +320,13 @@ internal sealed partial class StructureValidator
             if (!TriggerAllowed(action.Type, action.Trigger))
                 Add(issues, "props.out_of_range", $"{path}/trigger", null, "Action trigger is not supported.");
             if (action.Type is FormActionType.NotifyStaff or FormActionType.RouteToReview)
-                Add(issues, "props.out_of_range", $"{path}/type", null, "This action is implicit and cannot be configured.");
+                Add(
+                    issues,
+                    "props.out_of_range",
+                    $"{path}/type",
+                    null,
+                    "This action is implicit and cannot be configured."
+                );
             ValidateActionConfig(action, path, issues);
             conditionValidator.Validate(action.Condition, $"{path}/condition", int.MaxValue, null, index, issues);
             hasSignatureAction |= action.Type == FormActionType.RequestSignature;
@@ -231,9 +334,21 @@ internal sealed partial class StructureValidator
         if (signatureSteps > 1)
             Add(issues, "props.out_of_range", "/pages", null, "Only one signatureStep is allowed.");
         if (signatureSteps == 1 && !hasSignatureAction)
-            Add(issues, "signature.action_missing", "/actions", null, "signatureStep requires a RequestSignature action.");
+            Add(
+                issues,
+                "signature.action_missing",
+                "/actions",
+                null,
+                "signatureStep requires a RequestSignature action."
+            );
         if (signatureSteps == 0 && hasSignatureAction)
-            Add(issues, "signature.action_missing", "/actions", null, "RequestSignature requires a signatureStep component.");
+            Add(
+                issues,
+                "signature.action_missing",
+                "/actions",
+                null,
+                "RequestSignature requires a signatureStep component."
+            );
     }
 
     private static void ValidateActionConfig(FormAction action, string path, ICollection<ValidationIssue> issues)
@@ -249,7 +364,13 @@ internal sealed partial class StructureValidator
         if (action.Type != FormActionType.CreateCustomer)
         {
             if (action.Config.EnumerateObject().Any())
-                Add(issues, "props.unknown", $"{path}/config", null, "This action does not accept config in schema v1.");
+                Add(
+                    issues,
+                    "props.unknown",
+                    $"{path}/config",
+                    null,
+                    "This action does not accept config in schema v1."
+                );
             return;
         }
 
@@ -257,7 +378,13 @@ internal sealed partial class StructureValidator
         foreach (var property in action.Config.EnumerateObject())
         {
             if (!allowed.Contains(property.Name))
-                Add(issues, "props.unknown", $"{path}/config/{property.Name}", null, "Action config property is not supported.");
+                Add(
+                    issues,
+                    "props.unknown",
+                    $"{path}/config/{property.Name}",
+                    null,
+                    "Action config property is not supported."
+                );
         }
 
         foreach (var name in new[] { "kind", "language" })
@@ -266,15 +393,25 @@ internal sealed partial class StructureValidator
                 Add(issues, "props.out_of_range", $"{path}/config/{name}", null, "Action value source is invalid.");
         }
 
-        if (action.Config.TryGetProperty("waitFor", out var waitFor)
-            && (waitFor.ValueKind != JsonValueKind.String
-                || waitFor.GetString() is not ("none" or "signatureCompleted")))
+        if (
+            action.Config.TryGetProperty("waitFor", out var waitFor)
+            && (
+                waitFor.ValueKind != JsonValueKind.String || waitFor.GetString() is not ("none" or "signatureCompleted")
+            )
+        )
             Add(issues, "props.out_of_range", $"{path}/config/waitFor", null, "Action waitFor value is invalid.");
 
-        if (action.Config.TryGetProperty("postCreate", out var postCreate)
-            && (postCreate.ValueKind != JsonValueKind.Array
-                || postCreate.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String || item.GetString() != "primaryAddress")
-                || postCreate.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.Ordinal).Count() != postCreate.GetArrayLength()))
+        if (
+            action.Config.TryGetProperty("postCreate", out var postCreate)
+            && (
+                postCreate.ValueKind != JsonValueKind.Array
+                || postCreate
+                    .EnumerateArray()
+                    .Any(item => item.ValueKind != JsonValueKind.String || item.GetString() != "primaryAddress")
+                || postCreate.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.Ordinal).Count()
+                    != postCreate.GetArrayLength()
+            )
+        )
             Add(issues, "props.out_of_range", $"{path}/config/postCreate", null, "Action postCreate value is invalid.");
     }
 
@@ -313,18 +450,23 @@ internal sealed partial class StructureValidator
             Add(issues, "id.duplicate", $"{path}/id", id, "Identifier must be unique.");
     }
 
-    private static void Add(ICollection<ValidationIssue> issues, string code, string path, string? componentId, string message) =>
-        issues.Add(new ValidationIssue(code, path, componentId, null, message));
+    private static void Add(
+        ICollection<ValidationIssue> issues,
+        string code,
+        string path,
+        string? componentId,
+        string message
+    ) => issues.Add(new ValidationIssue(code, path, componentId, null, message));
 
-    [GeneratedRegex("^pg_[a-z0-9]{8,16}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^pg_[a-z0-9]{8,16}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex PageIdPattern();
 
-    [GeneratedRegex("^sc_[a-z0-9]{8,16}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^sc_[a-z0-9]{8,16}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex SectionIdPattern();
 
-    [GeneratedRegex("^fd_[a-z0-9]{8,16}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^fd_[a-z0-9]{8,16}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex ComponentIdPattern();
 
-    [GeneratedRegex("^[a-z][a-z0-9_]{1,63}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z][a-z0-9_]{1,63}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();
 }

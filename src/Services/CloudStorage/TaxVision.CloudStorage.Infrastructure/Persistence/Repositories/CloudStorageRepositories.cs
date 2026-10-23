@@ -29,6 +29,20 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         db.Files.IgnoreQueryFilters().SingleOrDefaultAsync(file => file.TenantId == tenantId && file.Id == fileId, ct);
 
+    // UPDLOCK dura hasta el commit solo dentro de una transacción; sin ella no protegería nada.
+    public Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Locked file reads require an open transaction.");
+
+        return db
+            .Files.FromSql(
+                $"SELECT * FROM [Files] WITH (UPDLOCK, ROWLOCK) WHERE [TenantId] = {tenantId} AND [Id] = {fileId}"
+            )
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,

@@ -59,7 +59,14 @@ public sealed class FormTemplateTests
         var canonical = Canonical(EmptyDefinition, 'b');
         template.Publish(canonical, "Version one", FormPresentation.SinglePage, 0, UserId, Now);
 
-        var result = template.Publish(canonical, "Version two", FormPresentation.SinglePage, 0, UserId, Now.AddMinutes(1));
+        var result = template.Publish(
+            canonical,
+            "Version two",
+            FormPresentation.SinglePage,
+            0,
+            UserId,
+            Now.AddMinutes(1)
+        );
 
         Assert.Equal(FormTemplateErrors.NothingToPublish, result.Error);
         Assert.Equal(1, template.LatestVersionNumber);
@@ -91,7 +98,14 @@ public sealed class FormTemplateTests
         template.Archive(UserId, Now);
 
         var rename = template.Rename(Name("Other name"), null, UserId, Now.AddMinutes(1));
-        var publish = template.Publish(Canonical(EmptyDefinition, 'e'), "Archived", FormPresentation.SinglePage, 0, UserId, Now);
+        var publish = template.Publish(
+            Canonical(EmptyDefinition, 'e'),
+            "Archived",
+            FormPresentation.SinglePage,
+            0,
+            UserId,
+            Now
+        );
 
         Assert.Equal(FormTemplateErrors.Archived, rename.Error);
         Assert.Equal(FormTemplateErrors.Archived, publish.Error);
@@ -112,9 +126,11 @@ public sealed class FormTemplateTests
     public void Revert_copies_the_published_snapshot_without_creating_a_version()
     {
         var template = NewTemplate();
-        var published = template.Publish(Canonical(EmptyDefinition, 'f'), "Version one", FormPresentation.SinglePage, 0, UserId, Now).Value;
+        var published = template
+            .Publish(Canonical(EmptyDefinition, 'f'), "Version one", FormPresentation.SinglePage, 0, UserId, Now)
+            .Value;
         template.UpdateDraft(
-            new FormDefinitionDocument("{\"components\":[1],\"schemaVersion\":1}"),
+            ClientFormsTestDocuments.Definition("{\"components\":[1],\"schemaVersion\":1}"),
             Hash('1'),
             FormPurpose.Questionnaire,
             UserId,
@@ -135,7 +151,9 @@ public sealed class FormTemplateTests
     {
         var source = NewTemplate();
         var target = NewTemplate();
-        var version = source.Publish(Canonical(EmptyDefinition, '2'), "Source", FormPresentation.SinglePage, 0, UserId, Now).Value;
+        var version = source
+            .Publish(Canonical(EmptyDefinition, '2'), "Source", FormPresentation.SinglePage, 0, UserId, Now)
+            .Value;
 
         var result = target.RevertDraftTo(version, UserId, Now);
 
@@ -160,7 +178,7 @@ public sealed class FormTemplateTests
             tenantId,
             Name("Annual intake"),
             FormDescription.Create("Collect annual client details.").Value,
-            new FormDefinitionDocument(EmptyDefinition),
+            ClientFormsTestDocuments.Definition(EmptyDefinition),
             Hash('0'),
             FormPurpose.ClientIntake,
             userId,

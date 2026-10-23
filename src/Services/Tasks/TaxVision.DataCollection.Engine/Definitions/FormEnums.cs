@@ -17,6 +17,12 @@ public enum FormPresentation
     Wizard,
 }
 
+public enum FormCollectionBasis
+{
+    ServiceRequest,
+    Consent,
+}
+
 public enum DataClass
 {
     General,

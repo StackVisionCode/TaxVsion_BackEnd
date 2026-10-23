@@ -55,15 +55,11 @@ public sealed class FormRequestDomainTests
         var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
         var address = new FormAnswerAddress("fd_upload", null);
         var fileId = Guid.NewGuid();
-        Assert.True(request.RegisterAttachment(address, fileId, "tax.pdf", "application/pdf", 20, 2, 10, null, Now).IsSuccess);
-
-        var result = request.Submit(
-            ProtectedAnswers(),
-            [fileId],
-            [],
-            FormActor.PortalUser(UserId),
-            Now.AddMinutes(1)
+        Assert.True(
+            request.RegisterAttachment(address, fileId, "tax.pdf", "application/pdf", 20, 2, 10, null, Now).IsSuccess
         );
+
+        var result = request.Submit(ProtectedAnswers(), [fileId], [], FormActor.PortalUser(UserId), Now.AddMinutes(1));
 
         Assert.True(result.IsFailure);
         Assert.Equal("FormRequest.AttachmentsNotReady", result.Error.Code);
@@ -117,7 +113,13 @@ public sealed class FormRequestDomainTests
 
         var outcome = request.ApplyFileVerdict(
             fileId,
-            new FormFileVerdict(FormFileVerdictStatus.Available, "Customer", CustomerId, "ClientForms", Now.AddHours(2)),
+            new FormFileVerdict(
+                FormFileVerdictStatus.Available,
+                "Customer",
+                CustomerId,
+                "ClientForms",
+                Now.AddHours(2)
+            ),
             Now.AddHours(2)
         );
 
@@ -135,7 +137,13 @@ public sealed class FormRequestDomainTests
             FileVerdictOutcome.Available,
             request.ApplyFileVerdict(
                 fileId,
-                new FormFileVerdict(FormFileVerdictStatus.Available, "FormParticipant", ParticipantId, "ClientForms", Now),
+                new FormFileVerdict(
+                    FormFileVerdictStatus.Available,
+                    "FormParticipant",
+                    ParticipantId,
+                    "ClientForms",
+                    Now
+                ),
                 Now
             )
         );
@@ -143,7 +151,13 @@ public sealed class FormRequestDomainTests
 
         var replay = request.ApplyFileVerdict(
             fileId,
-            new FormFileVerdict(FormFileVerdictStatus.Available, "Customer", CustomerId, "ClientForms", Now.AddMinutes(2)),
+            new FormFileVerdict(
+                FormFileVerdictStatus.Available,
+                "Customer",
+                CustomerId,
+                "ClientForms",
+                Now.AddMinutes(2)
+            ),
             Now.AddMinutes(2)
         );
 
@@ -157,8 +171,18 @@ public sealed class FormRequestDomainTests
         var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
         var address = new FormAnswerAddress("fd_ssn", null);
         var actor = FormActor.PortalUser(UserId);
-        var first = request.CaptureSensitiveAnswer(address, FormTaxIdentifierKind.Ssn, ProtectedTaxId("1234"), actor, Now).Value;
-        var second = request.CaptureSensitiveAnswer(address, FormTaxIdentifierKind.Ssn, ProtectedTaxId("6789"), actor, Now.AddMinutes(1)).Value;
+        var first = request
+            .CaptureSensitiveAnswer(address, FormTaxIdentifierKind.Ssn, ProtectedTaxId("1234"), actor, Now)
+            .Value;
+        var second = request
+            .CaptureSensitiveAnswer(
+                address,
+                FormTaxIdentifierKind.Ssn,
+                ProtectedTaxId("6789"),
+                actor,
+                Now.AddMinutes(1)
+            )
+            .Value;
 
         Assert.NotNull(first.SupersededAtUtc);
         Assert.Null(second.SupersededAtUtc);
@@ -196,39 +220,43 @@ public sealed class FormRequestDomainTests
         FormRequestOrigin origin = FormRequestOrigin.Directed,
         Guid? intakeLinkId = null,
         bool useDefaultResponsibleUser = true
-    ) => FormRequest.Create(
-        TenantId,
-        participant,
-        Version(),
-        null,
-        null,
-        2026,
-        taskId,
-        Now.AddDays(7),
-        null,
-        null,
-        origin,
-        intakeLinkId,
-        participant.Kind == FormParticipantKind.External && useDefaultResponsibleUser
-            ? responsibleUserId ?? UserId
-            : responsibleUserId,
-        UserId,
-        Now
-    );
+    ) =>
+        FormRequest.Create(
+            TenantId,
+            participant,
+            Version(),
+            null,
+            null,
+            2026,
+            taskId,
+            Now.AddDays(7),
+            null,
+            null,
+            origin,
+            intakeLinkId,
+            participant.Kind == FormParticipantKind.External && useDefaultResponsibleUser
+                ? responsibleUserId ?? UserId
+                : responsibleUserId,
+            UserId,
+            Now
+        );
 
-    private static FormTemplateVersion Version() => FormTemplateVersion.Create(
-        TenantId,
-        Guid.NewGuid(),
-        1,
-        "Tax organizer",
-        FormPurpose.Questionnaire,
-        FormPresentation.Wizard,
-        new FormDefinitionDocument("{\"schemaVersion\":1,\"meta\":{\"title\":\"Tax organizer\",\"purpose\":\"taxPreparation\"},\"pages\":[]}"),
-        new ContentHash(new string('a', 64)),
-        0,
-        UserId,
-        Now
-    );
+    private static FormTemplateVersion Version() =>
+        FormTemplateVersion.Create(
+            TenantId,
+            Guid.NewGuid(),
+            1,
+            "Tax organizer",
+            FormPurpose.Questionnaire,
+            FormPresentation.Wizard,
+            ClientFormsTestDocuments.Definition(
+                "{\"schemaVersion\":1,\"meta\":{\"title\":\"Tax organizer\",\"purpose\":\"taxPreparation\"},\"pages\":[]}"
+            ),
+            ClientFormsTestDocuments.Hash(new string('a', 64)),
+            0,
+            UserId,
+            Now
+        );
 
     private static ProtectedAnswers ProtectedAnswers() => new("cipher", 1);
 
@@ -237,17 +265,21 @@ public sealed class FormRequestDomainTests
     private static Guid RegisterPending(FormRequest request)
     {
         var fileId = Guid.NewGuid();
-        Assert.True(request.RegisterAttachment(
-            new FormAnswerAddress("fd_upload", null),
-            fileId,
-            "tax.pdf",
-            "application/pdf",
-            20,
-            10,
-            20,
-            null,
-            Now
-        ).IsSuccess);
+        Assert.True(
+            request
+                .RegisterAttachment(
+                    new FormAnswerAddress("fd_upload", null),
+                    fileId,
+                    "tax.pdf",
+                    "application/pdf",
+                    20,
+                    10,
+                    20,
+                    null,
+                    Now
+                )
+                .IsSuccess
+        );
         return fileId;
     }
 }

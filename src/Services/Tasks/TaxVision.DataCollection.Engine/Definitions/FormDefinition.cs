@@ -26,6 +26,7 @@ public sealed class FormDefinition
 public sealed class FormSettings
 {
     public bool ShowProgress { get; init; } = true;
+    public FormCollectionBasis CollectionBasis { get; init; } = FormCollectionBasis.ServiceRequest;
 }
 
 public sealed class FormPage

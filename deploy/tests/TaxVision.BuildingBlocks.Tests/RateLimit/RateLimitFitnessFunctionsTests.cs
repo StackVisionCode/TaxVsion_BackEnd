@@ -26,7 +26,7 @@ namespace TaxVision.BuildingBlocks.Tests.RateLimit;
 /// <para>
 /// (d) <c>AddRateLimiter</c> nativo de ASP.NET Core: el invariante §7 del plan ya admite
 /// explícitamente "casos donde intencionalmente queremos gate per-instance (raro, casi ninguno)" —
-/// los 6 servicios de <see cref="AllowedAddRateLimiterServices"/> son exactamente esos casos,
+/// los servicios de <see cref="AllowedAddRateLimiterServices"/> son exactamente esos casos,
 /// verificados uno por uno (todos son endpoints pre-auth/público/webhook sin tenant_id/user_id que
 /// particionar — <c>[RateLimit]</c> ahí sería fail-open). Este test no es "cero AddRateLimiter", es
 /// una allowlist congelada: cualquier <c>AddRateLimiter</c> nuevo en un servicio no listado aquí
@@ -49,6 +49,7 @@ public sealed class RateLimitFitnessFunctionsTests
         "PaymentApp", // /webhooks/* — 1000 req/min por IP (§28.4/§K.1)
         "Signature", // endpoints públicos de token — 15 req/min por IP+ruta
         "PaymentClient", // /webhooks/* y /checkout/* — 1000 req/min por IP (§28.4/§K.1)
+        "Tasks", // Client Forms público — token/sesión + IP y ruta (P-14.4)
     ];
 
     [Fact]

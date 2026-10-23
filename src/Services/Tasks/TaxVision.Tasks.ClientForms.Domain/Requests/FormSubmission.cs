@@ -51,10 +51,19 @@ public sealed class FormSubmission : BaseEntity
         DateTime nowUtc
     )
     {
-        if (_attachments.Any(item => item.FileId == fileId && item.Status != FormAttachmentStatus.Detached))
-            return Result.Failure<FormAttachment>(FormRequestErrors.AttachmentAlreadyRegistered);
-        if (_attachments.Count(item => item.Status != FormAttachmentStatus.Detached) >= maxPerSubmission
-            || _attachments.Count(item => item.Status != FormAttachmentStatus.Detached && item.Address == address) >= maxForField)
+        var activeCount = 0;
+        var fieldCount = 0;
+        foreach (var current in _attachments)
+        {
+            if (current.Status == FormAttachmentStatus.Detached)
+                continue;
+            if (current.FileId == fileId)
+                return Result.Failure<FormAttachment>(FormRequestErrors.AttachmentAlreadyRegistered);
+            activeCount++;
+            if (current.Address == address)
+                fieldCount++;
+        }
+        if (activeCount >= maxPerSubmission || fieldCount >= maxForField)
             return Result.Failure<FormAttachment>(FormRequestErrors.TooManyAttachments);
 
         var attachment = FormAttachment.Create(
@@ -75,7 +84,15 @@ public sealed class FormSubmission : BaseEntity
 
     internal Result DetachAttachment(Guid attachmentId, DateTime nowUtc)
     {
-        var attachment = _attachments.FirstOrDefault(item => item.Id == attachmentId);
+        FormAttachment? attachment = null;
+        foreach (var current in _attachments)
+        {
+            if (current.Id == attachmentId)
+            {
+                attachment = current;
+                break;
+            }
+        }
         if (attachment is null)
             return Result.Failure(FormRequestErrors.AttachmentNotFound);
         attachment.Detach(nowUtc);
@@ -90,8 +107,11 @@ public sealed class FormSubmission : BaseEntity
         DateTime nowUtc
     )
     {
-        foreach (var current in _sensitiveAnswers.Where(item => item.Address == address && item.SupersededAtUtc is null))
-            current.Supersede(nowUtc);
+        foreach (var current in _sensitiveAnswers)
+        {
+            if (current.Address == address && current.SupersededAtUtc is null)
+                current.Supersede(nowUtc);
+        }
         var answer = FormSensitiveAnswer.Create(Id, address, kind, value, actor, nowUtc);
         _sensitiveAnswers.Add(answer);
         return answer;
@@ -106,19 +126,17 @@ public sealed class FormSubmission : BaseEntity
         DateTime nowUtc
     )
     {
-        var availableFiles = _attachments
-            .Where(item => item.Status == FormAttachmentStatus.Available)
-            .Select(item => item.FileId)
-            .ToHashSet();
-        if (referencedFileIds.Any(fileId => !availableFiles.Contains(fileId)))
-            return Result.Failure<FormSubmissionRevision>(FormRequestErrors.AttachmentsNotReady);
+        foreach (var fileId in referencedFileIds)
+        {
+            if (!HasAvailableFile(fileId))
+                return Result.Failure<FormSubmissionRevision>(FormRequestErrors.AttachmentsNotReady);
+        }
 
-        var activeSensitive = _sensitiveAnswers
-            .Where(item => item.SupersededAtUtc is null)
-            .Select(item => item.Id)
-            .ToHashSet();
-        if (referencedSensitiveIds.Any(answerId => !activeSensitive.Contains(answerId)))
-            return Result.Failure<FormSubmissionRevision>(FormRequestErrors.SensitiveAnswerMissing);
+        foreach (var answerId in referencedSensitiveIds)
+        {
+            if (!HasActiveSensitiveAnswer(answerId))
+                return Result.Failure<FormSubmissionRevision>(FormRequestErrors.SensitiveAnswerMissing);
+        }
 
         var revision = FormSubmissionRevision.Create(Id, revisionNumber, answers, actor, nowUtc);
         _revisions.Add(revision);
@@ -126,7 +144,30 @@ public sealed class FormSubmission : BaseEntity
     }
 
     internal FormSubmissionRevision? CurrentRevision(int revisionNumber) =>
-        _revisions.SingleOrDefault(item => item.RevisionNumber == revisionNumber);
+        _revisions.Find(item => item.RevisionNumber == revisionNumber);
+
+    internal FormSubmissionRevision? RevisionForPdf(Guid generationId) =>
+        _revisions.Find(item => item.PdfGenerationId == generationId);
+
+    private bool HasAvailableFile(Guid fileId)
+    {
+        foreach (var attachment in _attachments)
+        {
+            if (attachment.FileId == fileId && attachment.Status == FormAttachmentStatus.Available)
+                return true;
+        }
+        return false;
+    }
+
+    private bool HasActiveSensitiveAnswer(Guid answerId)
+    {
+        foreach (var answer in _sensitiveAnswers)
+        {
+            if (answer.Id == answerId && answer.SupersededAtUtc is null)
+                return true;
+        }
+        return false;
+    }
 }
 
 public sealed class FormSubmissionRevision : BaseEntity
@@ -156,24 +197,31 @@ public sealed class FormSubmissionRevision : BaseEntity
         ProtectedAnswers answers,
         FormActor actor,
         DateTime nowUtc
-    ) => new()
-    {
-        FormSubmissionId = submissionId,
-        RevisionNumber = revisionNumber,
-        Answers = answers,
-        SubmittedAtUtc = nowUtc,
-        SubmittedBy = actor.Copy(),
-        Outcome = FormRevisionOutcome.Pending,
-    };
+    ) =>
+        new()
+        {
+            FormSubmissionId = submissionId,
+            RevisionNumber = revisionNumber,
+            Answers = answers,
+            SubmittedAtUtc = nowUtc,
+            SubmittedBy = actor.Copy(),
+            Outcome = FormRevisionOutcome.Pending,
+        };
 
-    internal void Return(string message, IReadOnlyCollection<FormFieldCommentInput> comments, Guid byUserId, DateTime nowUtc)
+    internal void Return(
+        string message,
+        IReadOnlyCollection<FormFieldCommentInput> comments,
+        Guid byUserId,
+        DateTime nowUtc
+    )
     {
         Outcome = FormRevisionOutcome.Returned;
         ReviewMessage = message;
         ReviewedAtUtc = nowUtc;
         ReviewedByUserId = byUserId;
         _fieldComments.Clear();
-        _fieldComments.AddRange(comments.Select(item => FormFieldComment.Create(Id, item.Address, item.Comment)));
+        foreach (var item in comments)
+            _fieldComments.Add(FormFieldComment.Create(Id, item.Address, item.Comment));
     }
 
     internal void Complete(string? note, Guid byUserId, DateTime nowUtc)
@@ -211,11 +259,12 @@ public sealed class FormFieldComment : BaseEntity
     public string? RowId { get; private set; }
     public string Comment { get; private set; } = string.Empty;
 
-    internal static FormFieldComment Create(Guid revisionId, FormAnswerAddress address, string comment) => new()
-    {
-        RevisionId = revisionId,
-        ComponentId = address.ComponentId,
-        RowId = address.RowId,
-        Comment = comment.Trim(),
-    };
+    internal static FormFieldComment Create(Guid revisionId, FormAnswerAddress address, string comment) =>
+        new()
+        {
+            RevisionId = revisionId,
+            ComponentId = address.ComponentId,
+            RowId = address.RowId,
+            Comment = comment.Trim(),
+        };
 }

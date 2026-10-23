@@ -3,9 +3,13 @@ using TaxVision.Tasks.ClientForms.Domain.Templates;
 
 namespace TaxVision.Tasks.ClientForms.Domain.ValueObjects;
 
-public sealed record FormDescription(string Value)
+public sealed record FormDescription
 {
     public const int MaxLength = 1000;
+
+    private FormDescription(string value) => Value = value;
+
+    public string Value { get; }
 
     public static Result<FormDescription?> Create(string? value)
     {

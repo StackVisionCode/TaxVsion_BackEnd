@@ -14,8 +14,19 @@ public sealed class CreateFormTemplateHandlerTests
         var unit = new RecordingUnitOfWork();
 
         var result = await CreateFormTemplateHandler.Handle(
-            new(FormTemplateHandlerTestDoubles.TenantId, FormTemplateHandlerTestDoubles.UserId, "Annual intake", null, FormPurpose.ClientIntake, FormPresentation.Wizard),
-            FormTemplateHandlerTestDoubles.Engine(), templates, audit, unit, default
+            new(
+                FormTemplateHandlerTestDoubles.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                "Annual intake",
+                null,
+                FormPurpose.ClientIntake,
+                FormPresentation.Wizard
+            ),
+            FormTemplateHandlerTestDoubles.Engine(),
+            templates,
+            audit,
+            unit,
+            default
         );
 
         Assert.True(result.IsSuccess);
@@ -50,6 +61,42 @@ public sealed class CreateFormTemplateHandlerTests
         Assert.Equal("FormRequest.TextContainsSensitiveData", result.Error.Code);
         Assert.Empty(templates.Items);
         Assert.Empty(audit.Actions);
+        Assert.Equal(0, unit.Saves);
+    }
+
+    [Theory]
+    [InlineData(99, 1)]
+    [InlineData(1, 99)]
+    public async Task Create_rejects_unknown_purpose_or_presentation_before_canonicalizing(
+        int purpose,
+        int presentation
+    )
+    {
+        var templates = new MemoryFormTemplateRepository();
+        var unit = new RecordingUnitOfWork();
+
+        var result = await CreateFormTemplateHandler.Handle(
+            new(
+                FormTemplateHandlerTestDoubles.TenantId,
+                FormTemplateHandlerTestDoubles.UserId,
+                "Annual intake",
+                null,
+                (FormPurpose)purpose,
+                (FormPresentation)presentation
+            ),
+            FormTemplateHandlerTestDoubles.Engine(),
+            templates,
+            new RecordingFormAuditLog(),
+            unit,
+            default
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Contains(
+            result.Error,
+            new[] { FormTemplateErrors.InvalidPurpose, FormTemplateErrors.InvalidPresentation }
+        );
+        Assert.Empty(templates.Items);
         Assert.Equal(0, unit.Saves);
     }
 }

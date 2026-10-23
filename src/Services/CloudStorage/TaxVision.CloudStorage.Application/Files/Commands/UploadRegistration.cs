@@ -116,7 +116,10 @@ internal static class UploadRegistration
             return registered;
         }
 
-        if (folderType == FolderType.ClientForms && ownerType == OwnerType.Customer)
+        if (
+            folderType == FolderType.ClientForms
+            && ownerType is OwnerType.Customer or OwnerType.FormParticipant
+        )
         {
             var folderId = await systemFolders.ResolveFolderIdAsync(
                 tenantId,

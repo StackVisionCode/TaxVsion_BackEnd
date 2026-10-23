@@ -84,8 +84,11 @@ public static class ErrorHttpMapping
             or "FormTemplateVersion.NotFound"
             or "FormRequest.NotFound"
             or "FormAttachment.NotFound"
+            or "FormRequest.AttachmentNotFound"
             or "FormSensitiveAnswer.NotFound"
             or "FormLibrary.NotFound"
+            or "ConsentNotice.NotFound"
+            or "ConsentNotice.VersionNotFound"
             or "Calendar.Appointment.NotFound"
             or "Calendar.Type.NotFound"
             or "Calendar.Availability.NotFound"
@@ -138,7 +141,10 @@ public static class ErrorHttpMapping
             // 8.1 — validación de los guardrails del link-only share al crearlo (falta password que la
             // oficina exige / expiración por encima del máximo permitido): 400, no autorización.
             or "ShareLink.PasswordRequiredForLinkShare"
-            or "ShareLink.ShareLifetimeExceedsMax" => StatusCodes.Status400BadRequest,
+            or "ShareLink.ShareLifetimeExceedsMax"
+            // Client Forms: texto del staff con un identificador fiscal o de tarjeta, y prellenado aún no disponible.
+            or "FormRequest.TextContainsSensitiveData"
+            or "FormRequest.PrefillNotAvailable" => StatusCodes.Status400BadRequest,
             "TenantDomain.ReservationConsumed"
             or "TenantDomain.ReservationExpired"
             or "TenantDomain.HostTaken"
@@ -176,7 +182,15 @@ public static class ErrorHttpMapping
             or "FormRequest.AttachmentsNotReady"
             or "FormRequest.ReminderLimitReached"
             or "FormRequest.ConcurrencyConflict"
-            or "FormRequest.ProfileUpdateAlreadyApproved" => StatusCodes.Status409Conflict,
+            or "FormRequest.ProfileUpdateAlreadyApproved"
+            or "FormRequest.CustomerUnavailable"
+            or "FormRequest.TemplateNotPublished"
+            or "FormRequest.AttachmentAlreadyRegistered" => StatusCodes.Status409Conflict,
+            "ConsentNotice.Archived"
+            or "ConsentNotice.KeyTaken"
+            or "ConsentNotice.ConcurrencyConflict"
+            or "FormConsentRecord.AlreadyAccepted"
+            or "answer.consent_required_before_collection" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"
@@ -383,6 +397,7 @@ public static class ErrorHttpMapping
                 StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed"
             or "File.ExclusiveToClientForms"
+            or "File.ClientFormsDestinationNotAllowed"
             or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
             or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
             var code
@@ -427,6 +442,8 @@ public static class ErrorHttpMapping
             var code when code.StartsWith("Codes.PaymentOutcomeVerifier.", StringComparison.Ordinal) =>
                 StatusCodes.Status503ServiceUnavailable,
             "PaymentMethod.Disabled"
+            or "answer.consent_required"
+            or "intake.entry_notice_required"
             or "PaymentMethod.UnsupportedForCheckout"
             or "PaymentMethod.UnsupportedByProvider"
             or "PayPal.CheckoutSession.MethodUnsupported" => StatusCodes.Status422UnprocessableEntity,

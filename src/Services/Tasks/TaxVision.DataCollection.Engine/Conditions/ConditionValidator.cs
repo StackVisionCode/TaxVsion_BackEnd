@@ -1,6 +1,7 @@
 using System.Text.Json;
 using TaxVision.DataCollection.Engine.Components;
 using TaxVision.DataCollection.Engine.Definitions;
+using TaxVision.DataCollection.Engine.Formats;
 using TaxVision.DataCollection.Engine.Validation;
 
 namespace TaxVision.DataCollection.Engine.Conditions;
@@ -46,7 +47,8 @@ internal sealed class ConditionValidator(DataCollectionLimits limits)
             return;
         }
 
-        var shapes = (condition.All is null ? 0 : 1)
+        var shapes =
+            (condition.All is null ? 0 : 1)
             + (condition.Any is null ? 0 : 1)
             + (condition.Not is null ? 0 : 1)
             + (condition.Field is null ? 0 : 1)
@@ -68,7 +70,15 @@ internal sealed class ConditionValidator(DataCollectionLimits limits)
             if (children.Count is < 1 or > 10)
                 Add(issues, "condition.value_invalid", path, "Condition group must contain between 1 and 10 children.");
             for (var indexValue = 0; indexValue < children.Count; indexValue++)
-                ValidateNode(children[indexValue], $"{path}/{(condition.All is null ? "any" : "all")}/{indexValue}", currentOrder, currentRepeater, index, issues, depth + 1);
+                ValidateNode(
+                    children[indexValue],
+                    $"{path}/{(condition.All is null ? "any" : "all")}/{indexValue}",
+                    currentOrder,
+                    currentRepeater,
+                    index,
+                    issues,
+                    depth + 1
+                );
             return;
         }
 
@@ -106,13 +116,20 @@ internal sealed class ConditionValidator(DataCollectionLimits limits)
             return;
         }
         if (target.Order >= currentOrder)
-            Add(issues, "condition.forward_reference", $"{path}/rows", "Conditions can reference only earlier repeaters.");
+            Add(
+                issues,
+                "condition.forward_reference",
+                $"{path}/rows",
+                "Conditions can reference only earlier repeaters."
+            );
         if (condition.Op is not ("countGte" or "countLte" or "countEquals"))
             Add(issues, "condition.op_not_allowed", $"{path}/op", "Operator is not valid for repeater rows.");
-        if (condition.Value.ValueKind != JsonValueKind.Number
+        if (
+            condition.Value.ValueKind != JsonValueKind.Number
             || !condition.Value.TryGetInt32(out var count)
             || count < 0
-            || count > limits.MaxRepeaterRows)
+            || count > limits.MaxRepeaterRows
+        )
             Add(issues, "condition.value_invalid", $"{path}/value", "Row count is outside the platform limit.");
     }
 
@@ -125,23 +142,43 @@ internal sealed class ConditionValidator(DataCollectionLimits limits)
         ICollection<ValidationIssue> issues
     )
     {
-        if (!index.Components.TryGetValue(condition.Field!, out var target) || target.ComponentType?.Kind != ComponentKind.Input)
+        if (
+            !index.Components.TryGetValue(condition.Field!, out var target)
+            || target.ComponentType?.Kind != ComponentKind.Input
+        )
         {
-            Add(issues, "condition.unknown_field", $"{path}/field", "Condition field was not found or is not an input.");
+            Add(
+                issues,
+                "condition.unknown_field",
+                $"{path}/field",
+                "Condition field was not found or is not an input."
+            );
             return;
         }
         if (target.Order >= currentOrder)
-            Add(issues, "condition.forward_reference", $"{path}/field", "Conditions can reference only earlier fields.");
+            Add(
+                issues,
+                "condition.forward_reference",
+                $"{path}/field",
+                "Conditions can reference only earlier fields."
+            );
         if (target.RepeaterSectionId is not null && target.RepeaterSectionId != currentRepeater)
-            Add(issues, "condition.out_of_scope", $"{path}/field", "Repeater fields are visible only inside the same row.");
-        if (condition.Op is null || !target.ComponentType.AllowedOperators.Contains(condition.Op))
+            Add(
+                issues,
+                "condition.out_of_scope",
+                $"{path}/field",
+                "Repeater fields are visible only inside the same row."
+            );
+        var operatorAllowed = condition.Op is not null && target.ComponentType.AllowedOperators.Contains(condition.Op);
+        if (!operatorAllowed)
             Add(issues, "condition.op_not_allowed", $"{path}/op", "Operator is not valid for the referenced field.");
-        ValidateValue(condition, target.Component, path, issues);
+        ValidateValue(condition, target.Component, operatorAllowed, path, issues);
     }
 
     private static void ValidateValue(
         Condition condition,
         FormComponent target,
+        bool operatorAllowed,
         string path,
         ICollection<ValidationIssue> issues
     )
@@ -158,18 +195,39 @@ internal sealed class ConditionValidator(DataCollectionLimits limits)
             Add(issues, "condition.value_invalid", $"{path}/value", "This operator requires a value.");
             return;
         }
-        if (condition.Op is "in" or "notIn")
+        if (
+            condition.Op is "in" or "notIn"
+            && (condition.Value.ValueKind != JsonValueKind.Array || condition.Value.GetArrayLength() is < 1 or > 50)
+        )
         {
-            if (condition.Value.ValueKind != JsonValueKind.Array || condition.Value.GetArrayLength() is < 1 or > 50)
-                Add(issues, "condition.value_invalid", $"{path}/value", "Set comparison requires 1 to 50 values.");
+            Add(issues, "condition.value_invalid", $"{path}/value", "Set comparison requires 1 to 50 values.");
             return;
         }
-        if (condition.Op is "contains" or "notContains" or "equals" or "notEquals")
+        // Con un operador no permitido ya hay un issue; el tipo del valor no se puede juzgar.
+        if (!operatorAllowed)
+            return;
+        var options = JsonProps.OptionValues(target.Props);
+        var valid = condition.Op switch
         {
-            if (target.Type == "yesNo" && condition.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                Add(issues, "condition.value_invalid", $"{path}/value", "Boolean comparison requires a boolean.");
-        }
+            "in" or "notIn" => condition.Value.EnumerateArray().All(item => IsOption(options, item)),
+            "contains" or "notContains" => IsOption(options, condition.Value),
+            _ => MatchesFieldType(target.Type, condition.Value),
+        };
+        if (!valid)
+            Add(issues, "condition.value_invalid", $"{path}/value", "Condition value does not match the field type.");
     }
+
+    private static bool IsOption(IReadOnlySet<string> options, JsonElement value) =>
+        value.ValueKind == JsonValueKind.String && options.Contains(value.GetString()!);
+
+    private static bool MatchesFieldType(string type, JsonElement value) =>
+        type switch
+        {
+            "number" or "currency" => PlainNumberFormat.TryRead(value, out _),
+            "date" => value.ValueKind == JsonValueKind.String && DateFormat.TryParse(value.GetString(), out _),
+            "yesNo" or "checkbox" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            _ => value.ValueKind == JsonValueKind.String,
+        };
 
     private static void Add(ICollection<ValidationIssue> issues, string code, string path, string message) =>
         issues.Add(new ValidationIssue(code, path, null, null, message));

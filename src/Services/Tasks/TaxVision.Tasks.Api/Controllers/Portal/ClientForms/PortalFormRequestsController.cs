@@ -6,7 +6,9 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Api.Requests.ClientForms;
+using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Commands;
 using TaxVision.Tasks.ClientForms.Application.Requests.Queries;
@@ -15,6 +17,7 @@ using Wolverine;
 namespace TaxVision.Tasks.Api.Controllers.Portal.ClientForms;
 
 [ApiController]
+[ClientFormsEndpoint]
 [Route("tasks/portal/forms")]
 [AllowActorTypes(ActorType.CustomerPortal)]
 [HasPermission(TasksPermissions.PortalForms)]
@@ -26,23 +29,65 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
     {
         if (!TryIdentity(out var tenantId, out _, out var customerId))
             return Forbid();
-        return Ok(await bus.InvokeAsync<IReadOnlyList<PortalFormRequestSummaryResponse>>(
-            new ListPortalFormRequestsQuery(tenantId, customerId, onlyOpen),
-            ct
-        ));
+        return Ok(
+            await bus.InvokeAsync<IReadOnlyList<PortalFormRequestSummaryResponse>>(
+                new ListPortalFormRequestsQuery(tenantId, customerId, onlyOpen),
+                ct
+            )
+        );
     }
 
     [HttpGet("{id:guid}")]
     [RateLimit("task.f.portal_form_read")]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
-        if (!TryIdentity(out var tenantId, out _, out var customerId))
+        if (!TryIdentity(out var tenantId, out var userId, out var customerId))
             return Forbid();
         var result = await bus.InvokeAsync<Result<PortalFormRequestDetailResponse>>(
-            new GetPortalFormRequestQuery(tenantId, customerId, id),
+            new GetPortalFormRequestQuery(tenantId, userId, customerId, id),
             ct
         );
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    [HttpPost("{id:guid}/consents")]
+    [RateLimit("task.h.portal_form_draft")]
+    public async Task<IActionResult> AcceptConsent(Guid id, AcceptFormConsentRequest request, CancellationToken ct)
+    {
+        if (!TryIdentity(out var tenantId, out var userId, out var customerId))
+            return Forbid();
+        var result = await bus.InvokeAsync<Result<AcceptFormConsentResponse>>(
+            new AcceptFormConsentCommand(
+                ParticipantContext.Portal(tenantId, customerId, userId),
+                id,
+                request.ComponentId,
+                ClientIp(),
+                UserAgent(),
+                DateTime.UtcNow
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPost("{id:guid}/consents/decline")]
+    [RateLimit("task.h.portal_form_draft")]
+    public async Task<IActionResult> DeclineConsent(Guid id, AcceptFormConsentRequest request, CancellationToken ct)
+    {
+        if (!TryIdentity(out var tenantId, out var userId, out var customerId))
+            return Forbid();
+        var result = await bus.InvokeAsync<Result<DeclineFormConsentResponse>>(
+            new DeclineFormConsentCommand(
+                ParticipantContext.Portal(tenantId, customerId, userId),
+                id,
+                request.ComponentId,
+                ClientIp(),
+                UserAgent(),
+                DateTime.UtcNow
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{id:guid}/open")]
@@ -51,11 +96,15 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
     {
         if (!TryIdentity(out var tenantId, out var userId, out var customerId))
             return Forbid();
-        var result = await bus.InvokeAsync<Result>(
-            new OpenPortalFormRequestCommand(ParticipantContext.Portal(tenantId, customerId, userId), id, DateTime.UtcNow),
+        var result = await bus.InvokeAsync<Result<FormRequestRowVersionResponse>>(
+            new OpenPortalFormRequestCommand(
+                ParticipantContext.Portal(tenantId, customerId, userId),
+                id,
+                DateTime.UtcNow
+            ),
             ct
         );
-        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : NoContent();
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
 
     [HttpPut("{id:guid}/draft")]
@@ -84,7 +133,11 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
 
     [HttpPost("{id:guid}/attachments")]
     [RateLimit("task.h.portal_form_attachment")]
-    public async Task<IActionResult> RegisterAttachment(Guid id, RegisterPortalFormAttachmentRequest request, CancellationToken ct)
+    public async Task<IActionResult> RegisterAttachment(
+        Guid id,
+        RegisterPortalFormAttachmentRequest request,
+        CancellationToken ct
+    )
     {
         if (!TryIdentity(out var tenantId, out var userId, out var customerId))
             return Forbid();
@@ -113,7 +166,7 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
     {
         if (!TryIdentity(out var tenantId, out var userId, out var customerId))
             return Forbid();
-        var result = await bus.InvokeAsync<Result>(
+        var result = await bus.InvokeAsync<Result<FormRequestRowVersionResponse>>(
             new DetachPortalFormAttachmentCommand(
                 ParticipantContext.Portal(tenantId, customerId, userId),
                 id,
@@ -122,12 +175,16 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
             ),
             ct
         );
-        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : NoContent();
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
 
     [HttpPost("{id:guid}/sensitive-answers")]
     [RateLimit("task.h.portal_form_sensitive")]
-    public async Task<IActionResult> CaptureSensitive(Guid id, CapturePortalSensitiveAnswerRequest request, CancellationToken ct)
+    public async Task<IActionResult> CaptureSensitive(
+        Guid id,
+        CapturePortalSensitiveAnswerRequest request,
+        CancellationToken ct
+    )
     {
         if (!TryIdentity(out var tenantId, out var userId, out var customerId))
             return Forbid();
@@ -192,4 +249,14 @@ public sealed class PortalFormRequestsController(IMessageBus bus) : ControllerBa
     }
 
     private static readonly Error RowVersionError = new("FormRequest.InvalidRowVersion", "The row version is invalid.");
+
+    private string ClientIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    private string UserAgent()
+    {
+        var value = Request.Headers.UserAgent.ToString();
+        if (string.IsNullOrWhiteSpace(value))
+            return "unknown";
+        return value.Length <= 512 ? value : value[..512];
+    }
 }

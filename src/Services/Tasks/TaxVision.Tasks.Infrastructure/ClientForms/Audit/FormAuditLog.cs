@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
@@ -74,6 +75,68 @@ internal sealed class FormAuditLog(
         );
     }
 
+    public void RecordStaffOutcome(
+        Guid tenantId,
+        Guid? templateId,
+        Guid? requestId,
+        string action,
+        string outcome,
+        Guid actorUserId,
+        string? detailsJson = null,
+        FormAuditRequestContext? requestContext = null
+    )
+    {
+        var http = httpContextAccessor.HttpContext;
+        context.FormAuditEntries.Add(
+            FormAuditEntry.Create(
+                tenantId,
+                templateId,
+                requestId,
+                action,
+                outcome,
+                actorUserId,
+                "Staff",
+                null,
+                null,
+                Limit(requestContext?.IpAddress ?? http?.Connection.RemoteIpAddress?.ToString(), 64),
+                Limit(requestContext?.UserAgent ?? http?.Request.Headers.UserAgent.ToString(), 512),
+                Limit(requestContext?.CorrelationId ?? correlation.CorrelationId, 64) ?? string.Empty,
+                Limit(detailsJson, 2000),
+                DateTime.UtcNow
+            )
+        );
+    }
+
+    public async Task RecordAnswersViewedAsync(
+        Guid tenantId,
+        Guid requestId,
+        int revisionNumber,
+        Guid actorUserId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        var details = $"{{\"revisionNumber\":{revisionNumber}}}";
+        var cutoff = nowUtc.AddMinutes(-30);
+        var exists = await context
+            .FormAuditEntries.IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(
+                item =>
+                    item.TenantId == tenantId
+                    && item.FormRequestId == requestId
+                    && item.ActorUserId == actorUserId
+                    && item.Action == "answers.viewed"
+                    && item.DetailsJson == details
+                    && item.OccurredAtUtc >= cutoff,
+                ct
+            );
+        if (!exists)
+            Record(tenantId, null, requestId, "answers.viewed", actorUserId, details);
+    }
+
     private static string? Limit(string? value, int maxLength) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Length <= maxLength ? value : value[..maxLength];
+        string.IsNullOrWhiteSpace(value) ? null
+        : value.Length <= maxLength ? value
+        : value[..maxLength];
 }

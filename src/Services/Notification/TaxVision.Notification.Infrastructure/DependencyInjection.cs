@@ -167,6 +167,7 @@ public static class DependencyInjection
 
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.
         services.AddSecretProtection();
+        services.AddProtectedPayloadProtection(configuration);
 
         // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage). Se conserva
         // por su superficie HTTP de gestión de plantillas (GET/POST /notifications/email/templates),

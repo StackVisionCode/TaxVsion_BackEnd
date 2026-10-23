@@ -68,9 +68,12 @@ public sealed class FormAttachment : TenantEntity
             FormFileVerdictStatus.Infected => "infected",
             FormFileVerdictStatus.Blocked => "blocked_by_policy",
             FormFileVerdictStatus.ScanFailed => "scan_failed",
-            FormFileVerdictStatus.Available when !string.Equals(verdict.FolderType, "ClientForms", StringComparison.Ordinal) => "wrong_folder",
-            FormFileVerdictStatus.Available when verdict.OwnerId is null || string.IsNullOrWhiteSpace(verdict.OwnerType)
-                || !expectedOwners.Contains((verdict.OwnerType, verdict.OwnerId.Value)) => "not_owned",
+            FormFileVerdictStatus.Available
+                when !string.Equals(verdict.FolderType, "ClientForms", StringComparison.Ordinal) => "wrong_folder",
+            FormFileVerdictStatus.Available
+                when verdict.OwnerId is null
+                    || string.IsNullOrWhiteSpace(verdict.OwnerType)
+                    || !IsExpectedOwner(expectedOwners, verdict.OwnerType, verdict.OwnerId.Value) => "not_owned",
             _ => null,
         };
 
@@ -100,5 +103,19 @@ public sealed class FormAttachment : TenantEntity
     {
         Status = FormAttachmentStatus.Detached;
         DetachedAtUtc = nowUtc;
+    }
+
+    private static bool IsExpectedOwner(
+        IReadOnlyCollection<(string OwnerType, Guid OwnerId)> expectedOwners,
+        string ownerType,
+        Guid ownerId
+    )
+    {
+        foreach (var owner in expectedOwners)
+        {
+            if (string.Equals(owner.OwnerType, ownerType, StringComparison.Ordinal) && owner.OwnerId == ownerId)
+                return true;
+        }
+        return false;
     }
 }

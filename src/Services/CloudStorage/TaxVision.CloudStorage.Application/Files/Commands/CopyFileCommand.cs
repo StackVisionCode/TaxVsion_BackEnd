@@ -48,7 +48,17 @@ public static class CopyFileHandler
         if (destination.IsFailure)
             return Result.Failure<CopiedFileResponse>(destination.Error);
 
-        var registered = await RegisterCopyAsync(command, source, limits, keyBuilder, systemFolders, options.Value, clock, bus, ct);
+        var registered = await RegisterCopyAsync(
+            command,
+            source,
+            limits,
+            keyBuilder,
+            systemFolders,
+            options.Value,
+            clock,
+            bus,
+            ct
+        );
         if (registered.IsFailure)
             return Result.Failure<CopiedFileResponse>(registered.Error);
 
@@ -88,6 +98,10 @@ public static class CopyFileHandler
         if (!command.Scope.CanCreate(request.OwnerType, request.OwnerId))
             return Result.Failure<Guid?>(FileErrors.Forbidden);
 
+        // Client Forms solo recibe cargas del formulario: copiar hacia ahí lo saltaría.
+        if (request.FolderType == FolderType.ClientForms)
+            return Result.Failure<Guid?>(FileErrors.ClientFormsDestinationNotAllowed);
+
         if (request.FolderId is { } requestedFolderId)
         {
             var folder = await folders.GetAsync(command.TenantId, requestedFolderId, ct);
@@ -95,11 +109,10 @@ public static class CopyFileHandler
                 return Result.Failure<Guid?>(FolderErrors.NotFound);
             if (folder.OwnerType != request.OwnerType || folder.OwnerId != request.OwnerId)
                 return Result.Failure<Guid?>(FolderErrors.OwnerMismatch);
+            if (IsClientFormsFolder(folder))
+                return Result.Failure<Guid?>(FileErrors.ClientFormsDestinationNotAllowed);
             return Result.Success<Guid?>(folder.Id);
         }
-
-        if (request.FolderType == FolderType.ClientForms)
-            return Result.Success<Guid?>(null);
 
         if (!options.AutoSystemFolders)
             return Result.Success<Guid?>(null);
@@ -115,6 +128,10 @@ public static class CopyFileHandler
         );
         return Result.Success(folderId);
     }
+
+    private static bool IsClientFormsFolder(Folder folder) =>
+        SystemFolderCatalog.TryGet(FolderType.ClientForms, out var spec)
+        && string.Equals(folder.Category, spec.Category, StringComparison.Ordinal);
 
     private static Task<Result<FileObject>> RegisterCopyAsync(
         CopyFileCommand command,

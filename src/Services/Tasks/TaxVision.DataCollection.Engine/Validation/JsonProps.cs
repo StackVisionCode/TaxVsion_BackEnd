@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Text.Json;
+using TaxVision.DataCollection.Engine.Formats;
 using TaxVision.DataCollection.Engine.Serialization;
 using TaxVision.DataCollection.Engine.Text;
 
@@ -21,10 +21,18 @@ internal static class JsonProps
         return false;
     }
 
-    internal static int GetInt(JsonElement props, string name, int defaultValue)
-    {
-        return TryGet(props, name, out var value) && value.TryGetInt32(out var result) ? result : defaultValue;
-    }
+    // Un entero fuera de rango o no entero lo reporta el validador de props; aquí solo se lee.
+    internal static int GetInt(JsonElement props, string name, int defaultValue) =>
+        TryGet(props, name, out var value)
+        && PlainNumberFormat.TryReadInteger(value, int.MinValue, int.MaxValue, out var result)
+            ? (int)result
+            : defaultValue;
+
+    internal static long GetLong(JsonElement props, string name, long defaultValue) =>
+        TryGet(props, name, out var value)
+        && PlainNumberFormat.TryReadInteger(value, long.MinValue, long.MaxValue, out var result)
+            ? result
+            : defaultValue;
 
     internal static decimal? GetDecimal(JsonElement props, string name)
     {
@@ -32,10 +40,23 @@ internal static class JsonProps
             return null;
         if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
             return number;
-        if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out number))
+        if (value.ValueKind == JsonValueKind.String && PlainNumberFormat.TryParse(value.GetString(), out number))
             return number;
         return null;
     }
+
+    internal static HashSet<string> OptionValues(JsonElement props) =>
+        TryGet(props, "options", out var options) && options.ValueKind == JsonValueKind.Array
+            ? options
+                .EnumerateArray()
+                .Where(item =>
+                    item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("value", out var value)
+                    && value.ValueKind == JsonValueKind.String
+                )
+                .Select(item => item.GetProperty("value").GetString()!)
+                .ToHashSet(StringComparer.Ordinal)
+            : [];
 
     internal static string? GetString(JsonElement props, string name) =>
         TryGet(props, name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

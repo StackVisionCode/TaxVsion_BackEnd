@@ -41,6 +41,9 @@ public enum OwnerType
     /// persiste como string, así que no hay valores que correr.
     /// </summary>
     SaaSPayment,
+
+    // Participante externo de Client Forms antes de vincularse a un Customer.
+    FormParticipant,
 }
 
 public enum FolderType

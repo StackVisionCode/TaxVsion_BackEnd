@@ -30,6 +30,14 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(fileId, out var file) && file.TenantId == tenantId ? file : null);
 
+    public int LockedReads { get; private set; }
+
+    public Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct)
+    {
+        LockedReads++;
+        return GetAsync(tenantId, fileId, ct);
+    }
+
     public Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,

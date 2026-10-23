@@ -45,6 +45,8 @@ public sealed class FormTemplate : AggregateRoot
     {
         if (tenantId == Guid.Empty || byUserId == Guid.Empty)
             return Result.Failure<FormTemplate>(FormTemplateErrors.InvalidOwner);
+        if (!Enum.IsDefined(purpose))
+            return Result.Failure<FormTemplate>(FormTemplateErrors.InvalidPurpose);
 
         var template = new FormTemplate
         {
@@ -116,6 +118,9 @@ public sealed class FormTemplate : AggregateRoot
         var hash = ContentHash.Create(canonical.Sha256);
         if (hash.IsFailure)
             return Result.Failure<FormTemplateVersion>(hash.Error);
+        var document = FormDefinitionDocument.Create(canonical.Json, FormDefinitionDocument.MaxBytes);
+        if (document.IsFailure)
+            return Result.Failure<FormTemplateVersion>(document.Error);
         var version = FormTemplateVersion.Create(
             TenantId,
             Id,
@@ -123,7 +128,7 @@ public sealed class FormTemplate : AggregateRoot
             title,
             Purpose,
             presentation,
-            new FormDefinitionDocument(canonical.Json),
+            document.Value,
             hash.Value,
             componentCount,
             byUserId,
@@ -175,11 +180,9 @@ public sealed class FormTemplate : AggregateRoot
         return Result.Success();
     }
 
-    public Result EnsureDeletable() => LatestVersionNumber > 0
-        ? Result.Failure(FormTemplateErrors.HasPublishedVersions)
-        : Result.Success();
+    public Result EnsureDeletable() =>
+        LatestVersionNumber > 0 ? Result.Failure(FormTemplateErrors.HasPublishedVersions) : Result.Success();
 
-    private Result EnsureActive() => Status == FormTemplateStatus.Active
-        ? Result.Success()
-        : Result.Failure(FormTemplateErrors.Archived);
+    private Result EnsureActive() =>
+        Status == FormTemplateStatus.Active ? Result.Success() : Result.Failure(FormTemplateErrors.Archived);
 }

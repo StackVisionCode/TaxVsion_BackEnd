@@ -6,71 +6,64 @@ using TaxVision.DataCollection.Engine.Validation;
 
 namespace TaxVision.DataCollection.Engine.Visibility;
 
-internal sealed class VisibilityEvaluator(ComponentRegistry registry)
+internal sealed class VisibilityEvaluator(DataCollectionLimits limits, ComponentRegistry registry)
 {
     internal VisibilityMap Evaluate(FormDefinition definition, FormAnswers answers)
     {
         var index = DefinitionIndex.Create(definition, registry);
-        var visible = new HashSet<string>(StringComparer.Ordinal);
-        var rowVisibility = new Dictionary<(string ComponentId, string RowId), bool>();
+        var visibility = VisibilityMap.CreateMutable();
 
         foreach (var page in definition.Pages)
         {
-            var current = new VisibilityMap(visible, rowVisibility);
-            var pageVisible = ConditionEvaluator.Evaluate(page.VisibleWhen, answers, index, current);
-            if (!pageVisible)
+            if (!ConditionEvaluator.Evaluate(page.VisibleWhen, answers, index, visibility))
                 continue;
-            visible.Add(page.Id);
+            visibility.MarkVisible(page.Id);
 
             foreach (var section in page.Sections)
             {
-                current = new VisibilityMap(visible, rowVisibility);
-                var sectionVisible = ConditionEvaluator.Evaluate(section.VisibleWhen, answers, index, current);
-                if (!sectionVisible)
+                if (!ConditionEvaluator.Evaluate(section.VisibleWhen, answers, index, visibility))
                     continue;
-                visible.Add(section.Id);
+                visibility.MarkVisible(section.Id);
 
                 if (section.Repeat is null)
-                    EvaluateComponents(section, answers, index, visible, rowVisibility, null);
-                else
-                    foreach (var row in AnswersReader.ReadRows(answers, section.Id))
-                        EvaluateComponents(section, answers, index, visible, rowVisibility, row);
+                {
+                    EvaluateComponents(section, answers, index, visibility, null);
+                    continue;
+                }
+                var rows = AnswersReader.ReadRows(answers, section.Id);
+                visibility.SetRowCount(section.Id, rows.Count);
+                // Las filas por encima del máximo no se evalúan: la validación ya las rechaza.
+                foreach (var row in rows.Take(MaxRows(section)))
+                    EvaluateComponents(section, answers, index, visibility, row);
             }
         }
-        return new VisibilityMap(visible, rowVisibility);
+        return visibility;
     }
+
+    private int MaxRows(FormSection section) => Math.Min(section.Repeat!.MaxRows, limits.MaxRepeaterRows);
 
     private static void EvaluateComponents(
         FormSection section,
         FormAnswers answers,
         DefinitionIndex index,
-        ISet<string> visible,
-        IDictionary<(string ComponentId, string RowId), bool> rowVisibility,
+        VisibilityMap visibility,
         RepeaterRow? row
     )
     {
         foreach (var component in section.Components)
         {
-            var current = new VisibilityMap(visible, rowVisibility);
             var componentVisible = ConditionEvaluator.Evaluate(
                 component.VisibleWhen,
                 answers,
                 index,
-                current,
+                visibility,
                 row?.RowId,
                 row?.Values
             );
-            if (row is null)
-            {
-                if (componentVisible)
-                    visible.Add(component.Id);
-            }
-            else
-            {
-                rowVisibility[(component.Id, row.RowId)] = componentVisible;
-                if (componentVisible)
-                    visible.Add(component.Id);
-            }
+            if (row is not null)
+                visibility.SetRowVisibility(component.Id, row.RowId, componentVisible);
+            if (componentVisible)
+                visibility.MarkVisible(component.Id);
         }
     }
 }

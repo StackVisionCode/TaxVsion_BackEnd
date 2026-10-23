@@ -77,6 +77,107 @@ public sealed class CopyFileHandlerTests
         Assert.Equal(folder!.Id, copy.FolderId);
     }
 
+    [Fact]
+    public async Task Copy_into_client_forms_folder_type_is_rejected_without_side_effects()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var source = AvailableClientFormsFile(tenantId, customerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(source);
+        var folders = new FakeFolderRepository();
+        var storage = new FakeObjectStorage();
+        var bus = new FakeMessageBus();
+
+        var result = await CopyAsync(
+            tenantId,
+            source.Id,
+            new CopyFileRequest(OwnerType.Customer, customerId, FolderType.ClientForms, null),
+            files,
+            folders,
+            storage,
+            bus
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.ClientFormsDestinationNotAllowed, result.Error);
+        Assert.Empty(storage.Copied);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Copy_into_the_client_forms_system_folder_is_rejected()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var source = AvailableClientFormsFile(tenantId, customerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(source);
+        var folders = new FakeFolderRepository();
+        var clientFormsFolderId = await new SystemFolderProvisioner(folders).ResolveFolderIdAsync(
+            tenantId,
+            OwnerType.Customer,
+            customerId,
+            FolderType.ClientForms,
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            CancellationToken.None
+        );
+        var storage = new FakeObjectStorage();
+        var bus = new FakeMessageBus();
+
+        var result = await CopyAsync(
+            tenantId,
+            source.Id,
+            new CopyFileRequest(OwnerType.Customer, customerId, FolderType.Documents, 2026, clientFormsFolderId),
+            files,
+            folders,
+            storage,
+            bus
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.ClientFormsDestinationNotAllowed, result.Error);
+        Assert.Empty(storage.Copied);
+        Assert.Empty(bus.Published);
+    }
+
+    private static Task<BuildingBlocks.Results.Result<CopiedFileResponse>> CopyAsync(
+        Guid tenantId,
+        Guid sourceId,
+        CopyFileRequest request,
+        FakeFileObjectRepository files,
+        FakeFolderRepository folders,
+        FakeObjectStorage storage,
+        FakeMessageBus bus
+    )
+    {
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", 100_000_000, 100_000_000));
+        return CopyFileHandler.Handle(
+            new CopyFileCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                sourceId,
+                request,
+                new RequestAuditContext(null, null, "corr-copy")
+            ),
+            files,
+            folders,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(folders),
+            storage,
+            Options.Create(new CloudStorageOptions()),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+    }
+
     private static FileObject AvailableClientFormsFile(Guid tenantId, Guid customerId)
     {
         var now = DateTime.UtcNow;
@@ -88,7 +189,9 @@ public sealed class CopyFileHandlerTests
                 customerId,
                 FolderType.ClientForms,
                 null,
-                ObjectKey.Create($"tenants/{tenantId:N}/customer/{customerId:N}/client-forms/{Guid.NewGuid():N}.pdf").Value,
+                ObjectKey
+                    .Create($"tenants/{tenantId:N}/customer/{customerId:N}/client-forms/{Guid.NewGuid():N}.pdf")
+                    .Value,
                 "form.pdf",
                 "application/pdf",
                 1024,
@@ -101,14 +204,10 @@ public sealed class CopyFileHandlerTests
         Assert.True(file.MarkScanning().IsSuccess);
         Assert.True(
             file.MarkAvailable(
-                    ChecksumSha256.Create(
-                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                        )
-                        .Value,
-                    "application/pdf",
-                    now
-                )
-                .IsSuccess
+                ChecksumSha256.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").Value,
+                "application/pdf",
+                now
+            ).IsSuccess
         );
         return file;
     }

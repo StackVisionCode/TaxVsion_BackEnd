@@ -194,8 +194,10 @@ public sealed class MultipartUploadHandlerTests
         Assert.Empty(multipart.Initiated);
     }
 
-    [Fact]
-    public async Task ClientForms_upload_is_archived_in_the_customer_system_folder()
+    [Theory]
+    [InlineData(OwnerType.Customer)]
+    [InlineData(OwnerType.FormParticipant)]
+    public async Task ClientForms_upload_is_archived_in_the_owner_system_folder(OwnerType ownerType)
     {
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
@@ -213,7 +215,7 @@ public sealed class MultipartUploadHandlerTests
                     "intake.pdf",
                     "application/pdf",
                     1024,
-                    OwnerType.Customer,
+                    ownerType,
                     customerId,
                     FolderType.ClientForms,
                     null
@@ -237,7 +239,7 @@ public sealed class MultipartUploadHandlerTests
         var file = await files.GetAsync(tenantId, result.Value.FileId, CancellationToken.None);
         var folder = await folders.GetByOwnerAndCategoryAsync(
             tenantId,
-            OwnerType.Customer,
+            ownerType,
             customerId,
             "sys.clientforms",
             CancellationToken.None

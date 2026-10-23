@@ -41,6 +41,7 @@ const fixture = (name, mode, def, answerValues, expected = emptyExpected) => ({
   expected,
 });
 const options = [{ value: 'first', label: 'First' }, { value: 'second', label: 'Second' }];
+const signAction = { key: 'sign', type: 'requestSignature', trigger: 'onSubmit' };
 const repeaterDefinition = (minRows = 1, maxRows = 3) => definition([], {
   pages: [{
     id: 'pg_abcdefgh',
@@ -53,6 +54,14 @@ const repeaterDefinition = (minRows = 1, maxRows = 3) => definition([], {
     }],
   }],
 });
+
+const toggle = component('yesNo', {}, { id: 'fd_toggle000', required: true, label: 'Continue?' });
+const detail = component('text', {}, { id: 'fd_detail000', required: true, visibleWhen: { field: 'fd_toggle000', op: 'isTrue' }, label: 'Details' });
+const conditionalDefinition = definition([toggle, detail]);
+const guarded = (type, props, op, value) => definition([
+  component(type, props, { id: 'fd_source000' }),
+  component('text', {}, { id: 'fd_detail000', visibleWhen: { field: 'fd_source000', op, value } }),
+]);
 
 const structure = [
   fixture('valid text definition', 'structure', definition(), undefined),
@@ -88,6 +97,11 @@ const structure = [
   fixture('invalid style contrast', 'structure', definition([component('yesNo', {}, { style: { textColor: 'brand', background: 'brandSubtle' } })]), undefined, issue('style.contrast_not_allowed', '/pages/0/sections/0/components/0/style')),
   fixture('valid mapping contract', 'structure', definition([component('yesNo', {}, { key: 'email_opt_in' })], { mappings: [{ componentId: 'fd_abcdefgh', targetKey: 'customer.email_enabled', transform: 'none' }] }), undefined),
   fixture('mapping source must exist', 'structure', definition(undefined, { mappings: [{ componentId: 'fd_unknown00', targetKey: 'customer.primary_email', transform: 'lowercase' }] }), undefined, issue('mapping.invalid_target', '/mappings/0/componentId')),
+  fixture('signature instructions reject javascript link', 'structure', definition([component('signatureStep', { documentSource: 'submissionSummary', verification: 'emailOtp', instructions: { type: 'doc', blocks: [{ type: 'paragraph', children: [{ type: 'link', href: 'javascript:alert(1)', children: [{ type: 'text', text: 'Sign' }] }] }] } })], { actions: [signAction] }), undefined, issue('richtext.invalid_link', '/pages/0/sections/0/components/0/props/instructions/blocks/0/children/0/href')),
+  fixture('signature instructions reject unknown block', 'structure', definition([component('signatureStep', { documentSource: 'submissionSummary', verification: 'emailOtp', instructions: { type: 'doc', blocks: [{ type: 'table', children: [{ type: 'text', text: 'Cell' }] }] } })], { actions: [signAction] }), undefined, issue('richtext.invalid_node', '/pages/0/sections/0/components/0/props/instructions/blocks/0')),
+  fixture('non-integer prop rejected', 'structure', definition([component('text', { maxLength: 2.5 })]), undefined, issue('props.out_of_range', '/pages/0/sections/0/components/0/props/maxLength')),
+  fixture('integer prop above int range rejected', 'structure', definition([component('textarea', { rows: 1e10 })]), undefined, issue('props.out_of_range', '/pages/0/sections/0/components/0/props/rows')),
+  fixture('id with trailing newline rejected', 'structure', definition(undefined, { pages: [{ id: 'pg_abcdefgh\n', title: 'Page', sections: [{ id: 'sc_abcdefgh', title: 'Section', components: [component()] }] }] }), undefined, issue('id.invalid_format', '/pages/0/id')),
 ];
 
 const answerCases = [
@@ -115,6 +129,9 @@ answerCases.push(
   fixture('invalid phone', 'submit', definition([component('phone')]), { fd_abcdefgh: '555-1234' }, issue('answer.invalid_phone', '/values/fd_abcdefgh')),
   fixture('invalid option', 'submit', definition([component('select', { options })]), { fd_abcdefgh: 'third' }, issue('answer.invalid_option', '/values/fd_abcdefgh')),
   fixture('checkbox group exceeds max', 'submit', definition([component('checkboxGroup', { options, maxSelected: 1 })]), { fd_abcdefgh: ['first', 'second'] }, issue('answer.selection_count', '/values/fd_abcdefgh')),
+  fixture('required unanswered on submit', 'submit', definition([component('text', {}, { required: true })]), {}, issue('answer.required', '/values/fd_abcdefgh')),
+  fixture('required unanswered in draft', 'draft', definition([component('text', {}, { required: true })]), {}),
+  fixture('required checkbox unchecked in draft', 'draft', definition([component('checkbox', { text: richText('I agree') }, { required: true })]), { fd_abcdefgh: false }),
   fixture('required checkbox must be true', 'submit', definition([component('checkbox', { text: richText('I agree') }, { required: true })]), { fd_abcdefgh: false }, issue('answer.must_be_checked', '/values/fd_abcdefgh')),
   fixture('too many files', 'submit', definition([component('file', { maxFiles: 1 })]), { fd_abcdefgh: [{ fileId: '00000000-0000-0000-0000-000000000001' }, { fileId: '00000000-0000-0000-0000-000000000002' }] }, issue('answer.too_many_files', '/values/fd_abcdefgh')),
   fixture('tax id requires server reference', 'submit', definition([component('taxId', { kinds: ['ssn'] })]), { fd_abcdefgh: { last4: '1234', kind: 'ssn' } }, issue('answer.sensitive_invalid', '/values/fd_abcdefgh')),
@@ -130,11 +147,19 @@ answerCases.push(
   fixture('wrong answer type', 'submit', definition(), { fd_abcdefgh: 42 }, issue('answer.type_mismatch', '/values/fd_abcdefgh')),
   fixture('address rejects extra property', 'submit', definition([component('address', { country: 'US' })]), { fd_abcdefgh: { line1: '10 Main St', city: 'Albany', state: 'NY', postalCode: '12207', country: 'US', admin: true } }, issue('answer.type_mismatch', '/values/fd_abcdefgh')),
   fixture('file rejects extra property', 'submit', definition([component('file')]), { fd_abcdefgh: [{ fileId: '00000000-0000-0000-0000-000000000001', name: 'secret.pdf' }] }, issue('answer.type_mismatch', '/values/fd_abcdefgh')),
+  fixture('text rejects nine digit tax identifier', 'submit', definition(), { fd_abcdefgh: 'id 123456789' }, issue('answer.looks_like_tax_identifier', '/values/fd_abcdefgh')),
+  fixture('text rejects ein pattern', 'submit', definition(), { fd_abcdefgh: 'EIN 12-3456789' }, issue('answer.looks_like_tax_identifier', '/values/fd_abcdefgh')),
+  fixture('scattered digits are not a tax identifier', 'submit', definition(), { fd_abcdefgh: 'Unit 12, floor 3, ref 123456' }),
+  fixture('ten digit run is not a tax identifier', 'submit', definition(), { fd_abcdefgh: 'Order 1234567890' }),
+  fixture('text rejects dashed card number', 'submit', definition(), { fd_abcdefgh: '4111-1111-1111-1111' }, issue('answer.looks_like_card_number', '/values/fd_abcdefgh')),
+  fixture('text rejects card followed by other digits', 'submit', definition(), { fd_abcdefgh: '4111111111111111 5551234' }, issue('answer.looks_like_card_number', '/values/fd_abcdefgh')),
+  fixture('phone with trailing newline rejected', 'submit', definition([component('phone')]), { fd_abcdefgh: '+18095551234\n' }, issue('answer.invalid_phone', '/values/fd_abcdefgh')),
+  fixture('hidden value is still guarded in draft', 'draft', conditionalDefinition, { fd_toggle000: false, fd_detail000: '123-45-6789' }, issue('answer.looks_like_tax_identifier', '/values/fd_detail000')),
+  fixture('hidden value type is checked in draft', 'draft', conditionalDefinition, { fd_toggle000: false, fd_detail000: 42 }, issue('answer.type_mismatch', '/values/fd_detail000')),
+  fixture('hidden value is ignored on submit', 'submit', conditionalDefinition, { fd_toggle000: false, fd_detail000: '123-45-6789' }),
+  fixture('rows above max are reported and not evaluated', 'draft', repeaterDefinition(0, 2), { sc_repeat000: { rows: [{ rowId: 'rw_aaaaaaaaaa', values: { fd_rowname00: 'A' } }, { rowId: 'rw_bbbbbbbbbb', values: { fd_rowname00: 'B' } }, { rowId: 'rw_cccccccccc', values: { fd_rowname00: 42 } }] } }, issue('answer.rows_above_max', '/values/sc_repeat000/rows')),
 );
 
-const toggle = component('yesNo', {}, { id: 'fd_toggle000', required: true, label: 'Continue?' });
-const detail = component('text', {}, { id: 'fd_detail000', required: true, visibleWhen: { field: 'fd_toggle000', op: 'isTrue' }, label: 'Details' });
-const conditionalDefinition = definition([toggle, detail]);
 const conditions = [
   fixture('forward condition rejected', 'structure', definition([component('text', {}, { visibleWhen: { field: 'fd_later0000', op: 'isAnswered' } }), component('text', {}, { id: 'fd_later0000' })]), undefined, issue('condition.forward_reference', '/pages/0/sections/0/components/0/visibleWhen/field')),
   fixture('unknown condition field', 'structure', definition([component('text', {}, { visibleWhen: { field: 'fd_unknown00', op: 'isAnswered' } })]), undefined, issue('condition.unknown_field', '/pages/0/sections/0/components/0/visibleWhen/field')),
@@ -145,14 +170,24 @@ const conditions = [
   fixture('rows count over platform limit', 'structure', definition([], { pages: [{ id: 'pg_abcdefgh', title: 'Page', sections: [repeaterDefinition(0, 3).pages[0].sections[0], { id: 'sc_later0000', title: 'Later', visibleWhen: { rows: 'sc_repeat000', op: 'countGte', value: 51 }, components: [component('text', {}, { id: 'fd_later0000' })] }] }] }), undefined, issue('condition.value_invalid', '/pages/0/sections/1/visibleWhen/value')),
   fixture('hidden conditional field', 'visibility', conditionalDefinition, { fd_toggle000: false, fd_detail000: 'kept in draft' }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000'] }),
   fixture('visible conditional field', 'visibility', conditionalDefinition, { fd_toggle000: true, fd_detail000: 'shown' }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000', 'fd_detail000'] }),
+  fixture('in values must be field options', 'structure', guarded('select', { options }, 'in', ['first', 'third']), undefined, issue('condition.value_invalid', '/pages/0/sections/0/components/1/visibleWhen/value')),
+  fixture('contains value must be a field option', 'structure', guarded('checkboxGroup', { options }, 'contains', 'third'), undefined, issue('condition.value_invalid', '/pages/0/sections/0/components/1/visibleWhen/value')),
+  fixture('number comparison requires a number', 'structure', guarded('number', {}, 'gt', '10'), undefined, issue('condition.value_invalid', '/pages/0/sections/0/components/1/visibleWhen/value')),
+  fixture('date comparison requires an iso date', 'structure', guarded('date', {}, 'gte', '10/20/2026'), undefined, issue('condition.value_invalid', '/pages/0/sections/0/components/1/visibleWhen/value')),
+  fixture('text equality requires a string', 'structure', guarded('text', {}, 'equals', 5), undefined, issue('condition.value_invalid', '/pages/0/sections/0/components/1/visibleWhen/value')),
+  fixture('typed condition values are valid', 'structure', definition([component('number', {}, { id: 'fd_source000' }), component('date', {}, { id: 'fd_when00000' }), component('select', { options }, { id: 'fd_choice000' }), component('text', {}, { id: 'fd_detail000', visibleWhen: { all: [{ field: 'fd_source000', op: 'gt', value: 10.5 }, { field: 'fd_when00000', op: 'gte', value: '2026-01-01' }, { field: 'fd_choice000', op: 'in', value: ['first'] }] } })]), undefined),
+  fixture('date condition with numeric value is false', 'visibility', guarded('date', {}, 'gt', 20260101), { fd_source000: '2026-10-20' }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_source000'] }),
+  fixture('notContains over non-string answers is false', 'visibility', guarded('checkboxGroup', { options }, 'notContains', 'first'), { fd_source000: [1, 2] }, { valid: false, issues: [{ code: 'answer.type_mismatch', path: '/values/fd_source000' }], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_source000'] }),
+  fixture('thousands separator is not a number', 'visibility', guarded('number', {}, 'equals', 1000), { fd_source000: '1,000' }, { valid: false, issues: [{ code: 'answer.type_mismatch', path: '/values/fd_source000' }], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_source000'] }),
+  fixture('numbers compare by value', 'visibility', guarded('currency', {}, 'equals', 1000.5), { fd_source000: '1000.50' }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_source000', 'fd_detail000'] }),
   fixture('rows count reveals section', 'visibility', definition([], { pages: [{ id: 'pg_abcdefgh', title: 'Page', sections: [repeaterDefinition(0, 3).pages[0].sections[0], { id: 'sc_later0000', title: 'Later', visibleWhen: { rows: 'sc_repeat000', op: 'countGte', value: 1 }, components: [component('text', {}, { id: 'fd_later0000' })] }] }] }), { sc_repeat000: { rows: [{ rowId: 'rw_abcdefghij', values: { fd_rowname00: 'A' } }] } }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_repeat000', 'fd_rowname00', 'sc_later0000', 'fd_later0000'] }),
 ];
 
 const progress = [
   fixture('one required answered', 'progress', definition([component('text', {}, { required: true })]), { fd_abcdefgh: 'done' }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_abcdefgh'], progress: { required: 1, answered: 1 } }),
-  fixture('one required unanswered', 'progress', definition([component('text', {}, { required: true })]), {}, { valid: false, issues: [{ code: 'answer.required', path: '/values/fd_abcdefgh' }], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_abcdefgh'], progress: { required: 1, answered: 0 } }),
+  fixture('one required unanswered', 'progress', definition([component('text', {}, { required: true })]), {}, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_abcdefgh'], progress: { required: 1, answered: 0 } }),
   fixture('hidden required excluded', 'progress', conditionalDefinition, { fd_toggle000: false }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000'], progress: { required: 1, answered: 1 } }),
-  fixture('visible required included', 'progress', conditionalDefinition, { fd_toggle000: true }, { valid: false, issues: [{ code: 'answer.required', path: '/values/fd_detail000' }], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000', 'fd_detail000'], progress: { required: 2, answered: 1 } }),
+  fixture('visible required included', 'progress', conditionalDefinition, { fd_toggle000: true }, { valid: true, issues: [], visible: ['pg_abcdefgh', 'sc_abcdefgh', 'fd_toggle000', 'fd_detail000'], progress: { required: 2, answered: 1 } }),
 ];
 
 const groups = { structure, answers: answerCases, conditions, progress };

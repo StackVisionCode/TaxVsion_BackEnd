@@ -1,7 +1,10 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -17,6 +20,8 @@ using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Tasks.Application;
@@ -44,6 +49,8 @@ builder
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<ClientFormsAccessFilter>();
+builder.Services.AddScoped<FormSessionFilter>();
+builder.Services.AddScoped<PublicFormSessionContext>();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
@@ -93,6 +100,13 @@ if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
     >();
 }
 builder.Services.AddTieredRateLimiting();
+builder.Services.AddRateLimiter(options =>
+{
+    options.UseTaxVisionRejectionResponse();
+    AddPublicFormsPolicy(options, "public-forms", 20);
+    AddPublicFormsPolicy(options, "public-forms-upload", 10);
+    AddPublicFormsPolicy(options, "public-forms-challenge", 5);
+});
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -149,6 +163,20 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ClientRequestCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestFulfilledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestDocumentRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestSubmittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestReturnedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormAttachmentRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormActionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<FormAccessLinkDeliveryRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<FormAccessCodeDeliveryRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
 
     // Contratos de Reminder, no de Task: los define Reminder y Task sólo los publica.
     options.PublishMessage<ReminderRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -193,6 +221,7 @@ app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
@@ -200,5 +229,30 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+static void AddPublicFormsPolicy(RateLimiterOptions options, string name, int permitLimit)
+{
+    options.AddPolicy(
+        name,
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                $"{client}:{routeKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permitLimit,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+}
 
 public partial class Program;

@@ -248,5 +248,14 @@ public sealed class CampaignEmailWebhookControllerTests
             Published.Add(message);
             return Task.CompletedTask;
         }
+
+        public List<(string Queue, object Message)> SentToQueue { get; } = [];
+
+        public Task SendToQueueAsync<T>(string queueName, T message, CancellationToken ct = default)
+            where T : class
+        {
+            SentToQueue.Add((queueName, message));
+            return Task.CompletedTask;
+        }
     }
 }

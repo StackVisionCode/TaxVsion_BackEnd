@@ -20,6 +20,13 @@ public interface IFileObjectRepository
     Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct);
 
     /// <summary>
+    /// Lee el archivo bloqueando la fila hasta el commit de la transacción en curso: otra
+    /// escritura concurrente espera, así lo comprobado sobre la fila sigue valiendo al guardar.
+    /// Exige una transacción abierta.
+    /// </summary>
+    Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct);
+
+    /// <summary>
     /// Listado plano del tenant (sin la papelera). <paramref name="restrictedCustomerId"/> es el
     /// limite de seguridad del portal de cliente (siempre aplicado si viene, nunca opcional);
     /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es

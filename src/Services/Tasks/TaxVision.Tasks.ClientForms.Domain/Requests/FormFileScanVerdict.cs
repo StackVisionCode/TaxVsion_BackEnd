@@ -32,7 +32,17 @@ public sealed class FormFileScanVerdict : TenantEntity
     {
         var verdict = new FormFileScanVerdict { Id = fileId };
         verdict.SetTenant(tenantId);
-        verdict.Apply(status, ownerType, ownerId, folderType, contentType, sizeBytes, originalName, occurredAtUtc, nowUtc);
+        verdict.Apply(
+            status,
+            ownerType,
+            ownerId,
+            folderType,
+            contentType,
+            sizeBytes,
+            originalName,
+            occurredAtUtc,
+            nowUtc
+        );
         return verdict;
     }
 
@@ -48,12 +58,7 @@ public sealed class FormFileScanVerdict : TenantEntity
         DateTime nowUtc
     )
     {
-        if (occurredAtUtc < LastEventOccurredAtUtc || Status == FormFileVerdictStatus.Deleted)
-            return false;
-        if (Status is FormFileVerdictStatus.Infected or FormFileVerdictStatus.Blocked or FormFileVerdictStatus.ScanFailed
-            && status == FormFileVerdictStatus.Available)
-            return false;
-        if (Status == status && occurredAtUtc == LastEventOccurredAtUtc)
+        if (!Accepts(status, occurredAtUtc))
             return false;
 
         Status = status;
@@ -66,6 +71,24 @@ public sealed class FormFileScanVerdict : TenantEntity
         LastEventOccurredAtUtc = occurredAtUtc;
         UpdatedAtUtc = nowUtc;
         return true;
+    }
+
+    // Los eventos llegan repetidos o desordenados: un negativo no se revierte ni se reemplaza, y
+    // Deleted es terminal. Sobre Available solo pasa un re-escaneo negativo más nuevo.
+    private bool Accepts(FormFileVerdictStatus incoming, DateTime occurredAtUtc)
+    {
+        if (occurredAtUtc < LastEventOccurredAtUtc || Status == FormFileVerdictStatus.Deleted)
+            return false;
+        if (Status == default || incoming == FormFileVerdictStatus.Deleted)
+            return true;
+        return Status == FormFileVerdictStatus.Available
+            && (
+                incoming
+                is FormFileVerdictStatus.Infected
+                    or FormFileVerdictStatus.Blocked
+                    or FormFileVerdictStatus.ScanFailed
+            )
+            && occurredAtUtc > LastEventOccurredAtUtc;
     }
 
     public FormFileVerdict ToVerdict() => new(Status, OwnerType, OwnerId, FolderType, LastEventOccurredAtUtc);

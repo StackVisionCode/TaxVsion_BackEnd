@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace TaxVision.DataCollection.Engine.Formats;
 
 public enum TaxIdentifierKind
@@ -7,24 +10,30 @@ public enum TaxIdentifierKind
     Ein,
 }
 
-public static class TaxIdentifierFormat
+public static partial class TaxIdentifierFormat
 {
+    // SSN/EIN sobre corridas de dígitos completas: `[0-9]`, nunca `\d` (dígitos Unicode).
+    [GeneratedRegex("(?<![0-9])([0-9]{3}-[0-9]{2}-[0-9]{4}|[0-9]{2}-[0-9]{7})(?![0-9])", RegexOptions.CultureInvariant)]
+    private static partial Regex DashedPattern();
+
+    [GeneratedRegex("(?<![0-9])[0-9]{9}(?![0-9])", RegexOptions.CultureInvariant)]
+    private static partial Regex NineDigitRun();
+
     public static bool TryNormalize(string value, TaxIdentifierKind kind, out string normalized)
     {
         normalized = new string(value.Where(character => character is not ' ' and not '-').ToArray());
         return normalized.Length == 9 && normalized.All(char.IsAsciiDigit) && IsValidNormalized(normalized, kind);
     }
 
-    public static bool LooksLikeTaxIdentifier(string value)
-    {
-        var digits = new string(value.Where(char.IsAsciiDigit).ToArray());
-        if (digits.Length != 9)
-            return false;
-
-        return IsValidNormalized(digits, TaxIdentifierKind.Ssn)
-            || IsValidNormalized(digits, TaxIdentifierKind.Itin)
-            || IsValidNormalized(digits, TaxIdentifierKind.Ein);
-    }
+    public static bool LooksLikeTaxIdentifier(string value) =>
+        DashedPattern().IsMatch(value)
+        || NineDigitRun()
+            .Matches(value)
+            .Any(match =>
+                IsValidNormalized(match.Value, TaxIdentifierKind.Ssn)
+                || IsValidNormalized(match.Value, TaxIdentifierKind.Itin)
+                || IsValidNormalized(match.Value, TaxIdentifierKind.Ein)
+            );
 
     private static bool IsValidNormalized(string value, TaxIdentifierKind kind) =>
         kind switch
@@ -43,11 +52,11 @@ public static class TaxIdentifierFormat
 
     private static bool IsValidItin(string value)
     {
-        if (value[0] != '9' || !int.TryParse(value.Substring(3, 2), out var middle))
+        if (
+            value[0] != '9'
+            || !int.TryParse(value.AsSpan(3, 2), NumberStyles.None, CultureInfo.InvariantCulture, out var middle)
+        )
             return false;
-        return middle is >= 50 and <= 65
-            or >= 70 and <= 88
-            or >= 90 and <= 92
-            or >= 94 and <= 99;
+        return middle is >= 50 and <= 65 or >= 70 and <= 88 or >= 90 and <= 92 or >= 94 and <= 99;
     }
 }

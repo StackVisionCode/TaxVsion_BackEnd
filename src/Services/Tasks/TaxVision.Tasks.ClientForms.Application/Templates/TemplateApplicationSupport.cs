@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
 using TaxVision.DataCollection.Engine.Definitions;
+using TaxVision.DataCollection.Engine.Serialization;
 using TaxVision.DataCollection.Engine.Validation;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
@@ -36,7 +37,33 @@ internal static class TemplateApplicationSupport
             : Result.Success((parsedName.Value, parsedDescription.Value));
     }
 
-    internal static FormDefinition EmptyDefinition(string title, DomainPurpose purpose, DomainPresentation presentation) =>
+    internal static Result EnsureKnownOptions(DomainPurpose purpose, DomainPresentation presentation)
+    {
+        if (!Enum.IsDefined(purpose))
+            return Result.Failure(FormTemplateErrors.InvalidPurpose);
+        return Enum.IsDefined(presentation) ? Result.Success() : Result.Failure(FormTemplateErrors.InvalidPresentation);
+    }
+
+    // El documento canónico respeta el límite configurado, igual que el JSON de entrada.
+    internal static Result<(FormDefinitionDocument Document, ContentHash Hash)> Document(
+        IFormEngine engine,
+        CanonicalDefinition canonical
+    )
+    {
+        var document = FormDefinitionDocument.Create(canonical.Json, engine.Limits.MaxDefinitionBytes);
+        var hash = ContentHash.Create(canonical.Sha256);
+        if (document.IsFailure)
+            return Result.Failure<(FormDefinitionDocument, ContentHash)>(document.Error);
+        return hash.IsFailure
+            ? Result.Failure<(FormDefinitionDocument, ContentHash)>(hash.Error)
+            : Result.Success((document.Value, hash.Value));
+    }
+
+    internal static FormDefinition EmptyDefinition(
+        string title,
+        DomainPurpose purpose,
+        DomainPresentation presentation
+    ) =>
         new()
         {
             SchemaVersion = 1,
@@ -57,9 +84,14 @@ internal static class TemplateApplicationSupport
     internal static ValidationIssue ParseIssue(Error error) => new(error.Code, "$", null, null, error.Message);
 
     internal static DomainPurpose ToDomain(EnginePurpose purpose) => (DomainPurpose)(int)purpose;
-    internal static DomainPresentation ToDomain(EnginePresentation presentation) => (DomainPresentation)(int)presentation;
+
+    internal static DomainPresentation ToDomain(EnginePresentation presentation) =>
+        (DomainPresentation)(int)presentation;
+
     internal static EnginePurpose ToEngine(DomainPurpose purpose) => (EnginePurpose)(int)purpose;
-    internal static EnginePresentation ToEngine(DomainPresentation presentation) => (EnginePresentation)(int)presentation;
+
+    internal static EnginePresentation ToEngine(DomainPresentation presentation) =>
+        (EnginePresentation)(int)presentation;
 
     internal static int CountComponents(FormDefinition definition) =>
         definition.Pages.Sum(page => page.Sections.Sum(section => section.Components.Count));

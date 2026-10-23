@@ -10,7 +10,7 @@ public sealed record OpenPortalFormRequestCommand(ParticipantContext Context, Gu
 
 public static class OpenPortalFormRequestHandler
 {
-    public static async Task<Result> Handle(
+    public static async Task<Result<FormRequestRowVersionResponse>> Handle(
         OpenPortalFormRequestCommand command,
         IFormRequestRepository requests,
         IFormAuditLog audit,
@@ -20,11 +20,17 @@ public static class OpenPortalFormRequestHandler
     {
         var found = await requests.GetForCommandAsync(command.Context.TenantId, command.RequestId, ct);
         if (found.IsFailure || !FormRequestApplicationSupport.Matches(command.Context, found.Value))
-            return Result.Failure(FormRequestErrors.NotFound);
-        if (!found.Value.MarkOpened(command.NowUtc))
-            return Result.Success();
-        audit.RecordParticipant(command.Context.TenantId, command.RequestId, "request.opened", command.Context.Actor);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success();
+            return Result.Failure<FormRequestRowVersionResponse>(FormRequestErrors.NotFound);
+        if (found.Value.MarkOpened(command.NowUtc))
+        {
+            audit.RecordParticipant(
+                command.Context.TenantId,
+                command.RequestId,
+                "request.opened",
+                command.Context.Actor
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        return Result.Success(FormRequestRowVersionResponse.From(found.Value));
     }
 }
