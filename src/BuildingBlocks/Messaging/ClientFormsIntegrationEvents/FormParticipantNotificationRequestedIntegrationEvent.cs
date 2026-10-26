@@ -22,12 +22,14 @@ public sealed record FormParticipantNotificationPayload(
     string Email,
     string? Name,
     string Title,
-    IReadOnlyDictionary<string, string> Params
+    IReadOnlyDictionary<string, string> Params,
+    string Language = "En"
 );
 
 public static class FormParticipantNotificationKinds
 {
     public const string Returned = "returned";
+    public const string Reminder = "reminder";
     public const string Completed = "completed";
     public const string Cancelled = "cancelled";
     public const string AttachmentRejected = "attachment_rejected";

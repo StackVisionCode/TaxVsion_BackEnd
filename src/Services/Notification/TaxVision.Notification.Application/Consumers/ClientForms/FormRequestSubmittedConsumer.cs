@@ -11,7 +11,7 @@ public static class FormRequestSubmittedConsumer
 {
     public static async Task Handle(
         FormRequestSubmittedIntegrationEvent evt,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         ICustomerAssignmentAudienceRepository assignments,
         IRecipientResolver resolver,
         ICorrelationContext correlation,
@@ -30,50 +30,38 @@ public static class FormRequestSubmittedConsumer
                 ct
             );
             foreach (var userId in recipients)
-                await RecordAsync(evt, userId, dispatcher, correlation, ct);
+                await sender.SendAsync(Notification(evt, userId), ct);
         }
     }
 
-    private static Task RecordAsync(
-        FormRequestSubmittedIntegrationEvent evt,
-        Guid userId,
-        NotificationDispatcher dispatcher,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    )
+    private static ClientFormNotificationRequest Notification(FormRequestSubmittedIntegrationEvent evt, Guid userId)
     {
         var customerName = evt.CustomerDisplayName ?? "External participant";
-        var context = new Dictionary<string, string> { ["formRequestId"] = evt.FormRequestId.ToString() };
-        if (evt.Participant.CustomerId is { } customerId)
-            context["customerId"] = customerId.ToString();
-        return dispatcher.RecordInAppAsync(
+        return new ClientFormNotificationRequest(
             evt.TenantId,
-            $"user:{userId:N}",
-            $"{customerName} submitted a form",
-            NotificationCategory.Collaboration,
-            NotificationKinds.TasksFormRequestSubmitted,
+            userId,
+            evt.FormRequestId,
             evt.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
-                NotificationKinds.TasksFormRequestSubmitted,
-                userId,
-                evt.EventId,
-                "task.form_request_submitted.v1",
-                evt.OccurredOn,
-                $"{customerName} submitted a form",
-                FallbackBody: evt.Title,
-                ResourceId: evt.FormRequestId.ToString(),
-                ResourceContext: context,
-                Params: new Dictionary<string, string>
-                {
-                    ["title"] = evt.Title,
-                    ["customerName"] = customerName,
-                    ["revisionNumber"] = evt.RevisionNumber.ToString(),
-                },
-                GroupKey: $"form_request:{evt.FormRequestId:N}"
-            ),
-            ct: ct
+            evt.OccurredOn,
+            NotificationKinds.TasksFormRequestSubmitted,
+            "task.form_request_submitted.v1",
+            "task.form_request_submitted.push.v1",
+            $"{customerName} submitted a form",
+            evt.Title,
+            new Dictionary<string, object?>
+            {
+                ["request_title"] = evt.Title,
+                ["customer_name"] = customerName,
+                ["revision_number"] = evt.RevisionNumber,
+            },
+            new Dictionary<string, string>
+            {
+                ["title"] = evt.Title,
+                ["customerName"] = customerName,
+                ["revisionNumber"] = evt.RevisionNumber.ToString(),
+            },
+            NotificationCategory.ClientRequests,
+            evt.Participant.CustomerId
         );
     }
 }

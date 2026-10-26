@@ -12,7 +12,7 @@ public static class FormActionFailedConsumer
 {
     public static async Task Handle(
         FormActionFailedIntegrationEvent evt,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         IRecipientResolver resolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -30,37 +30,24 @@ public static class FormActionFailedConsumer
             );
             if (resolved.IsFailure || !resolved.Value.Contains(evt.ResponsibleUserId))
                 return;
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                $"user:{evt.ResponsibleUserId:N}",
-                "A form action needs attention",
-                NotificationCategory.Collaboration,
-                NotificationKinds.TasksFormActionFailed,
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.ResponsibleUserId,
-                inApp: new InAppNotificationRequest(
-                    NotificationKinds.TasksFormActionFailed,
-                    evt.ResponsibleUserId,
-                    evt.EventId,
-                    "task.form_action_failed.v1",
-                    evt.OccurredOn,
-                    "A form action needs attention",
-                    FallbackBody: evt.ActionType,
-                    ResourceId: evt.FormRequestId.ToString(),
-                    ResourceContext: new Dictionary<string, string>
-                    {
-                        ["formRequestId"] = evt.FormRequestId.ToString(),
-                    },
-                    Params: new Dictionary<string, string>
-                    {
-                        ["actionType"] = evt.ActionType,
-                        ["errorCode"] = evt.ErrorCode,
-                    },
-                    GroupKey: $"form_request:{evt.FormRequestId:N}"
-                ),
-                ct: ct
-            );
+            await sender.SendAsync(Notification(evt), ct);
         }
     }
+
+    private static ClientFormNotificationRequest Notification(FormActionFailedIntegrationEvent evt) =>
+        new(
+            evt.TenantId,
+            evt.ResponsibleUserId,
+            evt.FormRequestId,
+            evt.EventId,
+            evt.OccurredOn,
+            NotificationKinds.TasksFormActionFailed,
+            "task.form_action_failed.v1",
+            "task.form_action_failed.push.v1",
+            "A form action needs attention",
+            evt.ActionType,
+            new Dictionary<string, object?> { ["action_type"] = evt.ActionType, ["error_code"] = evt.ErrorCode },
+            new Dictionary<string, string> { ["actionType"] = evt.ActionType, ["errorCode"] = evt.ErrorCode },
+            NotificationCategory.ClientRequests
+        );
 }

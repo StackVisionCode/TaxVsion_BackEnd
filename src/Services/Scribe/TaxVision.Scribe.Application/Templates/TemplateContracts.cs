@@ -23,8 +23,8 @@ public sealed record EmailTemplateVersionResponse(
     int VersionNumber,
     string Status,
     string Subject,
-    Guid LayoutId,
-    int LayoutVersionNumber,
+    Guid? LayoutId,
+    int? LayoutVersionNumber,
     IReadOnlyList<VariableDefinitionResponse> VariableDefinitions,
     DateTime? PublishedAtUtc,
     DateTime CreatedAtUtc
@@ -38,6 +38,7 @@ public sealed record EmailTemplateResponse(
     string Name,
     string? Description,
     string Status,
+    string Channel,
     IReadOnlyList<EmailTemplateVersionResponse> Versions,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc
@@ -54,6 +55,7 @@ public static class EmailTemplateMapper
             template.Name,
             template.Description,
             template.Status.ToString(),
+            template.Channel.ToString(),
             template.Versions.Select(ToVersionResponse).ToList(),
             template.CreatedAtUtc,
             template.UpdatedAtUtc

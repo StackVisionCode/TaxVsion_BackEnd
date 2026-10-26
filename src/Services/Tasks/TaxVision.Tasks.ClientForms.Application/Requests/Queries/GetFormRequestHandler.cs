@@ -36,16 +36,8 @@ public static class GetFormRequestHandler
         if (version.IsFailure)
             return Result.Failure<StaffFormRequestDetailResponse>(FormRequestErrors.TemplateNotPublished);
 
-        var timeline = await reads.ListTimelineAsync(query.TenantId, query.RequestId, ct);
-        var consents = await consentRecords.ListForRequestAsync(query.TenantId, query.RequestId, ct);
-        var actions = await FormActionRunViews.ForStaffAsync(
-            found.Value,
-            query.ActorUserId,
-            query.CanViewAll,
-            visibility,
-            ct
-        );
-        var response = Build(found.Value, version.Value.Definition.Json, protector, consents, timeline, actions);
+        var references = await LoadReferencesAsync(query, found.Value, reads, visibility, consentRecords, ct);
+        var response = Build(found.Value, version.Value.Definition.Json, protector, references);
         await audit.RecordAnswersViewedAsync(
             query.TenantId,
             query.RequestId,
@@ -58,13 +50,27 @@ public static class GetFormRequestHandler
         return Result.Success(response);
     }
 
+    private static async Task<DetailReferences> LoadReferencesAsync(
+        GetFormRequestQuery query,
+        FormRequest request,
+        IFormRequestStaffReadRepository reads,
+        IFormRequestVisibilityFilter visibility,
+        IFormConsentRecordRepository consentRecords,
+        CancellationToken ct
+    ) =>
+        new(
+            await reads.ListTimelineAsync(query.TenantId, query.RequestId, ct),
+            await consentRecords.ListForRequestAsync(query.TenantId, query.RequestId, ct),
+            await FormActionRunViews.ForStaffAsync(request, query.ActorUserId, query.CanViewAll, visibility, ct),
+            // Sin fila de la bandeja (deep link) el detalle trae su propio nombre y email enmascarado.
+            await reads.GetParticipantLabelAsync(query.TenantId, request, ct)
+        );
+
     private static StaffFormRequestDetailResponse Build(
         FormRequest request,
         string definitionJson,
         IAnswersProtector protector,
-        IReadOnlyList<TaxVision.Tasks.ClientForms.Domain.Consents.FormConsentRecord> consents,
-        IReadOnlyList<FormRequestTimelineEntryResponse> timeline,
-        IReadOnlyList<FormActionRunResponse> actions
+        DetailReferences references
     )
     {
         var revisions =
@@ -84,10 +90,12 @@ public static class GetFormRequestHandler
             revisions,
             answers,
             MapAttachments(request),
-            consents.Select(FormConsentEvidenceResponse.From).ToArray(),
-            timeline,
-            actions,
-            FormCustomerLinkResponse.From(request)
+            references.Consents.Select(FormConsentEvidenceResponse.From).ToArray(),
+            references.Timeline,
+            references.Actions,
+            FormCustomerLinkResponse.From(request),
+            references.Label.DisplayName,
+            references.Label.MaskedEmail
         );
     }
 
@@ -117,4 +125,11 @@ public static class GetFormRequestHandler
             revision.PdfStatus,
             revision.PdfFileId
         );
+
+    private sealed record DetailReferences(
+        IReadOnlyList<FormRequestTimelineEntryResponse> Timeline,
+        IReadOnlyList<TaxVision.Tasks.ClientForms.Domain.Consents.FormConsentRecord> Consents,
+        IReadOnlyList<FormActionRunResponse> Actions,
+        FormRequestParticipantLabel Label
+    );
 }

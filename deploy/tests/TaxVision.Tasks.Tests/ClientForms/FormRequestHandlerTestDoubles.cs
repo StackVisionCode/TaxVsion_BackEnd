@@ -146,6 +146,14 @@ internal sealed class FixedRequestVisibility(bool visible) : IFormRequestVisibil
     ) => Task.FromResult(visible);
 }
 
+internal sealed class FixedCustomerReader(bool active = true) : IClientFormsCustomerReader
+{
+    public Task<ClientFormsCustomerRecord?> GetAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>
+        Task.FromResult<ClientFormsCustomerRecord?>(
+            new ClientFormsCustomerRecord(customerId, active, "Linked customer")
+        );
+}
+
 internal sealed class PlainFormAnswersProtector : IAnswersProtector
 {
     public ProtectedAnswers Protect(string json) => new(json, 1);

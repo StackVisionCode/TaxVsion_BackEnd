@@ -92,8 +92,12 @@ public static class FormRequestIntegrationEventFactory
             FormRequestId = request.Id,
             Participant = Participant(request),
             Title = request.Title,
-            Reason =
-                request.CancelReason == FormCancelReason.CustomerArchived ? "customer_archived" : "staff_cancelled",
+            Reason = request.CancelReason switch
+            {
+                FormCancelReason.CustomerArchived => "customer_archived",
+                FormCancelReason.Archived => "archived",
+                _ => "staff_cancelled",
+            },
             CancelledByUserId = cancelledByUserId,
             NotifyClient = notifyClient,
         };

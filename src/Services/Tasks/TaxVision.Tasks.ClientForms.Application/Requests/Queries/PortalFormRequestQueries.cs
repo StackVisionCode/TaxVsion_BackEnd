@@ -24,6 +24,7 @@ public sealed record GetPortalFormRequestQuery(Guid TenantId, Guid PortalUserId,
 
 public sealed record PortalFormAttachmentResponse(
     Guid Id,
+    Guid FileId,
     string ComponentId,
     string? RowId,
     string DisplayName,

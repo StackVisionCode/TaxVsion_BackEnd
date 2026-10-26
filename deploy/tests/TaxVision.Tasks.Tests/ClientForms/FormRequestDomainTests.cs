@@ -1,4 +1,5 @@
 using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Domain.Requests.Events;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.ClientForms.Domain.ValueObjects;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
@@ -211,6 +212,35 @@ public sealed class FormRequestDomainTests
 
         Assert.True(result.IsFailure);
         Assert.Equal(FormRequestStatus.Pending, request.Status);
+    }
+
+    // §42 y P-19: archivar es Cancel con otro motivo, y Completed es terminal.
+    [Fact]
+    public void Archive_rejects_a_completed_request_like_cancel_does()
+    {
+        var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
+        request.Submit(ProtectedAnswers(), [], [], FormActor.PortalUser(UserId), Now);
+        request.Complete(null, UserId, Now.AddMinutes(1));
+
+        var result = request.Archive("Resolved", UserId, Now.AddMinutes(2));
+
+        Assert.Equal(FormRequestErrors.InvalidTransition, result.Error);
+        Assert.Equal(FormRequestStatus.Completed, request.Status);
+        Assert.Null(request.CancelReason);
+        Assert.Empty(request.DomainEvents.OfType<FormRequestCancelled>());
+    }
+
+    [Fact]
+    public void Archive_closes_a_submitted_request_with_its_own_reason()
+    {
+        var request = Create(FormParticipantRef.Customer(CustomerId)).Value;
+        request.Submit(ProtectedAnswers(), [], [], FormActor.PortalUser(UserId), Now);
+
+        var result = request.Archive("Spam", UserId, Now.AddMinutes(1));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(FormRequestStatus.Cancelled, request.Status);
+        Assert.Equal(FormCancelReason.Archived, request.CancelReason);
     }
 
     private static BuildingBlocks.Results.Result<FormRequest> Create(

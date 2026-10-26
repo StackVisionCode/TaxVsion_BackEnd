@@ -74,12 +74,14 @@ internal static class TemplateApplicationSupport
             [
                 new FormPage
                 {
-                    Id = Guid.NewGuid().ToString("N"),
+                    Id = NewDefinitionId("pg"),
                     Title = "Page 1",
-                    Sections = [new FormSection { Id = Guid.NewGuid().ToString("N"), Components = [] }],
+                    Sections = [new FormSection { Id = NewDefinitionId("sc"), Components = [] }],
                 },
             ],
         };
+
+    private static string NewDefinitionId(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..13];
 
     // Sin configure_actions se edita todo menos el mapeo y las acciones: se comparan contra el borrador actual.
     internal static Result EnsureRuleSetsAllowed(

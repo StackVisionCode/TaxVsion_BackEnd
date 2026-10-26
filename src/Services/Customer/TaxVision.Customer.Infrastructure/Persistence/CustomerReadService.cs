@@ -234,7 +234,10 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.Id,
                 c.DisplayName,
                 c.PrimaryEmail.Value,
-                c.Status
+                c.Status,
+                c.Language.ToString(),
+                c.ContactPolicy.EmailEnabled,
+                c.ContactPolicy.SmsEnabled
             ))
             .ToListAsync(ct);
 

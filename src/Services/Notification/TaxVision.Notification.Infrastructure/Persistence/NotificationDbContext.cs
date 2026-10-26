@@ -60,6 +60,8 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     // Proyección por canal (T7.3). Si no hay fila, política efectiva = ambos ON (opt-out).
     public DbSet<CustomerContactPolicyProjection> CustomerContactPolicyProjections =>
         Set<CustomerContactPolicyProjection>();
+    public DbSet<ClientFormNotificationSettingsProjection> ClientFormNotificationSettingsProjections =>
+        Set<ClientFormNotificationSettingsProjection>();
 
     // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
     public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();

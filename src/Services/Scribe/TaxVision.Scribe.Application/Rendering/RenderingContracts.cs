@@ -1,4 +1,5 @@
 ﻿using TaxVision.Scribe.Domain;
+using TaxVision.Scribe.Domain.Templates;
 using TaxVision.Scribe.Domain.ValueObjects;
 
 namespace TaxVision.Scribe.Application.Rendering;
@@ -15,7 +16,8 @@ public sealed record RenderRequest(
     Guid? TenantId,
     Locale? Locale,
     IReadOnlyDictionary<string, object?> Variables,
-    LogoScope LogoScope = LogoScope.System
+    LogoScope LogoScope = LogoScope.System,
+    TemplateChannel Channel = TemplateChannel.Email
 );
 
 /// <param name="DispatchScope">

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Api.Requests.ClientForms;
 using TaxVision.Tasks.ClientForms.Application.Consents;
+using TaxVision.Tasks.ClientForms.Domain.Consents;
 using Wolverine;
 
 namespace TaxVision.Tasks.Api.Controllers.ClientForms;
@@ -30,6 +31,28 @@ public sealed class ConsentNoticesController(IMessageBus bus) : ControllerBase
             return Forbid();
         return Ok(
             await bus.InvokeAsync<IReadOnlyList<ConsentNoticeResponse>>(new ListConsentNoticesQuery(tenantId), ct)
+        );
+    }
+
+    // Solo avisos activos y publicados, sin datos de gestión: para enviar a externos y para intake links.
+    [HttpGet("active")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasAnyPermission(
+        TasksPermissions.FormConsentsManage,
+        TasksPermissions.FormTemplatesManage,
+        TasksPermissions.FormRequestsSendExternal,
+        TasksPermissions.FormIntakeLinksManage
+    )]
+    [RateLimit("task.f.form_read")]
+    public async Task<IActionResult> ListActive([FromQuery] ConsentNoticePurpose? purpose, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Forbid();
+        return Ok(
+            await bus.InvokeAsync<IReadOnlyList<ActiveConsentNoticeResponse>>(
+                new ListActiveConsentNoticesQuery(tenantId, purpose),
+                ct
+            )
         );
     }
 

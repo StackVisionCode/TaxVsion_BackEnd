@@ -41,7 +41,7 @@ public static class VerifyPublicDirectedFormChallengeHandler
             ct
         );
         var challenge = await VerifyCodeAsync(command, context, challenges, security, metrics, unitOfWork, ct);
-        if (context is null || challenge is null || !RecordVerified(context, command.NowUtc))
+        if (context is null || challenge is null || !RecordVerified(context, command))
             return Failed();
         return await OpenSessionAsync(
             command,
@@ -96,8 +96,16 @@ public static class VerifyPublicDirectedFormChallengeHandler
         return verified ? challenge : null;
     }
 
-    private static bool RecordVerified(PublicDirectedFormAccess.Context context, DateTime nowUtc) =>
-        context.Participant.MarkVerified(nowUtc).IsSuccess && context.Grant.RecordUsed(nowUtc).IsSuccess;
+    private static bool RecordVerified(
+        PublicDirectedFormAccess.Context context,
+        VerifyPublicDirectedFormChallengeCommand command
+    )
+    {
+        if (command.Language is not null)
+            context.Participant.SetLanguage(command.Language);
+        return context.Participant.MarkVerified(command.NowUtc).IsSuccess
+            && context.Grant.RecordUsed(command.NowUtc).IsSuccess;
+    }
 
     private static async Task<Result<PublicFormSessionResponse>> OpenSessionAsync(
         VerifyPublicDirectedFormChallengeCommand command,

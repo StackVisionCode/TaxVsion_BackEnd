@@ -17,6 +17,7 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
 
     public Guid? TenantId { get; private set; }
     public TemplateScope Scope { get; private set; }
+    public TemplateChannel Channel { get; private set; }
     public TemplateKey TemplateKey { get; private set; } = default!;
     public string Name { get; private set; } = default!;
     public string? Description { get; private set; }
@@ -43,7 +44,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
         string name,
         string? description,
         Guid createdByUserId,
-        DateTime createdAtUtc
+        DateTime createdAtUtc,
+        TemplateChannel channel = TemplateChannel.Email
     )
     {
         if (scope == TemplateScope.Tenant && tenantId is null)
@@ -67,6 +69,7 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 Scope = scope,
+                Channel = channel,
                 TemplateKey = templateKey,
                 Name = name.Trim(),
                 Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
@@ -100,6 +103,95 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
         int? seedContentVersion = null
     )
     {
+        if (Channel != TemplateChannel.Email)
+            return Result.Failure<EmailTemplateVersion>(
+                new Error("EmailTemplate.Channel", "Push templates require a text-only version.")
+            );
+
+        return AddVersion(
+            subject,
+            htmlStorageKey,
+            htmlFileId,
+            textStorageKey,
+            textFileId,
+            designJsonStorageKey,
+            designJsonFileId,
+            previewImageStorageKey,
+            previewImageFileId,
+            layoutId,
+            layoutVersionNumber,
+            variableDefinitions,
+            nowUtc,
+            seedContentVersion
+        );
+    }
+
+    public Result<EmailTemplateVersion> AddPushDraftVersion(
+        string subject,
+        string textStorageKey,
+        Guid textFileId,
+        IReadOnlyList<(
+            string Name,
+            VariableType Type,
+            bool Required,
+            string? DefaultValue,
+            string? Description
+        )> variableDefinitions,
+        DateTime nowUtc,
+        int? seedContentVersion = null
+    )
+    {
+        if (Channel != TemplateChannel.Push)
+            return Result.Failure<EmailTemplateVersion>(
+                new Error("EmailTemplate.Channel", "Email templates require HTML and a layout.")
+            );
+
+        if (string.IsNullOrWhiteSpace(textStorageKey) || textFileId == Guid.Empty)
+            return Result.Failure<EmailTemplateVersion>(
+                new Error("EmailTemplateVersion.TextRequired", "Push templates require text content.")
+            );
+
+        return AddVersion(
+            subject,
+            null,
+            null,
+            textStorageKey,
+            textFileId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            variableDefinitions,
+            nowUtc,
+            seedContentVersion
+        );
+    }
+
+    private Result<EmailTemplateVersion> AddVersion(
+        string subject,
+        string? htmlStorageKey,
+        Guid? htmlFileId,
+        string? textStorageKey,
+        Guid? textFileId,
+        string? designJsonStorageKey,
+        Guid? designJsonFileId,
+        string? previewImageStorageKey,
+        Guid? previewImageFileId,
+        Guid? layoutId,
+        int? layoutVersionNumber,
+        IReadOnlyList<(
+            string Name,
+            VariableType Type,
+            bool Required,
+            string? DefaultValue,
+            string? Description
+        )> variableDefinitions,
+        DateTime nowUtc,
+        int? seedContentVersion
+    )
+    {
         if (Status != EmailContentStatus.Active)
             return Result.Failure<EmailTemplateVersion>(
                 new Error("EmailTemplate.NotActive", "Cannot add a version to a non-active template.")
@@ -124,6 +216,7 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             previewImageFileId,
             layoutId,
             layoutVersionNumber,
+            Channel,
             variableDefinitions,
             nowUtc,
             seedContentVersion

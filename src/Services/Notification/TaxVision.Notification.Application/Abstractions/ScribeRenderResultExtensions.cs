@@ -21,4 +21,7 @@ public static class ScribeRenderResultExtensions
     /// </summary>
     public static ScribeRenderedEmail EnsureRendered(this Result<ScribeRenderedEmail> result, string eventKey) =>
         result.IsSuccess ? result.Value : throw new ScribeRenderFailedException(eventKey, result.Error);
+
+    public static ScribeRenderedText EnsureRendered(this Result<ScribeRenderedText> result, string eventKey) =>
+        result.IsSuccess ? result.Value : throw new ScribeRenderFailedException(eventKey, result.Error);
 }

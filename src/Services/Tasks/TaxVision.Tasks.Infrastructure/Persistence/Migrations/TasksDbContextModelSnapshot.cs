@@ -625,6 +625,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("En");
+
                     b.Property<DateTime?>("LinkedAtUtc")
                         .HasColumnType("datetime2");
 

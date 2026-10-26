@@ -35,6 +35,8 @@ public sealed record ScribeRenderedEmail(
         : this(Subject, Html, Text, InlineAssets, EmailDispatchScope.System) { }
 }
 
+public sealed record ScribeRenderedText(string Subject, string Text);
+
 /// <summary>
 /// Cliente del microservicio Scribe (HTTP a POST /scribe/render) — Fase 8: reemplaza los catálogos
 /// locales <c>EmailTemplates</c>/<c>SignatureTemplateCatalog</c>. Los consumers de Notification
@@ -50,4 +52,16 @@ public interface IScribeRenderClient
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken ct = default
     );
+
+    Task<Result<ScribeRenderedText>> RenderTextAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Result.Failure<ScribeRenderedText>(
+                new Error("Notification.ScribeTextUnsupported", "Text rendering is not supported by this client.")
+            )
+        );
 }

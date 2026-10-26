@@ -14,5 +14,8 @@ public sealed record CustomerReconciliationResponse(
     Guid CustomerId,
     string DisplayName,
     string PrimaryEmail,
-    CustomerStatus Status
+    CustomerStatus Status,
+    string Language,
+    bool EmailEnabled,
+    bool SmsEnabled
 );

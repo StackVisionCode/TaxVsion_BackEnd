@@ -65,6 +65,17 @@ public sealed class ClientFormsStaffAccessTests
         );
     }
 
+    [Theory]
+    [InlineData(nameof(FormRequestsController.LinkCustomer), TasksPermissions.FormRequestsReview)]
+    [InlineData(nameof(FormRequestsController.ReassignResponsible), TasksPermissions.FormRequestsManage)]
+    [InlineData(nameof(FormRequestsController.Archive), TasksPermissions.FormRequestsManage)]
+    public void Inbox_decisions_require_their_exact_permission(string action, string permission)
+    {
+        var method = Method<FormRequestsController>(action);
+
+        Assert.Equal("perm:" + permission, method.GetCustomAttribute<HasPermissionAttribute>()!.Policy);
+    }
+
     [Fact]
     public async Task Any_permission_passes_with_a_single_match()
     {

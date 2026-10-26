@@ -5,7 +5,8 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Tasks.Api.Filters;
-using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Settings;
+using Wolverine;
 
 namespace TaxVision.Tasks.Api.Controllers.ClientForms;
 
@@ -14,7 +15,7 @@ namespace TaxVision.Tasks.Api.Controllers.ClientForms;
 [Route("tasks/forms/availability")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 [SkipClientFormsAccess]
-public sealed class FormAvailabilityController(IClientFormsAvailabilityEvaluator availability) : ControllerBase
+public sealed class FormAvailabilityController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
     // Cualquier permiso de staff de Client Forms: quien no ve plantillas igual puede trabajar requests.
@@ -38,6 +39,9 @@ public sealed class FormAvailabilityController(IClientFormsAvailabilityEvaluator
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Forbid();
-        return Ok(await availability.EvaluateAsync(tenantId, ct));
+        // Solo lectura: disponibilidad del módulo y sub-flags efectivos de la oficina.
+        return Ok(
+            await bus.InvokeAsync<StaffFormAvailabilityResponse>(new GetStaffFormAvailabilityQuery(tenantId), ct)
+        );
     }
 }

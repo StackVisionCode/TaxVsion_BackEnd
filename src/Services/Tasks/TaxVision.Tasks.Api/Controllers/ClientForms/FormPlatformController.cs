@@ -35,13 +35,13 @@ public sealed class FormPlatformController(IMessageBus bus) : ControllerBase
             new SetFormModuleAvailabilityCommand(
                 tenantId,
                 userId,
-                request.Enabled,
                 request.Note,
                 request.ExternalParticipantsEnabled,
                 request.IntakeLinksEnabled,
                 request.AutoCustomerCreationEnabled,
                 request.SignatureStepEnabled,
-                request.PushNotificationsEnabled
+                request.PushNotificationsEnabled,
+                request.Enabled
             ),
             ct
         );

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 
 namespace TaxVision.Notification.Application.Consumers.ClientForms;
 
@@ -15,8 +16,7 @@ public static class FormAccessLinkDeliveryRequestedConsumer
     public static async Task Handle(
         FormAccessLinkDeliveryRequestedIntegrationEvent command,
         IProtectedPayloadCodec codec,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
+        ClientFormNotificationSender sender,
         ITenantHostResolver hosts,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
@@ -49,34 +49,25 @@ public static class FormAccessLinkDeliveryRequestedConsumer
 
             var host = await hosts.ResolveHostAsync(command.TenantId, ct);
             var link = TenantEmailLinks.PublicFormAccess(host, portal.Value, content.AccessToken);
-            var render = (
-                await scribe.RenderAsync(
-                    TemplateKey,
+            var result = await sender.SendExternalEmailAsync(
+                new ClientFormExternalEmailRequest(
                     command.TenantId,
+                    command.CommandId,
+                    NotificationKinds.TasksFormAccessLink,
+                    TemplateKey,
+                    content.Email,
+                    content.Language,
                     new Dictionary<string, object?>
                     {
                         ["participant_name"] = content.Name,
                         ["form_title"] = content.Title,
                         ["access_link"] = link,
                         ["expires_at"] = command.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                    },
-                    ct
-                )
-            ).EnsureRendered(TemplateKey);
-
-            var dispatch = render.ToDispatchRequest(
-                command.TenantId,
-                content.Email,
-                TemplateKey,
-                command.CommandId,
-                correlation.CorrelationId
-            ) with
-            {
-                IdempotencyKey = command.CommandId.ToString("N"),
-                Confidential = true,
-            };
-            var result = await gateway.QueueEmailAsync(dispatch, ct);
-            if (!result.IsSuccess)
+                    }
+                ),
+                ct
+            );
+            if (result is { IsSuccess: false })
                 logger.LogWarning(
                     "Client form access link delivery failed for request {FormRequestId} and command {CommandId}.",
                     command.FormRequestId,

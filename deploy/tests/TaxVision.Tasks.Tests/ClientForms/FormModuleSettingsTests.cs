@@ -5,46 +5,52 @@ namespace TaxVision.Tasks.Tests.ClientForms;
 public sealed class FormModuleSettingsTests
 {
     [Fact]
-    public void Enabling_records_operator_and_time_with_future_flags_off()
+    public void New_row_records_operator_and_starts_with_the_office_defaults()
     {
-        var now = DateTime.UtcNow;
-
         var result = FormModuleSettings.Create(
             FormTemplateHandlerTestDoubles.TenantId,
-            true,
             " Pilot ",
-            FormTemplateHandlerTestDoubles.UserId,
-            now
+            FormTemplateHandlerTestDoubles.UserId
         );
 
-        Assert.True(result.Value.Enabled);
-        Assert.Equal(now, result.Value.EnabledAtUtc);
         Assert.Equal(FormTemplateHandlerTestDoubles.UserId, result.Value.EnabledByUserId);
         Assert.Equal("Pilot", result.Value.Note);
-        Assert.False(result.Value.ExternalParticipantsEnabled);
-        Assert.False(result.Value.IntakeLinksEnabled);
-        Assert.False(result.Value.AutoCustomerCreationEnabled);
-        Assert.False(result.Value.SignatureStepEnabled);
-        Assert.False(result.Value.PushNotificationsEnabled);
+        Assert.Equal(FormModuleCapabilities.Defaults, result.Value.Capabilities);
     }
 
     [Fact]
-    public void Disabling_clears_enabled_timestamp()
+    public void Office_without_row_uses_the_defaults()
+    {
+        var capabilities = FormModuleCapabilities.Of(null);
+
+        Assert.True(capabilities.ExternalParticipantsEnabled);
+        Assert.True(capabilities.AutoCustomerCreationEnabled);
+        Assert.False(capabilities.SignatureStepEnabled);
+        Assert.False(capabilities.IntakeLinksEnabled);
+        Assert.True(capabilities.PushNotificationsEnabled);
+    }
+
+    [Fact]
+    public void Office_with_row_uses_its_own_flags()
     {
         var settings = FormModuleSettings
-            .Create(
-                FormTemplateHandlerTestDoubles.TenantId,
-                true,
-                null,
-                FormTemplateHandlerTestDoubles.UserId,
-                DateTime.UtcNow
-            )
+            .Create(FormTemplateHandlerTestDoubles.TenantId, null, FormTemplateHandlerTestDoubles.UserId)
+            .Value;
+        settings.SetCapabilities(false, true, false, true, true, FormTemplateHandlerTestDoubles.UserId);
+
+        Assert.Equal(new FormModuleCapabilities(false, true, false, true, true), FormModuleCapabilities.Of(settings));
+    }
+
+    [Fact]
+    public void Note_longer_than_the_limit_is_rejected()
+    {
+        var settings = FormModuleSettings
+            .Create(FormTemplateHandlerTestDoubles.TenantId, null, FormTemplateHandlerTestDoubles.UserId)
             .Value;
 
-        var result = settings.SetAvailability(false, null, FormTemplateHandlerTestDoubles.UserId, DateTime.UtcNow);
+        var result = settings.SetNote(new string('x', FormModuleSettings.NoteMaxLength + 1), Guid.NewGuid());
 
-        Assert.True(result.IsSuccess);
-        Assert.False(settings.Enabled);
-        Assert.Null(settings.EnabledAtUtc);
+        Assert.True(result.IsFailure);
+        Assert.Null(settings.Note);
     }
 }

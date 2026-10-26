@@ -57,8 +57,11 @@ public static class RequestPublicIntakeFormChallengeHandler
         if (issued is not { } challenge)
             return Result.Success();
         challenges.Add(challenge.Challenge);
-        await bus.PublishAsync(CodeDelivery(link, email.Value.Value, challenge, payloadCodec, correlation));
+        // Guardar antes de publicar: un reintento en línea no deja salir un código sin su hash persistido.
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            CodeDelivery(link, email.Value.Value, command.Language, challenge, payloadCodec, correlation)
+        );
         metrics.RecordExternalOtp(ClientFormsMetricValues.OtpIssued);
         return Result.Success();
     }
@@ -127,6 +130,7 @@ public static class RequestPublicIntakeFormChallengeHandler
     private static FormAccessCodeDeliveryRequestedIntegrationEvent CodeDelivery(
         FormIntakeLink link,
         string email,
+        string? language,
         (FormAccessChallenge Challenge, string Code, string Title) issued,
         IProtectedPayloadCodec payloadCodec,
         ICorrelationContext correlation
@@ -137,7 +141,13 @@ public static class RequestPublicIntakeFormChallengeHandler
         var payload = payloadCodec.Protect(
             ClientFormProtectedPayloadSchemas.AccessCode,
             new ProtectedPayloadBinding(link.TenantId, null, null, link.Id, challenge.Id),
-            new FormAccessCodeDeliveryPayload(email, issued.Code, issued.Title)
+            // El idioma llega tal cual del navegador ("es"): se normaliza a En/Es antes del payload.
+            new FormAccessCodeDeliveryPayload(
+                email,
+                issued.Code,
+                issued.Title,
+                FormParticipant.NormalizeLanguage(language)
+            )
         );
         return new FormAccessCodeDeliveryRequestedIntegrationEvent
         {

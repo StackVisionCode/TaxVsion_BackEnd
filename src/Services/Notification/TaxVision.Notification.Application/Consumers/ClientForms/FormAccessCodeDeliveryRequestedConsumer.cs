@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 
 namespace TaxVision.Notification.Application.Consumers.ClientForms;
 
@@ -14,8 +15,7 @@ public static class FormAccessCodeDeliveryRequestedConsumer
     public static async Task Handle(
         FormAccessCodeDeliveryRequestedIntegrationEvent command,
         IProtectedPayloadCodec codec,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
+        ClientFormNotificationSender sender,
         ICorrelationContext correlation,
         ILogger<FormAccessCodeDeliveryRequestedIntegrationEvent> logger,
         CancellationToken ct
@@ -50,33 +50,24 @@ public static class FormAccessCodeDeliveryRequestedConsumer
                 return;
             }
 
-            var render = (
-                await scribe.RenderAsync(
-                    TemplateKey,
+            var result = await sender.SendExternalEmailAsync(
+                new ClientFormExternalEmailRequest(
                     command.TenantId,
+                    command.CommandId,
+                    NotificationKinds.TasksFormAccessCode,
+                    TemplateKey,
+                    content.Email,
+                    content.Language,
                     new Dictionary<string, object?>
                     {
                         ["code"] = content.Code,
                         ["form_title"] = content.Title,
                         ["expires_at"] = command.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                    },
-                    ct
-                )
-            ).EnsureRendered(TemplateKey);
-
-            var dispatch = render.ToDispatchRequest(
-                command.TenantId,
-                content.Email,
-                TemplateKey,
-                command.CommandId,
-                correlation.CorrelationId
-            ) with
-            {
-                IdempotencyKey = command.CommandId.ToString("N"),
-                Confidential = true,
-            };
-            var result = await gateway.QueueEmailAsync(dispatch, ct);
-            if (!result.IsSuccess)
+                    }
+                ),
+                ct
+            );
+            if (result is { IsSuccess: false })
                 logger.LogWarning(
                     "Client form access code delivery failed for challenge {ChallengeId} and command {CommandId}.",
                     command.ChallengeId,

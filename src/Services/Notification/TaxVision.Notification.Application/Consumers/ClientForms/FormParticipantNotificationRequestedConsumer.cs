@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
 using Kinds = BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationKinds;
 
 namespace TaxVision.Notification.Application.Consumers.ClientForms;
@@ -18,8 +19,7 @@ public static class FormParticipantNotificationRequestedConsumer
     public static async Task Handle(
         FormParticipantNotificationRequestedIntegrationEvent command,
         IProtectedPayloadCodec codec,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
+        ClientFormNotificationSender sender,
         ICorrelationContext correlation,
         ILogger<FormParticipantNotificationRequestedIntegrationEvent> logger,
         CancellationToken ct
@@ -41,23 +41,19 @@ public static class FormParticipantNotificationRequestedConsumer
             if (content is null)
                 return;
 
-            var render = (
-                await scribe.RenderAsync(templateKey, command.TenantId, Variables(content), ct)
-            ).EnsureRendered(templateKey);
-            var dispatch = render.ToDispatchRequest(
-                command.TenantId,
-                content.Email,
-                templateKey,
-                command.CommandId,
-                correlation.CorrelationId
-            ) with
-            {
-                IdempotencyKey = command.CommandId.ToString("N"),
-                // El email de un externo no viaja por el fanout.
-                Confidential = true,
-            };
-            var result = await gateway.QueueEmailAsync(dispatch, ct);
-            if (!result.IsSuccess)
+            var result = await sender.SendExternalEmailAsync(
+                new ClientFormExternalEmailRequest(
+                    command.TenantId,
+                    command.CommandId,
+                    CatalogKind(command.Kind),
+                    templateKey,
+                    content.Email,
+                    content.Language,
+                    Variables(content)
+                ),
+                ct
+            );
+            if (result is { IsSuccess: false })
                 logger.LogWarning(
                     "Client form participant notification {Kind} failed for request {FormRequestId} and command {CommandId}.",
                     command.Kind,
@@ -97,10 +93,22 @@ public static class FormParticipantNotificationRequestedConsumer
         kind switch
         {
             Kinds.Returned => "task.form_participant_returned.v1",
+            Kinds.Reminder => "task.form_participant_reminder.v1",
             Kinds.Completed => "task.form_participant_completed.v1",
             Kinds.Cancelled => "task.form_participant_cancelled.v1",
             Kinds.AttachmentRejected => "task.form_participant_attachment_rejected.v1",
             _ => null,
+        };
+
+    private static string CatalogKind(string kind) =>
+        kind switch
+        {
+            Kinds.Returned => NotificationKinds.TasksFormParticipantReturned,
+            Kinds.Reminder => NotificationKinds.TasksFormParticipantReminder,
+            Kinds.Completed => NotificationKinds.TasksFormParticipantCompleted,
+            Kinds.Cancelled => NotificationKinds.TasksFormParticipantCancelled,
+            Kinds.AttachmentRejected => NotificationKinds.TasksFormParticipantAttachmentRejected,
+            _ => throw new InvalidOperationException($"Unsupported client form participant kind '{kind}'."),
         };
 
     private static Dictionary<string, object?> Variables(FormParticipantNotificationPayload content)
@@ -109,13 +117,19 @@ public static class FormParticipantNotificationRequestedConsumer
         {
             ["participant_name"] = content.Name,
             ["form_title"] = content.Title,
+            ["language"] = content.Language,
         };
         if (content.Params.TryGetValue("comment_count", out var comments) && int.TryParse(comments, out var count))
             variables["comment_count"] = count;
         if (content.Params.TryGetValue("file_extension", out var extension))
             variables["file_extension"] = extension;
         if (content.Params.TryGetValue("reason_code", out var reason))
+        {
             variables["client_message"] = FormAttachmentRejectedConsumer.ClientMessage(reason);
+            variables["client_message_es"] = FormAttachmentRejectedConsumer.SpanishClientMessage(reason);
+        }
+        if (content.Params.TryGetValue("is_overdue", out var overdue) && bool.TryParse(overdue, out var isOverdue))
+            variables["is_overdue"] = isOverdue;
         return variables;
     }
 }

@@ -60,32 +60,61 @@ public static class AssignExternalFormRequestHandler
         var inputs = await LoadAndValidateAsync(command, capabilities, templates, versions, notices, authorizer, ct);
         if (inputs.IsFailure)
             return Failure(inputs.Error);
-        var participant = await ResolveParticipantAsync(command, inputs.Value.Email, participants, requests, ct);
+        var assignment = await PrepareAssignmentAsync(
+            command,
+            inputs.Value,
+            participants,
+            requests,
+            security,
+            grants,
+            ct
+        );
+        if (assignment.IsFailure)
+            return Failure(assignment.Error);
+        RecordAudit(command, assignment.Value.Request.Id, audit);
+        await unitOfWork.SaveChangesAsync(ct);
+        await PublishAsync(command, assignment.Value, payloadCodec, bus, correlation);
+        metrics.RecordRequestAssigned();
+        return Result.Success(FormRequestResponse.From(assignment.Value.Request));
+    }
+
+    private sealed record PreparedAssignment(
+        FormParticipant Participant,
+        FormRequest Request,
+        FormAccessGrant Grant,
+        FormOpaqueToken Token
+    );
+
+    private static async Task<Result<PreparedAssignment>> PrepareAssignmentAsync(
+        AssignExternalFormRequestCommand command,
+        (ParticipantEmail Email, FormTemplateVersion Version, EntryNoticeSelection Notice) inputs,
+        IFormParticipantRepository participants,
+        IFormRequestRepository requests,
+        IFormExternalAccessSecurity security,
+        IFormAccessGrantRepository grants,
+        CancellationToken ct
+    )
+    {
+        var participant = await ResolveParticipantAsync(
+            command,
+            inputs.Email,
+            inputs.Notice.Version.Language,
+            participants,
+            requests,
+            ct
+        );
         if (participant.IsFailure)
-            return Failure(participant.Error);
-        var request = CreateRequest(command, participant.Value, inputs.Value.Version);
+            return Result.Failure<PreparedAssignment>(participant.Error);
+        var request = CreateRequest(command, participant.Value, inputs.Version);
         if (request.IsFailure)
-            return Failure(request.Error);
+            return Result.Failure<PreparedAssignment>(request.Error);
         var token = security.GenerateToken();
-        var grant = CreateGrant(command, request.Value, inputs.Value.Notice, token);
+        var grant = CreateGrant(command, request.Value, inputs.Notice, token);
         if (grant.IsFailure)
-            return Failure(grant.Error);
+            return Result.Failure<PreparedAssignment>(grant.Error);
         requests.Add(request.Value);
         grants.Add(grant.Value);
-        await PublishAsync(
-            command,
-            participant.Value,
-            request.Value,
-            token,
-            grant.Value.ExpiresAtUtc,
-            payloadCodec,
-            audit,
-            bus,
-            correlation
-        );
-        await unitOfWork.SaveChangesAsync(ct);
-        metrics.RecordRequestAssigned();
-        return Result.Success(FormRequestResponse.From(request.Value));
+        return Result.Success(new PreparedAssignment(participant.Value, request.Value, grant.Value, token));
     }
 
     private static async Task<
@@ -147,12 +176,13 @@ public static class AssignExternalFormRequestHandler
     private static async Task<Result<FormParticipant>> ResolveParticipantAsync(
         AssignExternalFormRequestCommand command,
         ParticipantEmail email,
+        string language,
         IFormParticipantRepository participants,
         IFormRequestRepository requests,
         CancellationToken ct
     )
     {
-        var participant = await GetOrCreateParticipantAsync(command, email, participants, ct);
+        var participant = await GetOrCreateParticipantAsync(command, email, language, participants, ct);
         if (participant.IsFailure)
             return participant;
         return await requests.HasOpenExternalRequestAsync(
@@ -189,6 +219,7 @@ public static class AssignExternalFormRequestHandler
     private static async Task<Result<FormParticipant>> GetOrCreateParticipantAsync(
         AssignExternalFormRequestCommand command,
         ParticipantEmail email,
+        string language,
         IFormParticipantRepository participants,
         CancellationToken ct
     )
@@ -202,13 +233,15 @@ public static class AssignExternalFormRequestHandler
                 command.FullName,
                 null,
                 FormParticipantSource.DirectedRequest,
-                command.NowUtc
+                command.NowUtc,
+                language
             );
             if (created.IsSuccess)
                 participants.Add(created.Value);
             return created;
         }
 
+        // El idioma de un participante existente no se pisa: puede venir de su elección en la página pública.
         if (string.IsNullOrWhiteSpace(command.FullName))
             return Result.Success(participant);
         var updated = participant.UpdateContact(command.FullName, participant.PhoneE164);
@@ -257,45 +290,65 @@ public static class AssignExternalFormRequestHandler
 
     private static async Task PublishAsync(
         AssignExternalFormRequestCommand command,
-        FormParticipant participant,
-        FormRequest request,
-        FormOpaqueToken token,
-        DateTime expiresAtUtc,
+        PreparedAssignment assignment,
         IProtectedPayloadCodec payloadCodec,
-        IFormAuditLog audit,
         IMessageBus bus,
         ICorrelationContext correlation
     )
     {
-        var messageParticipant = new ClientFormParticipant
+        await bus.PublishAsync(
+            FormRequestIntegrationEventFactory.Assigned(assignment.Request, correlation.CorrelationId)
+        );
+        await bus.PublishAsync(AccessLinkEvent(command, assignment, payloadCodec, correlation.CorrelationId));
+    }
+
+    private static FormAccessLinkDeliveryRequestedIntegrationEvent AccessLinkEvent(
+        AssignExternalFormRequestCommand command,
+        PreparedAssignment assignment,
+        IProtectedPayloadCodec payloadCodec,
+        string correlationId
+    )
+    {
+        var participant = new ClientFormParticipant
         {
             Kind = nameof(FormParticipantKind.External),
-            ParticipantId = participant.Id,
+            ParticipantId = assignment.Participant.Id,
         };
         var commandId = Guid.NewGuid();
-        var protectedPayload = payloadCodec.Protect(
+        return new()
+        {
+            EventId = commandId,
+            CommandId = commandId,
+            TenantId = command.TenantId,
+            OccurredOn = command.NowUtc,
+            CorrelationId = correlationId,
+            FormRequestId = assignment.Request.Id,
+            Participant = participant,
+            ExpiresAtUtc = assignment.Grant.ExpiresAtUtc,
+            Payload = AccessLinkPayload(command.TenantId, assignment, participant, payloadCodec),
+        };
+    }
+
+    private static ProtectedPayload AccessLinkPayload(
+        Guid tenantId,
+        PreparedAssignment assignment,
+        ClientFormParticipant participant,
+        IProtectedPayloadCodec payloadCodec
+    ) =>
+        payloadCodec.Protect(
             ClientFormProtectedPayloadSchemas.AccessLink,
-            new ProtectedPayloadBinding(command.TenantId, request.Id, messageParticipant),
-            new FormAccessLinkDeliveryPayload(participant.Email, participant.FullName, token.RawToken, request.Title)
+            new ProtectedPayloadBinding(tenantId, assignment.Request.Id, participant),
+            new FormAccessLinkDeliveryPayload(
+                assignment.Participant.Email,
+                assignment.Participant.FullName,
+                assignment.Token.RawToken,
+                assignment.Request.Title,
+                assignment.Participant.Language
+            )
         );
 
-        audit.Record(command.TenantId, command.TemplateId, request.Id, "request.assigned_external", command.ByUserId);
-        await bus.PublishAsync(FormRequestIntegrationEventFactory.Assigned(request, correlation.CorrelationId));
-        await bus.PublishAsync(
-            new FormAccessLinkDeliveryRequestedIntegrationEvent
-            {
-                EventId = commandId,
-                CommandId = commandId,
-                TenantId = command.TenantId,
-                OccurredOn = command.NowUtc,
-                CorrelationId = correlation.CorrelationId,
-                FormRequestId = request.Id,
-                Participant = messageParticipant,
-                ExpiresAtUtc = expiresAtUtc,
-                Payload = protectedPayload,
-            }
-        );
-    }
+    private static void RecordAudit(AssignExternalFormRequestCommand command, Guid requestId, IFormAuditLog audit) =>
+        audit.Record(command.TenantId, command.TemplateId, requestId, "request.assigned_external", command.ByUserId);
 
     private static Result<FormRequestResponse> Failure(Error error) => Result.Failure<FormRequestResponse>(error);
 }

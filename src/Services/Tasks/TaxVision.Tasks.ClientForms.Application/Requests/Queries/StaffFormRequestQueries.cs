@@ -17,8 +17,17 @@ public sealed record ListFormRequestsQuery(
     bool? Overdue,
     string? Search,
     int Page,
-    int PageSize
+    int PageSize,
+    FormRequestInboxView View = FormRequestInboxView.All
 );
+
+public enum FormRequestInboxView
+{
+    All = 1,
+    Clients = 2,
+    External = 3,
+    NeedsAction = 4,
+}
 
 public sealed record FormRequestListItemResponse(
     Guid Id,
@@ -26,6 +35,9 @@ public sealed record FormRequestListItemResponse(
     CustomerLinkStatus CustomerLinkStatus,
     Guid? ResponsibleUserId,
     string DisplayName,
+    string TemplateName,
+    string? MaskedEmail,
+    DateTime? ReceivedAtUtc,
     string Title,
     FormRequestStatus Status,
     int VersionNumber,
@@ -35,7 +47,9 @@ public sealed record FormRequestListItemResponse(
     int CurrentRevisionNumber,
     DateTime? LastSubmittedAtUtc,
     Guid RequestedByUserId,
-    DateTime RequestedAtUtc
+    DateTime RequestedAtUtc,
+    IReadOnlyList<FormActionRunResponse> ActionRuns,
+    FormRequestOrigin Origin
 );
 
 public sealed record GetFormRequestQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, Guid RequestId);
@@ -98,5 +112,9 @@ public sealed record StaffFormRequestDetailResponse(
     IReadOnlyList<FormConsentEvidenceResponse> Consents,
     IReadOnlyList<FormRequestTimelineEntryResponse> Timeline,
     IReadOnlyList<FormActionRunResponse> ActionRuns,
-    FormCustomerLinkResponse CustomerLink
+    FormCustomerLinkResponse CustomerLink,
+    string DisplayName,
+    string? MaskedEmail
 );
+
+public sealed record FormRequestParticipantLabel(string DisplayName, string? MaskedEmail);

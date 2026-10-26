@@ -18,6 +18,8 @@ public sealed record FormRequestResponse(
     Guid? TaskId,
     DateTime? DueAtUtc,
     FormRequestStatus Status,
+    // Directed o IntakeLink: el CRM ofrece "Resend link" solo en las dirigidas.
+    FormRequestOrigin Origin,
     int ProgressPercent,
     int CurrentRevisionNumber,
     DateTime? LastSubmittedAtUtc,
@@ -39,6 +41,7 @@ public sealed record FormRequestResponse(
             request.TaskId,
             request.DueAtUtc,
             request.Status,
+            request.Origin,
             request.DraftProgressPercent,
             request.CurrentRevisionNumber,
             request.LastSubmittedAtUtc,

@@ -6,7 +6,11 @@ public sealed record RemoteCustomerContact(
     Guid CustomerId,
     string DisplayName,
     string PrimaryEmail,
-    bool IsActive
+    bool IsActive,
+    // Null = Customer anterior a P-21.5, que no manda la política: no se toca la proyección.
+    string? Language = null,
+    bool? EmailEnabled = null,
+    bool? SmsEnabled = null
 );
 
 public sealed record RemoteCustomerPage(IReadOnlyList<RemoteCustomerContact> Items, bool HasMore);

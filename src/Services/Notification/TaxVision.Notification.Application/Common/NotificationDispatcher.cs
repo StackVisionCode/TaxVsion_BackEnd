@@ -9,6 +9,37 @@ using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Common;
 
+public sealed record PushDispatchRequest(
+    Guid TenantId,
+    Guid RecipientUserId,
+    string Title,
+    string Body,
+    NotificationCategory Category,
+    string Kind,
+    string TemplateKey,
+    Guid? RelatedEventId,
+    string? CorrelationId,
+    IReadOnlyDictionary<string, string>? Data = null,
+    string? Topic = null,
+    string? Tag = null,
+    string? Link = null,
+    bool SkipWhenNoDevices = false,
+    // Reintento dirigido: solo estos dispositivos (los que fallaron de forma transitoria).
+    IReadOnlyList<Guid>? DeviceIds = null
+);
+
+/// <param name="Error">Null si salió por al menos un dispositivo o no correspondía enviar.</param>
+/// <param name="RetryableDeviceIds">Dispositivos con fallo transitorio: se reintenta solo a esos.</param>
+/// <param name="FailureCodes">Un código por dispositivo fallido, para métricas.</param>
+public sealed record PushDispatchOutcome(
+    Error? Error,
+    IReadOnlyList<Guid> RetryableDeviceIds,
+    IReadOnlyList<string> FailureCodes
+)
+{
+    public static PushDispatchOutcome Done { get; } = new(null, [], []);
+}
+
 /// <summary>
 /// Punto único de envío + registro: envía por el canal indicado y persiste el
 /// NotificationLog (Sent/Failed) en la misma transacción del consumer.
@@ -120,88 +151,245 @@ public sealed class NotificationDispatcher(
         Guid? relatedEventId,
         string? correlationId,
         CancellationToken ct = default
+    ) =>
+        await SendPushAsync(
+            new PushDispatchRequest(
+                tenantId,
+                recipientUserId,
+                title,
+                body,
+                category,
+                templateKey,
+                templateKey,
+                relatedEventId,
+                correlationId
+            ),
+            ct
+        );
+
+    public async Task<Result> SendPushAsync(PushDispatchRequest request, CancellationToken ct = default)
+    {
+        var outcome = await DispatchPushAsync(request, ct);
+        return outcome.Error is null ? Result.Success() : Result.Failure(outcome.Error);
+    }
+
+    /// <summary>
+    /// Igual que <see cref="SendPushAsync(PushDispatchRequest, CancellationToken)"/>, pero informa qué
+    /// dispositivos fallaron de forma transitoria para reintentar solo esos. Un error del proveedor no lanza.
+    /// Con <see cref="PushDispatchRequest.DeviceIds"/> envía solo a esos dispositivos, cada uno con su log:
+    /// el log del evento puede estar Sent por otro dispositivo y no debe frenar el reintento.
+    /// </summary>
+    public async Task<PushDispatchOutcome> DispatchPushAsync(
+        PushDispatchRequest request,
+        CancellationToken ct = default
     )
     {
-        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Push, ct, templateKey))
+        if (
+            !await IsAllowedAsync(
+                request.TenantId,
+                request.RecipientUserId,
+                request.Category,
+                NotificationChannel.Push,
+                ct,
+                request.Kind
+            )
+        )
         {
-            metrics.RecordSuppressedByPreference(templateKey, "Push");
-            return Result.Success();
+            metrics.RecordSuppressedByPreference(request.Kind, "Push");
+            return PushDispatchOutcome.Done;
         }
 
+        var devices = await pushDeviceTokens.ListActiveForUserAsync(request.TenantId, request.RecipientUserId, ct);
+        if (request.DeviceIds is { Count: > 0 } targets)
+            return await RetryDevicesAsync(request, devices.Where(device => targets.Contains(device.Id)), ct);
+        if (devices.Count == 0 && request.SkipWhenNoDevices)
+        {
+            metrics.RecordNoRecipient(request.Kind, "Push");
+            return PushDispatchOutcome.Done;
+        }
+        return await SendToDevicesAsync(request, devices, request.RecipientUserId.ToString(), ct);
+    }
+
+    // Un dispositivo revocado o dado de baja entre intentos simplemente ya no está en la lista.
+    private async Task<PushDispatchOutcome> RetryDevicesAsync(
+        PushDispatchRequest request,
+        IEnumerable<PushDeviceToken> devices,
+        CancellationToken ct
+    )
+    {
+        var retryable = new List<Guid>();
+        var codes = new List<string>();
+        Error? error = null;
+        foreach (var device in devices)
+        {
+            var recipient = $"{request.RecipientUserId:N}:{device.Id:N}";
+            var outcome = await SendToDevicesAsync(request, [device], recipient, ct);
+            retryable.AddRange(outcome.RetryableDeviceIds);
+            codes.AddRange(outcome.FailureCodes);
+            error ??= outcome.Error;
+        }
+        return new(error, retryable, codes);
+    }
+
+    private async Task<PushDispatchOutcome> SendToDevicesAsync(
+        PushDispatchRequest request,
+        IReadOnlyList<PushDeviceToken> devices,
+        string recipient,
+        CancellationToken ct
+    )
+    {
+        if (request.RelatedEventId is { } eventId && await WasPushSentAsync(request, eventId, recipient, ct))
+            return PushDispatchOutcome.Done;
+
         var logResult = NotificationLog.Create(
-            tenantId,
+            request.TenantId,
             NotificationChannel.Push,
-            recipientUserId.ToString(),
-            title,
-            templateKey,
-            relatedEventId,
-            correlationId
+            recipient,
+            request.Title,
+            request.TemplateKey,
+            request.RelatedEventId,
+            request.CorrelationId,
+            request.Kind
         );
         if (logResult.IsFailure)
         {
             logger.LogError(
                 "Invalid notification log for template {TemplateKey}: {Error}",
-                templateKey,
+                request.TemplateKey,
                 logResult.Error.Message
             );
-            return Result.Failure(logResult.Error);
+            return new(logResult.Error, [], []);
         }
 
         var log = logResult.Value;
         await logs.AddAsync(log, ct);
 
-        var devices = await pushDeviceTokens.ListActiveForUserAsync(tenantId, recipientUserId, ct);
         if (devices.Count == 0)
         {
             var error = new Error("Notification.NoPushDevices", "Recipient has no registered push devices.");
             log.MarkFailed(error.Message);
-            metrics.RecordNoRecipient(templateKey, "Push");
+            metrics.RecordNoRecipient(request.Kind, "Push");
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure(error);
+            return new(error, [], []);
         }
 
         var anySucceeded = false;
-        var lastError = "All device deliveries failed.";
+        var failures = new List<(Guid DeviceId, Error Error)>();
         foreach (var device in devices)
         {
-            var sendResult = await pushSender.SendAsync(
-                new PushMessage(device.Token, device.Platform, title, body),
-                ct
-            );
+            var sendResult = await SendToDeviceAsync(request, device, ct);
             if (sendResult.IsSuccess)
             {
                 anySucceeded = true;
+                continue;
             }
-            else
-            {
-                lastError = sendResult.Error.Message;
-                logger.LogWarning(
-                    "Push to device {DeviceId} for user {UserId} failed: {Error}",
-                    device.Id,
-                    recipientUserId,
-                    sendResult.Error.Message
-                );
+            failures.Add((device.Id, sendResult.Error));
+            logger.LogWarning(
+                "Push to device {DeviceId} for user {UserId} failed: {Error}",
+                device.Id,
+                request.RecipientUserId,
+                sendResult.Error.Message
+            );
 
-                // Fase 7 — el proveedor (FcmPushSender) confirma que el token ya no es
-                // entregable (app desinstalada/token expirado). Se revoca acá, no en el sender,
-                // porque solo el dispatcher tiene el device.Id resuelto de la proyección local.
-                if (sendResult.Error.Code == PushErrorCodes.TokenInvalid)
-                    await pushDeviceTokens.RevokeAsync(tenantId, device.Id, ct);
-            }
+            // Fase 7 — el proveedor (FcmPushSender) confirma que el token ya no es
+            // entregable (app desinstalada/token expirado). Se revoca acá, no en el sender,
+            // porque solo el dispatcher tiene el device.Id resuelto de la proyección local.
+            if (sendResult.Error.Code == PushErrorCodes.TokenInvalid)
+                await pushDeviceTokens.RevokeAsync(request.TenantId, device.Id, ct);
         }
 
+        var retryable = failures
+            .Where(failure => PushErrorCodes.IsTransient(failure.Error.Code))
+            .Select(failure => failure.DeviceId)
+            .ToList();
+        var codes = failures.Select(failure => failure.Error.Code).ToList();
         if (anySucceeded)
         {
             log.MarkSent();
-            metrics.RecordSent(templateKey, "Push");
+            metrics.RecordSent(request.Kind, "Push");
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Success();
+            return new(null, retryable, codes);
         }
 
-        log.MarkFailed(lastError);
-        metrics.RecordFailed(templateKey, "Push");
+        // Si algún dispositivo falló de forma transitoria, su código manda: el envío se puede reintentar.
+        var failed =
+            failures.FirstOrDefault(failure => PushErrorCodes.IsTransient(failure.Error.Code)).Error
+            ?? failures[^1].Error;
+        log.MarkFailed(failed.Message);
+        metrics.RecordFailed(request.Kind, "Push");
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Failure(new Error("Notification.PushFailed", lastError));
+        return new(failed, retryable, codes);
+    }
+
+    // Una excepción del proveedor (red, timeout) cuenta como no disponible para ese dispositivo.
+    private async Task<Result> SendToDeviceAsync(
+        PushDispatchRequest request,
+        PushDeviceToken device,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return await pushSender.SendAsync(
+                new PushMessage(
+                    device.Token,
+                    device.Platform,
+                    request.Title,
+                    request.Body,
+                    request.Data,
+                    request.Topic,
+                    request.Tag,
+                    request.Link
+                ),
+                ct
+            );
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            return Result.Failure(new Error(PushErrorCodes.Unavailable, ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Preferencia y dispositivos, sin escribir log: permite omitir el render del push cuando no saldría.
+    /// <see cref="SendPushAsync(PushDispatchRequest, CancellationToken)"/> repite estos gates al enviar.
+    /// </summary>
+    public async Task<bool> CanSendPushAsync(
+        Guid tenantId,
+        Guid recipientUserId,
+        NotificationCategory category,
+        string kind,
+        CancellationToken ct = default
+    )
+    {
+        if (!await IsAllowedAsync(tenantId, recipientUserId, category, NotificationChannel.Push, ct, kind))
+        {
+            metrics.RecordSuppressedByPreference(kind, "Push");
+            return false;
+        }
+        var devices = await pushDeviceTokens.ListActiveForUserAsync(tenantId, recipientUserId, ct);
+        if (devices.Count > 0)
+            return true;
+        metrics.RecordNoRecipient(kind, "Push");
+        return false;
+    }
+
+    private async Task<bool> WasPushSentAsync(
+        PushDispatchRequest request,
+        Guid eventId,
+        string recipient,
+        CancellationToken ct
+    )
+    {
+        var existing = await logs.GetByRelatedEventAsync(
+            request.TenantId,
+            eventId,
+            request.Kind,
+            NotificationChannel.Push,
+            recipient,
+            ct
+        );
+        return existing?.Status is NotificationStatus.Sent or NotificationStatus.Delivered;
     }
 
     /// <summary>
@@ -349,8 +537,8 @@ public sealed class NotificationDispatcher(
         if (
             !string.IsNullOrWhiteSpace(templateKey)
             && NotificationCatalog.TryGet(templateKey, out var catalogEntry)
-            && catalogEntry is { IsMandatory: true, AllowedChannels: var allowed }
-            && allowed.Contains(channel)
+            && catalogEntry is not null
+            && catalogEntry.IsMandatoryFor(channel)
         )
             return true;
         if (recipientUserId is null)

@@ -13,7 +13,8 @@ public sealed record VerifyPublicDirectedFormChallengeCommand(
     string Code,
     string ClientIp,
     string UserAgent,
-    DateTime NowUtc
+    DateTime NowUtc,
+    string? Language = null
 );
 
 public sealed record ResolvePublicFormSessionCommand(string SessionToken, string RequestHost, DateTime NowUtc);

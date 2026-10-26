@@ -20,6 +20,17 @@ public sealed class TurnstileFormIntakeBotProtectionTests
     }
 
     [Fact]
+    public async Task Missing_site_key_fails_closed_without_calling_cloudflare()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK, SuccessResponse());
+        var protection = Create(handler, "secret", siteKey: null);
+
+        Assert.False(protection.IsReady);
+        Assert.False(await protection.VerifyAsync("token", "127.0.0.1"));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
     public async Task Valid_response_requires_the_expected_action()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, SuccessResponse());
@@ -53,7 +64,11 @@ public sealed class TurnstileFormIntakeBotProtectionTests
         Assert.Equal(0, handler.Calls);
     }
 
-    private static TurnstileFormIntakeBotProtection Create(HttpMessageHandler handler, string? secretKey) =>
+    private static TurnstileFormIntakeBotProtection Create(
+        HttpMessageHandler handler,
+        string? secretKey,
+        string? siteKey = "site-key"
+    ) =>
         new(
             new HttpClient(handler),
             Options.Create(
@@ -61,7 +76,11 @@ public sealed class TurnstileFormIntakeBotProtectionTests
                 {
                     External = new ClientFormsExternalOptions
                     {
-                        BotProtection = new ClientFormsBotProtectionOptions { SecretKey = secretKey },
+                        BotProtection = new ClientFormsBotProtectionOptions
+                        {
+                            SiteKey = siteKey,
+                            SecretKey = secretKey,
+                        },
                     },
                 }
             )

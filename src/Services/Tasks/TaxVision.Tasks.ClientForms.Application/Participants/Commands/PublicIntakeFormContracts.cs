@@ -11,7 +11,8 @@ public sealed record RequestPublicIntakeFormChallengeCommand(
     string Email,
     string CaptchaToken,
     string ClientIp,
-    DateTime NowUtc
+    DateTime NowUtc,
+    string? Language = null
 );
 
 public sealed record VerifyPublicIntakeFormChallengeCommand(
@@ -21,14 +22,19 @@ public sealed record VerifyPublicIntakeFormChallengeCommand(
     string Code,
     string ClientIp,
     string UserAgent,
-    DateTime NowUtc
+    DateTime NowUtc,
+    // Null conserva el idioma ya guardado del participante.
+    string? Language = null
 );
 
 public sealed record PublicIntakeFormAccessResponse(
     string Title,
     string TenantBrandingKey,
-    PublicEntryNoticeResponse EntryNotice
+    PublicEntryNoticeResponse EntryNotice,
+    PublicFormBotProtectionResponse BotProtection
 );
+
+public sealed record PublicFormBotProtectionResponse(string Provider, string SiteKey, string Action);
 
 public sealed record PublicIntakeFormSessionResponse(string SessionToken, DateTime ExpiresAtUtc, Guid RequestId);
 

@@ -46,7 +46,7 @@ internal static class FormActionTestDoubles
     internal static FormActionPlanner Planner(
         IFormTemplateVersionRepository versions,
         IFormEngine? engine = null,
-        bool autoCreate = true
+        bool? autoCreate = true
     ) =>
         new(
             versions,
@@ -151,14 +151,15 @@ internal static class FormActionTestDoubles
     }
 }
 
-internal sealed class MemoryModuleSettings(bool autoCustomerCreation) : IFormModuleSettingsRepository
+// autoCustomerCreation null: la oficina no tiene fila de settings.
+internal sealed class MemoryModuleSettings(bool? autoCustomerCreation) : IFormModuleSettingsRepository
 {
     public Task<FormModuleSettings?> GetAsync(Guid tenantId, CancellationToken ct = default)
     {
-        var settings = FormModuleSettings
-            .Create(tenantId, true, null, FormActionTestDoubles.Responsible, FormActionTestDoubles.Now)
-            .Value;
-        settings.SetCapabilities(true, true, autoCustomerCreation, false, false, FormActionTestDoubles.Responsible);
+        if (autoCustomerCreation is not { } autoCreate)
+            return Task.FromResult<FormModuleSettings?>(null);
+        var settings = FormModuleSettings.Create(tenantId, null, FormActionTestDoubles.Responsible).Value;
+        settings.SetCapabilities(true, true, autoCreate, false, false, FormActionTestDoubles.Responsible);
         return Task.FromResult<FormModuleSettings?>(settings);
     }
 

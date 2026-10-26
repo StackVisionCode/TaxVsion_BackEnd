@@ -13,7 +13,8 @@ public sealed class TurnstileFormIntakeBotProtection(HttpClient httpClient, IOpt
     private readonly ClientFormsBotProtectionOptions _options = options.Value.External.BotProtection;
 
     public bool IsReady =>
-        !string.IsNullOrWhiteSpace(_options.SecretKey)
+        !string.IsNullOrWhiteSpace(_options.SiteKey)
+        && !string.IsNullOrWhiteSpace(_options.SecretKey)
         && Uri.TryCreate(_options.SiteVerifyUrl, UriKind.Absolute, out _)
         && !string.IsNullOrWhiteSpace(_options.ExpectedAction);
 

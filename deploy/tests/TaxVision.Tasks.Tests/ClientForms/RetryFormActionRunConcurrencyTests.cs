@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Tasks.ClientForms.Application.Actions;
@@ -232,10 +231,6 @@ public sealed class RetryFormActionRunConcurrencyTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
-            builder.ConfigureAppConfiguration(
-                (_, config) =>
-                    config.AddInMemoryCollection(new Dictionary<string, string?> { ["ClientForms:Enabled"] = "true" })
-            );
             builder.ConfigureTestServices(services =>
             {
                 services.DisableAllExternalWolverineTransports();

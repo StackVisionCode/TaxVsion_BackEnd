@@ -12,4 +12,4 @@ public sealed record FormAccessCodeDeliveryRequestedIntegrationEvent : Integrati
     public required ProtectedPayload Payload { get; init; }
 }
 
-public sealed record FormAccessCodeDeliveryPayload(string Email, string Code, string Title);
+public sealed record FormAccessCodeDeliveryPayload(string Email, string Code, string Title, string Language = "En");

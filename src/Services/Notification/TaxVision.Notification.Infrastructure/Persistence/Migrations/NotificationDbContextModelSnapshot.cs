@@ -122,6 +122,30 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("AuthzUserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Directory.ClientFormNotificationSettingsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("PushNotificationsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("ClientFormNotificationSettingsProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Directory.CustomerContactPolicyProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -135,6 +159,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("En");
 
                     b.Property<bool>("SmsEnabled")
                         .ValueGeneratedOnAdd()
@@ -652,6 +683,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasDefaultValue("");
+
                     b.Property<string>("Recipient")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -688,6 +726,8 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "RelatedEventId", "Kind", "Channel", "Recipient");
 
                     b.ToTable("NotificationLogs", (string)null);
                 });

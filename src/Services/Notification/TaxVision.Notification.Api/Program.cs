@@ -243,6 +243,9 @@ builder.Host.UseWolverine(options =>
 
     options.ListenToRabbitQueue("notification-client-form-commands").UseDurableInbox();
 
+    // Reintento programado del push de Client Forms: cola local durable, sobrevive a un reinicio (P-21.3.1).
+    options.LocalQueueFor<TaxVision.Notification.Application.Common.RetryClientFormPushRequested>().UseDurableInbox();
+
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options
         .ListenToRabbitQueue(

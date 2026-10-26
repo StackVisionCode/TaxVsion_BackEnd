@@ -45,10 +45,12 @@ public static class ResendExternalFormAccessHandler
         var request = await LoadVisibleExternalRequestAsync(command, requests, visibility, ct);
         if (request is null || request.Participant.ParticipantId is not { } participantId)
             return Result.Failure(FormRequestErrors.NotFound);
+        if (ResendBlocker(request) is { } blocked)
+            return Result.Failure(blocked);
         var participant = await participants.GetAsync(command.TenantId, participantId, ct);
         var grant = await grants.GetByRequestAsync(command.TenantId, command.FormRequestId, ct);
         if (participant is null || grant is null)
-            return Result.Failure(FormRequestErrors.NotFound);
+            return Result.Failure(participant is null ? FormRequestErrors.NotFound : FormRequestErrors.NoAccessLink);
 
         var token = security.GenerateToken();
         var expiresAtUtc = command.NowUtc.Add(GrantLifetime);
@@ -56,7 +58,6 @@ public static class ResendExternalFormAccessHandler
         if (rotated.IsFailure)
             return rotated;
 
-        await PublishDeliveryAsync(command, request, participant, token, expiresAtUtc, payloadCodec, bus, correlation);
         audit.Record(
             command.TenantId,
             request.FormTemplateId,
@@ -64,9 +65,18 @@ public static class ResendExternalFormAccessHandler
             "request.external_access_resent",
             command.ByUserId
         );
+        // Guardar antes de publicar: un reintento en línea no deja salir un enlace cuyo hash no se guardó.
         await unitOfWork.SaveChangesAsync(ct);
+        await PublishDeliveryAsync(command, request, participant, token, expiresAtUtc, payloadCodec, bus, correlation);
         return Result.Success();
     }
+
+    // Solo las dirigidas tienen enlace personal; fuera de Pending/Returned no se gasta una emisión.
+    private static Error? ResendBlocker(FormRequest request) =>
+        request.Origin != FormRequestOrigin.Directed ? FormRequestErrors.NoAccessLink
+        : request.Status is not (FormRequestStatus.Pending or FormRequestStatus.Returned)
+            ? FormRequestErrors.ResendNotAllowed
+        : null;
 
     // Lo ajeno, lo no visible y lo que no es de un participante externo responden igual: no existe.
     private static async Task<FormRequest?> LoadVisibleExternalRequestAsync(
@@ -102,7 +112,13 @@ public static class ResendExternalFormAccessHandler
         var payload = payloadCodec.Protect(
             ClientFormProtectedPayloadSchemas.AccessLink,
             new ProtectedPayloadBinding(command.TenantId, request.Id, messageParticipant),
-            new FormAccessLinkDeliveryPayload(participant.Email, participant.FullName, token.RawToken, request.Title)
+            new FormAccessLinkDeliveryPayload(
+                participant.Email,
+                participant.FullName,
+                token.RawToken,
+                request.Title,
+                participant.Language
+            )
         );
         await bus.PublishAsync(
             new FormAccessLinkDeliveryRequestedIntegrationEvent

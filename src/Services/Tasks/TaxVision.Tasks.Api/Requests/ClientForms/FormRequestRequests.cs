@@ -37,6 +37,12 @@ public sealed record CompleteFormRequestRequest(string? InternalNote, string Row
 
 public sealed record CancelFormRequestRequest(string? Note, string RowVersion);
 
+public sealed record ArchiveFormRequestRequest(string? Note, string RowVersion);
+
+public sealed record LinkFormRequestCustomerRequest(Guid CustomerId, string RowVersion);
+
+public sealed record ReassignFormRequestResponsibleRequest(Guid UserId, string RowVersion);
+
 public sealed record ChangeFormRequestDueDateRequest(DateTime? DueAtUtc, string RowVersion);
 
 public sealed record SavePortalFormDraftRequest(JsonElement Answers, string RowVersion);

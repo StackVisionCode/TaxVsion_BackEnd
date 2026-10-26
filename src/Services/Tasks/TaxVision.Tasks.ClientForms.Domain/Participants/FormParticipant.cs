@@ -11,6 +11,7 @@ public sealed partial class FormParticipant : AggregateRoot
     public string Email { get; private set; } = string.Empty;
     public string? FullName { get; private set; }
     public string? PhoneE164 { get; private set; }
+    public string Language { get; private set; } = "En";
     public FormParticipantStatus Status { get; private set; }
     public DateTime? VerifiedAtUtc { get; private set; }
     public Guid? LinkedCustomerId { get; private set; }
@@ -25,7 +26,8 @@ public sealed partial class FormParticipant : AggregateRoot
         string? fullName,
         string? phoneE164,
         FormParticipantSource source,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string language = "En"
     )
     {
         if (tenantId == Guid.Empty)
@@ -42,6 +44,7 @@ public sealed partial class FormParticipant : AggregateRoot
             Email = normalizedEmail.Value.Value,
             FullName = contact.Value.FullName,
             PhoneE164 = contact.Value.Phone,
+            Language = NormalizeLanguage(language),
             Status = FormParticipantStatus.Unverified,
             Source = source,
             CreatedAtUtc = nowUtc,
@@ -85,6 +88,12 @@ public sealed partial class FormParticipant : AggregateRoot
         PhoneE164 = contact.Value.Phone;
         return Result.Success();
     }
+
+    public void SetLanguage(string? language) => Language = NormalizeLanguage(language);
+
+    // Solo En o Es; cualquier otro valor cae a En.
+    public static string NormalizeLanguage(string? language) =>
+        string.Equals(language?.Trim(), "Es", StringComparison.OrdinalIgnoreCase) ? "Es" : "En";
 
     private static Result<(string? FullName, string? Phone)> NormalizeContact(string? fullName, string? phoneE164)
     {

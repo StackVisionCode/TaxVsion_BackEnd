@@ -37,6 +37,7 @@ public sealed class NotificationLog : TenantEntity
     public NotificationChannel Channel { get; private set; }
     public string Recipient { get; private set; } = default!;
     public string Subject { get; private set; } = default!;
+    public string Kind { get; private set; } = default!;
     public string TemplateKey { get; private set; } = default!;
     public NotificationStatus Status { get; private set; }
     public string? Error { get; private set; }
@@ -60,7 +61,8 @@ public sealed class NotificationLog : TenantEntity
         string subject,
         string templateKey,
         Guid? relatedEventId,
-        string? correlationId
+        string? correlationId,
+        string? kind = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -75,6 +77,7 @@ public sealed class NotificationLog : TenantEntity
             Channel = channel,
             Recipient = recipient.Trim(),
             Subject = Truncate(subject, 200),
+            Kind = Truncate(kind ?? templateKey, 64),
             TemplateKey = Truncate(templateKey, 64),
             Status = NotificationStatus.Pending,
             RelatedEventId = relatedEventId,

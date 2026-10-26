@@ -443,6 +443,35 @@ public sealed class FormRequest : AggregateRoot
         return Result.Success();
     }
 
+    // Archivar es cancelar con otro motivo (P-19): una entrega completada no se cancela.
+    public Result Archive(string? note, Guid byUserId, DateTime nowUtc)
+    {
+        if (Status is FormRequestStatus.Completed or FormRequestStatus.Cancelled)
+            return Result.Failure(FormRequestErrors.InvalidTransition);
+        var normalized = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (normalized?.Length > 2000)
+            return Result.Failure(FormRequestErrors.InvalidMessage);
+        Status = FormRequestStatus.Cancelled;
+        CancelledAtUtc = nowUtc;
+        CancelledByUserId = byUserId;
+        CancelReason = FormCancelReason.Archived;
+        CancelNote = normalized;
+        Touch(nowUtc);
+        AddDomainEvent(new FormRequestCancelled(Id, TenantId, FormCancelReason.Archived, false, nowUtc));
+        return Result.Success();
+    }
+
+    public Result AssignResponsible(Guid userId, DateTime nowUtc)
+    {
+        if (Status == FormRequestStatus.Cancelled || userId == Guid.Empty)
+            return Result.Failure(FormRequestErrors.InvalidTransition);
+        if (ResponsibleUserId == userId)
+            return Result.Success();
+        ResponsibleUserId = userId;
+        Touch(nowUtc);
+        return Result.Success();
+    }
+
     public Result ChangeDueDate(DateTime? dueAtUtc, Guid byUserId, DateTime nowUtc)
     {
         var editable = EnsureEditable();

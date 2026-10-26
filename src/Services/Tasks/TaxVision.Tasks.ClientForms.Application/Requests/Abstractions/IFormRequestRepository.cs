@@ -93,4 +93,11 @@ public interface IFormRequestStaffReadRepository
         Guid requestId,
         CancellationToken ct = default
     );
+
+    // Mismo nombre y email enmascarado que la fila del listado; el llamador ya validó el ABAC.
+    Task<FormRequestParticipantLabel> GetParticipantLabelAsync(
+        Guid tenantId,
+        FormRequest request,
+        CancellationToken ct = default
+    );
 }

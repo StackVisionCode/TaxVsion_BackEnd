@@ -5,6 +5,16 @@ namespace TaxVision.Tasks.ClientForms.Domain.Requests;
 public static class FormRequestErrors
 {
     public static readonly Error NotFound = new("FormRequest.NotFound", "The form request was not found.");
+
+    // Reenvío: solo las dirigidas tienen enlace personal, y solo sirve mientras el participante puede editar.
+    public static readonly Error NoAccessLink = new(
+        "FormRequest.NoAccessLink",
+        "This request has no personal access link to resend."
+    );
+    public static readonly Error ResendNotAllowed = new(
+        "FormRequest.ResendNotAllowed",
+        "The access link can only be resent while the request is pending or returned."
+    );
     public static readonly Error InvalidParticipant = new(
         "FormRequest.InvalidParticipant",
         "The form participant is invalid."

@@ -23,3 +23,8 @@ public interface IUserContactSnapshotClient
 {
     Task<RemoteUserContact?> FetchContactAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 }
+
+public interface IUserEmailResolver
+{
+    Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+}

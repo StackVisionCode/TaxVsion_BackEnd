@@ -8,8 +8,6 @@ public sealed class ClientFormsOptions
 {
     public const string SectionName = "ClientForms";
 
-    public bool Enabled { get; init; }
-
     [Required]
     [ValidateObjectMembers]
     public DataCollectionLimits Limits { get; init; } = new();

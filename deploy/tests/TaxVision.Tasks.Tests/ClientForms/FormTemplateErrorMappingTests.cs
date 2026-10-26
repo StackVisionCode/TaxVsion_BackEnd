@@ -24,6 +24,8 @@ public sealed class FormTemplateErrorMappingTests
     [InlineData("FormTemplate.HasPublishedVersions")]
     [InlineData("FormTemplate.ConcurrencyConflict")]
     [InlineData("FormRequest.InvalidTransition")]
+    [InlineData("FormRequest.NoAccessLink")]
+    [InlineData("FormRequest.ResendNotAllowed")]
     [InlineData("FormRequest.NotEditable")]
     [InlineData("FormRequest.AlreadyOpenForTemplate")]
     [InlineData("FormRequest.AttachmentsNotReady")]

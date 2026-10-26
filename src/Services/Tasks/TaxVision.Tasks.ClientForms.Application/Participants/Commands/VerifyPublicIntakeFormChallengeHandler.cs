@@ -40,6 +40,7 @@ public static class VerifyPublicIntakeFormChallengeHandler
             link,
             challenge,
             command.NowUtc,
+            command.Language,
             participants,
             security,
             unitOfWork,
@@ -129,6 +130,7 @@ public static class VerifyPublicIntakeFormChallengeHandler
         FormIntakeLink link,
         FormAccessChallenge challenge,
         DateTime nowUtc,
+        string? language,
         IFormParticipantRepository participants,
         IFormExternalAccessSecurity security,
         IUnitOfWork unitOfWork,
@@ -138,7 +140,9 @@ public static class VerifyPublicIntakeFormChallengeHandler
         var email = security.UnprotectEmail(challenge.EmailCipher, challenge.EmailKeyVersion);
         var participant =
             await participants.GetUnlinkedByEmailAsync(link.TenantId, email, ct)
-            ?? await CreateParticipantAsync(link, email, nowUtc, participants, unitOfWork, ct);
+            ?? await CreateParticipantAsync(link, email, nowUtc, language, participants, unitOfWork, ct);
+        if (language is not null)
+            participant?.SetLanguage(language);
         return participant is not null && participant.MarkVerified(nowUtc).IsSuccess ? participant : null;
     }
 
@@ -146,6 +150,7 @@ public static class VerifyPublicIntakeFormChallengeHandler
         FormIntakeLink link,
         string email,
         DateTime nowUtc,
+        string? language,
         IFormParticipantRepository participants,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -157,7 +162,8 @@ public static class VerifyPublicIntakeFormChallengeHandler
             null,
             null,
             FormParticipantSource.IntakeLink,
-            nowUtc
+            nowUtc,
+            FormParticipant.NormalizeLanguage(language)
         );
         if (created.IsFailure)
             return null;

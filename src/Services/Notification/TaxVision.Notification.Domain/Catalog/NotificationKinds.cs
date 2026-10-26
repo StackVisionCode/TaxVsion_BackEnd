@@ -47,6 +47,11 @@ public static class NotificationKinds
     public const string TasksFormAccessLink = "tasks.form_access_link";
     public const string TasksFormAccessCode = "tasks.form_access_code";
     public const string TasksFormActionFailed = "tasks.form_action_failed";
+    public const string TasksFormParticipantReturned = "tasks.form_participant_returned";
+    public const string TasksFormParticipantReminder = "tasks.form_participant_reminder";
+    public const string TasksFormParticipantCompleted = "tasks.form_participant_completed";
+    public const string TasksFormParticipantCancelled = "tasks.form_participant_cancelled";
+    public const string TasksFormParticipantAttachmentRejected = "tasks.form_participant_attachment_rejected";
     public const string RemindersDue = "reminders.due";
 
     public const string CalendarAppointmentScheduled = "calendar.appointment_scheduled";

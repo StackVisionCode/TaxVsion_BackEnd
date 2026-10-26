@@ -1,9 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
-using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -15,49 +13,24 @@ public static class FormAttachmentRejectedConsumer
 
     public static async Task Handle(
         FormAttachmentRejectedIntegrationEvent evt,
-        ICustomerEmailDirectoryRepository customers,
-        ICustomerContactPolicyRepository policies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         ICustomerAssignmentAudienceRepository assignments,
         IRecipientResolver recipients,
-        IOptions<PortalOptions> portal,
-        ITenantHostResolver hosts,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            await NotifyCustomerAsync(
-                evt,
-                customers,
-                policies,
-                gateway,
-                scribe,
-                dispatcher,
-                recipients,
-                portal,
-                hosts,
-                correlation,
-                ct
-            );
-            await NotifyStaffAsync(evt, dispatcher, assignments, recipients, correlation, ct);
+            await NotifyCustomerAsync(evt, sender, recipients, ct);
+            await NotifyStaffAsync(evt, sender, assignments, recipients, ct);
         }
     }
 
     private static async Task NotifyCustomerAsync(
         FormAttachmentRejectedIntegrationEvent evt,
-        ICustomerEmailDirectoryRepository customers,
-        ICustomerContactPolicyRepository policies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         IRecipientResolver recipients,
-        IOptions<PortalOptions> portal,
-        ITenantHostResolver hosts,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -80,28 +53,21 @@ public static class FormAttachmentRejectedConsumer
                     ["request_title"] = evt.Title,
                     ["file_extension"] = evt.FileExtension,
                     ["client_message"] = message,
+                    ["client_message_es"] = SpanishClientMessage(evt.ReasonCode),
                 },
                 new Dictionary<string, string> { ["title"] = evt.Title }
             ),
-            customers,
-            policies,
-            gateway,
-            scribe,
-            dispatcher,
+            sender,
             recipients,
-            portal,
-            hosts,
-            correlation,
             ct
         );
     }
 
     private static async Task NotifyStaffAsync(
         FormAttachmentRejectedIntegrationEvent evt,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         ICustomerAssignmentAudienceRepository assignments,
         IRecipientResolver resolver,
-        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -114,35 +80,25 @@ public static class FormAttachmentRejectedConsumer
             ct
         );
         foreach (var userId in recipients)
-        {
-            var context = new Dictionary<string, string> { ["formRequestId"] = evt.FormRequestId.ToString() };
-            if (evt.Participant.CustomerId is { } customerId)
-                context["customerId"] = customerId.ToString();
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                $"user:{userId:N}",
-                "A client file was rejected",
-                NotificationCategory.Collaboration,
-                NotificationKinds.TasksFormAttachmentRejectedStaff,
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: userId,
-                inApp: new InAppNotificationRequest(
-                    NotificationKinds.TasksFormAttachmentRejectedStaff,
+            await sender.SendAsync(
+                new ClientFormNotificationRequest(
+                    evt.TenantId,
                     userId,
+                    evt.FormRequestId,
                     evt.EventId,
-                    "task.form_attachment_rejected_staff.v1",
                     evt.OccurredOn,
+                    NotificationKinds.TasksFormAttachmentRejectedStaff,
+                    "task.form_attachment_rejected_staff.v1",
+                    string.Empty,
                     "A client file was rejected",
-                    FallbackBody: evt.Title,
-                    ResourceId: evt.FormRequestId.ToString(),
-                    ResourceContext: context,
-                    Params: new Dictionary<string, string> { ["title"] = evt.Title },
-                    GroupKey: $"form_request:{evt.FormRequestId:N}"
+                    evt.Title,
+                    new Dictionary<string, object?>(),
+                    new Dictionary<string, string> { ["title"] = evt.Title },
+                    NotificationCategory.ClientRequests,
+                    evt.Participant.CustomerId
                 ),
-                ct: ct
+                ct
             );
-        }
     }
 
     // También lo usa el aviso a externos: el mismo texto fijo por código, nunca texto libre.
@@ -156,5 +112,18 @@ public static class FormAttachmentRejectedConsumer
             "not_owned" or "wrong_folder" => "The file couldn't be linked to this form. Please upload it again.",
             "upload_incomplete" => "The upload didn't finish. Please try again.",
             _ => "The file couldn't be accepted. Please upload it again.",
+        };
+
+    // Mismo texto fijo en español; la plantilla elige por language.
+    internal static string SpanishClientMessage(string reasonCode) =>
+        reasonCode switch
+        {
+            "infected" =>
+                "No pudimos aceptar el archivo porque nuestro análisis de seguridad lo marcó. Sube otra copia.",
+            "blocked_by_policy" or "scan_failed" =>
+                "El tipo o el contenido del archivo no está permitido. Sube un PDF o una imagen.",
+            "not_owned" or "wrong_folder" => "No pudimos vincular el archivo a este formulario. Vuelve a subirlo.",
+            "upload_incomplete" => "La carga no terminó. Inténtalo de nuevo.",
+            _ => "No pudimos aceptar el archivo. Vuelve a subirlo.",
         };
 }

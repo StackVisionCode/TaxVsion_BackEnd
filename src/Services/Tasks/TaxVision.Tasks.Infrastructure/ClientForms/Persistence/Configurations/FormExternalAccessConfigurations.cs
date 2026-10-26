@@ -19,6 +19,7 @@ public sealed class FormParticipantConfiguration : IEntityTypeConfiguration<Form
         builder.Property(item => item.Email).HasMaxLength(254).IsRequired();
         builder.Property(item => item.FullName).HasMaxLength(200);
         builder.Property(item => item.PhoneE164).HasMaxLength(16);
+        builder.Property(item => item.Language).HasMaxLength(10).HasDefaultValue("En").IsRequired();
         builder.Property(item => item.Status).HasConversion<int>().IsRequired();
         builder.Property(item => item.Source).HasConversion<int>().IsRequired();
         builder

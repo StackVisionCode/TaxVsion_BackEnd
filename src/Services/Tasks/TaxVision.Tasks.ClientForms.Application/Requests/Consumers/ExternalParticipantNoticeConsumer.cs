@@ -30,6 +30,20 @@ public static class ExternalParticipantNoticeConsumer
         );
 
     public static Task Handle(
+        FormRequestReminderDueIntegrationEvent evt,
+        IFormParticipantRepository participants,
+        IProtectedPayloadCodec codec,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    ) =>
+        RequestAsync(
+            new(evt, evt.Participant, evt.FormRequestId, evt.Title, Kinds.Reminder, Reminder(evt)),
+            new(participants, codec, bus, correlation),
+            ct
+        );
+
+    public static Task Handle(
         FormRequestCompletedIntegrationEvent evt,
         IFormParticipantRepository participants,
         IProtectedPayloadCodec codec,
@@ -82,6 +96,9 @@ public static class ExternalParticipantNoticeConsumer
     private static Dictionary<string, string> Rejection(FormAttachmentRejectedIntegrationEvent evt) =>
         new() { ["file_extension"] = evt.FileExtension, ["reason_code"] = evt.ReasonCode };
 
+    private static Dictionary<string, string> Reminder(FormRequestReminderDueIntegrationEvent evt) =>
+        new() { ["is_overdue"] = evt.IsOverdue.ToString() };
+
     private static async Task RequestAsync(Notice notice, Senders senders, CancellationToken ct)
     {
         // Con cliente (directo o vinculado) el aviso ya sale del hecho en Notification.
@@ -119,7 +136,13 @@ public static class ExternalParticipantNoticeConsumer
             Payload = senders.Codec.Protect(
                 ClientFormProtectedPayloadSchemas.ParticipantNotification,
                 new ProtectedPayloadBinding(notice.Fact.TenantId, notice.FormRequestId, notice.Participant),
-                new FormParticipantNotificationPayload(external.Email, external.FullName, notice.Title, notice.Params)
+                new FormParticipantNotificationPayload(
+                    external.Email,
+                    external.FullName,
+                    notice.Title,
+                    notice.Params,
+                    external.Language
+                )
             ),
         };
 

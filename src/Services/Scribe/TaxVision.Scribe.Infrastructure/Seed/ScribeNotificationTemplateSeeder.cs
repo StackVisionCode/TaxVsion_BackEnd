@@ -188,22 +188,28 @@ public sealed class ScribeNotificationTemplateSeeder(
                 .Versions.Where(v => v.Status == EmailVersionStatus.Published)
                 .OrderByDescending(v => v.VersionNumber)
                 .FirstOrDefault();
-            if (publishedVersion?.HtmlFileId is Guid htmlFileId)
+            var publishedFileId =
+                definition.Channel == TemplateChannel.Push
+                    ? publishedVersion?.TextFileId
+                    : publishedVersion?.HtmlFileId;
+            if (publishedFileId is Guid contentFileId)
             {
-                var stored = publishedVersion.SeedContentVersion ?? 0;
+                var stored = publishedVersion!.SeedContentVersion ?? 0;
                 // Layout pineado viejo: el render usa version.LayoutVersionNumber, así que si el layout
                 // republicó a una versión nueva hay que re-pinear el template aunque el contenido no cambie.
-                var layoutStale = publishedVersion.LayoutVersionNumber != layoutVersionNumber;
+                var layoutStale =
+                    definition.Channel == TemplateChannel.Email
+                    && publishedVersion.LayoutVersionNumber != layoutVersionNumber;
                 if (stored >= definition.ContentVersion && !layoutStale)
                 {
-                    var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
+                    var download = await storageService.DownloadTextAsync(contentFileId, tenantId: null, ct);
                     if (download.IsSuccess)
                         return mappingRepaired;
 
                     logger.LogWarning(
                         "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
                         definition.TemplateKey,
-                        htmlFileId
+                        contentFileId
                     );
                 }
                 else if (layoutStale)
@@ -228,8 +234,8 @@ public sealed class ScribeNotificationTemplateSeeder(
 
             var repairUpload = await storageService.UploadAsync(
                 tenantId: null,
-                TemplateArtifactKind.Html,
-                Encoding.UTF8.GetBytes(definition.Html),
+                definition.Channel == TemplateChannel.Push ? TemplateArtifactKind.Text : TemplateArtifactKind.Html,
+                Encoding.UTF8.GetBytes(definition.Channel == TemplateChannel.Push ? definition.Text! : definition.Html),
                 PlatformTenant.Id,
                 ct
             );
@@ -253,21 +259,12 @@ public sealed class ScribeNotificationTemplateSeeder(
                 return false;
             }
 
-            var repairVersion = existingTemplate.AddDraftVersion(
-                definition.Subject,
-                repairUpload.Value.StorageKey,
-                repairUpload.Value.FileId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+            var repairVersion = AddSeedVersion(
+                existingTemplate,
+                definition,
+                repairUpload.Value,
                 layoutId,
-                layoutVersionNumber,
-                NotificationTemplateSeedSource.VariablesWithPreheader(definition),
-                DateTime.UtcNow,
-                definition.ContentVersion
+                layoutVersionNumber
             );
             if (repairVersion.IsFailure)
             {
@@ -287,8 +284,8 @@ public sealed class ScribeNotificationTemplateSeeder(
 
         var uploadResult = await storageService.UploadAsync(
             tenantId: null,
-            TemplateArtifactKind.Html,
-            Encoding.UTF8.GetBytes(definition.Html),
+            definition.Channel == TemplateChannel.Push ? TemplateArtifactKind.Text : TemplateArtifactKind.Html,
+            Encoding.UTF8.GetBytes(definition.Channel == TemplateChannel.Push ? definition.Text! : definition.Html),
             PlatformTenant.Id,
             ct
         );
@@ -319,7 +316,8 @@ public sealed class ScribeNotificationTemplateSeeder(
             definition.Name,
             null,
             PlatformTenant.Id,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            definition.Channel
         );
         if (templateResult.IsFailure)
         {
@@ -332,22 +330,7 @@ public sealed class ScribeNotificationTemplateSeeder(
         }
 
         var template = templateResult.Value;
-        var versionResult = template.AddDraftVersion(
-            definition.Subject,
-            uploadResult.Value.StorageKey,
-            uploadResult.Value.FileId,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            layoutId,
-            layoutVersionNumber,
-            NotificationTemplateSeedSource.VariablesWithPreheader(definition),
-            DateTime.UtcNow,
-            definition.ContentVersion
-        );
+        var versionResult = AddSeedVersion(template, definition, uploadResult.Value, layoutId, layoutVersionNumber);
         if (versionResult.IsFailure)
         {
             logger.LogError(
@@ -389,6 +372,39 @@ public sealed class ScribeNotificationTemplateSeeder(
         );
         return true;
     }
+
+    private static BuildingBlocks.Results.Result<EmailTemplateVersion> AddSeedVersion(
+        EmailTemplate template,
+        NotificationTemplateSeed definition,
+        TemplateStorageUpload upload,
+        Guid layoutId,
+        int layoutVersionNumber
+    ) =>
+        definition.Channel == TemplateChannel.Push
+            ? template.AddPushDraftVersion(
+                definition.Subject,
+                upload.StorageKey,
+                upload.FileId,
+                definition.Variables,
+                DateTime.UtcNow,
+                definition.ContentVersion
+            )
+            : template.AddDraftVersion(
+                definition.Subject,
+                upload.StorageKey,
+                upload.FileId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                layoutId,
+                layoutVersionNumber,
+                NotificationTemplateSeedSource.VariablesWithPreheader(definition),
+                DateTime.UtcNow,
+                definition.ContentVersion
+            );
 
     /// <summary>
     /// Crea el EventTemplateMapping System-scope si falta, para un template que ya existe.

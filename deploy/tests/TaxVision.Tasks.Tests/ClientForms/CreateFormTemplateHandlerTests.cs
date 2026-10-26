@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Commands;
 using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
@@ -30,7 +32,12 @@ public sealed class CreateFormTemplateHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        Assert.Single(templates.Items);
+        var template = Assert.Single(templates.Items);
+        using var draft = JsonDocument.Parse(template.Draft.Json);
+        var page = Assert.Single(draft.RootElement.GetProperty("pages").EnumerateArray());
+        var section = Assert.Single(page.GetProperty("sections").EnumerateArray());
+        Assert.Matches(new Regex("^pg_[a-z0-9]{10}$"), page.GetProperty("id").GetString());
+        Assert.Matches(new Regex("^sc_[a-z0-9]{10}$"), section.GetProperty("id").GetString());
         Assert.Equal([FormAuditAction.TemplateCreated], audit.Actions);
         Assert.Equal(1, unit.Saves);
     }

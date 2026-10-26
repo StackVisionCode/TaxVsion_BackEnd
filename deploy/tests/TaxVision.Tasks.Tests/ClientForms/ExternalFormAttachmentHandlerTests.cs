@@ -141,7 +141,7 @@ public sealed class ExternalFormAttachmentHandlerTests
             new MemoryFormTemplateVersionRepository(version),
             new FormEngine(limits),
             new RecordingUploadClient(),
-            Options.Create(new ClientFormsOptions { Enabled = true, Limits = limits }),
+            Options.Create(new ClientFormsOptions { Limits = limits }),
             new RecordingUnitOfWork()
         );
     }

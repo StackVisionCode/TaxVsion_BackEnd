@@ -2,9 +2,11 @@ using BuildingBlocks.Common;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Tasks.ClientForms.Application.Actions;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Queries;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.Domain.Projections;
 using TaxVision.Tasks.Infrastructure.Persistence;
@@ -234,6 +236,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
         }
         if (query.CustomerId.HasValue)
             rows = rows.Where(item => item.CustomerId == query.CustomerId.Value);
+        rows = ApplyInboxView(rows, query.View);
         if (query.ParticipantKind.HasValue)
             rows = rows.Where(item => item.ParticipantKind == query.ParticipantKind.Value);
         if (query.ResponsibleUserId.HasValue)
@@ -263,6 +266,19 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
             rows = rows.Where(item =>
                 item.Title.Contains(search)
                 || (
+                    item.ParticipantId.HasValue
+                    && context
+                        .FormParticipants.IgnoreQueryFilters()
+                        .Any(participant =>
+                            participant.TenantId == query.TenantId
+                            && participant.Id == item.ParticipantId.Value
+                            && (
+                                (participant.FullName != null && participant.FullName.Contains(search))
+                                || participant.Email.Contains(search)
+                            )
+                        )
+                )
+                || (
                     item.CustomerId.HasValue
                     && context
                         .CustomerDirectoryEntries.IgnoreQueryFilters()
@@ -277,41 +293,190 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
         }
 
         var total = await rows.CountAsync(ct);
-        var items = await rows.OrderByDescending(item => item.LastActivityAtUtc)
+        var pageRows = await rows.Include(item => item.ActionRuns)
+            .OrderByDescending(item => item.LastActivityAtUtc)
             .ThenBy(item => item.Id)
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
-            .Select(item => new FormRequestListItemResponse(
-                item.Id,
-                new FormRequestParticipantResponse(item.ParticipantKind, item.CustomerId, item.ParticipantId),
-                item.CustomerLinkStatus,
-                item.ResponsibleUserId,
-                item.CustomerId.HasValue
-                    ? context
-                        .CustomerDirectoryEntries.IgnoreQueryFilters()
-                        .Where(customer =>
-                            customer.TenantId == query.TenantId && customer.CustomerId == item.CustomerId.Value
-                        )
-                        .Select(customer => customer.DisplayName)
-                        .FirstOrDefault()
-                        ?? "Customer"
-                    : "External participant",
-                item.Title,
-                item.Status,
-                item.VersionNumber,
-                item.DueAtUtc,
-                item.DueAtUtc < nowUtc
-                    && item.Status != FormRequestStatus.Completed
-                    && item.Status != FormRequestStatus.Cancelled,
-                item.DraftProgressPercent,
-                item.CurrentRevisionNumber,
-                item.LastSubmittedAtUtc,
-                item.RequestedByUserId,
-                item.RequestedAtUtc
-            ))
             .ToArrayAsync(ct);
+        var references = await LoadListReferencesAsync(query, pageRows, ct);
+        var items = pageRows.Select(item => ToListItem(item, references, nowUtc)).ToArray();
         return new PagedResult<FormRequestListItemResponse>(items, query.Page, query.PageSize, total);
     }
+
+    private IQueryable<FormRequest> ApplyInboxView(IQueryable<FormRequest> rows, FormRequestInboxView view) =>
+        view switch
+        {
+            FormRequestInboxView.Clients => rows.Where(item => item.ParticipantKind == FormParticipantKind.Customer),
+            FormRequestInboxView.External => rows.Where(item => item.ParticipantKind == FormParticipantKind.External),
+            // Solo lo que espera una decisión: nada cancelado o archivado y ningún alta de cliente que ya
+            // resolvió el vínculo. Una completada sigue si tiene un run reintentable (P-19 "Retry action").
+            FormRequestInboxView.NeedsAction => rows.Where(item =>
+                item.Status != FormRequestStatus.Cancelled
+                && (
+                    item.Status == FormRequestStatus.Submitted
+                    || item.CustomerLinkStatus == CustomerLinkStatus.Blocked
+                    || item.ActionRuns.Any(run =>
+                        run.RetriedAtUtc == null
+                        && (run.Status == FormActionRunStatus.Failed || run.Status == FormActionRunStatus.Rejected)
+                        && !(
+                            run.ActionType == FormActionNames.CreateCustomer
+                            && item.CustomerLinkStatus == CustomerLinkStatus.Linked
+                        )
+                    )
+                )
+            ),
+            _ => rows,
+        };
+
+    private async Task<FormRequestListReferences> LoadListReferencesAsync(
+        ListFormRequestsQuery query,
+        IReadOnlyCollection<FormRequest> requests,
+        CancellationToken ct
+    )
+    {
+        var customerIds = requests
+            .Where(item => item.CustomerId.HasValue)
+            .Select(item => item.CustomerId!.Value)
+            .ToArray();
+        var participantIds = requests
+            .Where(item => item.ParticipantId.HasValue)
+            .Select(item => item.ParticipantId!.Value)
+            .ToArray();
+        var versionIds = requests.Select(item => item.FormTemplateVersionId).ToArray();
+        var existingIds = requests
+            .SelectMany(item => item.ActionRuns)
+            .Where(run => run.IsLatestAttempt && run.ExistingCustomerId.HasValue)
+            .Select(run => run.ExistingCustomerId!.Value)
+            .Distinct()
+            .ToArray();
+        var customers = await context
+            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item => item.TenantId == query.TenantId && customerIds.Contains(item.CustomerId))
+            .ToDictionaryAsync(item => item.CustomerId, item => item.DisplayName ?? "Customer", ct);
+        var participants = await context
+            .FormParticipants.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item => item.TenantId == query.TenantId && participantIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, ct);
+        var templates = await context
+            .FormTemplateVersions.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item => item.TenantId == query.TenantId && versionIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, item => item.Title, ct);
+        var visibleExisting = query.CanViewAll
+            ? existingIds.ToHashSet()
+            : (
+                await context
+                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(item =>
+                        item.TenantId == query.TenantId
+                        && item.UserId == query.ActorUserId
+                        && existingIds.Contains(item.CustomerId)
+                    )
+                    .Select(item => item.CustomerId)
+                    .ToArrayAsync(ct)
+            ).ToHashSet();
+        return new(customers, participants, templates, visibleExisting);
+    }
+
+    private static FormRequestListItemResponse ToListItem(
+        FormRequest request,
+        FormRequestListReferences references,
+        DateTime nowUtc
+    )
+    {
+        var label = ParticipantLabel(request, references.Customers, references.Participants);
+        var runs = request
+            .ActionRuns.Where(run => run.IsLatestAttempt)
+            .OrderByDescending(run => run.RequestedAtUtc)
+            .Select(run =>
+                FormActionRunResponse.From(
+                    run,
+                    run.ExistingCustomerId is not { } existing || references.VisibleExistingCustomers.Contains(existing)
+                )
+            )
+            .ToArray();
+        return new(
+            request.Id,
+            new(request.ParticipantKind, request.CustomerId, request.ParticipantId),
+            request.CustomerLinkStatus,
+            request.ResponsibleUserId,
+            label.DisplayName,
+            references.Templates.GetValueOrDefault(request.FormTemplateVersionId, "Form"),
+            label.MaskedEmail,
+            request.LastSubmittedAtUtc,
+            request.Title,
+            request.Status,
+            request.VersionNumber,
+            request.DueAtUtc,
+            request.DueAtUtc < nowUtc
+                && request.Status != FormRequestStatus.Completed
+                && request.Status != FormRequestStatus.Cancelled,
+            request.DraftProgressPercent,
+            request.CurrentRevisionNumber,
+            request.LastSubmittedAtUtc,
+            request.RequestedByUserId,
+            request.RequestedAtUtc,
+            runs,
+            request.Origin
+        );
+    }
+
+    public async Task<FormRequestParticipantLabel> GetParticipantLabelAsync(
+        Guid tenantId,
+        FormRequest request,
+        CancellationToken ct = default
+    )
+    {
+        var customers = request.CustomerId is { } customerId
+            ? await context
+                .CustomerDirectoryEntries.IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId && item.CustomerId == customerId)
+                .ToDictionaryAsync(item => item.CustomerId, item => item.DisplayName ?? "Customer", ct)
+            : new Dictionary<Guid, string>();
+        var participants = request.ParticipantId is { } participantId
+            ? await context
+                .FormParticipants.IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId && item.Id == participantId)
+                .ToDictionaryAsync(item => item.Id, ct)
+            : new Dictionary<Guid, FormParticipant>();
+        return ParticipantLabel(request, customers, participants);
+    }
+
+    // Regla única de nombre y enmascarado para la fila del listado y el detalle.
+    private static FormRequestParticipantLabel ParticipantLabel(
+        FormRequest request,
+        IReadOnlyDictionary<Guid, string> customers,
+        IReadOnlyDictionary<Guid, FormParticipant> participants
+    )
+    {
+        participants.TryGetValue(request.ParticipantId ?? Guid.Empty, out var participant);
+        var displayName =
+            request.ParticipantKind == FormParticipantKind.Customer && request.CustomerId is { } customerId
+                ? customers.GetValueOrDefault(customerId, "Customer")
+                : participant?.FullName ?? "External participant";
+        return new(displayName, MaskEmail(participant?.Email));
+    }
+
+    private static string? MaskEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+        var separator = email.IndexOf('@');
+        return separator <= 0 ? "***" : $"{email[0]}***{email[separator..]}";
+    }
+
+    private sealed record FormRequestListReferences(
+        IReadOnlyDictionary<Guid, string> Customers,
+        IReadOnlyDictionary<Guid, FormParticipant> Participants,
+        IReadOnlyDictionary<Guid, string> Templates,
+        IReadOnlySet<Guid> VisibleExistingCustomers
+    );
 
     public async Task<IReadOnlyList<FormRequestTimelineEntryResponse>> ListTimelineAsync(
         Guid tenantId,

@@ -1,9 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
-using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
 
 namespace TaxVision.Notification.Application.Consumers.ClientForms;
@@ -14,14 +12,8 @@ public static class FormRequestAssignedConsumer
 
     public static async Task Handle(
         FormRequestAssignedIntegrationEvent evt,
-        ICustomerEmailDirectoryRepository customers,
-        ICustomerContactPolicyRepository policies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribe,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         IRecipientResolver recipients,
-        IOptions<PortalOptions> portal,
-        ITenantHostResolver hosts,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -30,19 +22,7 @@ public static class FormRequestAssignedConsumer
         {
             if (evt.Participant.CustomerId is not { } customerId)
                 return;
-            await ClientFormCustomerNotifier.NotifyAsync(
-                Notification(evt, customerId),
-                customers,
-                policies,
-                gateway,
-                scribe,
-                dispatcher,
-                recipients,
-                portal,
-                hosts,
-                correlation,
-                ct
-            );
+            await ClientFormCustomerNotifier.NotifyAsync(Notification(evt, customerId), sender, recipients, ct);
         }
     }
 

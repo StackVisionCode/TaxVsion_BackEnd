@@ -4,6 +4,8 @@ namespace TaxVision.Tasks.ClientForms.Application.Common;
 
 public sealed class ClientFormsBotProtectionOptions
 {
+    public string? SiteKey { get; init; }
+
     public string? SecretKey { get; init; }
 
     [Required]

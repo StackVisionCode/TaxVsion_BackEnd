@@ -7,6 +7,7 @@ public enum PushPlatform
 {
     Fcm,
     Apns,
+    Web,
 }
 
 /// <summary>

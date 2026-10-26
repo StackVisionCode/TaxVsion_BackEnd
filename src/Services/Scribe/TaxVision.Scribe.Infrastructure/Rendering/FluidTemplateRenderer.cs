@@ -82,6 +82,13 @@ public sealed partial class FluidTemplateRenderer(
             );
 
         var templateResult = await templateRepository.GetByKeyAsync(templateKey, request.TenantId, ct);
+        // Un override del tenant de otro canal no reemplaza a la plantilla del sistema de este canal.
+        if (
+            templateResult.IsSuccess
+            && templateResult.Value.TenantId is not null
+            && templateResult.Value.Channel != request.Channel
+        )
+            templateResult = await templateRepository.GetByKeyAsync(templateKey, null, ct);
         if (templateResult.IsFailure)
             return Result.Failure<RenderedContent>(templateResult.Error);
 
@@ -94,12 +101,21 @@ public sealed partial class FluidTemplateRenderer(
                 )
             );
 
-        var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId, ct);
+        if (templateResult.Value.Channel != request.Channel)
+            return Result.Failure<RenderedContent>(
+                new Error("EmailRenderer.Channel", "The requested channel does not match the template channel.")
+            );
+
+        var variables = NormalizeVariables(request.Variables);
+        if (request.Channel == TemplateChannel.Push)
+            return await RenderPushAsync(templateKey.Value, templateResult.Value.TenantId, version, variables, ct);
+
+        var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId!.Value, ct);
         if (layoutResult.IsFailure)
             return Result.Failure<RenderedContent>(layoutResult.Error);
 
         var layoutVersion = layoutResult.Value.Versions.FirstOrDefault(v =>
-            v.VersionNumber == version.LayoutVersionNumber
+            v.VersionNumber == version.LayoutVersionNumber!.Value
         );
         if (layoutVersion is null)
             return Result.Failure<RenderedContent>(
@@ -134,7 +150,7 @@ public sealed partial class FluidTemplateRenderer(
             logoOwner.Scope,
             logoOwner.TenantId,
             ResolveDispatchScope(layoutResult.Value.LayoutKey.Value, templateResult.Value.DispatchScopeOverride),
-            NormalizeVariables(request.Variables),
+            variables,
             ct
         );
     }
@@ -150,12 +166,21 @@ public sealed partial class FluidTemplateRenderer(
             return Result.Failure<RenderedContent>(versionResult.Error);
         var (template, version) = versionResult.Value;
 
-        var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId, ct);
+        if (template.Channel == TemplateChannel.Push)
+            return await RenderPushAsync(
+                template.TemplateKey.Value,
+                template.TenantId,
+                version,
+                NormalizeVariables(sampleVariables),
+                ct
+            );
+
+        var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId!.Value, ct);
         if (layoutResult.IsFailure)
             return Result.Failure<RenderedContent>(layoutResult.Error);
 
         var layoutVersion = layoutResult.Value.Versions.FirstOrDefault(v =>
-            v.VersionNumber == version.LayoutVersionNumber
+            v.VersionNumber == version.LayoutVersionNumber!.Value
         );
         if (layoutVersion is null)
             return Result.Failure<RenderedContent>(
@@ -204,14 +229,17 @@ public sealed partial class FluidTemplateRenderer(
     {
         var tenantIdForToken = tenantId ?? PlatformTenant.Id;
 
-        var bodyResult = await GetOrParseTemplateAsync(
-            BuildCacheKey(tenantId, templateKeyValue, version.VersionNumber, "html"),
-            version.HtmlFileId,
-            tenantIdForToken,
-            ct
-        );
-        if (bodyResult.IsFailure)
-            return Result.Failure(bodyResult.Error);
+        if (version.HtmlFileId is { } htmlFileId)
+        {
+            var bodyResult = await GetOrParseTemplateAsync(
+                BuildCacheKey(tenantId, templateKeyValue, version.VersionNumber, "html"),
+                htmlFileId,
+                tenantIdForToken,
+                ct
+            );
+            if (bodyResult.IsFailure)
+                return Result.Failure(bodyResult.Error);
+        }
 
         if (version.TextFileId is { } textFileId)
         {
@@ -232,6 +260,44 @@ public sealed partial class FluidTemplateRenderer(
             ct
         );
         return layoutResult.IsFailure ? Result.Failure(layoutResult.Error) : Result.Success();
+    }
+
+    // templateTenantId = dueño de la plantilla resuelta (override del tenant o null si es System): la caché y
+    // el token de descarga son de ese dueño, igual que en el email, para que un override no sirva a otro tenant.
+    private async Task<Result<RenderedContent>> RenderPushAsync(
+        string templateKey,
+        Guid? templateTenantId,
+        EmailTemplateVersion version,
+        IReadOnlyDictionary<string, object?> variables,
+        CancellationToken ct
+    )
+    {
+        if (version.TextFileId is not { } textFileId)
+            return Result.Failure<RenderedContent>(
+                new Error("EmailRenderer.TextRequired", "Push templates require text content.")
+            );
+        variables = WithPlatformVariables(variables);
+        if (!Parser.TryParse(version.Subject, out var subjectTemplate, out var subjectError))
+            return Result.Failure<RenderedContent>(new Error("EmailRenderer.Parse", subjectError));
+        var subject = await RenderTemplateAsync(subjectTemplate, variables, htmlEncode: false, ct);
+        if (subject.IsFailure)
+            return Result.Failure<RenderedContent>(subject.Error);
+        var textTemplate = await GetOrParseTemplateAsync(
+            BuildCacheKey(templateTenantId, templateKey, version.VersionNumber, "push"),
+            textFileId,
+            templateTenantId ?? PlatformTenant.Id,
+            ct
+        );
+        if (textTemplate.IsFailure)
+            return Result.Failure<RenderedContent>(textTemplate.Error);
+        var text = await RenderTemplateAsync(textTemplate.Value.Template, variables, htmlEncode: false, ct);
+        if (text.IsFailure)
+            return Result.Failure<RenderedContent>(text.Error);
+        if (subject.Value.Length > 65 || text.Value.Length > 180)
+            return Result.Failure<RenderedContent>(
+                new Error("EmailRenderer.PushLength", "Rendered push title or body exceeds its limit.")
+            );
+        return Result.Success(new RenderedContent(subject.Value, string.Empty, text.Value, [], DispatchScopes.System));
     }
 
     private async Task<Result<RenderedContent>> RenderVersionAsync(
@@ -316,7 +382,7 @@ public sealed partial class FluidTemplateRenderer(
 
         var bodyTemplateResult = await GetOrParseTemplateAsync(
             BuildCacheKey(tenantId, templateKeyValue, version.VersionNumber, "html"),
-            version.HtmlFileId,
+            version.HtmlFileId!.Value,
             tenantIdForToken,
             ct
         );
@@ -350,7 +416,7 @@ public sealed partial class FluidTemplateRenderer(
             bodyHtmlResult.Value,
             logoAsset.IsFallback,
             subjectResult.Value,
-            ResolvePreheader(version, variables, subjectResult.Value),
+            await ResolvePreheaderAsync(version, variables, subjectResult.Value, ct),
             locale
         );
         var finalHtmlResult = await RenderTemplateAsync(
@@ -480,12 +546,14 @@ public sealed partial class FluidTemplateRenderer(
     /// Línea de preheader (vista previa en inbox/notificación) que el layout imprime en su div oculto. Se
     /// resuelve: variable 'preheader' del caller si vino no vacía → si no, el DefaultValue de la variable
     /// 'preheader' declarada en el template (la sembramos por template) → si no, el subject. Así los
-    /// templates viejos o sin declararla caen al subject sin romperse.
+    /// templates viejos o sin declararla caen al subject sin romperse. Un default con Liquid (rama por
+    /// <c>language</c>) se renderiza con las variables del envío; si no parsea, se cae al subject.
     /// </summary>
-    private static string ResolvePreheader(
+    private static async Task<string> ResolvePreheaderAsync(
         EmailTemplateVersion version,
         IReadOnlyDictionary<string, object?> requestVariables,
-        string subject
+        string subject,
+        CancellationToken ct
     )
     {
         if (
@@ -498,9 +566,14 @@ public sealed partial class FluidTemplateRenderer(
         var definition = version.VariableDefinitions.FirstOrDefault(d =>
             string.Equals(d.Name, "preheader", StringComparison.OrdinalIgnoreCase)
         );
-        return definition is not null && !string.IsNullOrWhiteSpace(definition.DefaultValue)
-            ? definition.DefaultValue
-            : subject;
+        if (definition is null || string.IsNullOrWhiteSpace(definition.DefaultValue))
+            return subject;
+        if (!definition.DefaultValue.Contains("{%", StringComparison.Ordinal))
+            return definition.DefaultValue;
+        if (!Parser.TryParse(definition.DefaultValue, out var template, out _))
+            return subject;
+        var rendered = await RenderTemplateAsync(template, requestVariables, htmlEncode: false, ct);
+        return rendered.IsSuccess && !string.IsNullOrWhiteSpace(rendered.Value) ? rendered.Value.Trim() : subject;
     }
 
     private async Task<Result<string?>> ResolveTextAsync(

@@ -25,6 +25,7 @@ public enum FormCancelReason
 {
     StaffCancelled = 1,
     CustomerArchived = 2,
+    Archived = 3,
 }
 
 public enum FormProfileUpdateStatus

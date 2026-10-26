@@ -53,8 +53,9 @@ public static class RequestPublicDirectedFormChallengeHandler
         if (issued is not { } challenge)
             return Result.Success();
         challenges.Add(challenge.Challenge);
-        await bus.PublishAsync(CodeDelivery(context, challenge.Challenge, challenge.Code, payloadCodec, correlation));
+        // Guardar antes de publicar: un reintento en línea no deja salir un código sin su hash persistido.
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(CodeDelivery(context, challenge.Challenge, challenge.Code, payloadCodec, correlation));
         metrics.RecordExternalOtp(ClientFormsMetricValues.OtpIssued);
         return Result.Success();
     }
@@ -134,7 +135,12 @@ public static class RequestPublicDirectedFormChallengeHandler
                 participant,
                 ChallengeId: challenge.Id
             ),
-            new FormAccessCodeDeliveryPayload(context.Participant.Email, code, context.Request.Title)
+            new FormAccessCodeDeliveryPayload(
+                context.Participant.Email,
+                code,
+                context.Request.Title,
+                context.Participant.Language
+            )
         );
         return new FormAccessCodeDeliveryRequestedIntegrationEvent
         {

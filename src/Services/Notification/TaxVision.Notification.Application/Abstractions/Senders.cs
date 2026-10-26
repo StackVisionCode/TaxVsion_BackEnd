@@ -28,7 +28,10 @@ public sealed record PushMessage(
     PushPlatform Platform,
     string Title,
     string Body,
-    IReadOnlyDictionary<string, string>? Data = null
+    IReadOnlyDictionary<string, string>? Data = null,
+    string? Topic = null,
+    string? Tag = null,
+    string? Link = null
 );
 
 public interface IPushSender
@@ -49,6 +52,15 @@ public static class PushErrorCodes
     /// reintentando indefinidamente contra un dispositivo fantasma.
     /// </summary>
     public const string TokenInvalid = "Notification.Push.TokenInvalid";
+    public const string InvalidArgument = "Notification.Push.InvalidArgument";
+    public const string SenderIdMismatch = "Notification.Push.SenderIdMismatch";
+    public const string ThirdPartyAuthError = "Notification.Push.ThirdPartyAuthError";
+    public const string Unavailable = "Notification.Push.Unavailable";
+    public const string Internal = "Notification.Push.Internal";
+    public const string QuotaExceeded = "Notification.Push.QuotaExceeded";
+
+    /// <summary>Errores que se reintentan (P-21.4); el resto no mejora con otro intento.</summary>
+    public static bool IsTransient(string code) => code is Unavailable or Internal or QuotaExceeded;
 }
 
 public interface IPushDeviceTokenRepository
@@ -99,4 +111,13 @@ public interface INotificationLogRepository
         string recipient,
         CancellationToken ct = default
     );
+
+    Task<NotificationLog?> GetByRelatedEventAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string kind,
+        NotificationChannel channel,
+        string recipient,
+        CancellationToken ct = default
+    ) => Task.FromResult<NotificationLog?>(null);
 }

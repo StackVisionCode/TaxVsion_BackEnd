@@ -24,6 +24,42 @@ public sealed class PublicIntakeFormAccessHandlerTests
     private static readonly DateTime Now = new(2026, 10, 22, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public async Task Access_exposes_only_the_public_turnstile_configuration()
+    {
+        var fixture = Fixture();
+        var result = await GetPublicIntakeFormAccessHandler.Handle(
+            new GetPublicIntakeFormAccessQuery("intake-token", "office.test", Now),
+            fixture.Links,
+            fixture.Security,
+            new FixedHostValidator(),
+            new FixedCapabilities(),
+            fixture.Versions,
+            fixture.Notices,
+            Options.Create(
+                new ClientFormsOptions
+                {
+                    External = new ClientFormsExternalOptions
+                    {
+                        BotProtection = new ClientFormsBotProtectionOptions
+                        {
+                            SiteKey = "public-site-key",
+                            SecretKey = "server-secret",
+                            ExpectedAction = "client_forms_intake",
+                        },
+                    },
+                }
+            ),
+            default
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("turnstile", result.Value.BotProtection.Provider);
+        Assert.Equal("public-site-key", result.Value.BotProtection.SiteKey);
+        Assert.Equal("client_forms_intake", result.Value.BotProtection.Action);
+        Assert.DoesNotContain("server-secret", System.Text.Json.JsonSerializer.Serialize(result.Value));
+    }
+
+    [Fact]
     public async Task Challenge_is_a_noop_when_bot_protection_rejects_the_request()
     {
         var fixture = Fixture();
@@ -106,6 +142,71 @@ public sealed class PublicIntakeFormAccessHandlerTests
         Assert.Equal("entry_notice", evidence.ComponentId);
         Assert.Equal(participant.Id, evidence.ParticipantId);
     }
+
+    [Theory]
+    [InlineData("es", "Es")]
+    [InlineData(null, "En")]
+    [InlineData("fr", "En")]
+    public async Task Challenge_sends_the_code_in_a_normalized_language(string? language, string expected)
+    {
+        var codec = new CapturingPayloadCodec();
+
+        await ChallengeAsync(Fixture(), new FixedBotProtection(true), new FakeMessageBus(), codec, language);
+
+        Assert.Equal(expected, Assert.IsType<FormAccessCodeDeliveryPayload>(codec.Content).Language);
+    }
+
+    [Fact]
+    public async Task Verify_without_a_language_keeps_the_one_already_saved()
+    {
+        var fixture = Fixture();
+        fixture.Participants.Add(
+            FormParticipant
+                .Create(TenantId, "prospect@example.com", null, null, FormParticipantSource.IntakeLink, Now, "Es")
+                .Value
+        );
+        await ChallengeAsync(fixture, new FixedBotProtection(true), new FakeMessageBus());
+
+        var result = await VerifyAsync(fixture, VerifyCommand("123456", Now.AddMinutes(1)));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Es", Assert.Single(fixture.Participants.Items).Language);
+    }
+
+    [Fact]
+    public async Task Verify_with_a_language_saves_the_choice()
+    {
+        var fixture = Fixture();
+        await ChallengeAsync(fixture, new FixedBotProtection(true), new FakeMessageBus());
+
+        var result = await VerifyAsync(fixture, VerifyCommand("123456", Now.AddMinutes(1)) with { Language = "es" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Es", Assert.Single(fixture.Participants.Items).Language);
+    }
+
+    private static Task<Result<PublicIntakeFormSessionResponse>> VerifyAsync(
+        FixtureState fixture,
+        VerifyPublicIntakeFormChallengeCommand command
+    ) =>
+        VerifyPublicIntakeFormChallengeHandler.Handle(
+            command,
+            fixture.Links,
+            fixture.Challenges,
+            fixture.Sessions,
+            fixture.Participants,
+            fixture.Requests,
+            fixture.Versions,
+            fixture.Notices,
+            fixture.ConsentRecords,
+            fixture.Security,
+            new FixedHostValidator(),
+            new FixedCapabilities(),
+            new RecordingFormAuditLog(),
+            new RecordingUnitOfWork(),
+            new RecordingClientFormsMetrics(),
+            default
+        );
 
     [Fact]
     public async Task Concurrent_first_verify_for_the_same_email_reuses_the_participant_that_won_the_index()
@@ -262,7 +363,8 @@ public sealed class PublicIntakeFormAccessHandlerTests
         FixtureState fixture,
         IFormIntakeBotProtection bot,
         FakeMessageBus bus,
-        CapturingPayloadCodec? codec = null
+        CapturingPayloadCodec? codec = null,
+        string? language = null
     ) =>
         RequestPublicIntakeFormChallengeHandler.Handle(
             new RequestPublicIntakeFormChallengeCommand(
@@ -271,7 +373,8 @@ public sealed class PublicIntakeFormAccessHandlerTests
                 "prospect@example.com",
                 "captcha-token",
                 "127.0.0.1",
-                Now
+                Now,
+                language
             ),
             fixture.Links,
             fixture.Challenges,
@@ -282,13 +385,53 @@ public sealed class PublicIntakeFormAccessHandlerTests
             new FixedCapabilities(),
             bot,
             codec ?? new CapturingPayloadCodec(),
-            Options.Create(new ClientFormsOptions { Enabled = true, External = new ClientFormsExternalOptions() }),
+            Options.Create(new ClientFormsOptions { External = new ClientFormsExternalOptions() }),
             new RecordingUnitOfWork(),
             bus,
             new NoOpCorrelationContext(),
             new RecordingClientFormsMetrics(),
             default
         );
+
+    [Fact]
+    public async Task Staff_can_list_and_read_links_with_the_intake_flag_off_to_pause_or_revoke_them()
+    {
+        var fixture = Fixture();
+
+        var list = await ListFormIntakeLinksHandler.Handle(
+            new ListFormIntakeLinksQuery(TenantId),
+            fixture.Links,
+            default
+        );
+        var detail = await GetFormIntakeLinkHandler.Handle(
+            new GetFormIntakeLinkQuery(TenantId, fixture.Link.Id),
+            fixture.Links,
+            default
+        );
+
+        Assert.Equal(fixture.Link.Id, Assert.Single(list.Value).Id);
+        Assert.Equal(fixture.Link.Id, detail.Value.Id);
+    }
+
+    [Fact]
+    public async Task Revealing_the_link_token_still_requires_the_intake_flag()
+    {
+        var fixture = Fixture();
+        var unitOfWork = new RecordingUnitOfWork();
+
+        var result = await GetFormIntakeLinkTokenHandler.Handle(
+            new GetFormIntakeLinkTokenQuery(TenantId, UserId, fixture.Link.Id),
+            new ClosedCapabilities(),
+            fixture.Links,
+            fixture.Security,
+            new RecordingFormAuditLog(),
+            unitOfWork,
+            default
+        );
+
+        Assert.Equal(FormParticipantErrors.IntakeLinkUnavailable, result.Error);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
 
     private static FixtureState Fixture()
     {
@@ -432,10 +575,12 @@ public sealed class PublicIntakeFormAccessHandlerTests
     private sealed class CapturingPayloadCodec : IProtectedPayloadCodec
     {
         public ProtectedPayloadBinding? Binding { get; private set; }
+        public object? Content { get; private set; }
 
         public ProtectedPayload Protect<T>(string schema, ProtectedPayloadBinding binding, T content)
         {
             Binding = binding;
+            Content = content;
             return new ProtectedPayload
             {
                 Cipher = "ciphertext",

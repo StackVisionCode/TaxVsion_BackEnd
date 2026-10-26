@@ -47,8 +47,13 @@ public sealed class FormTemplatesController(IMessageBus bus, FormPublisherCapabi
         return Ok(result);
     }
 
+    // Quien asigna, quien envía a externos y quien arma intake links elige plantilla publicada.
     [HttpGet("assignable")]
-    [HasPermission(TasksPermissions.FormRequestsManage)]
+    [HasAnyPermission(
+        TasksPermissions.FormRequestsManage,
+        TasksPermissions.FormRequestsSendExternal,
+        TasksPermissions.FormIntakeLinksManage
+    )]
     [RateLimit("task.f.form_read")]
     public async Task<IActionResult> ListAssignable([FromQuery] string? search, CancellationToken ct)
     {

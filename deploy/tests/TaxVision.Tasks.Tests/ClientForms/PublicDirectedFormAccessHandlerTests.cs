@@ -67,6 +67,94 @@ public sealed class PublicDirectedFormAccessHandlerTests
     }
 
     [Fact]
+    public async Task A_failed_challenge_save_publishes_no_code()
+    {
+        var fixture = Fixture();
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RequestPublicDirectedFormChallengeHandler.Handle(
+                new RequestPublicDirectedFormChallengeCommand("access-token", "office.test", Now),
+                fixture.Grants,
+                fixture.Challenges,
+                fixture.Requests,
+                fixture.Participants,
+                fixture.Notices,
+                fixture.Security,
+                new FixedHostValidator(true),
+                new FixedCapabilities(),
+                ExternalOptions(),
+                new CapturingPayloadCodec(),
+                new FailingUnitOfWork(),
+                bus,
+                new NoOpCorrelationContext(),
+                new RecordingClientFormsMetrics(),
+                default
+            )
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task A_failed_resend_save_publishes_no_link()
+    {
+        var fixture = Fixture();
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ResendExternalFormAccessHandler.Handle(
+                new ResendExternalFormAccessCommand(TenantId, UserId, true, fixture.Request.Id, Now),
+                fixture.Requests,
+                new AllowAllVisibility(),
+                fixture.Participants,
+                fixture.Grants,
+                new FixedCapabilities(),
+                fixture.Security,
+                new CapturingPayloadCodec(),
+                new RecordingFormAuditLog(),
+                new FailingUnitOfWork(),
+                bus,
+                new NoOpCorrelationContext(),
+                default
+            )
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Verify_keeps_the_language_chosen_on_the_public_page()
+    {
+        var fixture = Fixture();
+        await IssueChallengeAsync(fixture);
+
+        var result = await VerifyPublicDirectedFormChallengeHandler.Handle(
+            Verify("123456", Now.AddMinutes(1)) with
+            {
+                Language = "Es",
+            },
+            fixture.Grants,
+            fixture.Challenges,
+            fixture.Sessions,
+            fixture.Requests,
+            fixture.Participants,
+            fixture.Notices,
+            fixture.ConsentRecords,
+            fixture.Security,
+            new FixedHostValidator(true),
+            new FixedCapabilities(),
+            new RecordingFormAuditLog(),
+            new RecordingUnitOfWork(),
+            new RecordingClientFormsMetrics(),
+            default
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Es", fixture.Participant.Language);
+    }
+
+    [Fact]
     public async Task Challenge_is_a_noop_for_cross_tenant_host()
     {
         var fixture = Fixture();
@@ -413,7 +501,7 @@ public sealed class PublicDirectedFormAccessHandlerTests
         new("access-token", "office.test", code, "127.0.0.1", "tests", nowUtc);
 
     private static IOptions<ClientFormsOptions> ExternalOptions() =>
-        Options.Create(new ClientFormsOptions { Enabled = true, External = new ClientFormsExternalOptions() });
+        Options.Create(new ClientFormsOptions { External = new ClientFormsExternalOptions() });
 
     private static async Task IssueChallengeAsync(FixtureState fixture)
     {
@@ -473,7 +561,80 @@ public sealed class PublicDirectedFormAccessHandlerTests
         );
     }
 
-    private static FormRequest Request(Guid participantId) =>
+    [Fact]
+    public async Task Resend_of_an_intake_link_request_reports_that_there_is_no_access_link()
+    {
+        var fixture = Fixture();
+        var intake = Request(fixture.Participant.Id, FormRequestOrigin.IntakeLink);
+
+        var result = await ResendAsync(fixture with { Requests = new ExternalRequestRepository(intake) }, intake.Id);
+
+        Assert.Equal(FormRequestErrors.NoAccessLink, result.Error);
+    }
+
+    [Fact]
+    public async Task Resend_without_a_grant_reports_that_there_is_no_access_link()
+    {
+        var fixture = Fixture();
+
+        var result = await ResendAsync(fixture with { Grants = new MemoryGrantRepository() }, fixture.Request.Id);
+
+        Assert.Equal(FormRequestErrors.NoAccessLink, result.Error);
+    }
+
+    [Fact]
+    public async Task Resend_after_submission_is_rejected_without_spending_an_issue()
+    {
+        var fixture = Fixture();
+        Assert.True(
+            fixture
+                .Request.Submit(
+                    new ProtectedAnswers("{\"schemaVersion\":1,\"values\":{}}", 1),
+                    [],
+                    [],
+                    FormActor.ExternalSession(fixture.Participant.Id, Guid.NewGuid()),
+                    Now
+                )
+                .IsSuccess
+        );
+        var issued = fixture.Grant.IssueCount;
+
+        var result = await ResendAsync(fixture, fixture.Request.Id);
+
+        Assert.Equal(FormRequestErrors.ResendNotAllowed, result.Error);
+        Assert.Equal(issued, fixture.Grant.IssueCount);
+    }
+
+    [Fact]
+    public async Task Resend_of_a_pending_directed_request_rotates_the_link()
+    {
+        var fixture = Fixture();
+        var issued = fixture.Grant.IssueCount;
+
+        var result = await ResendAsync(fixture, fixture.Request.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(issued + 1, fixture.Grant.IssueCount);
+    }
+
+    private static Task<Result> ResendAsync(FixtureState fixture, Guid requestId) =>
+        ResendExternalFormAccessHandler.Handle(
+            new ResendExternalFormAccessCommand(TenantId, UserId, true, requestId, Now),
+            fixture.Requests,
+            new AllowAllVisibility(),
+            fixture.Participants,
+            fixture.Grants,
+            new FixedCapabilities(),
+            fixture.Security,
+            new CapturingPayloadCodec(),
+            new RecordingFormAuditLog(),
+            new RecordingUnitOfWork(),
+            new FakeMessageBus(),
+            new NoOpCorrelationContext(),
+            default
+        );
+
+    private static FormRequest Request(Guid participantId, FormRequestOrigin origin = FormRequestOrigin.Directed) =>
         FormRequest
             .Create(
                 TenantId,
@@ -498,8 +659,8 @@ public sealed class PublicDirectedFormAccessHandlerTests
                 Now.AddDays(7),
                 null,
                 null,
-                FormRequestOrigin.Directed,
-                null,
+                origin,
+                origin == FormRequestOrigin.IntakeLink ? Guid.NewGuid() : null,
                 UserId,
                 UserId,
                 Now
@@ -519,6 +680,12 @@ public sealed class PublicDirectedFormAccessHandlerTests
         MemoryFormConsentRecordRepository ConsentRecords,
         FixedSecurity Security
     );
+
+    private sealed class FailingUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken ct = default) =>
+            throw new InvalidOperationException("save failed");
+    }
 
     private sealed class AllowAllVisibility : IFormRequestVisibilityFilter
     {

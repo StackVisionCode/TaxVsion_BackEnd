@@ -85,6 +85,15 @@ public sealed class FormActionPlannerTests
     }
 
     [Fact]
+    public async Task Office_without_settings_row_creates_the_customer_by_default()
+    {
+        var (request, _, bus) = await PlanAsync(autoCreate: null);
+
+        Assert.Single(request.ActionRuns);
+        Assert.IsType<CustomerCreationFromFormRequestedIntegrationEvent>(Assert.Single(bus.Published));
+    }
+
+    [Fact]
     public async Task A_manual_trigger_is_not_planned_on_submit()
     {
         var (request, _, bus) = await PlanAsync(
@@ -248,7 +257,7 @@ public sealed class FormActionPlannerTests
         FormRequest Request,
         TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion Version,
         FakeMessageBus Bus
-    )> PlanAsync(string? actions = null, bool autoCreate = true, string answers = Answers)
+    )> PlanAsync(string? actions = null, bool? autoCreate = true, string answers = Answers)
     {
         var version = Version(actions);
         var participant = Participant();

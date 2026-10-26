@@ -62,7 +62,8 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
                 request.Code,
                 HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 UserAgent(),
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                request.Language
             ),
             ct
         );
@@ -102,7 +103,8 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
                     request.Email,
                     request.CaptchaToken,
                     HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                    DateTime.UtcNow
+                    DateTime.UtcNow,
+                    request.Language
                 ),
                 ct
             );
@@ -129,7 +131,8 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
                 request.Code,
                 HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 UserAgent(),
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                request.Language
             ),
             ct
         );

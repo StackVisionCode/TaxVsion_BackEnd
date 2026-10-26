@@ -9,6 +9,7 @@ using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Domain.Settings;
 using Wolverine;
 
 namespace TaxVision.Tasks.ClientForms.Application.Actions;
@@ -94,7 +95,7 @@ public sealed class FormActionPlanner(
         if (!AwaitsCustomer(request) || request.HasActiveAction(FormActionNames.CreateCustomer))
             return;
         var tenantSettings = await settings.GetAsync(request.TenantId, ct);
-        if (tenantSettings is not { AutoCustomerCreationEnabled: true })
+        if (!FormModuleCapabilities.Of(tenantSettings).AutoCustomerCreationEnabled)
             return;
         if (WaitsForSignature(action))
             Skip(request, action, FormActionRunErrors.NotSupportedCode, nowUtc);

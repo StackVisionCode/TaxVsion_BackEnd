@@ -34,7 +34,7 @@ public sealed class ProductionExtraSecretsDeployTests
     [InlineData("CAMPAIGN_EMAIL_WEBHOOK_SECRET")]
     [InlineData("SMTP2GO_API_KEY")]
     [InlineData("CONNECTORS_LISTENER_ENABLED")]
-    [InlineData("TASKS_CLIENT_FORMS_ENABLED")]
+    [InlineData("TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY")]
     [InlineData("TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY")]
     public void Secret_kept_in_production_extra_is_written_by_the_deploy_job(string variable)
     {

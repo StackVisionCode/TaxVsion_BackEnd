@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "TaxVision - Client Forms H1",
-    "description": "H1: disponibilidad por tenant y ciclo de plantillas versionadas.",
+    "name": "TaxVision - Client Forms H3",
+    "description": "Disponibilidad, plantillas versionadas y bandeja de decisiones del preparador.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -29,11 +29,12 @@
           "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/platform/tenants" }
         },
         {
-          "name": "Platform enable tenant",
+          "name": "Platform set tenant capabilities",
           "request": {
+            "description": "Disponibilidad = plan (planner). Lo omitido se conserva; note \"\" la borra; enabled=false responde 400 FormModuleSettings.EnabledNotSupported.",
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"enabled\": true,\n  \"note\": \"H1 pilot\"\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"H1 pilot\",\n  \"externalParticipantsEnabled\": true,\n  \"autoCustomerCreationEnabled\": true,\n  \"signatureStepEnabled\": false,\n  \"intakeLinksEnabled\": false,\n  \"pushNotificationsEnabled\": false\n}" },
             "url": "{{UrlBase}}/tasks/forms/platform/tenants/{{tenantId}}"
           }
         }
@@ -89,6 +90,64 @@
           "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/versions" }
         }
       ]
+    },
+    {
+      "name": "Submission inbox",
+      "item": [
+        {
+          "name": "List needs action",
+          "request": {
+            "method": "GET",
+            "url": "{{UrlBase}}/tasks/forms/requests?view=NeedsAction&page=1&pageSize=25"
+          }
+        },
+        {
+          "name": "Get request detail",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('requestRowVersion', body.request.rowVersion);", "const latest = (body.actionRuns || []).find(run => run.isLatestAttempt);", "if (latest) pm.collectionVariables.set('actionRunId', latest.id);"] } }]
+        },
+        {
+          "name": "Link existing customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/link-customer"
+          }
+        },
+        {
+          "name": "Assign responsible",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{responsibleUserId}}\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/responsible"
+          }
+        },
+        {
+          "name": "Start customer onboarding",
+          "request": {
+            "method": "POST",
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/actions/create-customer"
+          }
+        },
+        {
+          "name": "Retry action",
+          "request": {
+            "method": "POST",
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/actions/{{actionRunId}}/retry"
+          }
+        },
+        {
+          "name": "Archive request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Handled outside the form workflow.\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/archive"
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -97,6 +156,11 @@
     { "key": "PortalAccessToken", "value": "" },
     { "key": "tenantId", "value": "" },
     { "key": "formTemplateId", "value": "" },
-    { "key": "formRowVersion", "value": "" }
+    { "key": "formRowVersion", "value": "" },
+    { "key": "formRequestId", "value": "" },
+    { "key": "requestRowVersion", "value": "" },
+    { "key": "customerId", "value": "" },
+    { "key": "responsibleUserId", "value": "" },
+    { "key": "actionRunId", "value": "" }
   ]
 }

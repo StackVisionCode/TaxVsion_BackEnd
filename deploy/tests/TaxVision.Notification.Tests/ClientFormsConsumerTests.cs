@@ -7,8 +7,10 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.ClientForms;
 using TaxVision.Notification.Application.Directory.Abstractions;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
 using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
@@ -30,7 +32,7 @@ public sealed class ClientFormsConsumerTests
 
         await FormRequestSubmittedConsumer.Handle(
             Submitted(tenantId, customerId, requesterWithoutAccess, responsibleWithoutReview),
-            harness.Dispatcher,
+            Sender(harness),
             new Assignments(assignedReviewer),
             resolver,
             new Correlation(),
@@ -61,7 +63,7 @@ public sealed class ClientFormsConsumerTests
 
         await FormRequestSubmittedConsumer.Handle(
             Submitted(tenantId, customerId, requester, responsibleUserId: null),
-            harness.Dispatcher,
+            Sender(harness),
             new Assignments(),
             resolver,
             new Correlation(),
@@ -95,7 +97,7 @@ public sealed class ClientFormsConsumerTests
 
         await FormRequestSubmittedConsumer.Handle(
             Submitted(tenantId, customerId, assignedReviewer, responsibleWithoutAccess),
-            harness.Dispatcher,
+            Sender(harness),
             new Assignments(assignedReviewer),
             resolver,
             new Correlation(),
@@ -131,7 +133,7 @@ public sealed class ClientFormsConsumerTests
 
         await FormRequestSubmittedConsumer.Handle(
             Submitted(tenantId, customerId, requesterWithoutAccess, responsible),
-            harness.Dispatcher,
+            Sender(harness),
             new Assignments(),
             resolver,
             new Correlation(),
@@ -165,7 +167,7 @@ public sealed class ClientFormsConsumerTests
                 Reason = "staff_cancelled",
                 NotifyClient = false,
             },
-            harness.Dispatcher,
+            Sender(harness),
             new Resolver(),
             new Correlation(),
             CancellationToken.None
@@ -182,6 +184,12 @@ public sealed class ClientFormsConsumerTests
         var render = new RenderClient();
         var gateway = new EmailGateway();
         var harness = new NotificationDispatcherHarness();
+        var customers = new CustomerDirectory(
+            CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
+        );
+        var policies = new ContactPolicies(
+            CustomerContactPolicyProjection.Create(tenantId, customerId, emailEnabled: false, smsEnabled: true)
+        );
 
         await FormRequestAssignedConsumer.Handle(
             new FormRequestAssignedIntegrationEvent
@@ -196,18 +204,8 @@ public sealed class ClientFormsConsumerTests
                 FormTemplateId = Guid.NewGuid(),
                 VersionNumber = 1,
             },
-            new CustomerDirectory(
-                CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
-            ),
-            new ContactPolicies(
-                CustomerContactPolicyProjection.Create(tenantId, customerId, emailEnabled: false, smsEnabled: true)
-            ),
-            gateway,
-            render,
-            harness.Dispatcher,
+            Sender(harness, render, gateway, customers, policies),
             new Resolver(),
-            Options.Create(new PortalOptions()),
-            new HostResolver(),
             new Correlation(),
             CancellationToken.None
         );
@@ -218,12 +216,167 @@ public sealed class ClientFormsConsumerTests
     }
 
     [Fact]
+    public async Task Optional_email_respects_the_user_preference()
+    {
+        var harness = new NotificationDispatcherHarness();
+        var render = new RenderClient();
+        var gateway = new EmailGateway();
+        var sender = Sender(
+            harness,
+            render,
+            gateway,
+            userEmails: new UserEmailResolver("staff@example.com"),
+            preferences: new Preferences(false)
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Equal(0, render.Calls);
+        Assert.Empty(gateway.Queued);
+        Assert.Single(harness.Publisher.Published);
+    }
+
+    [Fact]
+    public async Task Disabled_tenant_push_flag_stops_before_rendering_push_content()
+    {
+        var render = new RenderClient();
+        var sender = Sender(new NotificationDispatcherHarness(), render, settings: new ClientFormSettings(false));
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Equal(0, render.TextCalls);
+    }
+
+    [Fact]
+    public async Task Push_without_devices_is_omitted_without_failing_the_other_channels()
+    {
+        var harness = new NotificationDispatcherHarness();
+        var render = new RenderClient();
+        var sender = Sender(harness, render, settings: new ClientFormSettings(true));
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Equal(0, render.TextCalls);
+        Assert.Single(harness.Publisher.Published);
+    }
+
+    [Fact]
+    public async Task Transient_push_failure_schedules_a_durable_retry_with_the_same_replacement_ids()
+    {
+        var push = new SequencePushSender(new Error(PushErrorCodes.Unavailable, "temporarily unavailable"));
+        var devices = new SinglePushDeviceRepository();
+        var logs = new MemoryNotificationLogs();
+        var harness = new NotificationDispatcherHarness(push, devices, logs);
+        var retries = new RecordingRetryScheduler();
+        var sender = Sender(
+            harness,
+            new RenderClient(),
+            settings: new ClientFormSettings(true),
+            retryScheduler: retries
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        var retry = Assert.Single(retries.Scheduled);
+        Assert.Equal(TimeSpan.FromMinutes(1), retry.Delay);
+        Assert.Equal(1, retry.Request.Attempt);
+        await sender.RetryPushAsync(retry.Request, CancellationToken.None);
+        Assert.Equal(2, push.Messages.Count);
+        Assert.Equal(push.Messages[0].Topic, push.Messages[1].Topic);
+        Assert.Equal(push.Messages[0].Tag, push.Messages[1].Tag);
+    }
+
+    [Fact]
+    public async Task Mandatory_kind_still_respects_push_opt_out_but_keeps_email_and_in_app()
+    {
+        var push = new CapturingPushSender();
+        var preferences = new Preferences(false);
+        var harness = new NotificationDispatcherHarness(
+            push,
+            new SinglePushDeviceRepository(),
+            new MemoryNotificationLogs(),
+            preferences
+        );
+        var gateway = new EmailGateway();
+        var sender = Sender(
+            harness,
+            new RenderClient(),
+            gateway,
+            userEmails: new UserEmailResolver("user@example.com"),
+            preferences: preferences,
+            settings: new ClientFormSettings(true)
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestAssigned), CancellationToken.None);
+
+        Assert.Single(gateway.Queued);
+        Assert.Single(harness.Publisher.Published);
+        Assert.Empty(push.Messages);
+    }
+
+    [Fact]
+    public void Push_identifiers_are_stable_url_safe_and_within_the_web_push_limit()
+    {
+        var method = typeof(ClientFormNotificationSender).GetMethod(
+            "PushIdentifiers",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic
+        );
+        var eventId = Guid.NewGuid();
+        var first = Assert.IsType<ValueTuple<string, string>>(method!.Invoke(null, [eventId]));
+        var second = Assert.IsType<ValueTuple<string, string>>(method.Invoke(null, [eventId]));
+
+        Assert.Equal(first, second);
+        Assert.True(first.Item1.Length <= 32);
+        Assert.Matches("^[A-Za-z0-9_-]+$", first.Item1);
+        Assert.Matches("^cf-[A-Za-z0-9_-]+$", first.Item2);
+    }
+
+    [Fact]
+    public void Push_payload_contains_only_opaque_context_and_uses_the_tenant_host()
+    {
+        var customerId = Guid.NewGuid();
+        var request = StaffRequest(NotificationKinds.TasksFormRequestSubmitted) with
+        {
+            CustomerId = customerId,
+            Variables = new Dictionary<string, object?>
+            {
+                ["form_title"] = "Private organizer",
+                ["customer_name"] = "Private client",
+                ["email"] = "private@example.com",
+                ["token"] = "secret-token",
+            },
+        };
+        var dataMethod = typeof(ClientFormNotificationSender).GetMethod(
+            "PushData",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic
+        );
+        var linkMethod = typeof(ClientFormNotificationSender).GetMethod(
+            "PushLink",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+        );
+        var sender = Sender(new NotificationDispatcherHarness());
+
+        var data = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(dataMethod!.Invoke(null, [request]));
+        var link = Assert.IsType<string>(linkMethod!.Invoke(sender, [request, "office.taxproffice.com"]));
+
+        Assert.Equal(["customerId", "kind", "resourceId", "resourceType"], data.Keys.Order().ToArray());
+        Assert.Equal("form_request", data["resourceType"]);
+        Assert.Equal(request.FormRequestId.ToString(), data["resourceId"]);
+        Assert.Equal(customerId.ToString(), data["customerId"]);
+        Assert.DoesNotContain(data.Values, value => value.Contains("Private", StringComparison.Ordinal));
+        Assert.DoesNotContain(data.Values, value => value.Contains("@", StringComparison.Ordinal));
+        Assert.StartsWith("https://office.taxproffice.com/n/open?rt=form_request&rid=", link, StringComparison.Ordinal);
+        Assert.Contains($"&cid={customerId:D}", link, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Attachment_rejection_uses_safe_message_without_file_name_or_free_text()
     {
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
         var render = new RenderClient();
         var gateway = new EmailGateway();
+        var harness = new NotificationDispatcherHarness();
 
         await FormAttachmentRejectedConsumer.Handle(
             new FormAttachmentRejectedIntegrationEvent
@@ -239,17 +392,17 @@ public sealed class ClientFormsConsumerTests
                 ReasonCode = "infected",
                 RequestedByUserId = Guid.NewGuid(),
             },
-            new CustomerDirectory(
-                CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
+            Sender(
+                harness,
+                render,
+                gateway,
+                new CustomerDirectory(
+                    CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
+                ),
+                new ContactPolicies()
             ),
-            new ContactPolicies(),
-            gateway,
-            render,
-            new NotificationDispatcherHarness().Dispatcher,
             new Assignments(),
             new Resolver(),
-            Options.Create(new PortalOptions()),
-            new HostResolver(),
             new Correlation(),
             CancellationToken.None
         );
@@ -299,8 +452,7 @@ public sealed class ClientFormsConsumerTests
                 },
             },
             codec,
-            gateway,
-            render,
+            Sender(new NotificationDispatcherHarness(), render, gateway),
             new Correlation(),
             NullLogger<FormAccessCodeDeliveryRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -341,8 +493,7 @@ public sealed class ClientFormsConsumerTests
                 Payload = payload,
             },
             codec,
-            gateway,
-            render,
+            Sender(new NotificationDispatcherHarness(), render, gateway),
             new Correlation(),
             logger,
             CancellationToken.None
@@ -383,8 +534,7 @@ public sealed class ClientFormsConsumerTests
                 Payload = payload,
             },
             codec,
-            gateway,
-            render,
+            Sender(new NotificationDispatcherHarness(), render, gateway),
             new HostResolver(),
             Options.Create(new PortalOptions()),
             new Correlation(),
@@ -426,8 +576,7 @@ public sealed class ClientFormsConsumerTests
                 Payload = payload,
             },
             codec,
-            gateway,
-            new RenderClient(),
+            Sender(new NotificationDispatcherHarness(), new RenderClient(), gateway),
             new HostResolver(),
             Options.Create(new PortalOptions()),
             new Correlation(),
@@ -442,6 +591,7 @@ public sealed class ClientFormsConsumerTests
 
     [Theory]
     [InlineData(FormParticipantNotificationKinds.Returned, "task.form_participant_returned.v1")]
+    [InlineData(FormParticipantNotificationKinds.Reminder, "task.form_participant_reminder.v1")]
     [InlineData(FormParticipantNotificationKinds.Completed, "task.form_participant_completed.v1")]
     [InlineData(FormParticipantNotificationKinds.Cancelled, "task.form_participant_cancelled.v1")]
     [InlineData(FormParticipantNotificationKinds.AttachmentRejected, "task.form_participant_attachment_rejected.v1")]
@@ -455,8 +605,7 @@ public sealed class ClientFormsConsumerTests
         await FormParticipantNotificationRequestedConsumer.Handle(
             command,
             codec,
-            gateway,
-            render,
+            Sender(new NotificationDispatcherHarness(), render, gateway),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -483,8 +632,7 @@ public sealed class ClientFormsConsumerTests
                 new Dictionary<string, string> { ["file_extension"] = "pdf", ["reason_code"] = "infected" }
             ),
             codec,
-            new EmailGateway(),
-            render,
+            Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -505,10 +653,9 @@ public sealed class ClientFormsConsumerTests
         var render = new RenderClient();
 
         await FormParticipantNotificationRequestedConsumer.Handle(
-            ParticipantNotice(codec, "reminder", new Dictionary<string, string>()),
+            ParticipantNotice(codec, "unsupported", new Dictionary<string, string>()),
             codec,
-            gateway,
-            render,
+            Sender(new NotificationDispatcherHarness(), render, gateway),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -536,8 +683,7 @@ public sealed class ClientFormsConsumerTests
         await FormParticipantNotificationRequestedConsumer.Handle(
             command,
             codec,
-            gateway,
-            new RenderClient(),
+            Sender(new NotificationDispatcherHarness(), new RenderClient(), gateway),
             new Correlation(),
             logger,
             CancellationToken.None
@@ -549,10 +695,327 @@ public sealed class ClientFormsConsumerTests
         Assert.DoesNotContain("guest@example.com", warning, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Customer_push_opens_the_portal_and_staff_push_opens_the_crm()
+    {
+        var push = new CapturingPushSender();
+        var harness = new NotificationDispatcherHarness(
+            push,
+            new SinglePushDeviceRepository(),
+            new MemoryNotificationLogs()
+        );
+        var sender = Sender(harness, settings: new ClientFormSettings(true));
+        var customerId = Guid.NewGuid();
+
+        await sender.SendAsync(
+            StaffRequest(NotificationKinds.TasksFormRequestCompleted) with
+            {
+                CustomerId = customerId,
+                CustomerRecipient = true,
+            },
+            CancellationToken.None
+        );
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Equal(2, push.Messages.Count);
+        Assert.StartsWith(
+            "https://office.taxproffice.com/portal/n/open?rt=form_request&rid=",
+            push.Messages[0].Link,
+            StringComparison.Ordinal
+        );
+        Assert.EndsWith($"&cid={customerId:D}", push.Messages[0].Link, StringComparison.Ordinal);
+        Assert.StartsWith(
+            "https://office.taxproffice.com/n/open?rt=form_request&rid=",
+            push.Messages[1].Link,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public async Task Optional_email_reaches_a_client_without_a_portal_account()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var gateway = new EmailGateway();
+        var render = new RenderClient();
+        var metrics = new RecordingMetrics();
+        var sender = Sender(
+            new NotificationDispatcherHarness(),
+            render,
+            gateway,
+            new CustomerDirectory(
+                CustomerEmailDirectoryEntry.Create(tenantId, customerId, "client@example.com", "Client")
+            ),
+            new ContactPolicies(CustomerContactPolicyProjection.Create(tenantId, customerId, true, true, "Es")),
+            preferences: new Preferences(false),
+            metrics: metrics
+        );
+
+        await FormRequestCompletedConsumer.Handle(
+            new FormRequestCompletedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = "corr-completed",
+                FormRequestId = Guid.NewGuid(),
+                Participant = CustomerParticipant(customerId),
+                Title = "Tax organizer",
+                RevisionNumber = 1,
+                CompletedByUserId = Guid.NewGuid(),
+            },
+            sender,
+            new Resolver(),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        var email = Assert.Single(gateway.Queued);
+        Assert.Equal("client@example.com", email.To);
+        Assert.Equal("Es", render.Variables["language"]);
+        Assert.DoesNotContain(metrics.NoRecipient, channel => channel == "Email");
+    }
+
+    [Fact]
+    public async Task Push_render_exception_keeps_email_and_in_app_and_does_not_throw()
+    {
+        var push = new CapturingPushSender();
+        var harness = new NotificationDispatcherHarness(
+            push,
+            new SinglePushDeviceRepository(),
+            new MemoryNotificationLogs()
+        );
+        var gateway = new EmailGateway();
+        var metrics = new RecordingMetrics();
+        var logger = new CapturingLogger<ClientFormNotificationSender>();
+        var sender = Sender(
+            harness,
+            new RenderClient { PushFailure = PushRenderFailure.Throws },
+            gateway,
+            userEmails: new UserEmailResolver("staff@example.com"),
+            settings: new ClientFormSettings(true),
+            logger: logger,
+            metrics: metrics
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Single(gateway.Queued);
+        Assert.Single(harness.Publisher.Published);
+        Assert.Empty(push.Messages);
+        Assert.Equal(["render_failed"], metrics.PushFailures);
+        Assert.Single(logger.Messages);
+    }
+
+    [Fact]
+    public async Task Push_render_failure_result_is_recorded_without_sending()
+    {
+        var push = new CapturingPushSender();
+        var metrics = new RecordingMetrics();
+        var sender = Sender(
+            new NotificationDispatcherHarness(push, new SinglePushDeviceRepository(), new MemoryNotificationLogs()),
+            new RenderClient { PushFailure = PushRenderFailure.ReturnsFailure },
+            settings: new ClientFormSettings(true),
+            metrics: metrics
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormActionFailed), CancellationToken.None);
+
+        Assert.Empty(push.Messages);
+        Assert.Equal(["render_failed"], metrics.PushFailures);
+    }
+
+    [Fact]
+    public async Task Staff_submission_email_keeps_the_client_name_from_the_event()
+    {
+        var staff = Guid.NewGuid();
+        var render = new RenderClient();
+        var gateway = new EmailGateway();
+        var sender = Sender(
+            new NotificationDispatcherHarness(),
+            render,
+            gateway,
+            userEmails: new UserEmailResolver("staff@example.com")
+        );
+
+        await FormRequestSubmittedConsumer.Handle(
+            Submitted(Guid.NewGuid(), Guid.NewGuid(), staff, null),
+            sender,
+            new Assignments(staff),
+            new Resolver().Allow(BuildingBlocks.Authorization.TasksPermissions.FormRequestsReview, staff),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.Single(gateway.Queued);
+        Assert.Equal("task.form_request_submitted.v1", render.EventKey);
+        Assert.Equal("Client", render.Variables["customer_name"]);
+    }
+
+    [Fact]
+    public async Task Push_provider_exception_keeps_email_and_in_app_and_retries_that_device()
+    {
+        var devices = new SinglePushDeviceRepository();
+        var harness = new NotificationDispatcherHarness(
+            new ThrowingPushSender(),
+            devices,
+            new MemoryNotificationLogs()
+        );
+        var gateway = new EmailGateway();
+        var retries = new RecordingRetryScheduler();
+        var sender = Sender(
+            harness,
+            new RenderClient(),
+            gateway,
+            userEmails: new UserEmailResolver("staff@example.com"),
+            settings: new ClientFormSettings(true),
+            retryScheduler: retries
+        );
+        var request = StaffRequest(NotificationKinds.TasksFormRequestSubmitted);
+
+        await sender.SendAsync(request, CancellationToken.None);
+
+        Assert.Single(gateway.Queued);
+        Assert.Single(harness.Publisher.Published);
+        var retry = Assert.Single(retries.Scheduled);
+        var device = Assert.Single(
+            await devices.ListActiveForUserAsync(request.TenantId, request.RecipientUserId!.Value)
+        );
+        Assert.Equal([device.Id], retry.Request.Request.DeviceIds);
+    }
+
+    [Fact]
+    public async Task In_app_only_kind_does_not_resolve_email_or_host()
+    {
+        var userEmails = new CountingUserEmailResolver();
+        var hosts = new CountingHostResolver();
+        var harness = new NotificationDispatcherHarness();
+        var sender = Sender(harness, userEmails: userEmails, hosts: hosts);
+
+        await sender.SendAsync(
+            StaffRequest(NotificationKinds.TasksFormAttachmentRejectedStaff),
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, userEmails.Calls);
+        Assert.Equal(0, hosts.Calls);
+        Assert.Single(harness.Publisher.Published);
+    }
+
+    [Fact]
+    public async Task Staff_client_form_kinds_use_the_client_requests_category()
+    {
+        var preferences = new CategoryRecordingPreferences();
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var staff = Guid.NewGuid();
+        var sender = Sender(
+            new NotificationDispatcherHarness(preferences: preferences),
+            userEmails: new UserEmailResolver("staff@example.com"),
+            preferences: preferences
+        );
+        var resolver = new Resolver().Allow(BuildingBlocks.Authorization.TasksPermissions.FormRequestsReview, staff);
+
+        await FormRequestSubmittedConsumer.Handle(
+            Submitted(tenantId, customerId, staff, null),
+            sender,
+            new Assignments(staff),
+            resolver,
+            new Correlation(),
+            CancellationToken.None
+        );
+        await FormActionFailedConsumer.Handle(
+            new FormActionFailedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = "corr-failed",
+                FormRequestId = Guid.NewGuid(),
+                ActionType = "CreateCustomer",
+                ErrorCode = "Customer.Unavailable",
+                ResponsibleUserId = staff,
+            },
+            sender,
+            resolver,
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.NotEmpty(preferences.Categories);
+        Assert.All(preferences.Categories, category => Assert.Equal(NotificationCategory.ClientRequests, category));
+    }
+
+    private static ClientFormNotificationSender Sender(
+        NotificationDispatcherHarness harness,
+        RenderClient? render = null,
+        EmailGateway? gateway = null,
+        ICustomerEmailDirectoryRepository? customers = null,
+        ICustomerContactPolicyRepository? policies = null,
+        IUserEmailResolver? userEmails = null,
+        IUserNotificationPreferenceRepository? preferences = null,
+        IClientFormNotificationSettingsRepository? settings = null,
+        IClientFormPushRetryScheduler? retryScheduler = null,
+        Microsoft.Extensions.Logging.ILogger<ClientFormNotificationSender>? logger = null,
+        INotificationDispatchMetrics? metrics = null,
+        ITenantHostResolver? hosts = null
+    ) =>
+        new(
+            customers ?? new CustomerDirectory(null),
+            policies ?? new ContactPolicies(),
+            userEmails ?? new NoUserEmailResolver(),
+            preferences ?? new Preferences(true),
+            settings ?? new ClientFormSettings(false),
+            gateway ?? new EmailGateway(),
+            render ?? new RenderClient(),
+            harness.Dispatcher,
+            hosts ?? new HostResolver(),
+            Options.Create(new PortalOptions()),
+            metrics ?? new NoOpMetrics(),
+            new Correlation(),
+            retryScheduler ?? new NoOpRetryScheduler(),
+            logger ?? NullLogger<ClientFormNotificationSender>.Instance
+        );
+
+    private static ClientFormNotificationRequest StaffRequest(string kind)
+    {
+        var requestId = Guid.NewGuid();
+        return new(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            requestId,
+            Guid.NewGuid(),
+            DateTime.UtcNow,
+            kind,
+            "task.form_request_submitted.v1",
+            "task.form_request_submitted.push.v1",
+            "Submission received",
+            "A form is ready for review.",
+            new Dictionary<string, object?>(),
+            new Dictionary<string, string>(),
+            NotificationCategory.ClientRequests
+        );
+    }
+
+    [Fact]
+    public async Task Participant_notice_passes_the_external_participant_language_to_scribe()
+    {
+        var codec = RealCodec();
+        var render = new RenderClient();
+
+        await FormParticipantNotificationRequestedConsumer.Handle(
+            ParticipantNotice(codec, FormParticipantNotificationKinds.Reminder, new Dictionary<string, string>(), "Es"),
+            codec,
+            Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
+            new Correlation(),
+            NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal("Es", render.Variables["language"]);
+    }
+
     private static FormParticipantNotificationRequestedIntegrationEvent ParticipantNotice(
         IProtectedPayloadCodec codec,
         string kind,
-        IReadOnlyDictionary<string, string> parameters
+        IReadOnlyDictionary<string, string> parameters,
+        string language = "En"
     )
     {
         var tenantId = Guid.NewGuid();
@@ -570,7 +1033,7 @@ public sealed class ClientFormsConsumerTests
             Payload = codec.Protect(
                 ClientFormProtectedPayloadSchemas.ParticipantNotification,
                 new ProtectedPayloadBinding(tenantId, formRequestId, participant),
-                new FormParticipantNotificationPayload("guest@example.com", "Guest", "Intake", parameters)
+                new FormParticipantNotificationPayload("guest@example.com", "Guest", "Intake", parameters, language)
             ),
         };
     }
@@ -676,9 +1139,18 @@ public sealed class ClientFormsConsumerTests
         public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }
 
+    private enum PushRenderFailure
+    {
+        None,
+        Throws,
+        ReturnsFailure,
+    }
+
     private sealed class RenderClient : IScribeRenderClient
     {
+        public PushRenderFailure PushFailure { get; init; }
         public int Calls { get; private set; }
+        public int TextCalls { get; private set; }
         public string? EventKey { get; private set; }
         public IReadOnlyDictionary<string, object?> Variables { get; private set; } = new Dictionary<string, object?>();
 
@@ -694,6 +1166,275 @@ public sealed class ClientFormsConsumerTests
             Variables = variables;
             return Task.FromResult(Result.Success(new ScribeRenderedEmail("Subject", "<p>Body</p>", "Body")));
         }
+
+        public Task<Result<ScribeRenderedText>> RenderTextAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        )
+        {
+            TextCalls++;
+            if (PushFailure == PushRenderFailure.Throws)
+                throw new HttpRequestException("Scribe unavailable");
+            if (PushFailure == PushRenderFailure.ReturnsFailure)
+                return Task.FromResult(
+                    Result.Failure<ScribeRenderedText>(new Error("Notification.ScribeRender", "Render failed."))
+                );
+            EventKey = eventKey;
+            Variables = variables;
+            return Task.FromResult(Result.Success(new ScribeRenderedText("Push title", "Push body")));
+        }
+    }
+
+    private sealed class NoUserEmailResolver : IUserEmailResolver
+    {
+        public Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<string?>(null);
+    }
+
+    private sealed class UserEmailResolver(string? email) : IUserEmailResolver
+    {
+        public Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            Task.FromResult(email);
+    }
+
+    private sealed class Preferences(bool enabled) : IUserNotificationPreferenceRepository
+    {
+        public Task<bool> IsEnabledAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult(enabled);
+
+        public Task<UserNotificationPreference?> GetAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult<UserNotificationPreference?>(null);
+
+        public Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserNotificationPreference>>([]);
+
+        public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class ClientFormSettings(bool enabled) : IClientFormNotificationSettingsRepository
+    {
+        public Task<bool> IsPushEnabledAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(enabled);
+
+        public Task<ClientFormNotificationSettingsProjection?> GetAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<ClientFormNotificationSettingsProjection?>(null);
+
+        public Task AddAsync(ClientFormNotificationSettingsProjection row, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class NoOpMetrics : INotificationDispatchMetrics
+    {
+        public void RecordSent(string kind, string channel) { }
+
+        public void RecordSuppressedByPreference(string kind, string channel) { }
+
+        public void RecordFailed(string kind, string channel) { }
+
+        public void RecordNoRecipient(string kind, string channel) { }
+    }
+
+    private sealed class RecordingMetrics : INotificationDispatchMetrics
+    {
+        public List<string> NoRecipient { get; } = [];
+        public List<string> PushFailures { get; } = [];
+
+        public void RecordSent(string kind, string channel) { }
+
+        public void RecordSuppressedByPreference(string kind, string channel) { }
+
+        public void RecordFailed(string kind, string channel) { }
+
+        public void RecordNoRecipient(string kind, string channel) => NoRecipient.Add(channel);
+
+        public void RecordClientFormPushFailure(string code) => PushFailures.Add(code);
+    }
+
+    private sealed class CountingUserEmailResolver : IUserEmailResolver
+    {
+        public int Calls { get; private set; }
+
+        public Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+        {
+            Calls++;
+            return Task.FromResult<string?>("staff@example.com");
+        }
+    }
+
+    private sealed class CountingHostResolver : ITenantHostResolver
+    {
+        public int Calls { get; private set; }
+
+        public Task<string?> ResolveHostAsync(Guid tenantId, CancellationToken ct = default)
+        {
+            Calls++;
+            return Task.FromResult<string?>("office.taxproffice.com");
+        }
+    }
+
+    private sealed class CategoryRecordingPreferences : IUserNotificationPreferenceRepository
+    {
+        public List<NotificationCategory> Categories { get; } = [];
+
+        public Task<bool> IsEnabledAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        )
+        {
+            Categories.Add(category);
+            return Task.FromResult(true);
+        }
+
+        public Task<UserNotificationPreference?> GetAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult<UserNotificationPreference?>(null);
+
+        public Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserNotificationPreference>>([]);
+
+        public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class NoOpRetryScheduler : IClientFormPushRetryScheduler
+    {
+        public Task ScheduleAsync(RetryClientFormPushRequested request, TimeSpan delay) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingRetryScheduler : IClientFormPushRetryScheduler
+    {
+        public List<(RetryClientFormPushRequested Request, TimeSpan Delay)> Scheduled { get; } = [];
+
+        public Task ScheduleAsync(RetryClientFormPushRequested request, TimeSpan delay)
+        {
+            Scheduled.Add((request, delay));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class SequencePushSender(Error firstFailure) : IPushSender
+    {
+        public List<PushMessage> Messages { get; } = [];
+
+        public Task<Result> SendAsync(PushMessage message, CancellationToken ct = default)
+        {
+            Messages.Add(message);
+            return Task.FromResult(Messages.Count == 1 ? Result.Failure(firstFailure) : Result.Success());
+        }
+    }
+
+    private sealed class ThrowingPushSender : IPushSender
+    {
+        public Task<Result> SendAsync(PushMessage message, CancellationToken ct = default) =>
+            throw new HttpRequestException("FCM unreachable");
+    }
+
+    private sealed class CapturingPushSender : IPushSender
+    {
+        public List<PushMessage> Messages { get; } = [];
+
+        public Task<Result> SendAsync(PushMessage message, CancellationToken ct = default)
+        {
+            Messages.Add(message);
+            return Task.FromResult(Result.Success());
+        }
+    }
+
+    private sealed class SinglePushDeviceRepository : IPushDeviceTokenRepository
+    {
+        private readonly PushDeviceToken device;
+        private PushDeviceToken? registered;
+
+        public SinglePushDeviceRepository()
+        {
+            device = PushDeviceToken
+                .Register(Guid.NewGuid(), Guid.NewGuid(), PushPlatform.Web, "web-token", null)
+                .Value;
+        }
+
+        public Task AddAsync(PushDeviceToken token, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<PushDeviceToken?> FindByTokenAsync(Guid tenantId, string token, CancellationToken ct = default) =>
+            Task.FromResult<PushDeviceToken?>(null);
+
+        public Task<PushDeviceToken?> GetAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
+            Task.FromResult<PushDeviceToken?>(null);
+
+        public Task<IReadOnlyList<PushDeviceToken>> ListActiveForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        )
+        {
+            // El mismo dispositivo (mismo Id) en cada consulta, como la tabla real.
+            registered ??= PushDeviceToken.Register(tenantId, userId, PushPlatform.Web, device.Token, null).Value;
+            return Task.FromResult<IReadOnlyList<PushDeviceToken>>([registered]);
+        }
+
+        public Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class MemoryNotificationLogs : INotificationLogRepository
+    {
+        private readonly List<NotificationLog> logs = [];
+
+        public Task AddAsync(NotificationLog log, CancellationToken ct = default)
+        {
+            logs.Add(log);
+            return Task.CompletedTask;
+        }
+
+        public Task<(IReadOnlyList<NotificationLog> Items, int TotalCount)> GetPagedAsync(
+            Guid tenantId,
+            NotificationStatus? status,
+            int page,
+            int size,
+            CancellationToken ct = default
+        ) => Task.FromResult<(IReadOnlyList<NotificationLog>, int)>((logs, logs.Count));
+
+        public Task<NotificationLog?> GetByRelatedEventIdAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string templateKey,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
+
+        public Task<NotificationLog?> GetByRelatedEventAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string kind,
+            NotificationChannel channel,
+            string recipient,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
     }
 
     private sealed class EmailGateway : IEmailDispatchGateway

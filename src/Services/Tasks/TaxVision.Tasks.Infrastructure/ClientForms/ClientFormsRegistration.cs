@@ -44,6 +44,7 @@ public static class ClientFormsRegistration
         services.AddScoped<IFormTemplateVersionRepository, FormTemplateVersionRepository>();
         services.AddScoped<IFormModuleSettingsRepository, FormModuleSettingsRepository>();
         services.AddScoped<IClientFormsAvailabilityEvaluator, ClientFormsAvailabilityEvaluator>();
+        services.AddScoped<IClientFormsTenantDirectory, ClientFormsTenantDirectory>();
         services.AddScoped<IClientFormsPublicCapabilityEvaluator, ClientFormsPublicCapabilityEvaluator>();
         services.AddHttpClient<IFormIntakeBotProtection, TurnstileFormIntakeBotProtection>(client =>
         {
@@ -103,6 +104,7 @@ public static class ClientFormsRegistration
         services.AddSingleton<IClientFormsMetrics>(provider => provider.GetRequiredService<ClientFormsMetrics>());
         services.AddScoped<ClientFormsBacklogReader>();
         services.AddHostedService<ClientFormsBacklogJob>();
+        services.AddHostedService<ClientFormNotificationSettingsBackfillJob>();
         services.AddHttpContextAccessor();
         services.AddProtectedPayloadProtection(configuration);
         return services;

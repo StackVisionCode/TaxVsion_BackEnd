@@ -14,6 +14,12 @@ public static class FormModuleSettingsErrors
         "The module setting is invalid."
     );
 
+    // La disponibilidad la decide el plan: no se puede apagar desde aquí.
+    public static readonly Error EnabledNotSupported = new(
+        "FormModuleSettings.EnabledNotSupported",
+        "Client Forms availability follows the tenant plan (planner module) and cannot be turned off here."
+    );
+
     public static readonly Error IntakeLinksNotReady = new(
         "FormModuleSettings.IntakeLinksNotReady",
         "Intake links cannot be enabled until bot protection is ready."

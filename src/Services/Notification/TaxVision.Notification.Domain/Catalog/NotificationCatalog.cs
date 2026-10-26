@@ -11,6 +11,11 @@ public static class NotificationCatalog
         NotificationChannel.InApp,
         NotificationChannel.Email
     );
+    private static readonly IReadOnlySet<NotificationChannel> InAppEmailPush = Channels(
+        NotificationChannel.InApp,
+        NotificationChannel.Email,
+        NotificationChannel.Push
+    );
     private static readonly IReadOnlySet<NotificationChannel> Transactional = Channels(
         NotificationChannel.InApp,
         NotificationChannel.Email,
@@ -336,17 +341,18 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.High,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmailPush,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            InAppEmail
         ),
         Entry(
             NotificationKinds.TasksFormRequestSubmitted,
             NotificationCatalogCategory.Work,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.Participants,
-            InApp,
+            InAppEmailPush,
             false,
             "form_request",
             NotificationAction.Review
@@ -356,17 +362,18 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.High,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmailPush,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            InAppEmail
         ),
         Entry(
             NotificationKinds.TasksFormRequestCompleted,
             NotificationCatalogCategory.Portal,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmailPush,
             false,
             "form_request",
             NotificationAction.Open
@@ -386,10 +393,11 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.High,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmailPush,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            InAppEmail
         ),
         Entry(
             NotificationKinds.TasksFormAttachmentRejectedStaff,
@@ -406,7 +414,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmailPush,
             false,
             "form_request",
             NotificationAction.Open
@@ -436,10 +444,60 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Work,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.ExplicitUser,
-            InApp,
+            InAppEmailPush,
             false,
             "form_request",
             NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.TasksFormParticipantReturned,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormParticipantReminder,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormParticipantCompleted,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormParticipantCancelled,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksFormParticipantAttachmentRejected,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            Email,
+            true,
+            "form_request",
+            NotificationAction.Open
         ),
         Entry(
             NotificationKinds.RemindersDue,
@@ -720,7 +778,8 @@ public static class NotificationCatalog
         IReadOnlySet<NotificationChannel> channels,
         bool isMandatory,
         string resourceType,
-        NotificationAction action
+        NotificationAction action,
+        IReadOnlySet<NotificationChannel>? mandatoryChannels = null
     ) =>
         new(
             kind,
@@ -732,7 +791,8 @@ public static class NotificationCatalog
             $"notif.{kind}.title",
             $"notif.{kind}.body",
             Enum.Parse<NotificationResourceType>(resourceType.Replace("_", string.Empty), true),
-            action
+            action,
+            mandatoryChannels
         );
 
     private static IReadOnlySet<NotificationChannel> Channels(params NotificationChannel[] channels) =>

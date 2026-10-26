@@ -14,17 +14,23 @@ public sealed class NotificationDispatcherHarness
 
     public NotificationDispatcher Dispatcher { get; }
 
-    public NotificationDispatcherHarness()
+    public NotificationDispatcherHarness(
+        IPushSender? pushSender = null,
+        IPushDeviceTokenRepository? pushDeviceTokens = null,
+        INotificationLogRepository? logs = null,
+        IUserNotificationPreferenceRepository? preferences = null,
+        INotificationDispatchMetrics? metrics = null
+    )
     {
         Dispatcher = new NotificationDispatcher(
             new NoOpSmsSender(),
-            new NoOpPushSender(),
-            new NoOpPushDeviceTokenRepository(),
-            new NoOpNotificationLogRepository(),
-            new AlwaysEnabledPreferences(),
+            pushSender ?? new NoOpPushSender(),
+            pushDeviceTokens ?? new NoOpPushDeviceTokenRepository(),
+            logs ?? new NoOpNotificationLogRepository(),
+            preferences ?? new AlwaysEnabledPreferences(),
             Publisher,
             new NoOpUnitOfWork(),
-            new NoOpNotificationDispatchMetrics(),
+            metrics ?? new NoOpNotificationDispatchMetrics(),
             NullLogger<NotificationDispatcher>.Instance
         );
     }

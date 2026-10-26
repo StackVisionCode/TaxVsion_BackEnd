@@ -188,6 +188,9 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<FormParticipantNotificationRequestedIntegrationEvent>()
         .ToRabbitQueue("notification-client-form-commands");
     options
+        .PublishMessage<ClientFormNotificationSettingsSyncRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
         .PublishMessage<CustomerCreationFromFormRequestedIntegrationEvent>()
         .ToRabbitQueue("customer-client-form-commands");
 

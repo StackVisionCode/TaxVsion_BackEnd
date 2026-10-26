@@ -257,6 +257,37 @@ public sealed class FluidTemplateRendererTests
         Assert.StartsWith(preheader, result.Value.Text);
     }
 
+    [Theory]
+    [InlineData("Es", "Tu oficina necesita información.")]
+    [InlineData("En", "Your office needs information.")]
+    public async Task RenderAsync_renders_a_bilingual_preheader_default_with_the_send_language(
+        string language,
+        string expected
+    )
+    {
+        var renderer = BuildRendererWithPreheaderLayout(
+            "{% if language == 'Es' %}Tu oficina necesita información.{% else %}Your office needs information.{% endif %}",
+            out _
+        );
+
+        var result = await renderer.RenderAsync(
+            new RenderRequest(
+                TestEventKey,
+                TenantId: null,
+                Locale: null,
+                Variables: new Dictionary<string, object?>
+                {
+                    ["name"] = "Ana",
+                    ["link"] = "https://x",
+                    ["language"] = language,
+                }
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.StartsWith(expected, result.Value.Text);
+    }
+
     [Fact]
     public async Task RenderAsync_falls_back_to_subject_when_the_template_has_no_preheader()
     {

@@ -38,6 +38,7 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         [FromQuery] Guid? templateId,
         [FromQuery] bool? overdue,
         [FromQuery] string? search,
+        [FromQuery] FormRequestInboxView view = FormRequestInboxView.NeedsAction,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
         CancellationToken ct = default
@@ -58,7 +59,8 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                 overdue,
                 search,
                 page,
-                pageSize
+                pageSize,
+                view
             ),
             ct
         );
@@ -242,6 +244,85 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                     await CanViewAllAsync(ct),
                     id,
                     request.Note,
+                    rowVersion,
+                    DateTime.UtcNow
+                ),
+                ct
+            )
+        );
+    }
+
+    [HttpPost("{id:guid}/archive")]
+    [HasPermission(TasksPermissions.FormRequestsManage)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> Archive(Guid id, ArchiveFormRequestRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!TryRowVersion(request.RowVersion, out var rowVersion))
+            return BadRequest(RowVersionError);
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new ArchiveFormRequestCommand(
+                    tenantId,
+                    userId,
+                    await CanViewAllAsync(ct),
+                    id,
+                    request.Note,
+                    rowVersion,
+                    DateTime.UtcNow
+                ),
+                ct
+            )
+        );
+    }
+
+    [HttpPost("{id:guid}/link-customer")]
+    [HasPermission(TasksPermissions.FormRequestsReview)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> LinkCustomer(Guid id, LinkFormRequestCustomerRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!TryRowVersion(request.RowVersion, out var rowVersion))
+            return BadRequest(RowVersionError);
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new LinkFormRequestCustomerCommand(
+                    tenantId,
+                    userId,
+                    await CanViewAllAsync(ct),
+                    id,
+                    request.CustomerId,
+                    rowVersion,
+                    DateTime.UtcNow
+                ),
+                ct
+            )
+        );
+    }
+
+    [HttpPut("{id:guid}/responsible")]
+    [HasPermission(TasksPermissions.FormRequestsManage)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> ReassignResponsible(
+        Guid id,
+        ReassignFormRequestResponsibleRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!TryRowVersion(request.RowVersion, out var rowVersion))
+            return BadRequest(RowVersionError);
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new ReassignFormRequestResponsibleCommand(
+                    tenantId,
+                    userId,
+                    await CanViewAllAsync(ct),
+                    id,
+                    request.UserId,
                     rowVersion,
                     DateTime.UtcNow
                 ),

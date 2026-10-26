@@ -7,6 +7,7 @@ using TaxVision.Tasks.ClientForms.Domain.Participants;
 
 namespace TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 
+// Revelar el token sí exige el flag: con el flag apagado el enlace no sirve y no hace falta exponer el secreto.
 public static class GetFormIntakeLinkTokenHandler
 {
     public static async Task<Result<FormIntakeLinkTokenResponse>> Handle(

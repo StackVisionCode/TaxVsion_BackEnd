@@ -396,6 +396,13 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("Email");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -469,18 +476,17 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EmailTemplateId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("HtmlFileId")
+                    b.Property<Guid?>("HtmlFileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("HtmlStorageKey")
-                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<Guid>("LayoutId")
+                    b.Property<Guid?>("LayoutId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("LayoutVersionNumber")
+                    b.Property<int?>("LayoutVersionNumber")
                         .HasColumnType("int");
 
                     b.Property<Guid?>("PreviewImageFileId")

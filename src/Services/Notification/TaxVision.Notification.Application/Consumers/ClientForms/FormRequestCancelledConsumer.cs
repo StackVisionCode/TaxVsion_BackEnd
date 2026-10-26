@@ -10,7 +10,7 @@ public static class FormRequestCancelledConsumer
 {
     public static async Task Handle(
         FormRequestCancelledIntegrationEvent evt,
-        NotificationDispatcher dispatcher,
+        ClientFormNotificationSender sender,
         IRecipientResolver recipients,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -20,7 +20,7 @@ public static class FormRequestCancelledConsumer
         {
             if (!evt.NotifyClient || evt.Participant.CustomerId is not { } customerId)
                 return;
-            await ClientFormCustomerNotifier.NotifyInAppAsync(
+            await ClientFormCustomerNotifier.NotifyAsync(
                 new ClientFormCustomerNotification(
                     evt.TenantId,
                     customerId,
@@ -34,9 +34,8 @@ public static class FormRequestCancelledConsumer
                     new Dictionary<string, object?>(),
                     new Dictionary<string, string> { ["title"] = evt.Title }
                 ),
-                dispatcher,
+                sender,
                 recipients,
-                correlation,
                 ct
             );
         }

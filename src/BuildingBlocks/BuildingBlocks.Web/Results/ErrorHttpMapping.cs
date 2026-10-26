@@ -188,6 +188,8 @@ public static class ErrorHttpMapping
             or "FormRequest.CustomerUnavailable"
             or "FormRequest.TemplateNotPublished"
             or "FormRequest.AttachmentAlreadyRegistered"
+            or "FormRequest.NoAccessLink"
+            or "FormRequest.ResendNotAllowed"
             // Acciones posteriores al envío: reintento no admitido o vínculo todavía en conflicto.
             or "FormActionRun.NotRetryable"
             or "FormActionRun.NotAvailable"

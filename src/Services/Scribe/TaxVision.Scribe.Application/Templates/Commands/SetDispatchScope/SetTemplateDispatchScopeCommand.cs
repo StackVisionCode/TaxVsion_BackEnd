@@ -81,10 +81,10 @@ public static class SetTemplateDispatchScopeHandler
     )
     {
         var published = template.Versions.FirstOrDefault(v => v.Status == Domain.EmailVersionStatus.Published);
-        if (published is null)
+        if (published is null || published.LayoutId is null)
             return null;
 
-        var layout = await layouts.GetByIdAsync(published.LayoutId, ct);
+        var layout = await layouts.GetByIdAsync(published.LayoutId.Value, ct);
         return layout.IsSuccess ? layout.Value.LayoutKey.Value : null;
     }
 }

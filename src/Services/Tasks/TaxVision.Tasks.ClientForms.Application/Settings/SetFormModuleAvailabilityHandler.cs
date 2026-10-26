@@ -1,21 +1,26 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
+using Wolverine;
 
 namespace TaxVision.Tasks.ClientForms.Application.Settings;
 
+// Sub-flags y nota; lo omitido (null) se conserva y Note "" la borra. El módulo lo decide el plan:
+// Enabled true u omitido se ignora, false se rechaza para no aparentar que apagó algo.
 public sealed record SetFormModuleAvailabilityCommand(
     Guid TenantId,
     Guid ByUserId,
-    bool Enabled,
     string? Note,
     bool? ExternalParticipantsEnabled = null,
     bool? IntakeLinksEnabled = null,
     bool? AutoCustomerCreationEnabled = null,
     bool? SignatureStepEnabled = null,
-    bool? PushNotificationsEnabled = null
+    bool? PushNotificationsEnabled = null,
+    bool? Enabled = null
 );
 
 public static class SetFormModuleAvailabilityHandler
@@ -25,21 +30,20 @@ public static class SetFormModuleAvailabilityHandler
         IFormModuleSettingsRepository repository,
         IFormAuditLog audit,
         IFormIntakeBotProtection botProtection,
+        IClientFormsAvailabilityEvaluator availability,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        if (command.Enabled == false)
+            return Result.Failure<FormModuleSettingsResponse>(FormModuleSettingsErrors.EnabledNotSupported);
         if (command.IntakeLinksEnabled == true && !botProtection.IsReady)
             return Result.Failure<FormModuleSettingsResponse>(FormModuleSettingsErrors.IntakeLinksNotReady);
         var settings = await repository.GetAsync(command.TenantId, ct);
         var changed = settings is null
-            ? FormModuleSettings.Create(
-                command.TenantId,
-                command.Enabled,
-                command.Note,
-                command.ByUserId,
-                DateTime.UtcNow
-            )
+            ? FormModuleSettings.Create(command.TenantId, command.Note, command.ByUserId)
             : Update(settings, command);
         if (changed.IsFailure)
             return Result.Failure<FormModuleSettingsResponse>(changed.Error);
@@ -50,7 +54,10 @@ public static class SetFormModuleAvailabilityHandler
             repository.Add(changed.Value);
         audit.Record(command.TenantId, null, null, FormAuditAction.ModuleAvailabilityChanged, command.ByUserId);
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(FormModuleSettingsResponse.From(changed.Value));
+        if (command.PushNotificationsEnabled.HasValue)
+            await bus.PublishAsync(NotificationSettings(command, changed.Value, correlation.CorrelationId));
+        var module = await availability.EvaluateAsync(command.TenantId, ct);
+        return Result.Success(FormModuleSettingsResponse.From(command.TenantId, module, changed.Value));
     }
 
     private static Result ApplyCapabilities(FormModuleSettings settings, SetFormModuleAvailabilityCommand command)
@@ -79,7 +86,26 @@ public static class SetFormModuleAvailabilityHandler
         SetFormModuleAvailabilityCommand command
     )
     {
-        var result = settings.SetAvailability(command.Enabled, command.Note, command.ByUserId, DateTime.UtcNow);
+        if (command.Note is null)
+            return Result.Success(settings);
+        var result = settings.SetNote(command.Note, command.ByUserId);
         return result.IsFailure ? Result.Failure<FormModuleSettings>(result.Error) : Result.Success(settings);
+    }
+
+    private static ClientFormNotificationSettingsSyncRequestedIntegrationEvent NotificationSettings(
+        SetFormModuleAvailabilityCommand command,
+        FormModuleSettings settings,
+        string correlationId
+    )
+    {
+        var commandId = Guid.NewGuid();
+        return new()
+        {
+            EventId = commandId,
+            CommandId = commandId,
+            TenantId = command.TenantId,
+            CorrelationId = correlationId,
+            PushNotificationsEnabled = settings.PushNotificationsEnabled,
+        };
     }
 }

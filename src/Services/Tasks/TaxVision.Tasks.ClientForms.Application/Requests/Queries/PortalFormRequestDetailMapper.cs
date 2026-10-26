@@ -55,6 +55,7 @@ internal static class PortalFormRequestDetailMapper
         request
             .Submission?.Attachments.Select(item => new PortalFormAttachmentResponse(
                 item.Id,
+                item.FileId,
                 item.ComponentId,
                 item.RowId,
                 item.DisplayName,

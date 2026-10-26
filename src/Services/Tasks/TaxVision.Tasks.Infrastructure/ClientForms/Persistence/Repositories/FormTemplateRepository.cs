@@ -39,7 +39,7 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
         if (!string.IsNullOrWhiteSpace(search))
         {
             var pattern = $"%{search.Trim()}%";
-            query = query.Where(item => EF.Functions.Like(EF.Property<string>(item, "Name"), pattern));
+            query = query.Where(item => EF.Functions.Like((string)(object)item.Name, pattern));
         }
         var total = await query.CountAsync(ct);
         var items = await query
@@ -65,16 +65,18 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
         if (!string.IsNullOrWhiteSpace(search))
         {
             var pattern = $"%{search.Trim()}%";
-            templates = templates.Where(item => EF.Functions.Like(EF.Property<string>(item, "Name"), pattern));
+            templates = templates.Where(item => EF.Functions.Like((string)(object)item.Name, pattern));
         }
+        // Se ordena antes de proyectar: EF no traduce EF.Property sobre el record ya construido.
         return await templates
             .Join(
                 context.FormTemplateVersions.IgnoreQueryFilters().AsNoTracking(),
                 template => template.LatestVersionId,
                 version => (Guid?)version.Id,
-                (template, version) => new AssignableFormTemplateRecord(template, version.Title)
+                (template, version) => new { Template = template, version.Title }
             )
             .OrderBy(item => EF.Property<string>(item.Template, "Name"))
+            .Select(item => new AssignableFormTemplateRecord(item.Template, item.Title))
             .ToListAsync(ct);
     }
 }

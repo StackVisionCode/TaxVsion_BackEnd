@@ -14,5 +14,6 @@ public sealed record FormAccessLinkDeliveryPayload(
     string Email,
     string? Name,
     string AccessToken,
-    string Title
+    string Title,
+    string Language = "En"
 );
