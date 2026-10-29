@@ -403,7 +403,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
+              "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1819,6 +1819,264 @@
       ]
     },
     {
+      "name": "Avatars",
+      "description": "F3 — foto de perfil del cliente. Subida mediada por Customer (normaliza a WebP 512, sube a MinIO temp y pide el catálogo a CloudStorage). La respuesta es 202 con status \"processing\"; la foto se vuelve vigente cuando el antivirus la aprueba (avatarFileId en GET customers/me/contact, GET /customers/{id} y la lista). Imagen pública por id: GET {{UrlBase}}/storage/avatars/{{avatarFileId}}. Una subida pendiente más vieja que 10 min se informa como avatarUploadStatus=\"failed\".",
+      "item": [
+        {
+          "name": "UploadMyAvatar (portal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted — processing\", () => {",
+                  "    pm.response.to.have.status(202);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(\"processing\");",
+                  "    pm.environment.set(\"avatarFileId\", body.fileId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerPortalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG o WebP, máx. 5 MB. El servidor la recorta a 512×512 WebP sin metadatos."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/customers/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Solo CustomerPortal; el cliente sale del token (claim customer_id)."
+          },
+          "response": []
+        },
+        {
+          "name": "GetMyContact (portal)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerPortalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/customers/me/contact",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "me",
+                "contact"
+              ]
+            },
+            "description": "Devuelve primaryPhone, primaryEmail, avatarFileId, pendingAvatarFileId y avatarUploadStatus (processing | failed | null)."
+          },
+          "response": []
+        },
+        {
+          "name": "RemoveMyAvatar (portal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerPortalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/customers/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Quita la foto vigente y cualquier subida en curso. Idempotente (204 aunque no haya foto)."
+          },
+          "response": []
+        },
+        {
+          "name": "UploadCustomerAvatar (staff)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted — processing\", () => {",
+                  "    pm.response.to.have.status(202);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(\"processing\");",
+                  "    pm.environment.set(\"avatarFileId\", body.fileId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG o WebP, máx. 5 MB. El servidor la recorta a 512×512 WebP sin metadatos."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/customers/{{customerId}}/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "{{customerId}}",
+                "avatar"
+              ]
+            },
+            "description": "Staff con customers.manage. Cliente no asignado (sin customers.view_all) → 404; archivado → 400 Customer.Archived."
+          },
+          "response": []
+        },
+        {
+          "name": "RemoveCustomerAvatar (staff)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/customers/{{customerId}}/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "{{customerId}}",
+                "avatar"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetAvatarImage (anónimo)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/storage/avatars/{{avatarFileId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "storage",
+                "avatars",
+                "{{avatarFileId}}"
+              ]
+            },
+            "description": "Lo sirve CloudStorage (F0) cuando la foto ya está Available; antes da 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Negative Cases — Actor Type",
       "item": [
         {
@@ -1869,6 +2127,114 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CustomerPortal token rejected — UploadCustomerAvatar",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerPortalAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG o WebP, máx. 5 MB. El servidor la recorta a 512×512 WebP sin metadatos."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/customers/{{customerId}}/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "{{customerId}}",
+                "avatar"
+              ]
+            },
+            "description": "El endpoint de staff no admite CustomerPortal (el cliente usa customers/me/avatar). Debe responder 403."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 Forbidden — CustomerPortal blocked from the staff avatar endpoint\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff token rejected — UploadMyAvatar",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG o WebP, máx. 5 MB. El servidor la recorta a 512×512 WebP sin metadatos."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/customers/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "El endpoint del portal solo admite CustomerPortal. Debe responder 403."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 Forbidden — staff blocked from the portal avatar endpoint\", () => {",
                   "    pm.response.to.have.status(403);",
                   "});"
                 ]

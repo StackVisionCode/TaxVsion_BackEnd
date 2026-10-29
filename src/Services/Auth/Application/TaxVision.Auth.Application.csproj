@@ -2,6 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Domain\TaxVision.Auth.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <!-- Normalizador de fotos de perfil (SkiaSharp). No combinar con Signature.Infrastructure: chocan los libSkiaSharp. -->
+    <ProjectReference Include="..\..\..\BuildingBlocks\Imaging\BuildingBlocks.Imaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

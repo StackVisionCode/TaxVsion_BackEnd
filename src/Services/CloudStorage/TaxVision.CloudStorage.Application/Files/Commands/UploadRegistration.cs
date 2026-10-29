@@ -40,6 +40,11 @@ internal static class UploadRegistration
         CancellationToken ct
     )
     {
+        // Avatars no admite subida directa del navegador: la identidad la toma Auth/Customer del token
+        // y normaliza la imagen antes de guardarla (SaveFileRequested). Cierra "staff sube el User de otro".
+        if (IsReservedForServices(folderType) && !scope.IsService)
+            return Result.Failure<FileObject>(FileErrors.FolderReserved);
+
         if (!scope.CanCreate(ownerType, ownerId))
             return Result.Failure<FileObject>(FileErrors.Forbidden);
 
@@ -132,4 +137,7 @@ internal static class UploadRegistration
 
         return registered;
     }
+
+    /// <summary>Carpetas que solo aceptan archivos guardados por un servicio, nunca por un usuario.</summary>
+    public static bool IsReservedForServices(FolderType folderType) => folderType is FolderType.Avatars;
 }

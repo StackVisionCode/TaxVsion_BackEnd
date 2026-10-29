@@ -44,6 +44,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        FolderType? folderType,
         int skip,
         int take,
         CancellationToken ct
@@ -53,6 +54,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 .Values.Where(file =>
                     file.TenantId == tenantId
                     && file.Status != FileStatus.SoftDeleted
+                    && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
                     && (
                         restrictedCustomerId == null
                         || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -156,7 +158,10 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         Task.FromResult<IReadOnlyList<FileObject>>(
             _byId
                 .Values.Where(file =>
-                    file.TenantId == tenantId && file.Status == FileStatus.SoftDeleted && file.DeletedBatchId == null
+                    file.TenantId == tenantId
+                    && file.Status == FileStatus.SoftDeleted
+                    && file.DeletedBatchId == null
+                    && file.FolderType != FolderType.Avatars
                 )
                 .ToList()
         );
@@ -683,7 +688,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
         long exactSizeBytes,
         TimeSpan lifetime,
         CancellationToken ct
-    ) => throw new NotImplementedException();
+    ) =>
+        Task.FromResult(
+            new PresignedUpload(
+                new Uri($"https://minio.local/{bucket}"),
+                new Dictionary<string, string> { ["key"] = objectKey, ["Content-Type"] = contentType }
+            )
+        );
 
     public Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct) =>
         Task.FromResult(new Uri($"https://minio.local/{bucket}/{objectKey}"));
@@ -719,8 +730,13 @@ internal sealed class FakeObjectStorage : IObjectStorage
                 || Copied.Any(c => c.DestinationBucket == bucket && c.DestinationObjectKey == objectKey)
         );
 
-    public async Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>
+    public async Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct)
+    {
+        Downloads.Add((bucket, objectKey));
+        if (ThrowOnDownload)
+            throw new InvalidOperationException("Simulated missing object.");
         await destination.WriteAsync(DownloadContent, ct);
+    }
 
     public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct)
     {
@@ -752,6 +768,32 @@ internal sealed class FakeObjectStorage : IObjectStorage
         Deleted.Add((bucket, objectKey));
         return Task.CompletedTask;
     }
+
+    public List<(string Bucket, string ObjectKey, IReadOnlyDictionary<string, string> Tags)> Tagged { get; } = [];
+
+    public Task SetObjectTagsAsync(
+        string bucket,
+        string objectKey,
+        IReadOnlyDictionary<string, string> tags,
+        CancellationToken ct
+    )
+    {
+        Tagged.Add((bucket, objectKey, tags));
+        return Task.CompletedTask;
+    }
+
+    public List<(string Bucket, string ObjectKey)> DeletedAllVersions { get; } = [];
+
+    public Task DeleteAllVersionsAsync(string bucket, string objectKey, CancellationToken ct)
+    {
+        DeletedAllVersions.Add((bucket, objectKey));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Simula un objeto que ya no está en MinIO (purgado) al descargarlo.</summary>
+    public bool ThrowOnDownload { get; set; }
+
+    public List<(string Bucket, string ObjectKey)> Downloads { get; } = [];
 }
 
 /// <summary>Fase U — fake de IMultipartUploadStorage (AWSSDK.S3 en Infrastructure, no el SDK "Minio").</summary>

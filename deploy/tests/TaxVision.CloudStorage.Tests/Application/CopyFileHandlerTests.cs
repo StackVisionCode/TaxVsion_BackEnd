@@ -142,6 +142,34 @@ public sealed class CopyFileHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    [Fact]
+    public async Task Copy_into_Avatars_is_rejected_as_a_folder_reserved_for_services()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var source = AvailableClientFormsFile(tenantId, customerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(source);
+        var storage = new FakeObjectStorage();
+        var bus = new FakeMessageBus();
+
+        // Copiar un archivo cualquiera como foto de perfil saltaría la normalización de Auth/Customer.
+        var result = await CopyAsync(
+            tenantId,
+            source.Id,
+            new CopyFileRequest(OwnerType.User, Guid.NewGuid(), FolderType.Avatars, null),
+            files,
+            new FakeFolderRepository(),
+            storage,
+            bus
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        Assert.Empty(storage.Copied);
+        Assert.Empty(bus.Published);
+    }
+
     private static Task<BuildingBlocks.Results.Result<CopiedFileResponse>> CopyAsync(
         Guid tenantId,
         Guid sourceId,

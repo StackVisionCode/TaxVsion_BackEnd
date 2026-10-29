@@ -1,3 +1,4 @@
+using BuildingBlocks.Imaging;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -6,11 +7,13 @@ using BuildingBlocks.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.RateLimiting.Abstractions;
+using TaxVision.Customer.Infrastructure.Avatars;
 using TaxVision.Customer.Infrastructure.Employees;
 using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Permissions;
@@ -105,6 +108,14 @@ public static class InfrastructureRegistration
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
             }
         );
+
+        // ---- Foto de perfil del cliente (F3) ----
+        // Normalizador con los límites por defecto (5 MB, 512 px WebP); misma cuenta MinIO que el import.
+        services.AddAvatarImageNormalizer();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<ICustomerAvatarStorage, MinioCustomerAvatarStorage>();
+        services.AddScoped<CustomerAvatarPendingSweeper>();
+        services.AddHostedService<CustomerAvatarPendingSweepJob>();
 
         // Cleanup diario (jobs > N dias). Runs como BackgroundService.
         // TODO: cuando exista RealTime Service, agregar SignalR push para notificar completado.

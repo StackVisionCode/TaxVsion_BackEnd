@@ -480,6 +480,15 @@ public static class ScanFileHandler
                     await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.MainBucket, ct);
                     await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
                 }
+                // Avatar: la etiqueta activa la regla de lifecycle que expira sus versiones no actuales
+                // (bucket versionado). Se aplica también en el reintento que ya lo encontró en Main.
+                if (file.FolderType == FolderType.Avatars)
+                    await storage.SetObjectTagsAsync(
+                        options.Value.MainBucket,
+                        file.ObjectKey,
+                        StorageObjectTags.Avatar,
+                        ct
+                    );
                 file.MarkAvailable(checksum.Value, inspected.ContentType, clock.UtcNow);
                 limit.Commit(file.SizeBytes);
                 audit.Add(
@@ -515,7 +524,11 @@ public static class ScanFileHandler
                         CorrelationId = command.CorrelationId,
                     }
                 );
-                if (command.PortalCustomerId is { } customerId && file.FolderType != FolderType.ClientForms)
+                // Ni Client Forms ni una foto de perfil son "el cliente subió un documento".
+                if (
+                    command.PortalCustomerId is { } customerId
+                    && file.FolderType is not (FolderType.ClientForms or FolderType.Avatars)
+                )
                 {
                     await bus.PublishAsync(
                         new CustomerDocumentUploadedIntegrationEvent

@@ -2,6 +2,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { buildMeetingSnapshotDto } from './meeting-mappers.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
 /**
  * Re-suscribe a un participante YA admitido a un meeting tras un reconnect transparente del socket
@@ -23,7 +24,7 @@ export interface RejoinMeetingResult {
 
 export async function rejoinMeeting(
   cmd: RejoinMeetingCommand,
-  deps: { meetings: MeetingRepository },
+  deps: { meetings: MeetingRepository; avatars?: AvatarResolver },
 ): Promise<Result<RejoinMeetingResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -37,5 +38,9 @@ export async function rejoinMeeting(
   }
   // conversationId: null a propósito — la room de chat del meeting ya la re-une el join-on-connect,
   // y el cliente conserva el conversationId que ya tenía. Este snapshot solo reconcilia participantes.
-  return Result.ok({ snapshot: buildMeetingSnapshotDto(snapshot, me.role, null) });
+  const avatars = await resolveAvatars(
+    deps.avatars,
+    snapshot.participants.map((p) => p.userId),
+  );
+  return Result.ok({ snapshot: buildMeetingSnapshotDto(snapshot, me.role, null, avatars) });
 }

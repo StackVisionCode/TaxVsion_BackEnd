@@ -33,6 +33,13 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.Property(user => user.OnboardingId);
+        builder.Property(user => user.AvatarFileId);
+        builder.Property(user => user.PendingAvatarFileId);
+        builder.Property(user => user.PendingAvatarRequestedAtUtc);
+        // El mantenimiento barre las fotos pendientes vencidas de todas las oficinas.
+        builder
+            .HasIndex(user => user.PendingAvatarRequestedAtUtc)
+            .HasFilter("[PendingAvatarRequestedAtUtc] IS NOT NULL");
         // Email único por oficina dentro de cada tipo de cuenta: la misma persona puede ser empleado y
         // cliente (cuentas Staff y Portal separadas). El filtro repite UserAccountKinds.Of.
         builder

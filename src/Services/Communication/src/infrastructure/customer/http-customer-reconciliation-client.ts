@@ -20,6 +20,8 @@ export interface CustomerReconciliationRow {
   readonly displayName: string;
   readonly primaryEmail: string;
   readonly status: string;
+  /** F5: undefined = Customer.Api anterior sin el campo (no tocar la foto guardada); null = sin foto. */
+  readonly avatarFileId?: string | null;
 }
 
 export interface CustomerReconciliationPage {
@@ -38,6 +40,8 @@ interface RawReconciliationRow {
   readonly PrimaryEmail?: unknown;
   readonly status?: unknown;
   readonly Status?: unknown;
+  readonly avatarFileId?: unknown;
+  readonly AvatarFileId?: unknown;
 }
 
 interface RawReconciliationResponse {
@@ -95,12 +99,14 @@ export class HttpCustomerReconciliationClient {
       const displayName = pickString(entry.displayName, entry.DisplayName);
       const primaryEmail = pickString(entry.primaryEmail, entry.PrimaryEmail);
       const status = pickString(entry.status, entry.Status);
+      const avatarFileId = pickOptionalGuid(entry.avatarFileId, entry.AvatarFileId);
       items.push({
         tenantId: tenantId ?? '',
         customerId: customerId ?? '',
         displayName: displayName ?? '',
         primaryEmail: primaryEmail ?? '',
         status: status ?? '',
+        ...(avatarFileId !== undefined ? { avatarFileId } : {}),
       });
     }
 
@@ -125,4 +131,11 @@ function pickString(camel: unknown, pascal: unknown): string | undefined {
 function pickNumber(camel: unknown, pascal: unknown): number | undefined {
   const value = pick(camel, pascal);
   return typeof value === 'number' ? value : undefined;
+}
+
+/** undefined = campo ausente; null = sin foto. */
+function pickOptionalGuid(camel: unknown, pascal: unknown): string | null | undefined {
+  const value = pick(camel, pascal);
+  if (value === null) return null;
+  return typeof value === 'string' && value.length > 0 ? value.toLowerCase() : undefined;
 }

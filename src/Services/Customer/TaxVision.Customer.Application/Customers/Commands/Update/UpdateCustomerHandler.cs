@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
@@ -90,7 +89,6 @@ public static class UpdateCustomerHandler
         {
             customer.ChangeLanguage(cmd.Language, cmd.ModifiedByUserId),
             customer.ChangeOccupation(cmd.OccupationId, cmd.ModifiedByUserId),
-            customer.SetProfilePicture(cmd.ProfilePictureFileId, cmd.ModifiedByUserId),
             customer.ChangePrimaryEmail(vo.Email, cmd.ModifiedByUserId),
             customer.ChangePrimaryPhone(vo.Phone, cmd.ModifiedByUserId),
         };
@@ -187,22 +185,7 @@ public static class UpdateCustomerHandler
         ICorrelationContext correlation,
         IMessageBus bus
     ) =>
-        bus.PublishAsync(
-                new CustomerUpdatedIntegrationEvent
-                {
-                    TenantId = customer.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = customer.Id,
-                    DisplayName = customer.DisplayName,
-                    PrimaryEmail = customer.PrimaryEmail.Value,
-                    PrimaryPhone = customer.PrimaryPhone?.E164Value,
-                    Language = customer.Language.ToString(),
-                    EmailEnabled = customer.ContactPolicy.EmailEnabled,
-                    SmsEnabled = customer.ContactPolicy.SmsEnabled,
-                    OccupationId = customer.OccupationId,
-                    ModifiedByUserId = cmd.ModifiedByUserId,
-                }
-            )
+        bus.PublishAsync(CustomerUpdatedEvents.From(customer, cmd.ModifiedByUserId, correlation.CorrelationId))
             .AsTask();
 
     // ============== Mapeo ==============
@@ -222,6 +205,7 @@ public static class UpdateCustomerHandler
             c.BusinessIdentity?.PrincipalBusinessActivityId,
             PrincipalBusinessActivityName: null,
             c.CreatedAtUtc,
-            c.AssignedPreparerUserId
+            c.AssignedPreparerUserId,
+            AvatarFileId: c.ProfilePictureFileId
         );
 }

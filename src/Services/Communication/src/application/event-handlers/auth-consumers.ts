@@ -4,6 +4,8 @@ import type { RolePermissionsProjectionRepository } from '../ports/role-permissi
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { logger } from '../../infrastructure/logger/logger.js';
+import { emitUserProfileChanged, readOptionalGuid } from './user-profile-realtime.js';
 import {
   NotificationSocketEvents,
   type AccessChangedDto,
@@ -131,22 +133,38 @@ export function bindAuthConsumers(
     const name = getString(env.payload, 'name') ?? getString(env.payload, 'Name');
     const lastName = getString(env.payload, 'lastName') ?? getString(env.payload, 'LastName');
     if (!userId || !name || !lastName) return;
+    const displayName = `${name} ${lastName}`;
+    // F5: el evento trae siempre la foto vigente. Clave ausente = publicador viejo → no tocar la guardada.
+    const avatarFileId = readOptionalGuid(env.payload, 'avatarFileId', 'AvatarFileId');
 
     // No creamos una entrada nueva aqui: sin Email (que este evento no lleva)
     // escribiriamos un directory entry incompleto. Si `registered` aun no proceso
-    // (orden de entrega no garantizado entre eventos), el proximo `registered`
-    // va a sobreescribir el displayName igual, asi que perder este update puntual
-    // es aceptable.
+    // (orden de entrega no garantizado entre eventos), la reconciliacion contra Auth
+    // (user-directory-reconciliation-scheduler) repara la fila con nombre y foto.
     const existing = await deps.userDirectory.findByUserId(userId);
-    if (!existing) return;
+    if (existing) {
+      await deps.userDirectory.upsert({
+        userId,
+        tenantId: env.tenantId,
+        displayName,
+        email: existing.email,
+        isActive: existing.isActive,
+        ...(avatarFileId !== undefined ? { avatarFileId } : {}),
+      });
+    } else {
+      logger.debug({ userId }, 'profile_updated without directory entry; reconciliation will repair it');
+    }
 
-    await deps.userDirectory.upsert({
-      userId,
-      tenantId: env.tenantId,
-      displayName: `${name} ${lastName}`,
-      email: existing.email,
-      isActive: existing.isActive,
-    });
+    // Sin fila ni foto en el evento no hay valor fiable que anunciar.
+    const currentAvatar = avatarFileId !== undefined ? avatarFileId : existing?.avatarFileId;
+    if (deps.emitter && currentAvatar !== undefined) {
+      emitUserProfileChanged(
+        deps.emitter,
+        env.tenantId,
+        { userId, displayName, avatarFileId: currentAvatar },
+        env.correlationId,
+      );
+    }
   });
 
   register('auth.user.deactivated.v1', async (env) => {

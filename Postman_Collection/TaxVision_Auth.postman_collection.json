@@ -1856,6 +1856,96 @@
           "response": []
         },
         {
+          "name": "UploadMyAvatar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG o WebP, máx. 5 MB. Se normaliza a WebP 512×512 sin metadatos."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Foto de perfil propia del staff (TenantEmployee/TenantAdmin/PlatformAdmin). Responde 202 { fileId, status: \"processing\" }: queda pendiente hasta que CloudStorage termina el antivirus; GET /auth/me devuelve avatarPending=true mientras tanto y avatarFileId cuando se confirma. La imagen se sirve sin token en /storage/avatars/{fileId}. Errores: 400 Avatar.* (formato, animada, muy chica, dañada), 413 Avatar.TooLarge, 403 para CustomerPortal (su foto vive en /customers/me/avatar)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202 Accepted — avatar processing\", () => {",
+                  "    pm.response.to.have.status(202);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(\"processing\");",
+                  "    pm.environment.set(\"avatarFileId\", body.fileId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "RemoveMyAvatar",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Quita la foto confirmada y la pendiente; CloudStorage las manda a la papelera (FilesDeletionRequested). Idempotente: 204 aunque no hubiera foto."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "GetTenantLimits",
           "request": {
             "method": "GET",
@@ -3044,6 +3134,116 @@
       ]
     },
     {
+      "name": "Reconciliation (M2M)",
+      "description": "Endpoints internos de reconciliación cross-tenant (policy ServiceOnly + [AllowActorTypes(Service)], solo token de servicio del PlatformTenant, [RateLimitExempt]). Nunca pasan por el Gateway (rutas internal/): usar AuthDirectBase.",
+      "item": [
+        {
+          "name": "UserDirectoryReconciliation (M2M — Communication)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Paged result', () => { pm.expect(body).to.have.property('items'); pm.expect(body).to.have.property('totalCount'); });",
+                  "if (body.items.length > 0) pm.test('Row shape', () => pm.expect(body.items[0]).to.have.all.keys('tenantId', 'userId', 'actorType', 'isActive', 'displayName', 'email', 'avatarFileId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{serviceAccessToken}}",
+                "type": "text",
+                "description": "Token de servicio (actor_type=Service) emitido para el PlatformTenant via POST /auth/service-token; con el token de otro tenant responde 403."
+              }
+            ],
+            "url": {
+              "raw": "{{AuthDirectBase}}/internal/users/directory/reconciliation?page=1&size=200",
+              "host": [
+                "{{AuthDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "directory",
+                "reconciliation"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "F5 avatares — todos los usuarios de todos los tenants (cualquier actor type y estado) con nombre, email y foto. Communication repara con esto su UserDirectoryEntry. Paginado; size máximo 500. Fila: tenantId, userId, actorType, isActive, displayName (Name + LastName), email, avatarFileId (null = sin foto)."
+          },
+          "response": []
+        },
+        {
+          "name": "PortalAccountsReconciliation (M2M — Notification/Communication)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Paged result', () => { pm.expect(body).to.have.property('items'); pm.expect(body).to.have.property('totalCount'); });",
+                  "if (body.items.length > 0) pm.test('Row shape', () => pm.expect(body.items[0]).to.have.all.keys('tenantId', 'customerId', 'userId', 'isActive'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{serviceAccessToken}}",
+                "type": "text",
+                "description": "Token de servicio (actor_type=Service) emitido para el PlatformTenant via POST /auth/service-token; con el token de otro tenant responde 403."
+              }
+            ],
+            "url": {
+              "raw": "{{AuthDirectBase}}/internal/users/portal-accounts/reconciliation?page=1&size=200",
+              "host": [
+                "{{AuthDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "portal-accounts",
+                "reconciliation"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "Cuentas de portal (ActorType CustomerPortal con CustomerId) de todos los tenants, activas o no. Siembra/repara CustomerPortalAccount en Notification y Communication. Paginado. Fila: tenantId, customerId, userId, isActive."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Onboarding Admin (PlatformAdmin)",
       "description": "PayFlow Fase 17 — panel de soporte para onboardings en ManualReview o con fallos permanentes de provisioning. Todos gateados por [Authorize] + [AllowActorTypes(PlatformAdmin)] + [HasPermission(PermissionCatalog.OnboardingAdminManage)] (OnboardingAdminController). resume/update-and-resume publican comandos que la Saga (TenantOnboardingProcessManager) retoma desde el paso fallido; force-complete marca el onboarding completo manualmente tras resolver el problema fuera de banda; cancel-and-refund es irreversible — dispara OnboardingCancelRequestedIntegrationEvent (compensacion en Subscription/Auth/Tenant, no-op si el paso nunca corrio) y OnboardingRefundRequestedIntegrationEvent (consumido por PaymentApp's OnboardingRefundConsumer).",
       "item": [
@@ -3478,6 +3678,55 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CustomerPortal token rejected — UploadMyAvatar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerPortalAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/avatar",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "La foto del cliente del portal vive en su ficha de Customer (/customers/me/avatar). /auth/me/avatar es solo para staff: debe responder 403 (AllowActorTypes)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 Forbidden — portal clients use /customers/me/avatar\", () => {",
                   "    pm.response.to.have.status(403);",
                   "});"
                 ]

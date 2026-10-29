@@ -124,22 +124,7 @@ public static class CreateCustomerHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(
-            new CustomerUpdatedIntegrationEvent
-            {
-                TenantId = existing.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                CustomerId = existing.Id,
-                DisplayName = existing.DisplayName,
-                PrimaryEmail = existing.PrimaryEmail.Value,
-                PrimaryPhone = existing.PrimaryPhone?.E164Value,
-                Language = existing.Language.ToString(),
-                EmailEnabled = existing.ContactPolicy.EmailEnabled,
-                SmsEnabled = existing.ContactPolicy.SmsEnabled,
-                OccupationId = existing.OccupationId,
-                ModifiedByUserId = cmd.CreatedByUserId,
-            }
-        );
+        await bus.PublishAsync(CustomerUpdatedEvents.From(existing, cmd.CreatedByUserId, correlation.CorrelationId));
 
         return Result.Success(MapToResponse(existing));
     }
@@ -312,6 +297,7 @@ public static class CreateCustomerHandler
                     EmailEnabled = customer.ContactPolicy.EmailEnabled,
                     SmsEnabled = customer.ContactPolicy.SmsEnabled,
                     OccupationId = customer.OccupationId,
+                    AvatarFileId = customer.ProfilePictureFileId,
                     CreatedByUserId = customer.CreatedByUserId,
                 }
             )
@@ -353,6 +339,7 @@ public static class CreateCustomerHandler
             OccupationName: null,
             c.BusinessIdentity?.PrincipalBusinessActivityId,
             PrincipalBusinessActivityName: null,
-            c.CreatedAtUtc
+            c.CreatedAtUtc,
+            AvatarFileId: c.ProfilePictureFileId
         );
 }

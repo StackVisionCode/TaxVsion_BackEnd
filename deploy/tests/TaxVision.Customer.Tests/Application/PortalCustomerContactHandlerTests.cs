@@ -14,6 +14,7 @@ public sealed class PortalCustomerContactHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid PortalUser = Guid.NewGuid();
+    private static readonly DateTime Now = new(2026, 10, 28, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public async Task Reads_the_phone_and_email_of_the_customer_record()
@@ -25,12 +26,71 @@ public sealed class PortalCustomerContactHandlerTests
         var result = await GetMyCustomerContactHandler.Handle(
             new GetMyCustomerContactQuery(TenantId, customer.Id),
             repo,
+            TimeProvider.System,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("+18095551234", result.Value.PrimaryPhone);
         Assert.Equal("ana@example.com", result.Value.PrimaryEmail);
+    }
+
+    [Fact]
+    public async Task Contact_includes_the_current_picture_and_the_upload_in_progress()
+    {
+        var customer = NewCustomer();
+        var current = Guid.NewGuid();
+        customer.BeginProfilePictureChange(current, PortalUser, Now);
+        customer.ConfirmProfilePicture(current);
+        var pending = Guid.NewGuid();
+        customer.BeginProfilePictureChange(pending, PortalUser, Now);
+
+        var result = await GetMyCustomerContactHandler.Handle(
+            new GetMyCustomerContactQuery(TenantId, customer.Id),
+            Repo(customer),
+            new FixedTimeProvider(Now.AddMinutes(1)),
+            CancellationToken.None
+        );
+
+        Assert.Equal(current, result.Value.AvatarFileId);
+        Assert.Equal(pending, result.Value.PendingAvatarFileId);
+        Assert.Equal("processing", result.Value.AvatarUploadStatus);
+    }
+
+    [Fact]
+    public async Task Pending_picture_older_than_the_timeout_reads_as_failed()
+    {
+        var customer = NewCustomer();
+        var pending = Guid.NewGuid();
+        customer.BeginProfilePictureChange(pending, PortalUser, Now);
+
+        var result = await GetMyCustomerContactHandler.Handle(
+            new GetMyCustomerContactQuery(TenantId, customer.Id),
+            Repo(customer),
+            new FixedTimeProvider(Now.AddMinutes(11)),
+            CancellationToken.None
+        );
+
+        Assert.Null(result.Value.AvatarFileId);
+        Assert.Equal(pending, result.Value.PendingAvatarFileId);
+        Assert.Equal("failed", result.Value.AvatarUploadStatus);
+    }
+
+    [Fact]
+    public async Task Without_picture_nor_upload_the_avatar_fields_are_empty()
+    {
+        var customer = NewCustomer();
+
+        var result = await GetMyCustomerContactHandler.Handle(
+            new GetMyCustomerContactQuery(TenantId, customer.Id),
+            Repo(customer),
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.Null(result.Value.AvatarFileId);
+        Assert.Null(result.Value.PendingAvatarFileId);
+        Assert.Null(result.Value.AvatarUploadStatus);
     }
 
     [Fact]
@@ -41,6 +101,7 @@ public sealed class PortalCustomerContactHandlerTests
         var result = await GetMyCustomerContactHandler.Handle(
             new GetMyCustomerContactQuery(Guid.NewGuid(), customer.Id),
             Repo(customer),
+            TimeProvider.System,
             CancellationToken.None
         );
 

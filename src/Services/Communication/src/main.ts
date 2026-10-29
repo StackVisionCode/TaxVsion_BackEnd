@@ -22,6 +22,8 @@ import { startMissedCallScheduler } from './infrastructure/schedulers/missed-cal
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
 import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
+import { startUserDirectoryReconciliationScheduler } from './infrastructure/schedulers/user-directory-reconciliation-scheduler.js';
+import { startPortalAccountReconciliationScheduler } from './infrastructure/schedulers/portal-account-reconciliation-scheduler.js';
 import { startCustomerAssignmentReconciliationScheduler } from './infrastructure/schedulers/customer-assignment-reconciliation-scheduler.js';
 import { startOutboxDrainer } from './infrastructure/rabbit/outbox-drainer.js';
 import { ConsumerRuntime } from './infrastructure/rabbit/consumer-runtime.js';
@@ -147,6 +149,27 @@ async function main(): Promise<void> {
       lock: container.distributedLock,
     },
   );
+  // F5 avatares — repara UserDirectoryEntry (nombre, foto, estado) contra Auth si se perdio un evento.
+  const userDirectoryReconciliation = startUserDirectoryReconciliationScheduler(
+    { enabled: config.userReconcile.enabled, intervalHours: config.userReconcile.intervalHours },
+    {
+      client: container.userDirectoryReconciliation,
+      userDirectory: container.userDirectory,
+      lock: container.distributedLock,
+    },
+  );
+  // Repara CustomerPortalAccount (portal userId ↔ customerId) contra Auth: chateabilidad y foto del cliente.
+  const portalAccountReconciliation = startPortalAccountReconciliationScheduler(
+    {
+      enabled: config.portalAccountReconcile.enabled,
+      intervalHours: config.portalAccountReconcile.intervalHours,
+    },
+    {
+      client: container.portalAccountsReconciliation,
+      portalAccounts: container.customerPortalAccountsReconcile,
+      lock: container.distributedLock,
+    },
+  );
   // P2.5 — siembra/auto-repara la proyeccion M:N que alimenta el gate de chat por asignacion.
   const customerAssignmentReconciliation = startCustomerAssignmentReconciliationScheduler(
     { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },
@@ -175,6 +198,8 @@ async function main(): Promise<void> {
     customerPreparerAssignments: container.customerPreparerAssignments,
     customerAssignments: container.customerAssignments,
     inAppSource: config.inAppSource.customerImport,
+    customerPortalAccounts: container.customerPortalAccounts,
+    userDirectory: container.userDirectory,
   });
   bindAuthConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
@@ -329,6 +354,8 @@ async function main(): Promise<void> {
         recordingConsentTimeout,
         customerReconciliation,
         customerAssignmentReconciliation,
+        userDirectoryReconciliation,
+        portalAccountReconciliation,
         sessionWatcher,
         presenceWatcher,
         consumers,
@@ -350,6 +377,8 @@ async function shutdown(
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
   customerReconciliation: ReturnType<typeof startCustomerReconciliationScheduler>,
   customerAssignmentReconciliation: ReturnType<typeof startCustomerAssignmentReconciliationScheduler>,
+  userDirectoryReconciliation: ReturnType<typeof startUserDirectoryReconciliationScheduler>,
+  portalAccountReconciliation: ReturnType<typeof startPortalAccountReconciliationScheduler>,
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
@@ -362,6 +391,8 @@ async function shutdown(
     recordingConsentTimeout.stop();
     customerReconciliation.stop();
     customerAssignmentReconciliation.stop();
+    userDirectoryReconciliation.stop();
+    portalAccountReconciliation.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

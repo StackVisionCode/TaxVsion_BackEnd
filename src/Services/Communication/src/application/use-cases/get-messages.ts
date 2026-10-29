@@ -3,6 +3,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
 import { parseWaveform } from './chat-mappers.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
 /**
  * Paginacion cursor-based con dos modos mutuamente excluyentes:
@@ -30,7 +31,7 @@ export interface GetMessagesResult {
 
 export async function getMessages(
   query: GetMessagesQuery,
-  deps: { conversations: ConversationRepository; messages: MessageRepository },
+  deps: { conversations: ConversationRepository; messages: MessageRepository; avatars?: AvatarResolver },
 ): Promise<Result<GetMessagesResult>> {
   const take = Math.min(Math.max(query.take, 1), 100);
   const conversation = await deps.conversations.findById(query.tenantId, query.conversationId, 0);
@@ -68,6 +69,12 @@ export async function getMessages(
     messageIds: ownMessageIds,
   });
 
+  // F5: foto de los remitentes en una sola consulta (incluye a quien ya salio del grupo).
+  const avatars = await resolveAvatars(
+    deps.avatars,
+    messages.map((m) => m.senderId),
+  );
+
   const items: MessageDto[] = messages.map((m) => {
     const own = m.senderId === query.requesterUserId ? receipts.get(m.id) : undefined;
     return {
@@ -75,6 +82,7 @@ export async function getMessages(
       conversationId: m.conversationId,
       senderId: m.senderId,
       senderDisplayName: m.senderDisplayName,
+      ...(avatars ? { senderAvatarFileId: avatars.of(m.senderId) } : {}),
       kind: m.kind,
       body: m.isDeleted ? null : m.body,
       attachmentFileId: m.isDeleted ? null : m.attachmentFileId,

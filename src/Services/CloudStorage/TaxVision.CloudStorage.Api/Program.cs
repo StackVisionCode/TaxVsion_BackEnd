@@ -148,6 +148,26 @@ builder.Services.AddRateLimiter(options =>
         }
     );
 
+    // Fotos de perfil anónimas (GET storage/avatars/{fileId}): generoso para listas largas con muchas
+    // caras, pero frena a quien intente adivinar fileIds. Por IP sola: variar el fileId no abre bucket nuevo.
+    options.AddPolicy(
+        TaxVision.CloudStorage.Api.Controllers.PublicAvatarsController.AvatarRateLimitPolicy,
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:avatars",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 600,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+
     // 8.2 — el "Download all (ZIP)" público arma y streamea toda la carpeta: mucho más caro que
     // resolver un token. Se le da un límite propio (6/min por IP), sin ramificar por token para
     // que un mismo atacante no lo sortee variando el token.

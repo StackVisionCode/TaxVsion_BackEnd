@@ -65,6 +65,7 @@ export function startCustomerReconciliationScheduler(
           displayName: row.displayName,
           email: row.primaryEmail,
           isActive: row.status.toLowerCase() === 'active',
+          ...(row.avatarFileId !== undefined ? { avatarFileId: row.avatarFileId } : {}),
         });
         upserted += 1;
       }

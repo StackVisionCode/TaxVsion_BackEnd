@@ -169,6 +169,8 @@ public static class DependencyInjection
                 builder = builder.WithSSL();
             return builder.Build();
         });
+        // Fotos de perfil del staff: misma cuenta IAM y bucket temporal, prefijo {SourcePrefix}/avatars.
+        services.AddScoped<IUserAvatarStorage, TaxVision.Auth.Infrastructure.Storage.UserAvatarStorage>();
         services.AddHttpClient<ITermsContentStorageClient, TermsContentStorageClient>(
             (sp, http) =>
             {

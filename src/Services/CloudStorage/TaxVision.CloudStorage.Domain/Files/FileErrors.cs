@@ -44,6 +44,12 @@ public static class FileErrors
         "File.ClientFormsDestinationNotAllowed",
         "Files cannot be copied into Client Forms. That folder only receives form uploads."
     );
+
+    // Avatars solo recibe archivos guardados por un servicio (Auth/Customer normalizan la imagen).
+    public static readonly Error FolderReserved = new(
+        "File.FolderReserved",
+        "This folder only accepts files saved by TaxVision services."
+    );
     public static readonly Error OwnerMismatch = new(
         "File.OwnerMismatch",
         "The file owner does not match the expected owner."

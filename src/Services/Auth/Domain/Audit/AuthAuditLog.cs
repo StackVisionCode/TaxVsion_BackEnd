@@ -91,6 +91,8 @@ public static class AuthAuditAction
     public const string UserReactivated = "auth.user.reactivated";
     public const string UserOffboarded = "auth.user.offboarded";
     public const string UserProfileUpdated = "auth.user.profile_updated";
+    public const string UserAvatarUploaded = "auth.user.avatar_uploaded";
+    public const string UserAvatarRemoved = "auth.user.avatar_removed";
     public const string UserRolesChanged = "auth.user.roles_changed";
     public const string UserPermissionOverridesChanged = "auth.user.permission_overrides_changed";
     public const string UserSlotPriorityOverridden = "auth.user.slot_priority_overridden";

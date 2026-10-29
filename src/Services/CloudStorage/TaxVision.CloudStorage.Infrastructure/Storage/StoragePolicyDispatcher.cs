@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 
 namespace TaxVision.CloudStorage.Infrastructure.Storage;
@@ -12,6 +13,11 @@ public sealed class StoragePolicyDispatcher(
 {
     public async Task CopyAvailableFileAsync(FileAvailableIntegrationEvent message, CancellationToken ct)
     {
+        // Las fotos de perfil no se espejan al Drive/OneDrive/Dropbox de la oficina: allá el borrado
+        // de la foto vieja nunca llegaría.
+        if (string.Equals(message.FolderType, nameof(FolderType.Avatars), StringComparison.OrdinalIgnoreCase))
+            return;
+
         var policy = await db
             .StoragePolicies.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.TenantId == message.TenantId, ct);

@@ -33,7 +33,7 @@ const InAppNotificationPayloadSchema = z.object({
   priority: z.enum(['Low', 'Normal', 'High', 'Urgent']),
   titleKey: truncated(160).refine((value) => value.length > 0, { message: 'titleKey required' }),
   bodyKey: truncated(160).nullable().optional(),
-  params: z.record(z.string()).default({}),
+  params: z.record(z.string(), z.string()).default({}),
   fallbackTitle: truncated(200).refine((value) => value.length > 0, { message: 'fallbackTitle required' }),
   // Vacio tras trim equivale a ausente — el consumer caera a fallbackTitle.
   fallbackBody: truncated(1000)
@@ -44,7 +44,7 @@ const InAppNotificationPayloadSchema = z.object({
   actorDisplayName: truncated(160).nullable().optional(),
   resourceType: truncated(64).refine((value) => value.length > 0, { message: 'resourceType required' }),
   resourceId: truncated(128).nullable().optional(),
-  resourceContext: z.record(z.string()).default({}),
+  resourceContext: z.record(z.string(), z.string()).default({}),
   action: z.enum(['open', 'review', 'sign', 'pay', 'reconnect']),
   sourceEventId: z.string().uuid(),
   sourceEventType: truncated(128).refine((value) => value.length > 0, {

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
+using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
@@ -413,6 +414,10 @@ public static class MoveFileToFolderHandler
         var file = await files.GetAsync(command.TenantId, command.FileId, ct);
         if (file is null || !command.Scope.CanAccess(file))
             return Result.Failure(FileErrors.NotFound);
+
+        // Una foto de perfil nunca entra a una carpeta navegable: ahí aparecería como documento.
+        if (UploadRegistration.IsReservedForServices(file.FolderType))
+            return Result.Failure(FileErrors.FolderReserved);
 
         Folder? destination = null;
         if (command.FolderId is { } folderId)

@@ -58,7 +58,7 @@
 								"uploads"
 							]
 						},
-						"description": "Inicia una subida. Devuelve fileId + uploadUrl presignada y FormData. Requiere permiso storage.file.upload. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. folderType: Documents|Receipts|Invoices|EmailIncoming|EmailOutgoing|Tasks|Signatures|Avatars|Imports|Recordings|Backups|Other."
+						"description": "Inicia una subida. Devuelve fileId + uploadUrl presignada y FormData. Requiere permiso storage.file.upload. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. folderType: Documents|Receipts|Invoices|EmailIncoming|EmailOutgoing|Tasks|Signatures|Imports|Recordings|Backups|Other. Avatars esta RESERVADA a servicios: un usuario (staff o portal) recibe 403 File.FolderReserved; las fotos de perfil las guardan Auth/Customer via SaveFileRequested."
 					},
 					"response": []
 				},
@@ -267,7 +267,7 @@
 								}
 							]
 						},
-						"description": "Lista archivos visibles para el actor (scoped por tenant y, si es CustomerPortal, por su customer). Requiere storage.file.view."
+						"description": "Lista archivos visibles para el actor (scoped por tenant y, si es CustomerPortal, por su customer). Requiere storage.file.view. Filtro opcional folderType (ej. Documents). Las fotos de perfil (folderType=Avatars) NUNCA salen en este listado salvo que se pida folderType=Avatars explicito."
 					},
 					"response": [],
 					"event": [
@@ -604,6 +604,164 @@
 							}
 						}
 					]
+				}
+			]
+		},
+		{
+			"name": "Avatars (fotos de perfil)",
+			"item": [
+				{
+					"name": "GetPublicAvatar",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 o 404\", () => pm.expect([200, 404]).to.include(pm.response.code));",
+									"if (pm.response.code === 200) {",
+									"  pm.test(\"cache inmutable y privada\", () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('private, max-age=31536000, immutable'));",
+									"  pm.test(\"nosniff + CORP\", () => { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('Cross-Origin-Resource-Policy')).to.eql('same-site'); });",
+									"  pm.test(\"tipo de imagen permitido\", () => pm.expect(['image/webp','image/jpeg','image/png']).to.include(pm.response.headers.get('Content-Type').split(';')[0]));",
+									"  pm.environment.set('avatarEtag', pm.response.headers.get('ETag'));",
+									"} else {",
+									"  pm.test(\"404 sin cache\", () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/storage/avatars/{{avatarFileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"avatars",
+								"{{avatarFileId}}"
+							]
+						},
+						"description": "PUBLICO (AllowAnonymous, sin token: es lo que usa un <img src>). Sirve los bytes SOLO de archivos folderType=Avatars en estado Available y no borrados; cualquier otro fileId (inexistente o que no es avatar) da el mismo 404 con Cache-Control: no-store. 200 con Content-Type real (image/webp|jpeg|png), Cache-Control: private, max-age=31536000, immutable, ETag (SHA-256), X-Content-Type-Options: nosniff, Content-Disposition: inline, Cross-Origin-Resource-Policy: same-site. No escribe auditoria por peticion. Rate limit nativo \"avatar-public\": 600/min por IP. Guardar el fileId de un avatar en la variable avatarFileId."
+					},
+					"response": []
+				},
+				{
+					"name": "GetPublicAvatar_IfNoneMatch_304",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"304 Not Modified\", () => pm.response.code === 304 || pm.expect.fail(\"Got \" + pm.response.code));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "If-None-Match",
+								"value": "{{avatarEtag}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/avatars/{{avatarFileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"avatars",
+								"{{avatarFileId}}"
+							]
+						},
+						"description": "Revalidacion condicional: con el ETag de GetPublicAvatar devuelve 304 sin leer el objeto de MinIO."
+					},
+					"response": []
+				},
+				{
+					"name": "GetPublicAvatar_DocumentFileId_404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"404\", () => pm.response.code === 404 || pm.expect.fail(\"Got \" + pm.response.code));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/storage/avatars/{{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"avatars",
+								"{{fileId}}"
+							]
+						},
+						"description": "Caso negativo: el fileId de un DOCUMENTO no se sirve por este endpoint (mismo 404 que un id inexistente, sin senal de enumeracion)."
+					},
+					"response": []
+				},
+				{
+					"name": "InitiateUpload_Avatars_UserRejected_403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 File.FolderReserved\", () => { pm.expect(pm.response.code).to.eql(403); pm.expect(pm.response.json().code).to.eql('File.FolderReserved'); });"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalName\": \"me.webp\",\n  \"contentType\": \"image/webp\",\n  \"sizeBytes\": 20480,\n  \"ownerType\": \"User\",\n  \"ownerId\": \"{{userId}}\",\n  \"folderType\": \"Avatars\",\n  \"taxYear\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/uploads",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"uploads"
+							]
+						},
+						"description": "Caso negativo: un usuario (staff o portal) no puede subir directo a Avatars → 403 File.FolderReserved. La foto la sube Auth (PUT /auth/me/avatar) o Customer (PUT /customers/me/avatar), que normalizan la imagen y la guardan por SaveFileRequested. Para borrar una foto reemplazada, esos servicios publican FilesDeletionRequested (ExpectedFolderType=Avatars, ExpectedOwnerType=User|Customer)."
+					},
+					"response": []
 				}
 			]
 		},

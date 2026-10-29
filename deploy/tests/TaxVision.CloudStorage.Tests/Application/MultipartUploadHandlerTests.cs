@@ -81,6 +81,53 @@ public sealed class MultipartUploadHandlerTests
     }
 
     [Fact]
+    public async Task Avatars_multipart_from_a_user_is_rejected_as_a_folder_reserved_for_services()
+    {
+        var tenantId = Guid.NewGuid();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(
+            TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100_000_000, maxFileSizeBytes: 100_000_000)
+        );
+        var files = new FakeFileObjectRepository();
+        var multipart = new FakeMultipartUploadStorage();
+
+        var result = await InitiateMultipartUploadHandler.Handle(
+            new InitiateMultipartUploadCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                new InitiateMultipartUploadRequest(
+                    "me.webp",
+                    "image/webp",
+                    1024,
+                    OwnerType.User,
+                    Guid.NewGuid(),
+                    FolderType.Avatars,
+                    null
+                ),
+                Audit()
+            ),
+            files,
+            new FakeFolderRepository(),
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            multipart,
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        Assert.Empty(multipart.Initiated);
+        Assert.Empty(files.All());
+    }
+
+    [Fact]
     public async Task Missing_quota_provisioning_fails_without_calling_storage()
     {
         var multipart = new FakeMultipartUploadStorage();

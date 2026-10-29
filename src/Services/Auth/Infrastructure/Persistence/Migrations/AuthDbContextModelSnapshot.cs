@@ -4237,6 +4237,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<Guid?>("AvatarFileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4287,6 +4290,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<Guid?>("PendingAvatarFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PendingAvatarRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("PermissionsBackfilledAt")
                         .HasColumnType("datetime2");
 
@@ -4328,6 +4337,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("OnboardingId")
                         .IsUnique()
                         .HasFilter("[OnboardingId] IS NOT NULL");
+
+                    b.HasIndex("PendingAvatarRequestedAtUtc")
+                        .HasFilter("[PendingAvatarRequestedAtUtc] IS NOT NULL");
 
                     b.HasIndex("TenantId", "ActorType");
 

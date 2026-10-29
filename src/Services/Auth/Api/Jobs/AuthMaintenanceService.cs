@@ -1,6 +1,7 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Persistence;
 
 namespace TaxVision.Auth.Api.Jobs;
@@ -100,14 +101,36 @@ public sealed class AuthMaintenanceService(
             .ToListAsync(ct);
         db.TrustedDevices.RemoveRange(oldDevices);
 
+        var stalePendingAvatars = await DiscardStalePendingAvatarsAsync(db, now, ct);
+
         var changes = await db.SaveChangesAsync(ct);
         if (changes > 0)
         {
             logger.LogInformation(
-                "Auth maintenance: {ExpiredInvitations} invitations expired, {Changes} rows affected.",
+                "Auth maintenance: {ExpiredInvitations} invitations expired, {StaleAvatars} stale pending avatars discarded, {Changes} rows affected.",
                 expiredInvitations.Count,
+                stalePendingAvatars,
                 changes
             );
         }
+    }
+
+    /// <summary>
+    /// Fotos de perfil que siguen pendientes pasado <see cref="User.AvatarPendingTimeout"/>: el antivirus
+    /// nunca respondió. /auth/me ya las reporta como no pendientes; esto solo limpia la fila. Si el
+    /// archivo aparece después, el consumer lo ve huérfano y pide borrarlo.
+    /// </summary>
+    public static async Task<int> DiscardStalePendingAvatarsAsync(AuthDbContext db, DateTime now, CancellationToken ct)
+    {
+        var staleBefore = now - User.AvatarPendingTimeout;
+        var users = await db
+            .Users.IgnoreQueryFilters()
+            .Where(user => user.PendingAvatarRequestedAtUtc != null && user.PendingAvatarRequestedAtUtc < staleBefore)
+            .ToListAsync(ct);
+
+        foreach (var user in users)
+            user.DiscardPendingAvatar(user.PendingAvatarFileId!.Value);
+
+        return users.Count;
     }
 }

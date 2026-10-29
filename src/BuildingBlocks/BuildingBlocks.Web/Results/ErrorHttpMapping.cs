@@ -261,8 +261,12 @@ public static class ErrorHttpMapping
             or "PostmasterClient.RequestFailed"
             or "PaymentAppClient.RequestFailed"
             or "Tenant.Logo.Storage.Auth"
+            // Auth no pudo subir la foto de perfil al bucket temporal: transitorio, se reintenta.
+            or "User.AvatarStorageUnavailable"
             // Customer no pudo pedirle a Auth la invitación al portal: transitorio, se reintenta.
-            or "Customer.PortalAccessUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            or "Customer.PortalAccessUnavailable"
+            // MinIO no aceptó la foto del cliente: transitorio, se reintenta.
+            or "Customer.Avatar.StorageUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
             "GetMessageBodyHandler.RateLimited"
@@ -312,6 +316,10 @@ public static class ErrorHttpMapping
             or "File.NotAvailable"
             or "IncomingEmailAttachment.Blocked"
             or "File.Forbidden"
+            // Carpeta reservada a servicios (Avatars): un usuario no sube ahí directo.
+            or "File.FolderReserved"
+            // Foto de perfil: el cliente del portal la maneja en su ficha de Customer, no en Auth.
+            or "User.AvatarNotAllowed"
             or "Folder.Forbidden"
             // Carpetas de sistema (prefijo sys.*): el aggregate y los handlers rechazan fail-closed
             // Rename/Move/Delete sobre ellas. 403, no 400: es denegacion por regla de dominio.
@@ -417,8 +425,11 @@ public static class ErrorHttpMapping
             or "PaymentApp.AdminActionThrottled"
             or "PaymentApp.WebhookThrottled"
             or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
-            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
-                StatusCodes.Status413PayloadTooLarge,
+            "File.TooManyItems"
+            or "File.ZipTooLarge"
+            or "File.TooManyFolders"
+            or "File.TooLarge"
+            or "Avatar.TooLarge" => StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed"
             or "File.ExclusiveToClientForms"
             or "File.ClientFormsDestinationNotAllowed"

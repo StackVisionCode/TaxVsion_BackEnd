@@ -218,6 +218,101 @@ public sealed class FilesDeletionRequestedConsumerTests
         Assert.Single(bus.Published.OfType<FileDeletionSkippedIntegrationEvent>());
     }
 
+    // Fotos de perfil: Auth (User) y Customer borran la foto reemplazada por evento, sin DELETE con token de servicio.
+    [Theory]
+    [InlineData(OwnerType.User, "User")]
+    [InlineData(OwnerType.Customer, "Customer")]
+    public async Task Replaced_avatar_is_soft_deleted_when_owner_and_folder_match(OwnerType ownerType, string expected)
+    {
+        var tenantId = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        var avatar = AvatarTestFiles.Avatar(tenantId, ownerType, ownerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var bus = new FakeMessageBus();
+
+        await Run(AvatarMessage(tenantId, AvatarTarget(avatar.Id, expected, ownerId)), files, bus);
+
+        Assert.Equal(FileStatus.SoftDeleted, avatar.Status);
+        Assert.Equal(avatar.Id, Assert.Single(bus.Published.OfType<FileDeletedIntegrationEvent>()).FileId);
+        Assert.Empty(bus.Published.OfType<FileDeletionSkippedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Avatar_of_another_user_is_skipped_as_owner_mismatch()
+    {
+        var tenantId = Guid.NewGuid();
+        var avatar = AvatarTestFiles.Avatar(tenantId, OwnerType.User, Guid.NewGuid());
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var bus = new FakeMessageBus();
+
+        await Run(AvatarMessage(tenantId, AvatarTarget(avatar.Id, "User", Guid.NewGuid())), files, bus);
+
+        Assert.Equal(FileStatus.Available, avatar.Status);
+        Assert.Equal(
+            "owner_mismatch",
+            Assert.Single(bus.Published.OfType<FileDeletionSkippedIntegrationEvent>()).Reason
+        );
+    }
+
+    [Fact]
+    public async Task Avatar_deletion_cannot_reach_a_document_of_the_same_owner()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var document = AvatarTestFiles.Document(tenantId, customerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(document);
+        var bus = new FakeMessageBus();
+
+        await Run(AvatarMessage(tenantId, AvatarTarget(document.Id, "Customer", customerId)), files, bus);
+
+        Assert.Equal(FileStatus.Available, document.Status);
+        Assert.Equal(
+            "folder_mismatch",
+            Assert.Single(bus.Published.OfType<FileDeletionSkippedIntegrationEvent>()).Reason
+        );
+    }
+
+    [Fact]
+    public async Task Avatar_of_another_tenant_is_not_found()
+    {
+        var ownerId = Guid.NewGuid();
+        var avatar = AvatarTestFiles.Avatar(Guid.NewGuid(), OwnerType.User, ownerId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var bus = new FakeMessageBus();
+
+        await Run(AvatarMessage(Guid.NewGuid(), AvatarTarget(avatar.Id, "User", ownerId)), files, bus);
+
+        Assert.Equal(FileStatus.Available, avatar.Status);
+        Assert.Equal("not_found", Assert.Single(bus.Published.OfType<FileDeletionSkippedIntegrationEvent>()).Reason);
+    }
+
+    private static FileDeletionTarget AvatarTarget(Guid fileId, string ownerType, Guid ownerId) =>
+        new()
+        {
+            FileId = fileId,
+            ExpectedOwnerType = ownerType,
+            ExpectedOwnerId = ownerId,
+            ExpectedFolderType = "Avatars",
+        };
+
+    private static FilesDeletionRequestedIntegrationEvent AvatarMessage(
+        Guid tenantId,
+        params FileDeletionTarget[] files
+    ) =>
+        new()
+        {
+            TenantId = tenantId,
+            SourceService = "auth.avatar",
+            SourceReferenceId = Guid.NewGuid(),
+            Reason = "avatar_replaced",
+            Files = files,
+            CorrelationId = "corr-avatar",
+        };
+
     private sealed class FakeCorrelationContext : ICorrelationContext
     {
         public string CorrelationId { get; private set; } = "corr-1";

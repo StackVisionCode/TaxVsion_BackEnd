@@ -10,6 +10,9 @@
   <Folder Name="/src/BuildingBlocks/CustomerVisibility/">
     <Project Path="src/BuildingBlocks/CustomerVisibility/BuildingBlocks.CustomerVisibility.csproj" />
   </Folder>
+  <Folder Name="/src/BuildingBlocks/Imaging/">
+    <Project Path="src/BuildingBlocks/Imaging/BuildingBlocks.Imaging.csproj" />
+  </Folder>
   <Folder Name="/src/BuildingBlocks/Messaging/" />
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />

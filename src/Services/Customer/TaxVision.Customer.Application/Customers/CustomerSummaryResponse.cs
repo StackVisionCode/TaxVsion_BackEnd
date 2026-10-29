@@ -11,5 +11,7 @@ public sealed record CustomerSummaryResponse(
     string? PrimaryPhone,
     DateTime CreatedAtUtc,
     // Staff asignado (M:N) — para pintar los avatares de asignados en el directorio. El nombre lo resuelve el front.
-    IReadOnlyList<Guid> AssigneeUserIds
+    IReadOnlyList<Guid> AssigneeUserIds,
+    // Foto vigente del cliente (null = iniciales). URL: /storage/avatars/{AvatarFileId}.
+    Guid? AvatarFileId = null
 );

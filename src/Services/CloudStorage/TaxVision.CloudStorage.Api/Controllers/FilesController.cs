@@ -182,11 +182,13 @@ public sealed class FilesController(
     // ownerType/ownerId son un filtro OPCIONAL solo para staff (ej. todos los archivos de un
     // customer, cross-carpeta). Un actor CustomerPortal los ignora: su alcance ya queda forzado
     // a su propio customerId en el handler/repo (nunca puede ver otro dueno).
+    // folderType: filtro opcional; sin él, Avatars (fotos de perfil) nunca aparece en el listado.
     public async Task<IActionResult> List(
         [FromQuery] int skip = 0,
         [FromQuery] int take = 50,
         [FromQuery] OwnerType? ownerType = null,
         [FromQuery] Guid? ownerId = null,
+        [FromQuery] FolderType? folderType = null,
         CancellationToken ct = default
     )
     {
@@ -195,7 +197,7 @@ public sealed class FilesController(
 
         scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<IReadOnlyList<FileResponse>>(
-            new ListFilesQuery(tenantId, scope, ownerType, ownerId, skip, take),
+            new ListFilesQuery(tenantId, scope, ownerType, ownerId, skip, take, folderType),
             ct
         );
         return Ok(result);

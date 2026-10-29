@@ -1,5 +1,6 @@
 import { Result } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
 export interface ListConversationsQuery {
   readonly tenantId: string;
@@ -9,13 +10,21 @@ export interface ListConversationsQuery {
   readonly includeArchived?: boolean;
 }
 
+export interface ConversationParticipantListItem {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly isPrimaryPreparer: boolean;
+  /** F5: foto resuelta al leer (staff → Auth, portal → ficha). Ausente si no se pudo resolver; null = sin foto. */
+  readonly avatarFileId?: string | null;
+}
+
 export interface ConversationListItem {
   readonly id: string;
   readonly kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
   readonly title: string | null;
   readonly lastMessageAtUtc: string | null;
   readonly updatedAtUtc: string;
-  readonly participants: readonly { userId: string; displayName: string; isPrimaryPreparer: boolean }[];
+  readonly participants: readonly ConversationParticipantListItem[];
   readonly unreadCount: number;
 }
 
@@ -28,7 +37,7 @@ export interface ListConversationsResult {
 
 export async function listConversations(
   query: ListConversationsQuery,
-  deps: { conversations: ConversationRepository },
+  deps: { conversations: ConversationRepository; avatars?: AvatarResolver },
 ): Promise<Result<ListConversationsResult>> {
   const size = Math.min(Math.max(query.size, 1), 100);
   const page = Math.max(query.page, 1);
@@ -43,6 +52,12 @@ export async function listConversations(
     }),
     deps.conversations.countForUser(query.tenantId, query.userId, query.includeArchived ?? false),
   ]);
+
+  // Una sola consulta de fotos para todos los participantes de la pagina.
+  const avatars = await resolveAvatars(
+    deps.avatars,
+    snapshots.flatMap((snapshot) => snapshot.participants.filter((p) => !p.isRemoved).map((p) => p.userId)),
+  );
 
   const items = await Promise.all(
     snapshots.map(async (snapshot): Promise<ConversationListItem> => {
@@ -63,6 +78,7 @@ export async function listConversations(
             userId: p.userId,
             displayName: p.displayName,
             isPrimaryPreparer: p.isPrimaryPreparer,
+            ...(avatars ? { avatarFileId: avatars.of(p.userId) } : {}),
           })),
         unreadCount: unread,
       };

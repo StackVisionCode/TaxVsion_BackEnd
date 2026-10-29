@@ -254,6 +254,11 @@ export type MeetingChatMarkReadPayload = z.infer<typeof MeetingChatMarkReadPaylo
 export interface MeetingParticipantDto {
   userId: string;
   displayName: string;
+  /**
+   * F5 avatares — foto resuelta al armar el snapshot (join/rejoin/admit) y el participante que entra.
+   * Ausente en los `participant.changed` de media/mano/salida: conservar la que ya se tenga. null = sin foto.
+   */
+  avatarFileId?: string | null;
   role: 'Host' | 'Cohost' | 'Attendee';
   status: 'Waiting' | 'Joined' | 'Left' | 'Removed';
   joinOrder: number;

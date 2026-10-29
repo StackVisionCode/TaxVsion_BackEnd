@@ -29,15 +29,13 @@ internal static class StorageIdentity
         if (!Guid.TryParse(subject, out actorId))
             return false;
 
-        var isCustomerPortal = string.Equals(
-            user.FindFirst("actor_type")?.Value,
-            "CustomerPortal",
-            StringComparison.OrdinalIgnoreCase
-        );
+        var actorType = user.FindFirst("actor_type")?.Value;
+        var isCustomerPortal = string.Equals(actorType, "CustomerPortal", StringComparison.OrdinalIgnoreCase);
+        var isService = string.Equals(actorType, "Service", StringComparison.OrdinalIgnoreCase);
         Guid? customerId = Guid.TryParse(user.FindFirst("customer_id")?.Value, out var parsedCustomerId)
             ? parsedCustomerId
             : null;
-        scope = new StorageActorScope(isCustomerPortal, customerId) { TenantId = tenantId };
+        scope = new StorageActorScope(isCustomerPortal, customerId) { TenantId = tenantId, IsService = isService };
         return true;
     }
 }

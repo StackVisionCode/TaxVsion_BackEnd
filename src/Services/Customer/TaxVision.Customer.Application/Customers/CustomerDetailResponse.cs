@@ -41,5 +41,10 @@ public sealed record CustomerDetailResponse(
     IReadOnlyList<CustomerAssigneeResponse> Assignees,
     // ContactPolicy T7.2 — default true/true (opt-out). Lo pinta el form de edición del CRM.
     bool EmailEnabled = true,
-    bool SmsEnabled = true
+    bool SmsEnabled = true,
+    // Foto vigente (null = iniciales) y, si hay una subida en curso, su id y estado
+    // ("processing" | "failed"; "failed" = pendiente vencida). URL: /storage/avatars/{id}.
+    Guid? AvatarFileId = null,
+    Guid? PendingAvatarFileId = null,
+    string? AvatarUploadStatus = null
 );

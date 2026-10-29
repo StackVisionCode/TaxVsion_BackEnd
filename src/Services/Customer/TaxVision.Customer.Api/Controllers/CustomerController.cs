@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Avatars;
 using TaxVision.Customer.Application.Customers.Catalogs;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
 using TaxVision.Customer.Application.Customers.Commands.AddAddress;
@@ -328,7 +329,6 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             userId,
             body.Language,
             body.OccupationId,
-            body.ProfilePictureFileId,
             body.PrimaryEmail,
             body.PrimaryPhone,
             body.FirstName,
@@ -351,6 +351,74 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
 
         if (result.IsSuccess)
             return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ============== Foto de perfil ==============
+
+    // El preparador pone o cambia la foto del cliente (decisión del dueño). 202 "processing": se ve
+    // cuando el antivirus la aprueba. Misma visibilidad por asignación que el resto de escrituras.
+    [HttpPut("{id:guid}/avatar")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(AvatarUpload.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AvatarUpload.MaxRequestBytes)]
+    [ProducesResponseType<UploadCustomerAvatarResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status413PayloadTooLarge)]
+    public async Task<IActionResult> UploadAvatar(Guid id, IFormFile? file, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var content = await AvatarUpload.ReadAsync(file, ct);
+        if (content.IsFailure)
+            return StatusCode(content.Error.ToHttpStatusCode(), content.Error);
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<UploadCustomerAvatarResponse>>(
+            new UploadCustomerAvatarCommand(
+                tenantId,
+                id,
+                userId,
+                CustomerAvatarCaller.Staff,
+                canViewAll,
+                content.Value
+            ),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return Accepted(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpDelete("{id:guid}/avatar")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveAvatar(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveCustomerAvatarCommand(tenantId, id, userId, CustomerAvatarCaller.Staff, canViewAll),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return NoContent();
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);

@@ -24,6 +24,7 @@ function fakeDirectory(entries: CustomerDirectoryEntrySnapshot[]): CustomerDirec
       return null;
     },
     async markInactive(): Promise<void> {},
+    async clearAvatar(): Promise<void> {},
     async searchByDisplayNameOrEmail(): Promise<CustomerDirectoryEntrySnapshot[]> {
       return entries;
     },
@@ -98,6 +99,7 @@ function entry(customerId: string, name: string): CustomerDirectoryEntrySnapshot
     displayName: name,
     email: `${name}@example.com`,
     isActive: true,
+    avatarFileId: null,
     updatedAtUtc: new Date(),
   };
 }
@@ -137,6 +139,18 @@ describe('searchCustomerDirectory', () => {
 
     expect(result.customerId).toBe(withPortal);
     expect(result.portalUserId).toBe(userId);
+  });
+
+  it('F5: devuelve la foto de la ficha del cliente (avatarFileId)', async () => {
+    const customerId = u();
+    const deps = baseDeps({
+      directory: fakeDirectory([{ ...entry(customerId, 'Manuel'), avatarFileId: 'f-customer' }]),
+      portalAccounts: fakePortalAccounts([]),
+    });
+
+    const result = (await searchCustomerDirectory({ tenantId: 'tenant-1', query: 'Man', ...ACTOR }, deps))[0]!;
+
+    expect(result.avatarFileId).toBe('f-customer');
   });
 
   it('returns portalUserId null for a customer without a portal account (not chateable yet)', async () => {

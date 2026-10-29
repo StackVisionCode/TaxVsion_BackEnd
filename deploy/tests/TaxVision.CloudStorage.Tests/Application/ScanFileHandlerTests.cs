@@ -80,26 +80,79 @@ public sealed class ScanFileHandlerTests
         Assert.Equal("ClientForms", blocked.FolderType);
     }
 
-    private static ScanFixture CreateFixture(FolderType folderType, int? taxYear)
+    [Fact]
+    public async Task Clean_avatar_is_tagged_in_the_main_bucket_so_the_lifecycle_rule_expires_old_versions()
+    {
+        var fixture = CreateFixture(FolderType.Avatars, null, "avatar.webp", "image/webp", OwnerType.User);
+        fixture.Inspector.Result = new InspectedContent("image/webp", Sha256);
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.Available, fixture.File.Status);
+        var tagged = Assert.Single(fixture.Storage.Tagged);
+        Assert.Equal(fixture.Options.MainBucket, tagged.Bucket);
+        Assert.Equal(fixture.File.ObjectKey, tagged.ObjectKey);
+        Assert.Equal(StorageObjectTags.AvatarKind, tagged.Tags[StorageObjectTags.KindKey]);
+        Assert.Empty(fixture.Bus.Published.OfType<CustomerDocumentUploadedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Clean_avatar_on_a_plan_without_webp_is_still_available()
+    {
+        // Cambio de comportamiento intencional: Avatars no se intersecta con el plan (starter sin webp).
+        var fixture = CreateFixture(FolderType.Avatars, null, "avatar.webp", "image/webp", OwnerType.User);
+        fixture.Inspector.Result = new InspectedContent("image/webp", Sha256);
+        fixture.Options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".jpg", ".jpeg", ".png"],
+            AllowedContentTypes = ["image/jpeg", "image/png"],
+        };
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.Available, fixture.File.Status);
+        Assert.Single(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Clean_document_is_not_tagged()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+
+        await ScanAsync(fixture);
+
+        Assert.Empty(fixture.Storage.Tagged);
+    }
+
+    private static ScanFixture CreateFixture(
+        FolderType folderType,
+        int? taxYear,
+        string originalName = "form.pdf",
+        string contentType = "application/pdf",
+        OwnerType ownerType = OwnerType.Customer
+    )
     {
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
         var actorId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         var key = ObjectKey
-            .Create($"tenants/{tenantId:N}/customer/{customerId:N}/{folderType.ToSegment()}/{Guid.NewGuid():N}.pdf")
+            .Create(
+                $"tenants/{tenantId:N}/{ownerType.ToSegment()}/{customerId:N}/{folderType.ToSegment()}/{Guid.NewGuid():N}{Path.GetExtension(originalName)}"
+            )
             .Value;
         var file = FileObject
             .Register(
                 Guid.NewGuid(),
                 tenantId,
-                OwnerType.Customer,
+                ownerType,
                 customerId,
                 folderType,
                 taxYear,
                 key,
-                "form.pdf",
-                "application/pdf",
+                originalName,
+                contentType,
                 4,
                 actorId,
                 now,

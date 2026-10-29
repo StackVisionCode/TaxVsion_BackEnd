@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
@@ -45,22 +44,7 @@ public static class UpdateMyCustomerPhoneHandler
             return changed;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new CustomerUpdatedIntegrationEvent
-            {
-                TenantId = customer.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                CustomerId = customer.Id,
-                DisplayName = customer.DisplayName,
-                PrimaryEmail = customer.PrimaryEmail.Value,
-                PrimaryPhone = customer.PrimaryPhone?.E164Value,
-                Language = customer.Language.ToString(),
-                EmailEnabled = customer.ContactPolicy.EmailEnabled,
-                SmsEnabled = customer.ContactPolicy.SmsEnabled,
-                OccupationId = customer.OccupationId,
-                ModifiedByUserId = command.UserId,
-            }
-        );
+        await bus.PublishAsync(CustomerUpdatedEvents.From(customer, command.UserId, correlation.CorrelationId));
         return Result.Success();
     }
 }

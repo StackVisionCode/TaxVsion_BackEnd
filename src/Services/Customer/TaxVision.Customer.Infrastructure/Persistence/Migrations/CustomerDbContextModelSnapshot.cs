@@ -7651,6 +7651,12 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OccupationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("PendingProfilePictureFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PendingProfilePictureRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("ProfilePictureFileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -7675,6 +7681,10 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                         .HasColumnName("OriginSourceService");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PendingProfilePictureRequestedAtUtc")
+                        .HasDatabaseName("IX_Customers_PendingProfilePictureRequestedAtUtc")
+                        .HasFilter("[PendingProfilePictureRequestedAtUtc] IS NOT NULL");
 
                     b.HasIndex("TenantId", "AssignedPreparerUserId");
 

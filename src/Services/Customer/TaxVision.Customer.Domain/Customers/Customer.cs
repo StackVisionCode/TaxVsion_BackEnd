@@ -38,7 +38,13 @@ public sealed class Customer : TenantEntity
     public Language Language { get; private set; }
     public EmailAddress PrimaryEmail { get; private set; } = default!;
     public PhoneNumber? PrimaryPhone { get; private set; }
+
+    /// <summary>Foto de perfil vigente (ya pasó el antivirus). La sirve CloudStorage en <c>/storage/avatars/{id}</c>.</summary>
     public Guid? ProfilePictureFileId { get; private set; }
+
+    /// <summary>Foto subida que espera el resultado del escaneo; no se muestra hasta confirmarse.</summary>
+    public Guid? PendingProfilePictureFileId { get; private set; }
+    public DateTime? PendingProfilePictureRequestedAtUtc { get; private set; }
     public Guid? OccupationId { get; private set; }
     public Guid? AssignedPreparerUserId { get; private set; }
     public CustomerFiscalProfile? FiscalProfile { get; private set; }
@@ -177,12 +183,77 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
-    public Result SetProfilePicture(Guid? fileId, Guid byUserId)
+    // ============== Foto de perfil ==============
+
+    /// <summary>Pasado este tiempo sin resultado del escaneo, la foto pendiente se da por fallida.</summary>
+    public static readonly TimeSpan PendingProfilePictureTimeout = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Registra la foto recién subida como pendiente. Reemplaza una pendiente anterior: si esa llega
+    /// después, ya no coincide y se trata como huérfana.
+    /// </summary>
+    public Result BeginProfilePictureChange(Guid fileId, Guid byUserId, DateTime nowUtc)
     {
-        EnsureActive();
-        ProfilePictureFileId = fileId;
+        if (Status == CustomerStatus.Archived)
+            return Result.Failure(CustomerProfilePictureErrors.Archived);
+        if (fileId == Guid.Empty)
+            return Result.Failure(CustomerProfilePictureErrors.FileIdRequired);
+
+        PendingProfilePictureFileId = fileId;
+        PendingProfilePictureRequestedAtUtc = nowUtc;
         Touch(byUserId);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// El escaneo aprobó la foto: pasa a ser la vigente y devuelve la anterior (para borrarla). Si el
+    /// fileId no es el pendiente (llegó tarde, se quitó o se archivó el cliente) falla con <c>Stale</c>.
+    /// </summary>
+    public Result<Guid?> ConfirmProfilePicture(Guid fileId)
+    {
+        if (Status == CustomerStatus.Archived || PendingProfilePictureFileId != fileId)
+            return Result.Failure<Guid?>(CustomerProfilePictureErrors.Stale);
+
+        var previous = ProfilePictureFileId;
+        ProfilePictureFileId = fileId;
+        ClearPendingProfilePicture();
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success(previous);
+    }
+
+    /// <summary>Descarta la pendiente solo si sigue siendo esa. Devuelve si hubo cambio.</summary>
+    public bool DiscardPendingProfilePicture(Guid fileId)
+    {
+        if (PendingProfilePictureFileId != fileId)
+            return false;
+
+        ClearPendingProfilePicture();
+        return true;
+    }
+
+    public bool IsPendingProfilePictureExpired(DateTime nowUtc) =>
+        PendingProfilePictureRequestedAtUtc is { } requestedAt && nowUtc - requestedAt >= PendingProfilePictureTimeout;
+
+    /// <summary>Quita la foto vigente y cualquier pendiente. Devuelve la vigente que había (null si no había).</summary>
+    public Result<Guid?> RemoveProfilePicture(Guid byUserId)
+    {
+        if (Status == CustomerStatus.Archived)
+            return Result.Failure<Guid?>(CustomerProfilePictureErrors.Archived);
+
+        var removed = ProfilePictureFileId;
+        if (removed is null && PendingProfilePictureFileId is null)
+            return Result.Success<Guid?>(null);
+
+        ProfilePictureFileId = null;
+        ClearPendingProfilePicture();
+        Touch(byUserId);
+        return Result.Success(removed);
+    }
+
+    private void ClearPendingProfilePicture()
+    {
+        PendingProfilePictureFileId = null;
+        PendingProfilePictureRequestedAtUtc = null;
     }
 
     // ============== Identidad (nombre / negocio / DOB) ==============
@@ -604,6 +675,9 @@ public sealed class Customer : TenantEntity
         Status = CustomerStatus.Archived;
         ArchivedAtUtc = DateTime.UtcNow;
         ArchivedByUserId = byUserId;
+        // Archivar retira la foto: quien archiva pide el borrado de la que había.
+        ProfilePictureFileId = null;
+        ClearPendingProfilePicture();
         Touch(byUserId);
         return Result.Success();
     }

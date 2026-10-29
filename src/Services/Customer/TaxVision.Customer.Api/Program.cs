@@ -193,6 +193,8 @@ builder.Host.UseWolverine(options =>
     // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
     // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Foto de cliente reemplazada/quitada/archivada: borrado punto a punto (cola que escucha CloudStorage).
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);

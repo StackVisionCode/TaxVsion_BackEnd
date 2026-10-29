@@ -19,5 +19,7 @@ public sealed record CustomerResponse(
     Guid? AssignedPreparerUserId = null,
     // ContactPolicy T7.2 — default true/true para respuestas de clientes previos a la migración.
     bool EmailEnabled = true,
-    bool SmsEnabled = true
+    bool SmsEnabled = true,
+    // Foto vigente (null = iniciales). URL: /storage/avatars/{AvatarFileId}.
+    Guid? AvatarFileId = null
 );

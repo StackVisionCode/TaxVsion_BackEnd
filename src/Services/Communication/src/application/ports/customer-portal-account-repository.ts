@@ -41,3 +41,23 @@ export interface CustomerPortalAccountRepository {
    */
   findActiveByUserId(userId: string): Promise<CustomerPortalAccountSnapshot | null>;
 }
+
+/**
+ * Escritura de la reconciliacion contra Auth (`internal/users/portal-accounts/reconciliation`). Puerto
+ * aparte para no obligar a todos los fakes de `CustomerPortalAccountRepository` a implementarlo.
+ *
+ * La tabla tiene una fila por CustomerId, pero Auth puede devolver varias cuentas para el mismo cliente
+ * (una vieja desactivada y la nueva). Para que el resultado no dependa del orden de las paginas:
+ *   - activa → upsert (la cuenta activa gana y reemplaza el UserId);
+ *   - inactiva → solo baja la fila si es de ESE mismo usuario; nunca crea ni pisa la cuenta de otro.
+ */
+export type CustomerPortalAccountReconcileOutcome = 'upserted' | 'deactivated' | 'unchanged';
+
+export interface CustomerPortalAccountReconcileWriter {
+  applyReconciled(snapshot: {
+    customerId: string;
+    tenantId: string;
+    userId: string;
+    isActive: boolean;
+  }): Promise<CustomerPortalAccountReconcileOutcome>;
+}

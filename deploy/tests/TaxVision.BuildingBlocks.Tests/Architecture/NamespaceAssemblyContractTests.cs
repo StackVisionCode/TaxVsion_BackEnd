@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Imaging;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -32,6 +33,7 @@ public sealed class NamespaceAssemblyContractTests
     private static readonly Assembly Infrastructure = typeof(RedisCacheService).Assembly;
     private static readonly Assembly Messaging = typeof(IIntegrationEvent).Assembly;
     private static readonly Assembly Authorization = typeof(NotesPermissions).Assembly;
+    private static readonly Assembly Imaging = typeof(AvatarImageNormalizer).Assembly;
 
     /// <summary>
     /// Tipos que el compilador genera (clases de cierre, iteradores, <c>&lt;Module&gt;</c>) no llevan
@@ -53,6 +55,7 @@ public sealed class NamespaceAssemblyContractTests
     [InlineData("BuildingBlocks.Infrastructure")]
     [InlineData("BuildingBlocks.Messaging")]
     [InlineData("BuildingBlocks.Authorization")]
+    [InlineData("BuildingBlocks.Imaging")]
     public void CadaNamespaceLlevaElPrefijoDeSuEnsamblado(string prefix)
     {
         var assembly = prefix switch
@@ -61,6 +64,7 @@ public sealed class NamespaceAssemblyContractTests
             "BuildingBlocks.Infrastructure" => Infrastructure,
             "BuildingBlocks.Messaging" => Messaging,
             "BuildingBlocks.Authorization" => Authorization,
+            "BuildingBlocks.Imaging" => Imaging,
             _ => throw new ArgumentOutOfRangeException(nameof(prefix), prefix, "Ensamblado no mapeado."),
         };
 
@@ -91,6 +95,7 @@ public sealed class NamespaceAssemblyContractTests
             ("BuildingBlocks.Infrastructure", Infrastructure),
             ("BuildingBlocks.Messaging", Messaging),
             ("BuildingBlocks.Authorization", Authorization),
+            ("BuildingBlocks.Imaging", Imaging),
         };
 
         var owners = new Dictionary<string, List<string>>(StringComparer.Ordinal);

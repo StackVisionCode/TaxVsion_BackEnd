@@ -14,6 +14,8 @@ export interface CustomerDirectoryEntrySnapshot {
   readonly displayName: string;
   readonly email: string;
   readonly isActive: boolean;
+  /** Foto vigente de la ficha del cliente; null = sin foto (o archivado). */
+  readonly avatarFileId: string | null;
   readonly updatedAtUtc: Date;
 }
 
@@ -24,11 +26,16 @@ export interface CustomerDirectoryRepository {
     displayName: string;
     email: string;
     isActive: boolean;
+    /** undefined = no tocar la foto guardada; null = quitarla. */
+    avatarFileId?: string | null;
   }): Promise<void>;
 
   findByCustomerId(tenantId: string, customerId: string): Promise<CustomerDirectoryEntrySnapshot | null>;
 
   markInactive(customerId: string): Promise<void>;
+
+  /** Archivar borra la foto en Customer: la proyeccion la limpia igual. */
+  clearAvatar(customerId: string): Promise<void>;
 
   /** Fase Frontend 5 — ver docblock de UserDirectoryRepository.searchByDisplayNameOrEmail, mismo criterio. */
   searchByDisplayNameOrEmail(

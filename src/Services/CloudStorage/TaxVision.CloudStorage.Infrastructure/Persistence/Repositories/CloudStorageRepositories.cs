@@ -49,6 +49,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        FolderType? folderType,
         int skip,
         int take,
         CancellationToken ct
@@ -59,6 +60,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Where(file =>
                 file.TenantId == tenantId
                 && file.Status != FileStatus.SoftDeleted
+                // Sin filtro explícito, las fotos de perfil (Avatars) quedan fuera de los listados.
+                && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
                 && (
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -352,7 +355,11 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Files.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(file =>
-                file.TenantId == tenantId && file.Status == FileStatus.SoftDeleted && file.DeletedBatchId == null
+                file.TenantId == tenantId
+                && file.Status == FileStatus.SoftDeleted
+                && file.DeletedBatchId == null
+                // Las fotos de perfil borradas no se listan (ni se restauran); la purga sí las alcanza.
+                && file.FolderType != FolderType.Avatars
             )
             .OrderByDescending(file => file.SoftDeletedAtUtc)
             .Skip(skip)

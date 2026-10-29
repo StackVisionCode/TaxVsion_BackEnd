@@ -54,7 +54,11 @@ public static class RecycleBinPurger
             return false;
         }
 
-        await storage.DeleteAsync(mainBucket, file.ObjectKey, ct);
+        // Foto de perfil = dato personal: se borran todas las versiones, no solo se deja un delete marker.
+        if (file.FolderType == FolderType.Avatars)
+            await storage.DeleteAllVersionsAsync(mainBucket, file.ObjectKey, ct);
+        else
+            await storage.DeleteAsync(mainBucket, file.ObjectKey, ct);
 
         var limit = await limits.GetAsync(file.TenantId, ct);
         if (limit is null)

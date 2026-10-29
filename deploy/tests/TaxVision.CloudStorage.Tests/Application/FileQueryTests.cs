@@ -57,6 +57,42 @@ public sealed class FileQueryTests
     }
 
     [Fact]
+    public async Task Staff_listing_a_users_files_never_sees_the_profile_photo()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        files.Seed(File(tenantId, OwnerType.User, userId));
+        files.Seed(AvatarTestFiles.Avatar(tenantId, OwnerType.User, userId));
+
+        var result = await ListFilesHandler.Handle(
+            new ListFilesQuery(tenantId, StaffScope, OwnerType.User, userId, 0, 50),
+            files,
+            CancellationToken.None
+        );
+
+        Assert.Equal(FolderType.Documents, Assert.Single(result).FolderType);
+    }
+
+    [Fact]
+    public async Task Avatars_are_listed_only_when_the_request_asks_for_that_folder_type()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        files.Seed(File(tenantId, OwnerType.User, userId));
+        files.Seed(AvatarTestFiles.Avatar(tenantId, OwnerType.User, userId));
+
+        var result = await ListFilesHandler.Handle(
+            new ListFilesQuery(tenantId, StaffScope, OwnerType.User, userId, 0, 50, FolderType.Avatars),
+            files,
+            CancellationToken.None
+        );
+
+        Assert.Equal(FolderType.Avatars, Assert.Single(result).FolderType);
+    }
+
+    [Fact]
     public async Task Staff_without_owner_filter_returns_all_owners()
     {
         var tenantId = Guid.NewGuid();

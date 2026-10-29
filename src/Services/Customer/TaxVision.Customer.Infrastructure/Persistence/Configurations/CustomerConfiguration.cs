@@ -22,6 +22,12 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.DateOfBirth);
         b.Property(c => c.Language).HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(c => c.ProfilePictureFileId);
+        b.Property(c => c.PendingProfilePictureFileId);
+        b.Property(c => c.PendingProfilePictureRequestedAtUtc);
+        // El barrido de pendientes vencidas filtra por fecha; filtrado = solo las filas con pendiente.
+        b.HasIndex(c => c.PendingProfilePictureRequestedAtUtc)
+            .HasDatabaseName("IX_Customers_PendingProfilePictureRequestedAtUtc")
+            .HasFilter("[PendingProfilePictureRequestedAtUtc] IS NOT NULL");
         b.Property(c => c.OccupationId);
         b.Property(c => c.AssignedPreparerUserId);
         b.Property(c => c.CreatedAtUtc).IsRequired();

@@ -5,6 +5,7 @@ import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import { CallEventTypes, type CallAcceptedEvent, type CallEndedEvent } from '../../contracts/events/call-events.js';
 import type { CallStateDto, CallPeerDto } from '../../contracts/socket/call-socket-events.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
 /**
  * Comandos: accept / reject / cancel. Comparten pipeline (validar principal,
@@ -35,6 +36,8 @@ export interface RespondCallDeps {
   readonly calls: CallRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
+  /** F5: foto del peer al aceptar. Opcional (sin el, el peer sale sin `avatarFileId`). */
+  readonly avatars?: AvatarResolver;
 }
 
 export async function respondToCall(
@@ -131,12 +134,17 @@ export async function respondToCall(
     updatedAtUtc: snapshot.updatedAtUtc.toISOString(),
   };
   const calleeParticipant = snapshot.participants.find((p) => p.role === 'Callee');
+  const avatars =
+    command.action === 'accept' && calleeParticipant
+      ? await resolveAvatars(deps.avatars, [calleeParticipant.userId])
+      : undefined;
   const peer: CallPeerDto | null =
     command.action === 'accept' && calleeParticipant
       ? {
           callId: snapshot.id,
           peerUserId: calleeParticipant.userId,
           displayName: calleeParticipant.displayName,
+          ...(avatars ? { avatarFileId: avatars.of(calleeParticipant.userId) } : {}),
           role: 'Callee',
           joinOrder: calleeParticipant.joinOrder,
           isPolite: true,

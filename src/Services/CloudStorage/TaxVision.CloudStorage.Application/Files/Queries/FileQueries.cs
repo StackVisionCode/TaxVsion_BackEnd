@@ -35,7 +35,9 @@ public sealed record ListFilesQuery(
     OwnerType? OwnerType,
     Guid? OwnerId,
     int Skip,
-    int Take
+    int Take,
+    // Null = todo menos Avatars; las fotos de perfil solo se listan si se piden explícito.
+    FolderType? FolderType = null
 );
 
 public static class ListFilesHandler
@@ -52,6 +54,7 @@ public static class ListFilesHandler
             query.Scope.BypassAssignmentFilter ? null : query.Scope.AssignedCustomerIds,
             query.OwnerType,
             query.OwnerId,
+            query.FolderType,
             Math.Max(0, query.Skip),
             Math.Clamp(query.Take, 1, 100),
             ct

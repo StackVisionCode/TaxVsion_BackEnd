@@ -65,7 +65,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          # Igual al FROM de los Dockerfiles de Communication/TranscriptWorker: se prueba con lo que se despliega.
+          node-version: 24.22.2
           package-manager-cache: false
 
       - name: Test Communication (Node)

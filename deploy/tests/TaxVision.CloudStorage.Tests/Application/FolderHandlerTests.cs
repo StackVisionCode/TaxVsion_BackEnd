@@ -366,6 +366,59 @@ public sealed class FolderHandlerTests
         Assert.Equal(folder.Id, file.FolderId);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MoveFileToFolder_refuses_to_move_a_profile_photo(bool intoFolder)
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var folder = Folder
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.User,
+                userId,
+                null,
+                FolderName.Create("Mis documentos").Value,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var avatar = AvatarTestFiles.Avatar(tenantId, OwnerType.User, userId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+        var bus = new FakeMessageBus();
+
+        // En una carpeta navegable la foto de perfil aparecería como un documento más.
+        var result = await MoveFileToFolderHandler.Handle(
+            new MoveFileToFolderCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                avatar.Id,
+                intoFolder ? folder.Id : null,
+                new RequestAuditContext(null, null, "corr-1")
+            ),
+            files,
+            folders,
+            new FakeShareLinkRepository(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            bus,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        Assert.Null(avatar.FolderId);
+        Assert.Empty(bus.Published);
+    }
+
     [Fact]
     public async Task MoveFileToFolder_rejects_a_folder_owned_by_someone_else()
     {
