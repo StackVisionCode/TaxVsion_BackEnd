@@ -33,6 +33,12 @@ internal sealed partial class ComponentPropertiesValidator(DataCollectionLimits 
         StringComparer.Ordinal
     );
 
+    // PrefillSource cerrado (P-13.1).
+    private static readonly HashSet<string> PrefillSources = new(
+        ["previousRequest", "customer.displayName"],
+        StringComparer.Ordinal
+    );
+
     [GeneratedRegex("(?i)\\b(ssn|social security|itin|ein|tax id)\\b", RegexOptions.CultureInvariant)]
     private static partial Regex TaxIdWords();
 
@@ -110,6 +116,8 @@ internal sealed partial class ComponentPropertiesValidator(DataCollectionLimits 
                 break;
             case "select":
                 ValidateChoice(component, path, issues, 1);
+                if (JsonProps.TryGet(component.Props, "placeholder", out _))
+                    ValidatePlainText(component, "placeholder", 0, 60, path, issues);
                 break;
             case "radio":
                 ValidateChoice(component, path, issues, 2);
@@ -309,6 +317,14 @@ internal sealed partial class ComponentPropertiesValidator(DataCollectionLimits 
                     $"{path}/prefill",
                     component.Id,
                     "Prefill is not allowed for this component."
+                );
+            else if (component.Prefill is not null && !PrefillSources.Contains(component.Prefill.Source))
+                Add(
+                    issues,
+                    "prefill.invalid_source",
+                    $"{path}/prefill/source",
+                    component.Id,
+                    "Prefill source is not supported."
                 );
         }
         else

@@ -36,6 +36,10 @@ public static class VerifyPublicIntakeFormChallengeHandler
         var challenge = await VerifyCodeAsync(command, link, challenges, security, metrics, unitOfWork, ct);
         if (link is null || challenge is null)
             return Failed();
+        var stores = new SessionStores(sessions, security, notices, consentRecords, audit, unitOfWork);
+        var previous = await FindPreviousIntakeRequestAsync(link, challenge, participants, requests, security, ct);
+        if (previous is not null)
+            return await ResumeOrRefuseAsync(command, previous, challenge, participants, stores, ct);
         var participant = await ResolveParticipantAsync(
             link,
             challenge,
@@ -49,20 +53,18 @@ public static class VerifyPublicIntakeFormChallengeHandler
         var request = await GetOrCreateRequestAsync(link, participant, command.NowUtc, requests, versions, ct);
         if (participant is null || request is null)
             return Failed();
-        return await OpenSessionAsync(
-            command,
-            request,
-            participant,
-            challenge,
-            sessions,
-            security,
-            notices,
-            consentRecords,
-            audit,
-            unitOfWork,
-            ct
-        );
+        return await OpenSessionAsync(command, request, participant, challenge, stores, ct);
     }
+
+    // Lo que necesita abrir la sesión del participante, agrupado para no repetir la lista en cada paso.
+    private sealed record SessionStores(
+        IFormAccessSessionRepository Sessions,
+        IFormExternalAccessSecurity Security,
+        IConsentNoticeRepository Notices,
+        IFormConsentRecordRepository ConsentRecords,
+        IFormAuditLog Audit,
+        IUnitOfWork UnitOfWork
+    );
 
     private static async Task<FormIntakeLink?> LoadLinkAsync(
         VerifyPublicIntakeFormChallengeCommand command,
@@ -123,6 +125,52 @@ public static class VerifyPublicIntakeFormChallengeHandler
             ct
         );
         return verified ? challenge : null;
+    }
+
+    // La misma persona no abre dos requests desde el mismo enlace: busca la última no cancelada de este
+    // enlace entre todos sus participantes (también el ya vinculado a un cliente).
+    private static async Task<FormRequest?> FindPreviousIntakeRequestAsync(
+        FormIntakeLink link,
+        FormAccessChallenge challenge,
+        IFormParticipantRepository participants,
+        IFormRequestRepository requests,
+        IFormExternalAccessSecurity security,
+        CancellationToken ct
+    )
+    {
+        var email = security.UnprotectEmail(challenge.EmailCipher, challenge.EmailKeyVersion);
+        var participantIds = await participants.ListIdsByEmailAsync(link.TenantId, email, ct);
+        return participantIds.Count == 0
+            ? null
+            : await requests.GetLatestIntakeRequestAsync(link.TenantId, link.Id, participantIds, ct);
+    }
+
+    // Abierta (Pending/Returned): se retoma. Enviada o completada: resultado explícito, ya verificado el
+    // código, así que no revela nada a quien no controla el email. Cancelada no llega aquí.
+    private static async Task<Result<PublicIntakeFormSessionResponse>> ResumeOrRefuseAsync(
+        VerifyPublicIntakeFormChallengeCommand command,
+        FormRequest previous,
+        FormAccessChallenge challenge,
+        IFormParticipantRepository participants,
+        SessionStores stores,
+        CancellationToken ct
+    )
+    {
+        if (previous.Status is not (FormRequestStatus.Pending or FormRequestStatus.Returned))
+        {
+            // El código ya se consumió: se guarda para que no pueda reutilizarse.
+            await PublicFormChallengeVerification.TrySaveAsync(stores.UnitOfWork, ct);
+            return Result.Failure<PublicIntakeFormSessionResponse>(PublicIntakeFormErrors.AlreadySubmitted);
+        }
+        var participant = previous.ParticipantId is { } participantId
+            ? await participants.GetAsync(previous.TenantId, participantId, ct)
+            : null;
+        if (participant is null)
+            return Failed();
+        if (command.Language is not null)
+            participant.SetLanguage(command.Language);
+        participant.MarkVerified(command.NowUtc);
+        return await OpenSessionAsync(command, previous, participant, challenge, stores, ct);
     }
 
     // Reutiliza el participante sin vincular del email o lo crea; queda verificado.
@@ -234,12 +282,7 @@ public static class VerifyPublicIntakeFormChallengeHandler
         FormRequest request,
         FormParticipant participant,
         FormAccessChallenge challenge,
-        IFormAccessSessionRepository sessions,
-        IFormExternalAccessSecurity security,
-        IConsentNoticeRepository notices,
-        IFormConsentRecordRepository consentRecords,
-        IFormAuditLog audit,
-        IUnitOfWork unitOfWork,
+        SessionStores stores,
         CancellationToken ct
     )
     {
@@ -251,14 +294,14 @@ public static class VerifyPublicIntakeFormChallengeHandler
             command.ClientIp,
             command.UserAgent,
             command.NowUtc,
-            sessions,
-            security,
-            notices,
-            consentRecords,
-            audit,
+            stores.Sessions,
+            stores.Security,
+            stores.Notices,
+            stores.ConsentRecords,
+            stores.Audit,
             ct
         );
-        if (opened is not { } session || !await PublicFormChallengeVerification.TrySaveAsync(unitOfWork, ct))
+        if (opened is not { } session || !await PublicFormChallengeVerification.TrySaveAsync(stores.UnitOfWork, ct))
             return Failed();
         return Result.Success(
             new PublicIntakeFormSessionResponse(session.RawToken, session.Session.ExpiresAtUtc, request.Id)

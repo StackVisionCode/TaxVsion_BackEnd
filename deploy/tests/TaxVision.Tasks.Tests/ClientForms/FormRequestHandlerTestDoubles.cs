@@ -125,6 +125,28 @@ internal sealed class SingleFormRequestRepository(params FormRequest[] requests)
         Task.FromResult<IReadOnlyList<FormRequest>>(
             requests.Where(item => item.Submission?.Attachments.Any(file => file.FileId == fileId) == true).ToArray()
         );
+
+    public Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
+        DateTime dueThresholdUtc,
+        int maxReminders,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<FormRequest>>(
+            requests
+                .Where(item =>
+                    (item.Status == FormRequestStatus.Pending || item.Status == FormRequestStatus.Returned)
+                    && item.DueAtUtc != null
+                    && item.DueAtUtc <= dueThresholdUtc
+                    && item.ReminderCount < maxReminders
+                )
+                .OrderBy(item => item.DueAtUtc)
+                .Take(take)
+                .ToArray()
+        );
+
+    public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
+        Task.FromResult(requests.FirstOrDefault(item => item.Id == requestId));
 }
 
 internal sealed class FixedRequestVisibility(bool visible) : IFormRequestVisibilityFilter

@@ -88,6 +88,7 @@ public static class ErrorHttpMapping
             or "FormSensitiveAnswer.NotFound"
             or "FormLibrary.NotFound"
             or "FormActionRun.NotFound"
+            or "FormParticipant.NotFound"
             or "ConsentNotice.NotFound"
             or "ConsentNotice.VersionNotFound"
             or "Calendar.Appointment.NotFound"
@@ -194,7 +195,15 @@ public static class ErrorHttpMapping
             or "FormActionRun.NotRetryable"
             or "FormActionRun.NotAvailable"
             or "FormRequest.CustomerHasOpenRequest"
-            or "FormRequest.LinkNotBlocked" => StatusCodes.Status409Conflict,
+            or "FormRequest.LinkNotBlocked"
+            // Externos: el email ya es de un cliente, el prospecto ya es cliente, o la misma persona ya envió el enlace.
+            or "FormParticipant.EmailBelongsToCustomer"
+            or "FormParticipant.AlreadyConverted"
+            or "PublicForm.AlreadySubmitted"
+            // Biblioteca TaxVision: revisar una versión que no es la última publicada, o listar/revisar una
+            // plantilla sin versión publicada — conflicto de estado, no de forma.
+            or "FormLibrary.ReviewVersionMismatch"
+            or "FormLibrary.NotPublished" => StatusCodes.Status409Conflict,
             "ConsentNotice.Archived"
             or "ConsentNotice.KeyTaken"
             or "ConsentNotice.ConcurrencyConflict"
@@ -327,6 +336,8 @@ public static class ErrorHttpMapping
             or "Task.Forbidden"
             // Sin configure_actions se edita el formulario pero no su mapeo de datos ni sus acciones.
             or "FormTemplate.ConfigureActionsRequired"
+            // Aplicar datos fiscales al perfil (filing status, SSN) exige actor admin.
+            or "FormRequest.ProfileUpdateForbidden"
             or "Task.Timer.NotOwner"
             or "Auth.UserInactive"
             or "Onboarding.SessionEmailMismatch"
@@ -342,7 +353,9 @@ public static class ErrorHttpMapping
             or "Signature.Profile.OwnSignatureDisabled"
             or "Signature.Document.VerificationRequired"
             // Portal del cliente: regla deny per-item (Fase 4). El code es estable para que el UI lo mapee.
-            or "cloudstorage.customer_access.denied" => StatusCodes.Status403Forbidden,
+            or "cloudstorage.customer_access.denied"
+            // Solo el tenant de plataforma administra la biblioteca de formularios.
+            or "FormLibrary.PlatformOnly" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"

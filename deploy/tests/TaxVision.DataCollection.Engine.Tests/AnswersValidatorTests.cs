@@ -7,6 +7,31 @@ namespace TaxVision.DataCollection.Engine.Tests;
 public sealed class AnswersValidatorTests
 {
     [Theory]
+    [InlineData("2026-03-15", true)]
+    [InlineData("2026-03-16", false)]
+    public void Date_today_bound_uses_the_injected_clock(string answer, bool valid)
+    {
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 3, 15, 23, 30, 0, TimeSpan.Zero));
+        var engine = new FormEngine(new DataCollectionLimits(), clock);
+        var definition = EngineTestFactory.Definition("date", new { max = "today" });
+
+        var report = engine.ValidateAnswers(
+            definition,
+            EngineTestFactory.Answers(answer),
+            AnswersValidationMode.Submit
+        );
+
+        Assert.Equal(valid, report.IsValid);
+        if (!valid)
+            Assert.Contains(report.Issues, issue => issue.Code == "answer.out_of_range");
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Theory]
     [InlineData("text", "hello", null)]
     [InlineData("textarea", "line one\nline two", null)]
     [InlineData("number", "12", null)]

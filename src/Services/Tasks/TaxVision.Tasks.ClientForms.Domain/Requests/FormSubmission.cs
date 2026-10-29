@@ -37,6 +37,14 @@ public sealed class FormSubmission : BaseEntity
         DraftUpdatedBy = actor.Copy();
     }
 
+    // Re-cifra el borrador con la clave actual (X-9). No toca la auditoría del último editor.
+    public void ReEncryptDraft(ProtectedAnswers reEncrypted)
+    {
+        ArgumentNullException.ThrowIfNull(reEncrypted);
+        if (DraftAnswers is not null)
+            DraftAnswers = reEncrypted;
+    }
+
     internal Result<FormAttachment> RegisterAttachment(
         Guid tenantId,
         FormAnswerAddress address,
@@ -143,6 +151,28 @@ public sealed class FormSubmission : BaseEntity
         return Result.Success(revision);
     }
 
+    // X-5 — purga de retención: borra el borrador cifrado. Los sensibles los quita el job por fila.
+    public void PurgeDraftForRetention()
+    {
+        DraftAnswers = null;
+        DraftUpdatedAtUtc = null;
+        DraftUpdatedBy = null;
+    }
+
+    // X-5 — desvincula los adjuntos no desvinculados y devuelve sus FileIds para pedir el borrado.
+    public IReadOnlyList<Guid> DetachAttachmentsForRetention(DateTime nowUtc)
+    {
+        var fileIds = new List<Guid>();
+        foreach (var attachment in _attachments)
+        {
+            if (attachment.Status == FormAttachmentStatus.Detached)
+                continue;
+            fileIds.Add(attachment.FileId);
+            attachment.Detach(nowUtc);
+        }
+        return fileIds;
+    }
+
     internal FormSubmissionRevision? CurrentRevision(int revisionNumber) =>
         _revisions.Find(item => item.RevisionNumber == revisionNumber);
 
@@ -189,6 +219,34 @@ public sealed class FormSubmissionRevision : BaseEntity
     public FormRevisionPdfStatus PdfStatus { get; private set; }
     public Guid? PdfGenerationId { get; private set; }
     public Guid? PdfFileId { get; private set; }
+
+    // P-18 — firma del Submission Summary de esta revisión (inmutable: el hash sale de AnswersCipher).
+    public FormRevisionSignatureStatus SignatureStatus { get; private set; }
+    public Guid? SignatureRequestId { get; private set; }
+    public Guid? SignatureCopyFileId { get; private set; }
+    public string? DocumentHashPre { get; private set; }
+    public string? DocumentHashPost { get; private set; }
+    public Guid? SealedFileId { get; private set; }
+    public Guid? SignatureCertificateFileId { get; private set; }
+
+    public bool HasPendingSignature =>
+        SignatureStatus
+            is FormRevisionSignatureStatus.Requesting
+                or FormRevisionSignatureStatus.Sent
+                or FormRevisionSignatureStatus.Signed
+                or FormRevisionSignatureStatus.Completed;
+
+    // Sin firma todavía, o con una que falló por causa técnica: un PDF nuevo puede volver a pedirla.
+    public bool AwaitsSignature =>
+        SignatureStatus is FormRevisionSignatureStatus.None or FormRevisionSignatureStatus.Failed;
+
+    private bool IsSignatureTerminal =>
+        SignatureStatus
+            is FormRevisionSignatureStatus.Sealed
+                or FormRevisionSignatureStatus.Declined
+                or FormRevisionSignatureStatus.Canceled
+                or FormRevisionSignatureStatus.Expired;
+
     public IReadOnlyCollection<FormFieldComment> FieldComments => _fieldComments;
 
     internal static FormSubmissionRevision Create(
@@ -207,6 +265,14 @@ public sealed class FormSubmissionRevision : BaseEntity
             SubmittedBy = actor.Copy(),
             Outcome = FormRevisionOutcome.Pending,
         };
+
+    // Re-cifra las respuestas de la revisión con la clave actual (X-9). La firma se valida contra el
+    // hash del PDF en CloudStorage, no contra este ciphertext, así que re-cifrar no la invalida.
+    public void ReEncryptAnswers(ProtectedAnswers reEncrypted)
+    {
+        ArgumentNullException.ThrowIfNull(reEncrypted);
+        Answers = reEncrypted;
+    }
 
     internal void Return(
         string message,
@@ -246,6 +312,83 @@ public sealed class FormSubmissionRevision : BaseEntity
     }
 
     internal void MarkPdfFailed() => PdfStatus = FormRevisionPdfStatus.Failed;
+
+    // --- Firma (P-18). Cada transición es idempotente y respeta los estados terminales. ---
+
+    internal void MarkSignatureRequesting(Guid copyFileId, string documentHashPre)
+    {
+        SignatureStatus = FormRevisionSignatureStatus.Requesting;
+        SignatureCopyFileId = copyFileId;
+        DocumentHashPre = documentHashPre;
+        SignatureRequestId = null;
+    }
+
+    internal void LinkSignatureRequest(Guid signatureRequestId)
+    {
+        if (SignatureStatus is FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent)
+        {
+            SignatureRequestId = signatureRequestId;
+            SignatureStatus = FormRevisionSignatureStatus.Sent;
+        }
+    }
+
+    internal void MarkSignatureFailed()
+    {
+        if (SignatureStatus is FormRevisionSignatureStatus.Requesting or FormRevisionSignatureStatus.Sent)
+            SignatureStatus = FormRevisionSignatureStatus.Failed;
+    }
+
+    internal void MarkSignatureSigned()
+    {
+        if (SignatureStatus is FormRevisionSignatureStatus.Sent or FormRevisionSignatureStatus.Signed)
+            SignatureStatus = FormRevisionSignatureStatus.Signed;
+    }
+
+    internal void MarkSignatureCompleted()
+    {
+        if (
+            SignatureStatus
+            is FormRevisionSignatureStatus.Sent
+                or FormRevisionSignatureStatus.Signed
+                or FormRevisionSignatureStatus.Completed
+        )
+            SignatureStatus = FormRevisionSignatureStatus.Completed;
+    }
+
+    internal void MarkSignatureSealed(Guid sealedFileId, string documentHashPost, Guid? certificateFileId)
+    {
+        if (
+            SignatureStatus
+            is FormRevisionSignatureStatus.Sent
+                or FormRevisionSignatureStatus.Signed
+                or FormRevisionSignatureStatus.Completed
+                or FormRevisionSignatureStatus.Sealed
+        )
+        {
+            SealedFileId = sealedFileId;
+            DocumentHashPost = documentHashPost;
+            SignatureCertificateFileId = certificateFileId;
+            SignatureStatus = FormRevisionSignatureStatus.Sealed;
+        }
+    }
+
+    internal void MarkSignatureDeclined()
+    {
+        if (!IsSignatureTerminal)
+            SignatureStatus = FormRevisionSignatureStatus.Declined;
+    }
+
+    internal void MarkSignatureCanceled()
+    {
+        if (!IsSignatureTerminal)
+            SignatureStatus = FormRevisionSignatureStatus.Canceled;
+    }
+
+    internal void MarkSignatureExpired()
+    {
+        if (!IsSignatureTerminal)
+            SignatureStatus = FormRevisionSignatureStatus.Expired;
+    }
 }
 
 public sealed record FormFieldCommentInput(FormAnswerAddress Address, string Comment);

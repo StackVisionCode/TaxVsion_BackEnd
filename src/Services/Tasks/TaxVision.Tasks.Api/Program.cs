@@ -5,6 +5,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -193,6 +194,24 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<CustomerCreationFromFormRequestedIntegrationEvent>()
         .ToRabbitQueue("customer-client-form-commands");
+    // P-13 — aplicar al perfil: comando punto a punto a Customer (ProtectedPayload).
+    options
+        .PublishMessage<CustomerProfileUpdateFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("customer-client-form-commands");
+    // P-11 — Submission Summary: comando punto a punto a Documents (snapshot cifrado).
+    options
+        .PublishMessage<FormSubmissionSummaryRequestedIntegrationEvent>()
+        .ToRabbitQueue("documents-client-form-summary");
+    // P-18 — firma: comandos punto a punto a Signature (solo FileId, hash y datos del firmante).
+    options
+        .PublishMessage<SignatureRequestFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("signature-client-form-commands");
+    options
+        .PublishMessage<SignatureRequestCancellationRequestedIntegrationEvent>()
+        .ToRabbitQueue("signature-client-form-commands");
+
+    // X-5 — retención: comando punto a punto a CloudStorage para borrar archivos de Client Forms.
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 
     // Local y durable: la reasignación HTTP de archivos se reintenta fuera de la transacción que vinculó.
     options
@@ -246,6 +265,12 @@ app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
+// Semáforo de rotación de clave (X-9): fuera de "ready" para que no tumbe el servicio.
+app.MapHealthChecks(
+    "/health/key-versions",
+    new HealthCheckOptions { Predicate = check => check.Tags.Contains("key-rotation") }
+);
 
 app.MapControllers();
 

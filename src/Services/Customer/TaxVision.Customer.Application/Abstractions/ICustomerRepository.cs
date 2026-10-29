@@ -39,6 +39,45 @@ public interface ICustomerRepository
         CancellationToken ct
     );
 
+    /// <summary>
+    /// Lookup dual (B-9/X-9): busca por cualquiera de los blind indexes candidatos (clave actual ∪ anterior)
+    /// para no dar falso negativo mientras el sweep de rotación aún no re-cifró la fila. Sin rotación el
+    /// conjunto trae un solo candidato y equivale al metodo de un solo blind index. El repo real lo resuelve
+    /// con un unico WHERE IN; el default itera para que los fakes sigan funcionando sin cambios.
+    /// </summary>
+    async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> blindIndexes,
+        Guid? excludeCustomerId,
+        CancellationToken ct
+    )
+    {
+        foreach (var blindIndex in blindIndexes)
+        {
+            var hit = await FindCustomerIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeCustomerId, ct);
+            if (hit is not null)
+                return hit;
+        }
+        return null;
+    }
+
+    /// <summary>Lookup dual para relaciones (ver el metodo de customer).</summary>
+    async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> blindIndexes,
+        Guid? excludeRelationId,
+        CancellationToken ct
+    )
+    {
+        foreach (var blindIndex in blindIndexes)
+        {
+            var hit = await FindRelationIdByFiscalBlindIndexAsync(tenantId, blindIndex, excludeRelationId, ct);
+            if (hit is not null)
+                return hit;
+        }
+        return null;
+    }
+
     /// <summary>Clientes ACTIVOS donde <paramref name="preparerUserId"/> es el preparador PRIMARY, por lotes
     /// (keyset por Id) — para el handover al retirarlo. Tracked + Include(Assignments): las mutaciones de
     /// preparador tocan la colección de asignaciones, si no viene cargada operan sobre una vacía.</summary>

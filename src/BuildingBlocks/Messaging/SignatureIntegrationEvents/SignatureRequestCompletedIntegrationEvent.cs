@@ -16,4 +16,7 @@ public sealed record SignatureRequestCompletedIntegrationEvent : IntegrationEven
 
     /// <summary>Snapshot de contacto de cada firmante — para notificaciones de confirmación sin lookup síncrono.</summary>
     public required IReadOnlyList<SignerContactSnapshot> Signers { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

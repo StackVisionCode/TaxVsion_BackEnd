@@ -127,4 +127,28 @@ public static class FormRequestErrors
         "FormRequest.ConcurrencyConflict",
         "The request was modified by someone else."
     );
+
+    // P-13 — aplicar al perfil.
+    public static readonly Error ProfileUpdateNotAllowed = new(
+        "FormRequest.ProfileUpdateNotAllowed",
+        "The profile can only be updated from a completed request with a known customer."
+    );
+    public static readonly Error ProfileUpdateInProgress = new(
+        "FormRequest.ProfileUpdateInProgress",
+        "A profile update is already in progress for this request."
+    );
+    public static readonly Error ProfileUpdateNoTargets = new(
+        "FormRequest.ProfileUpdateNoTargets",
+        "No mapped fields were selected to apply to the profile."
+    );
+    public static readonly Error ProfileUpdateCommandMismatch = new(
+        "FormRequest.ProfileUpdateCommandMismatch",
+        "The profile update result does not match the pending command."
+    );
+
+    // Aplicar destinos fiscales (filing status, tax identifier) exige actor TenantAdmin o PlatformAdmin.
+    public static readonly Error ProfileUpdateForbidden = new(
+        "FormRequest.ProfileUpdateForbidden",
+        "Applying fiscal fields to the profile requires an administrator."
+    );
 }

@@ -19,14 +19,14 @@ public sealed class FormModuleSettingsTests
     }
 
     [Fact]
-    public void Office_without_row_uses_the_defaults()
+    public void Office_without_row_has_everything_on()
     {
         var capabilities = FormModuleCapabilities.Of(null);
 
         Assert.True(capabilities.ExternalParticipantsEnabled);
         Assert.True(capabilities.AutoCustomerCreationEnabled);
-        Assert.False(capabilities.SignatureStepEnabled);
-        Assert.False(capabilities.IntakeLinksEnabled);
+        Assert.True(capabilities.SignatureStepEnabled);
+        Assert.True(capabilities.IntakeLinksEnabled);
         Assert.True(capabilities.PushNotificationsEnabled);
     }
 

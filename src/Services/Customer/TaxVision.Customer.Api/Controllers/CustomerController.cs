@@ -96,6 +96,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     }
 
     // ---------- GET /customers ----------
+    // Listado/filtros. `term` se acepta solo por compatibilidad (pestañas con un bundle viejo): el
+    // CRM busca por POST /customers/search para que el término no quede en los logs de URL.
     [HttpGet]
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
@@ -115,9 +117,10 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(tenantId, term, status, page, size, userId, canViewAll, kind, sort, dir),
+        var result = await RunSearchAsync(
+            tenantId,
+            userId,
+            new SearchCustomersRequest(term, status, page, size, kind, sort, dir),
             ct
         );
 
@@ -131,6 +134,53 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             return StatusCode(StatusCodes.Status304NotModified);
 
         return Ok(result);
+    }
+
+    // ---------- POST /customers/search ----------
+    // Misma búsqueda que GET /customers con el término en el cuerpo. Sin ETag (un POST no se
+    // revalida) y `no-store`: el resultado lleva PII y no debe quedar en caches intermedios.
+    [HttpPost("search")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.h.search")]
+    [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResult<CustomerSummaryResponse>>> SearchByBody(
+        [FromBody] SearchCustomersRequest body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await RunSearchAsync(tenantId, userId, body, ct);
+        Response.Headers.CacheControl = "no-store";
+        return Ok(result);
+    }
+
+    private async Task<PagedResult<CustomerSummaryResponse>> RunSearchAsync(
+        Guid tenantId,
+        Guid userId,
+        SearchCustomersRequest search,
+        CancellationToken ct
+    )
+    {
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        return await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
+            new SearchCustomersQuery(
+                tenantId,
+                search.Term,
+                search.Status,
+                search.Page,
+                search.Size,
+                userId,
+                canViewAll,
+                search.Kind,
+                search.Sort,
+                search.Dir
+            ),
+            ct
+        );
     }
 
     /// <summary>Weak ETag estable del contenido de una respuesta (SHA-256 del JSON canónico).</summary>

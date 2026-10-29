@@ -31,8 +31,21 @@ internal static class PortalFormRequestDetailMapper
             Convert.ToBase64String(request.RowVersion),
             MapAttachments(request),
             consents,
-            MapReview(request)
+            MapReview(request),
+            MapSummary(request),
+            request.PrefilledComponentIds
         );
+    }
+
+    // La copia del formulario enviado, cuando la solicitud ya está completada.
+    private static PortalFormSummaryResponse? MapSummary(FormRequest request)
+    {
+        if (request.Status != FormRequestStatus.Completed)
+            return null;
+        var revision = request.Submission?.Revisions.SingleOrDefault(item =>
+            item.RevisionNumber == request.CurrentRevisionNumber
+        );
+        return revision is null ? null : new PortalFormSummaryResponse(revision.PdfStatus, revision.PdfFileId);
     }
 
     // Solo una solicitud devuelta muestra los comentarios de su revisión vigente.

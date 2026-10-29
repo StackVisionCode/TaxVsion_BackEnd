@@ -113,6 +113,7 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                             SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             );
         }

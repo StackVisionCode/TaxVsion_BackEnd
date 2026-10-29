@@ -158,3 +158,6 @@ public sealed record FormFileVerdict(
     string? FolderType,
     DateTime OccurredAtUtc
 );
+
+// Resultado de aplicar un destino al perfil: aplicado, o fallido con el código del motivo (sin valores).
+public sealed record FormProfileUpdateOutcome(string Target, bool Applied, string? FailureCode);

@@ -20,5 +20,6 @@ public sealed class FormModuleSettingsConfiguration : IEntityTypeConfiguration<F
         builder.Property(settings => settings.AutoCustomerCreationEnabled).IsRequired().HasDefaultValue(false);
         builder.Property(settings => settings.SignatureStepEnabled).IsRequired().HasDefaultValue(false);
         builder.Property(settings => settings.PushNotificationsEnabled).IsRequired().HasDefaultValue(false);
+        builder.Property(settings => settings.RetentionYearsOverride);
     }
 }

@@ -98,6 +98,37 @@ public sealed class FormExternalAccessSecurityTests
         Assert.Equal("person@example.com", rotated.UnprotectEmail(stored.Cipher, stored.KeyVersion));
     }
 
+    // X-9.6 — cifrar v7 -> rotar a v8 (v7 anterior) -> leer -> re-cifrar -> quitar v7 -> leer.
+    [Fact]
+    public void Email_reencrypted_to_the_current_key_reads_after_the_old_key_is_retired()
+    {
+        var oldKey = Key();
+        var currentKey = Key();
+        var tenantId = Guid.NewGuid();
+        var stored = Create(oldKey, 7).ProtectEmail(tenantId, "person@example.com");
+
+        var reEncrypted = Create(currentKey, 8, oldKey, 7).ReEncryptEmail(tenantId, stored.Cipher, stored.KeyVersion);
+        Assert.Equal(8, reEncrypted.KeyVersion);
+        Assert.StartsWith("v8:", reEncrypted.LookupHash);
+
+        var afterRetirement = Create(currentKey, 8);
+        Assert.Equal("person@example.com", afterRetirement.UnprotectEmail(reEncrypted.Cipher, reEncrypted.KeyVersion));
+    }
+
+    [Fact]
+    public void Token_reencrypted_to_the_current_key_keeps_its_value_after_retirement()
+    {
+        var oldKey = Key();
+        var currentKey = Key();
+        var stored = Create(oldKey, 7).GenerateProtectedToken();
+
+        var reEncrypted = Create(currentKey, 8, oldKey, 7).ReEncryptToken(stored.TokenCipher, stored.TokenKeyVersion);
+        Assert.Equal(8, reEncrypted.KeyVersion);
+
+        var afterRetirement = Create(currentKey, 8);
+        Assert.Equal(stored.RawToken, afterRetirement.UnprotectToken(reEncrypted.Cipher, reEncrypted.KeyVersion));
+    }
+
     private static FormExternalAccessSecurity Create(
         string currentKey,
         short currentVersion,

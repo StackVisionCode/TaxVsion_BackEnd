@@ -22,6 +22,16 @@ public interface IFormAuditLog
         string? detailsJson = null,
         FormAuditRequestContext? requestContext = null
     );
+
+    // Hecho del sistema con su resultado (p.ej. "warning"), sin actor de staff; aparece en la actividad.
+    void RecordSystemOutcome(
+        Guid tenantId,
+        Guid? templateId,
+        Guid? requestId,
+        string action,
+        string outcome,
+        string? detailsJson = null
+    ) => Record(tenantId, templateId, requestId, action, null, detailsJson);
     void RecordParticipant(Guid tenantId, Guid requestId, string action, FormActor actor, string? detailsJson = null);
     Task RecordAnswersViewedAsync(
         Guid tenantId,

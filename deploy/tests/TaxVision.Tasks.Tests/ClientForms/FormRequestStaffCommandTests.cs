@@ -1,4 +1,6 @@
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Requests.Commands;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.Tests.Dependencies;
@@ -18,14 +20,6 @@ public sealed class FormRequestStaffCommandTests
         var result = await Assign(title, message, null);
 
         Assert.Equal("FormRequest.TextContainsSensitiveData", result.Error.Code);
-    }
-
-    [Fact]
-    public async Task Assign_rejects_a_prefill_source_until_prefill_exists()
-    {
-        var result = await Assign(null, null, Guid.NewGuid());
-
-        Assert.Equal(FormRequestErrors.PrefillNotAvailable, result.Error);
     }
 
     [Fact]
@@ -94,6 +88,52 @@ public sealed class FormRequestStaffCommandTests
         Assert.IsType<FormRequestReturnedIntegrationEvent>(Assert.Single(bus.Published));
     }
 
+    // T-8: si el guardado choca, Wolverine reintenta en línea; nada debe haber salido antes del SaveChanges.
+    [Fact]
+    public async Task Return_publishes_nothing_when_the_save_conflicts()
+    {
+        var (request, version) = Submitted();
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            Return(request, version, "Please review", [], bus, unitOfWork: new ConflictingUnitOfWork(1))
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Cancel_publishes_nothing_when_the_save_conflicts()
+    {
+        var request = CustomerRequest();
+        var bus = new FakeMessageBus();
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CancelFormRequestHandler.Handle(
+                new CancelFormRequestCommand(
+                    TenantId,
+                    UserId,
+                    true,
+                    request.Id,
+                    "No longer needed",
+                    request.RowVersion,
+                    Now
+                ),
+                new SingleFormRequestRepository(request),
+                new FixedRequestVisibility(true),
+                null!,
+                null!,
+                new RecordingFormAuditLog(),
+                new ConflictingUnitOfWork(1),
+                bus,
+                new TestCorrelationContext(),
+                default
+            )
+        );
+
+        Assert.Empty(bus.Published);
+    }
+
     [Fact]
     public async Task Complete_rejects_an_internal_note_with_sensitive_data()
     {
@@ -103,6 +143,8 @@ public sealed class FormRequestStaffCommandTests
             new CompleteFormRequestCommand(TenantId, UserId, true, request.Id, TextWithSsn, request.RowVersion, Now),
             new SingleFormRequestRepository(request),
             new FixedRequestVisibility(true),
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -167,6 +209,8 @@ public sealed class FormRequestStaffCommandTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
             new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
@@ -181,7 +225,8 @@ public sealed class FormRequestStaffCommandTests
         string message,
         IReadOnlyList<FormFieldCommentInput> comments,
         FakeMessageBus? bus = null,
-        RecordingClientFormsMetrics? metrics = null
+        RecordingClientFormsMetrics? metrics = null,
+        IUnitOfWork? unitOfWork = null
     ) =>
         ReturnFormRequestHandler.Handle(
             new ReturnFormRequestCommand(
@@ -200,7 +245,7 @@ public sealed class FormRequestStaffCommandTests
             FormTemplateHandlerTestDoubles.Engine(),
             new PlainFormAnswersProtector(),
             new RecordingFormAuditLog(),
-            new RecordingUnitOfWork(),
+            unitOfWork ?? new RecordingUnitOfWork(),
             bus ?? new FakeMessageBus(),
             new TestCorrelationContext(),
             metrics ?? new RecordingClientFormsMetrics(),

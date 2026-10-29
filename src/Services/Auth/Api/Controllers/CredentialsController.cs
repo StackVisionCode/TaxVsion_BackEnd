@@ -146,6 +146,30 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record UpdateMyPhoneRequest(string? PhoneNumber);
+
+    /// <summary>Guarda (o quita, si viene vacío) el teléfono de contacto del propio usuario, sin OTP. 204.</summary>
+    [HttpPut("me/phone")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [RateLimit("auth.g.credentials_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateMyPhone(UpdateMyPhoneRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new UpdateMyPhoneCommand(userId, request.PhoneNumber), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record RequestPhoneVerificationRequest(string PhoneNumber);
 
     [HttpPost("me/phone/change-request")]

@@ -34,7 +34,19 @@ public sealed class DocumentGeneration : AggregateRoot
     public string? FileName { get; private set; }
     public ContentHash? ContentHash { get; private set; }
 
+    /// <summary>P-18: segundo FileId del mismo PDF, destinado a Signature (owner/carpeta de firma). Nulo
+    /// si la generación no pidió copia de firma. No se correlaciona con FileAvailable: su archivo lo lee
+    /// Signature por M2M.</summary>
+    public Guid? SignatureCopyFileId { get; private set; }
+
+    /// <summary>P-18: página (1-indexada) donde la plantilla reservó la caja de firma. Nulo sin copia de firma.</summary>
+    public int? SignatureAnchorPage { get; private set; }
+
     public string IdempotencyKey { get; private set; } = string.Empty;
+
+    /// <summary>Id externo de correlación (p.ej. el GenerationId que Tasks guarda en la revisión). El PK
+    /// propio es independiente; esto deja que el emisor rote su id en los reintentos sin perder el vínculo.</summary>
+    public Guid? ExternalReferenceId { get; private set; }
     public int AttemptCount { get; private set; }
     public string? ErrorCode { get; private set; }
     public string? ErrorMessage { get; private set; }
@@ -63,7 +75,8 @@ public sealed class DocumentGeneration : AggregateRoot
         string idempotencyKey,
         string correlationId,
         string? causationId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? externalReferenceId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -95,6 +108,7 @@ public sealed class DocumentGeneration : AggregateRoot
             Priority = priority,
             Status = DocumentGenerationStatus.Requested,
             IdempotencyKey = idempotencyKey.Trim(),
+            ExternalReferenceId = externalReferenceId,
             CorrelationId = correlationId ?? string.Empty,
             CausationId = causationId,
             RequestedAtUtc = nowUtc,
@@ -227,10 +241,27 @@ public sealed class DocumentGeneration : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>El emisor reintentó con un id de correlación nuevo (misma clave de idempotencia): se
+    /// reapunta para que el evento de cierre vuelva a él, no al intento anterior.</summary>
+    public void SetExternalReference(Guid externalReferenceId)
+    {
+        if (externalReferenceId != Guid.Empty)
+            ExternalReferenceId = externalReferenceId;
+    }
+
     public void SetContentHash(ContentHash hash, string fileName)
     {
         ContentHash = hash;
         FileName = fileName;
+    }
+
+    /// <summary>P-18: registra la copia del PDF para Signature (segundo FileId) y la página del ancla de firma.</summary>
+    public void AttachSignatureCopy(Guid signatureCopyFileId, int anchorPage)
+    {
+        if (signatureCopyFileId != Guid.Empty)
+            SignatureCopyFileId = signatureCopyFileId;
+        if (anchorPage >= 1)
+            SignatureAnchorPage = anchorPage;
     }
 
     private Result Transition(

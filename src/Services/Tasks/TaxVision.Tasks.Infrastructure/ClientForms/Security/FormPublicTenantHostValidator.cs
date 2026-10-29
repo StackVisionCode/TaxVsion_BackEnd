@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 
 namespace TaxVision.Tasks.Infrastructure.ClientForms.Security;
@@ -12,7 +15,9 @@ namespace TaxVision.Tasks.Infrastructure.ClientForms.Security;
 public sealed class FormPublicTenantHostValidator(
     HttpClient httpClient,
     IMemoryCache cache,
-    ILogger<FormPublicTenantHostValidator> logger
+    ILogger<FormPublicTenantHostValidator> logger,
+    IOptions<ClientFormsOptions> options,
+    IHostEnvironment environment
 ) : IFormPublicTenantHostValidator
 {
     public static readonly TimeSpan ResolvedTtl = TimeSpan.FromMinutes(5);
@@ -24,6 +29,12 @@ public sealed class FormPublicTenantHostValidator(
         if (tenantId == Guid.Empty || string.IsNullOrWhiteSpace(host))
             return false;
         var normalized = host.Trim().ToLowerInvariant();
+        // En local el navegador manda Origin localhost, que Auth no resuelve a ninguna oficina.
+        if (
+            environment.IsDevelopment()
+            && options.Value.External.DevelopmentHosts.Contains(normalized, StringComparer.OrdinalIgnoreCase)
+        )
+            return true;
         var key = $"cf-public-host:{normalized}";
         if (!cache.TryGetValue(key, out Guid? resolved))
         {

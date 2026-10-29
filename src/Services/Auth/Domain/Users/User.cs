@@ -214,6 +214,28 @@ public sealed class User : AggregateRoot
         PhoneVerified = true;
     }
 
+    /// <summary>
+    /// Teléfono de contacto puesto por el propio usuario, sin OTP: vacío lo quita. No se marca verificado;
+    /// la MFA por SMS usa su propio destino confirmado (MfaMethod), no este campo.
+    /// </summary>
+    public Result UpdatePhoneNumber(string? phoneNumber)
+    {
+        var phone = phoneNumber?.Trim() ?? string.Empty;
+        if (phone.Length == 0)
+        {
+            PhoneNumber = null;
+            PhoneVerified = false;
+            return Result.Success();
+        }
+
+        if (phone.Length is < 7 or > 20 || !phone.All(c => char.IsDigit(c) || c is '+' or '-' or ' '))
+            return Result.Failure(new Error("User.Phone", "Phone number is invalid."));
+
+        PhoneNumber = phone;
+        PhoneVerified = false;
+        return Result.Success();
+    }
+
     public void VerifyEmail() => EmailVerified = true;
 
     public void EnableMfa() => MfaEnabled = true;

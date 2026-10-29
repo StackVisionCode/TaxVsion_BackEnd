@@ -112,7 +112,8 @@ internal sealed class TasksCustomerClient(
                     x.TenantId,
                     x.CustomerId,
                     x.DisplayName,
-                    MapStatus(x.Status)
+                    MapStatus(x.Status),
+                    x.PrimaryEmail
                 ))
                 .ToList();
 

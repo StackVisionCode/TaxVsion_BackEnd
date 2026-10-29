@@ -856,12 +856,14 @@ public sealed class PermissionCatalogTests
             TasksPermissions.FormIntakeLinksManage,
             TasksPermissions.FormConsentsManage,
             TasksPermissions.FormTemplatesConfigureActions,
+            TasksPermissions.FormRequestsExport,
+            TasksPermissions.FormRequestsApplyProfile,
         ];
         Assert.Equal(
             activeCodes.Order(),
             definitions.Where(item => !item.IsReserved).Select(item => item.Code).Order()
         );
-        Assert.Equal(3, definitions.Count(item => item.IsReserved));
+        Assert.Equal(1, definitions.Count(item => item.IsReserved));
     }
 
     [Fact]
@@ -924,8 +926,8 @@ public sealed class PermissionCatalogTests
         );
 
         Assert.Equal(13, staffDefinitions.Count());
-        Assert.Equal(11, staffDefinitions.Count(definition => !definition.IsReserved));
-        Assert.Equal(2, staffDefinitions.Count(definition => definition.IsReserved));
+        Assert.Equal(13, staffDefinitions.Count(definition => !definition.IsReserved));
+        Assert.Equal(0, staffDefinitions.Count(definition => definition.IsReserved));
         // El preparador revisa y envía a externos; revelar, enlaces públicos y avisos son del admin.
         var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
         Assert.Contains(TasksPermissions.FormRequestsRead, employee);

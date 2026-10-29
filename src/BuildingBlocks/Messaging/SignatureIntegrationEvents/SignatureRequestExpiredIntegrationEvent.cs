@@ -15,4 +15,7 @@ public sealed record SignatureRequestExpiredIntegrationEvent : IntegrationEvent
 
     /// <summary>Snapshot de contacto de cada firmante pendiente — para notificar la expiración sin lookup síncrono.</summary>
     public required IReadOnlyList<SignerContactSnapshot> PendingSigners { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

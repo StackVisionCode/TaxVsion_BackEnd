@@ -19,6 +19,11 @@ public sealed partial class FormParticipant : AggregateRoot
     public Guid? LinkedByUserId { get; private set; }
     public FormParticipantSource Source { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+    public DateTime? LostAtUtc { get; private set; }
+    public Guid? LostByUserId { get; private set; }
+    public string? LostReason { get; private set; }
+
+    public const int LostReasonMaxLength = 200;
 
     public static Result<FormParticipant> Create(
         Guid tenantId,
@@ -53,12 +58,12 @@ public sealed partial class FormParticipant : AggregateRoot
         return Result.Success(participant);
     }
 
+    // Un participante ya vinculado sigue vinculado: verificar otra de sus requests no lo degrada.
     public Result MarkVerified(DateTime nowUtc)
     {
-        if (Status == FormParticipantStatus.Linked)
-            return Result.Failure(FormParticipantErrors.InvalidTransition);
-        Status = FormParticipantStatus.Verified;
         VerifiedAtUtc ??= nowUtc;
+        if (Status != FormParticipantStatus.Linked)
+            Status = FormParticipantStatus.Verified;
         return Result.Success();
     }
 
@@ -74,7 +79,41 @@ public sealed partial class FormParticipant : AggregateRoot
         LinkedAtUtc = nowUtc;
         LinkedByUserId = byUserId;
         Status = FormParticipantStatus.Linked;
+        // Convertirse en cliente reabre un prospecto marcado como perdido.
+        ClearLost();
         return Result.Success();
+    }
+
+    // Prospecto perdido: nunca uno ya convertido en cliente. Volver a marcarlo actualiza el motivo.
+    public Result MarkLost(string? reason, Guid byUserId, DateTime nowUtc)
+    {
+        if (LinkedCustomerId.HasValue)
+            return Result.Failure(FormParticipantErrors.AlreadyConverted);
+        var normalized = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (byUserId == Guid.Empty || normalized?.Length > LostReasonMaxLength)
+            return Result.Failure(FormParticipantErrors.InvalidLostReason);
+        LostAtUtc = nowUtc;
+        LostByUserId = byUserId;
+        LostReason = normalized;
+        return Result.Success();
+    }
+
+    // Idempotente: reabrir uno que no está perdido no cambia nada.
+    public Result Reopen(Guid byUserId, DateTime nowUtc)
+    {
+        if (byUserId == Guid.Empty)
+            return Result.Failure(FormParticipantErrors.InvalidTransition);
+        ClearLost();
+        return Result.Success();
+    }
+
+    public bool IsLost => LostAtUtc.HasValue;
+
+    private void ClearLost()
+    {
+        LostAtUtc = null;
+        LostByUserId = null;
+        LostReason = null;
     }
 
     public Result UpdateContact(string? fullName, string? phoneE164)

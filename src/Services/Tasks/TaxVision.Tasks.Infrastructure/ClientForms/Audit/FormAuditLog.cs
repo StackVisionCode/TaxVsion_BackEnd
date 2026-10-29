@@ -46,6 +46,33 @@ internal sealed class FormAuditLog(
         );
     }
 
+    public void RecordSystemOutcome(
+        Guid tenantId,
+        Guid? templateId,
+        Guid? requestId,
+        string action,
+        string outcome,
+        string? detailsJson = null
+    ) =>
+        context.FormAuditEntries.Add(
+            FormAuditEntry.Create(
+                tenantId,
+                templateId,
+                requestId,
+                action,
+                outcome,
+                null,
+                "System",
+                null,
+                null,
+                null,
+                null,
+                Limit(correlation.CorrelationId, 64) ?? string.Empty,
+                Limit(detailsJson, 2000),
+                DateTime.UtcNow
+            )
+        );
+
     public void RecordParticipant(
         Guid tenantId,
         Guid requestId,

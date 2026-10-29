@@ -529,6 +529,8 @@ services:
       ServiceAuth__Clients__16__Secret: ${CONNECTORS_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__17__ClientId: ${DOCUMENTS_SERVICE_CLIENT_ID:-documents-worker}
       ServiceAuth__Clients__17__Secret: ${DOCUMENTS_SERVICE_CLIENT_SECRET:-}
+      # Documents baja el logo de la oficina (o el del sistema) para los PDF; sin esto CloudStorage da 403.
+      ServiceAuth__Clients__17__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__18__ClientId: ${GROWTH_SERVICE_CLIENT_ID:-growth-worker}
       ServiceAuth__Clients__18__Secret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__19__ClientId: ${PAYMENTCLIENT_SERVICE_CLIENT_ID:-paymentclient-worker}
@@ -2234,6 +2236,10 @@ services:
       # escalón completo en silencio. Así el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${DOCUMENTS_MODULE_GATE_ENFORCE:-false}
       Authorization__ModuleGate__EnforcedModules__0: documents
+      # P-11 — descifrado del ProtectedPayload del Submission Summary (misma clave de plataforma que ya
+      # comparten Tasks/Customer/Notification). No es un GitHub Secret nuevo.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests;
@@ -44,8 +45,11 @@ public static class RetryFormCustomerLinkHandler
         var linked = await RelinkAsync(command, found.Value, requests, visibility, ct);
         if (linked.IsFailure)
             return Result.Failure<FormRequestResponse>(linked.Error);
-        await FinishAsync(command, found.Value, linked.Value, participants, audit, bus, correlation, logger, ct);
+        var outgoing = new DeferredMessages();
+        await FinishAsync(command, found.Value, requests, participants, audit, outgoing, correlation, logger, ct);
+        // Guardar antes de publicar (T-8).
         await unitOfWork.SaveChangesAsync(ct);
+        await outgoing.PublishAsync(bus);
         return Result.Success(FormRequestResponse.From(found.Value));
     }
 
@@ -53,17 +57,38 @@ public static class RetryFormCustomerLinkHandler
     private static async Task FinishAsync(
         RetryFormCustomerLinkCommand command,
         FormRequest request,
-        Guid customerId,
+        IFormRequestRepository requests,
         IFormParticipantRepository participants,
         IFormAuditLog audit,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         ICorrelationContext correlation,
         ILogger logger,
         CancellationToken ct
     )
     {
-        await FormCustomerLinker.LinkParticipantAsync(request, customerId, participants, logger, command.NowUtc, ct);
-        await FormCustomerLinker.RequestFileReassignmentAsync(request, bus, correlation.CorrelationId);
+        // Recién revinculada: su cliente es el que estaba bloqueado.
+        var customerId = request.CustomerId!.Value;
+        var participantLinked = await FormCustomerLinker.LinkParticipantAsync(
+            request,
+            customerId,
+            participants,
+            audit,
+            logger,
+            command.NowUtc,
+            ct
+        );
+        FormCustomerLinker.RequestFileReassignment(request, outgoing, correlation.CorrelationId);
+        if (participantLinked)
+            await FormCustomerLinker.PropagateToSiblingsAsync(
+                request,
+                customerId,
+                requests,
+                audit,
+                outgoing,
+                correlation.CorrelationId,
+                command.NowUtc,
+                ct
+            );
         audit.Record(command.TenantId, request.FormTemplateId, request.Id, "customer_link.retried", command.ByUserId);
     }
 

@@ -14,6 +14,30 @@ public sealed class EventRoutingContractTests
         );
     }
 
+    [Fact]
+    public void FileDeletionSkipped_is_routed_to_the_shared_exchange()
+    {
+        var programSource = File.ReadAllText(FindProgram());
+
+        Assert.Contains(
+            "PublishMessage<FileDeletionSkippedIntegrationEvent>().ToRabbitExchange(\"taxvision-events\")",
+            programSource,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void File_deletions_command_queue_is_listened_with_a_durable_inbox()
+    {
+        var programSource = File.ReadAllText(FindProgram());
+
+        Assert.Contains(
+            "ListenToRabbitQueue(\"cloudstorage-file-deletions\").UseDurableInbox()",
+            programSource,
+            StringComparison.Ordinal
+        );
+    }
+
     private static string FindProgram()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

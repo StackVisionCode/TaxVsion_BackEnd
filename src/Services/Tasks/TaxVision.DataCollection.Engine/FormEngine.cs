@@ -24,26 +24,41 @@ public sealed class FormEngine : IFormEngine
     private readonly ComponentRegistry _registry;
 
     public FormEngine(DataCollectionLimits limits)
+        : this(limits, TimeProvider.System) { }
+
+    // El reloj decide "today" en las fechas; los tests pasan uno fijo.
+    public FormEngine(DataCollectionLimits limits, TimeProvider timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(timeProvider);
         _limits = limits;
         var registry = new ComponentRegistry();
         _registry = registry;
         _structure = new StructureValidator(limits, registry);
         _visibility = new VisibilityEvaluator(limits, registry);
-        _answers = new AnswersValidator(limits, registry);
+        _answers = new AnswersValidator(limits, registry, timeProvider);
         _progress = new ProgressCalculator(registry);
         _mappings = new MappingValidator(registry);
     }
 
     public DataCollectionLimits Limits => _limits;
 
-    public Result<FormDefinition> ParseDefinition(string json) =>
-        Parse<FormDefinition>(
+    public Result<FormDefinition> ParseDefinition(string json)
+    {
+        var result = Parse<FormDefinition>(
             json,
             _limits.MaxDefinitionBytes,
             IssueCodes.DefinitionTooLarge,
             IssueCodes.DefinitionInvalidJson
         );
+        return
+            result.IsFailure
+            && result.Error.Code == IssueCodes.DefinitionInvalidJson
+            && NestedRepeaterDetector.HasNestedRepeater(json)
+            ? Result.Failure<FormDefinition>(
+                new Error(IssueCodes.RepeaterNested, "Repeaters cannot be nested inside another repeater.")
+            )
+            : result;
+    }
 
     public ValidationReport ValidateForDraft(FormDefinition definition) =>
         _structure.Validate(definition, publish: false);

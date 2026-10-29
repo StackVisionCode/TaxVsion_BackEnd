@@ -31,9 +31,10 @@ public enum FormCancelReason
 public enum FormProfileUpdateStatus
 {
     None = 0,
-    Approved = 1,
+    Processing = 1,
     Applied = 2,
-    Rejected = 3,
+    PartiallyApplied = 3,
+    Rejected = 4,
 }
 
 public enum FormRevisionOutcome
@@ -49,6 +50,21 @@ public enum FormRevisionPdfStatus
     Requested = 1,
     Ready = 2,
     Failed = 3,
+}
+
+// P-18 — estado de la firma del Submission Summary de una revisión (vía Signature).
+public enum FormRevisionSignatureStatus
+{
+    None = 0,
+    Requesting = 1,
+    Sent = 2,
+    Signed = 3,
+    Completed = 4,
+    Sealed = 5,
+    Declined = 6,
+    Canceled = 7,
+    Expired = 8,
+    Failed = 9,
 }
 
 public enum FormAttachmentStatus

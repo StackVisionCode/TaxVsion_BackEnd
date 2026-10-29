@@ -31,10 +31,32 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
     // otros módulos enrutan por el servicio SMS — no son textos del preparador y un OTP no debe verse.
     private const string CrmSourceContext = "crm-sms";
 
+    // Cuerpos de los POST .../search: el término (nombre, teléfono o email del cliente) viaja aquí y no
+    // en la URL, que queda en los logs del Gateway/proxy. Mismos filtros y defaults que el GET.
+    public sealed record SearchMessagesRequest(
+        Guid? CustomerId = null,
+        SmsMessageStatusFilter Status = SmsMessageStatusFilter.All,
+        string? Term = null,
+        DateTime? From = null,
+        DateTime? To = null,
+        int Page = 1,
+        int Size = 20
+    );
+
+    public sealed record SearchConversationsRequest(string? Term = null, int Page = 1, int Size = 20);
+
+    public sealed record SearchOptOutsRequest(
+        SmsOptOutStatusFilter Status = SmsOptOutStatusFilter.All,
+        string? Term = null,
+        int Page = 1,
+        int Size = 20
+    );
+
+    // `term` en el GET solo por compatibilidad (bundles viejos): el CRM busca por POST messages/search.
     [HttpGet("messages")]
     [RateLimit("sms.h.read")]
     [ProducesResponseType<PagedResult<SmsMessageSummaryResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListMessages(
+    public Task<IActionResult> ListMessages(
         [FromQuery] Guid? customerId,
         [FromQuery] SmsMessageStatusFilter status = SmsMessageStatusFilter.All,
         [FromQuery] string? term = null,
@@ -43,50 +65,37 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken ct = default
-    )
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
+    ) => RunMessagesSearchAsync(new SearchMessagesRequest(customerId, status, term, fromUtc, toUtc, page, size), ct);
 
-        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<PagedResult<SmsMessageSummaryResponse>>(
-            new SearchSmsMessagesQuery(
-                tenantId,
-                customerId,
-                status,
-                term,
-                fromUtc,
-                toUtc,
-                CrmSourceContext,
-                page,
-                size,
-                userId,
-                canViewAll
-            ),
-            ct
-        );
-        return Ok(result);
+    // `no-store`: el resultado lleva PII y no debe quedar en caches intermedios.
+    [HttpPost("messages/search")]
+    [RateLimit("sms.h.read")]
+    [ProducesResponseType<PagedResult<SmsMessageSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public Task<IActionResult> SearchMessages([FromBody] SearchMessagesRequest body, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return RunMessagesSearchAsync(body, ct);
     }
 
     [HttpGet("conversations")]
     [RateLimit("sms.h.read")]
     [ProducesResponseType<PagedResult<SmsConversationSummaryResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListConversations(
+    public Task<IActionResult> ListConversations(
         [FromQuery] string? term = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken ct = default
-    )
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
+    ) => RunConversationsSearchAsync(new SearchConversationsRequest(term, page, size), ct);
 
-        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<PagedResult<SmsConversationSummaryResponse>>(
-            new SearchSmsConversationsQuery(tenantId, term, CrmSourceContext, page, size, userId, canViewAll),
-            ct
-        );
-        return Ok(result);
+    [HttpPost("conversations/search")]
+    [RateLimit("sms.h.read")]
+    [ProducesResponseType<PagedResult<SmsConversationSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public Task<IActionResult> SearchConversations([FromBody] SearchConversationsRequest body, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return RunConversationsSearchAsync(body, ct);
     }
 
     [HttpGet("messages/stats")]
@@ -152,20 +161,89 @@ public sealed class SmsReadController(IMessageBus bus, IUserPermissionsSource pe
     [HttpGet("optouts")]
     [RateLimit("sms.h.read")]
     [ProducesResponseType<PagedResult<SmsOptOutSummaryResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListOptOuts(
+    public Task<IActionResult> ListOptOuts(
         [FromQuery] SmsOptOutStatusFilter status = SmsOptOutStatusFilter.All,
         [FromQuery] string? term = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
         CancellationToken ct = default
+    ) => RunOptOutsSearchAsync(new SearchOptOutsRequest(status, term, page, size), ct);
+
+    [HttpPost("optouts/search")]
+    [RateLimit("sms.h.read")]
+    [ProducesResponseType<PagedResult<SmsOptOutSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public Task<IActionResult> SearchOptOuts([FromBody] SearchOptOutsRequest body, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return RunOptOutsSearchAsync(body, ct);
+    }
+
+    private async Task<IActionResult> RunMessagesSearchAsync(SearchMessagesRequest search, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<PagedResult<SmsMessageSummaryResponse>>(
+            new SearchSmsMessagesQuery(
+                tenantId,
+                search.CustomerId,
+                search.Status,
+                search.Term,
+                search.From,
+                search.To,
+                CrmSourceContext,
+                search.Page,
+                search.Size,
+                userId,
+                canViewAll
+            ),
+            ct
+        );
+        return Ok(result);
+    }
+
+    private async Task<IActionResult> RunConversationsSearchAsync(
+        SearchConversationsRequest search,
+        CancellationToken ct
     )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<PagedResult<SmsConversationSummaryResponse>>(
+            new SearchSmsConversationsQuery(
+                tenantId,
+                search.Term,
+                CrmSourceContext,
+                search.Page,
+                search.Size,
+                userId,
+                canViewAll
+            ),
+            ct
+        );
+        return Ok(result);
+    }
+
+    private async Task<IActionResult> RunOptOutsSearchAsync(SearchOptOutsRequest search, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<PagedResult<SmsOptOutSummaryResponse>>(
-            new SearchSmsOptOutsQuery(tenantId, status, term, page, size, userId, canViewAll),
+            new SearchSmsOptOutsQuery(
+                tenantId,
+                search.Status,
+                search.Term,
+                search.Page,
+                search.Size,
+                userId,
+                canViewAll
+            ),
             ct
         );
         return Ok(result);

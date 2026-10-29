@@ -1,4 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
@@ -62,21 +64,56 @@ public static class SubmitPortalFormRequestHandler
         var submit = await SubmitAsync(command, found.Value, check.Value, protector, consentRecords, ct);
         if (submit.IsFailure)
             return Result.Failure<FormSubmitOutcome>(submit.Error);
-        if (intakeLink.Value?.RegisterSubmission(command.NowUtc).IsFailure == true)
-            return Result.Failure<FormSubmitOutcome>(FormParticipantErrors.IntakeLimitReached);
-        var tally = await AnnounceAsync(
+        return await FinishSubmissionAsync(
             command,
             found.Value,
             submit.Value,
             check.Value,
+            intakeLink.Value,
             planner,
             customers,
             audit,
+            correlation,
+            unitOfWork,
             bus,
+            metrics,
+            ct
+        );
+    }
+
+    // Consume el cupo del enlace de captación, junta acciones y aviso en `outgoing`, guarda y recién publica.
+    private static async Task<Result<FormSubmitOutcome>> FinishSubmissionAsync(
+        SubmitPortalFormRequestCommand command,
+        FormRequest request,
+        FormSubmissionRevision revision,
+        FormSubmitCheck check,
+        FormIntakeLink? intakeLink,
+        FormActionPlanner planner,
+        IClientFormsCustomerReader customers,
+        IFormAuditLog audit,
+        ICorrelationContext correlation,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    )
+    {
+        if (intakeLink?.RegisterSubmission(command.NowUtc).IsFailure == true)
+            return Result.Failure<FormSubmitOutcome>(FormParticipantErrors.IntakeLimitReached);
+        var outgoing = new DeferredMessages();
+        var tally = await AnnounceAsync(
+            command,
+            request,
+            revision,
+            check,
+            planner,
+            customers,
+            audit,
+            outgoing,
             correlation,
             ct
         );
-        return await SaveAsync(command, found.Value, intakeLink.Value is not null, tally, unitOfWork, metrics, ct);
+        return await SaveAsync(command, request, intakeLink is not null, tally, outgoing, unitOfWork, bus, metrics, ct);
     }
 
     private static async Task<Result<FormRequest>> LoadAsync(
@@ -188,7 +225,7 @@ public static class SubmitPortalFormRequestHandler
         return bound.IsFailure ? Result.Failure<FormSubmissionRevision>(bound.Error) : submit;
     }
 
-    // Las acciones y el hecho del envío salen por el mismo bus: se confirman con la transición o nada.
+    // Las acciones y el hecho del envío se juntan en `outgoing` y salen después de guardar (T-8).
     private static async Task<FormActionRunTally> AnnounceAsync(
         SubmitPortalFormRequestCommand command,
         FormRequest request,
@@ -197,21 +234,23 @@ public static class SubmitPortalFormRequestHandler
         FormActionPlanner planner,
         IClientFormsCustomerReader customers,
         IFormAuditLog audit,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         RecordSubmitted(command, request, audit);
+        // P-18: una revisión nueva exige firma nueva; si la anterior tenía firma pendiente, se cancela.
+        CancelSupersededSignature(request, revision.RevisionNumber, outgoing, correlation);
         var tally = await planner.PlanAsync(
             request,
             FormActionTrigger.OnSubmit,
             check.Sanitized,
-            bus,
+            outgoing,
             command.NowUtc,
             ct
         );
-        await bus.PublishAsync(
+        outgoing.Add(
             await FormRequestIntegrationEventFactory.SubmittedAsync(
                 request,
                 revision,
@@ -223,18 +262,55 @@ public static class SubmitPortalFormRequestHandler
         return tally;
     }
 
+    // Cancela la firma pendiente de la revisión anterior (si la hubo) cuando llega una revisión nueva.
+    private static void CancelSupersededSignature(
+        FormRequest request,
+        int newRevisionNumber,
+        DeferredMessages outgoing,
+        ICorrelationContext correlation
+    )
+    {
+        var priorRevision = newRevisionNumber - 1;
+        if (priorRevision < 1 || !request.RevisionHasPendingSignature(priorRevision))
+            return;
+        if (request.SignatureRequestIdFor(priorRevision) is not { } signatureRequestId)
+            return;
+
+        request.MarkSignatureCanceled(priorRevision);
+        var sourceId = ClientFormSignatureReference.BuildSourceId(request.Id, priorRevision);
+        outgoing.Add(
+            new SignatureRequestCancellationRequestedIntegrationEvent
+            {
+                TenantId = request.TenantId,
+                CorrelationId = correlation.CorrelationId,
+                SignatureRequestId = signatureRequestId,
+                RequestedByUserId = request.ResponsibleUserId ?? request.RequestedByUserId,
+                Reason = "A newer revision superseded this signature.",
+                ExternalReference = new SignatureExternalReference
+                {
+                    SourceService = ClientFormSignatureReference.SourceService,
+                    SourceType = ClientFormSignatureReference.SourceType,
+                    SourceId = sourceId,
+                },
+            }
+        );
+    }
+
     // Solo se mide lo confirmado: el envío, la captación y los runs que planificó.
     private static async Task<Result<FormSubmitOutcome>> SaveAsync(
         SubmitPortalFormRequestCommand command,
         FormRequest request,
         bool fromIntakeLink,
         FormActionRunTally tally,
+        DeferredMessages outgoing,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         IClientFormsMetrics metrics,
         CancellationToken ct
     )
     {
         await unitOfWork.SaveChangesAsync(ct);
+        await outgoing.PublishAsync(bus);
         var resubmission = request.CurrentRevisionNumber > 1;
         metrics.RecordSubmitted(resubmission, resubmission ? null : command.NowUtc - request.RequestedAtUtc);
         if (fromIntakeLink)

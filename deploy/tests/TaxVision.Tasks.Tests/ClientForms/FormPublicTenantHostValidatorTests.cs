@@ -1,7 +1,10 @@
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.Infrastructure.ClientForms.Security;
 
 namespace TaxVision.Tasks.Tests.ClientForms;
@@ -72,12 +75,52 @@ public sealed class FormPublicTenantHostValidatorTests
         );
     }
 
-    private static FormPublicTenantHostValidator Create(HttpMessageHandler handler) =>
+    [Fact]
+    public async Task Development_host_matches_any_office_without_calling_auth_in_development()
+    {
+        var handler = new ScriptedHandler(_ => Json(HttpStatusCode.NotFound, "{}"));
+        var validator = Create(handler, Environments.Development, "localhost");
+
+        Assert.True(await validator.MatchesTenantAsync(TenantId, "LocalHost"));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Development_hosts_are_ignored_outside_development()
+    {
+        var handler = new ScriptedHandler(_ => Json(HttpStatusCode.NotFound, "{}"));
+        var validator = Create(handler, Environments.Production, "localhost");
+
+        Assert.False(await validator.MatchesTenantAsync(TenantId, "localhost"));
+        Assert.Equal(1, handler.Calls);
+    }
+
+    private static FormPublicTenantHostValidator Create(
+        HttpMessageHandler handler,
+        string environment = "Production",
+        params string[] developmentHosts
+    ) =>
         new(
             new HttpClient(handler) { BaseAddress = new Uri("http://auth.test/") },
             new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FormPublicTenantHostValidator>.Instance
+            NullLogger<FormPublicTenantHostValidator>.Instance,
+            Options.Create(
+                new ClientFormsOptions
+                {
+                    External = new ClientFormsExternalOptions { DevelopmentHosts = developmentHosts },
+                }
+            ),
+            new TestHostEnvironment(environment)
         );
+
+    private sealed class TestHostEnvironment(string environmentName) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = environmentName;
+        public string ApplicationName { get; set; } = "tests";
+        public string ContentRootPath { get; set; } = string.Empty;
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+            new Microsoft.Extensions.FileProviders.NullFileProvider();
+    }
 
     private static string Resolution(Guid tenantId) =>
         $"{{\"tenantId\":\"{tenantId}\",\"name\":\"Office\",\"status\":\"Active\"}}";

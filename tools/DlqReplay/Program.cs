@@ -10,7 +10,7 @@
 // Cada mensaje se saca de la DLQ solo después de que el broker confirma el reenvío.
 //
 // Uso (RABBITMQ_URI en el entorno, p. ej. amqp://usuario:clave@localhost:5672):
-//   dotnet run --project tools/DlqReplay -- list [--type <texto>] [--source <texto>]
+//   dotnet run --project tools/DlqReplay -- list [--type <texto>] [--source <texto>] [--verbose]
 //   dotnet run --project tools/DlqReplay -- replay --queue <cola-de-origen> (--id <id>[,<id>...] | --type <texto> [--source <texto>]) [--dry-run]
 using System.Text;
 using RabbitMQ.Client;
@@ -30,6 +30,7 @@ var type = Option("--type");
 var source = Option("--source");
 var queue = Option("--queue");
 var dryRun = args.Contains("--dry-run");
+var verbose = args.Contains("--verbose");
 
 if (mode == "replay" && (queue is null || (ids is null && type is null)))
     return Usage();
@@ -93,6 +94,14 @@ foreach (var message in received)
             Console.WriteLine(
                 $"{props.MessageId} | {messageType} | source={Header(props, "source")} | attempts={Header(props, "attempts")} | {Trim(Header(props, "exception-message"))}"
             );
+        // --verbose: todas las cabeceras (destino original, fecha del fallo...) para decidir a qué cola reenviar.
+        if (selected && verbose)
+            foreach (var key in props.Headers?.Keys ?? [])
+                Console.WriteLine(
+                    key == "exception-stack"
+                        ? $"    {key} = {StackHead(Header(props, key))}"
+                        : $"    {key} = {Trim(Header(props, key))}"
+                );
     }
     else if (selected && dryRun)
     {
@@ -148,6 +157,13 @@ static string? Header(IReadOnlyBasicProperties props, string key) =>
             _ => value.ToString(),
         }
         : null;
+
+// Primeras líneas propias de TaxVision de la traza: dicen qué handler (y qué servicio) falló.
+static string StackHead(string? stack) =>
+    string.Join(
+        " <- ",
+        (stack ?? "").Split('\n').Select(line => line.Trim()).Where(line => line.Contains("TaxVision")).Take(3)
+    );
 
 static string Trim(string? text) =>
     text is null ? ""

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -30,15 +31,34 @@ public sealed record AssignExternalFormRequestCommand(
     string? MessageToClient,
     DateTime? DueAtUtc,
     int? TaxYear,
-    DateTime NowUtc
+    DateTime NowUtc,
+    bool CanViewAll = false
+);
+
+// ExistingCustomerId solo viaja si quien envía puede ver a ese cliente (ABAC).
+public sealed record AssignExternalFormRequestOutcome(
+    Result<FormRequestResponse> Result,
+    Guid? ExistingCustomerId = null
+)
+{
+    public static implicit operator AssignExternalFormRequestOutcome(Result<FormRequestResponse> result) => new(result);
+}
+
+// Cuerpo del 409: mismo code/message que el resto de errores; customerId se omite si no es visible.
+public sealed record ExternalCustomerConflictResponse(
+    string Code,
+    string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? CustomerId
 );
 
 public static class AssignExternalFormRequestHandler
 {
     private static readonly TimeSpan GrantLifetime = TimeSpan.FromDays(14);
 
-    public static async Task<Result<FormRequestResponse>> Handle(
+    public static async Task<AssignExternalFormRequestOutcome> Handle(
         AssignExternalFormRequestCommand command,
+        IClientFormsCustomerEmailDirectory customerEmails,
+        IFormRequestVisibilityFilter visibility,
         IFormParticipantRepository participants,
         IFormAccessGrantRepository grants,
         IClientFormsPublicCapabilityEvaluator capabilities,
@@ -60,6 +80,13 @@ public static class AssignExternalFormRequestHandler
         var inputs = await LoadAndValidateAsync(command, capabilities, templates, versions, notices, authorizer, ct);
         if (inputs.IsFailure)
             return Failure(inputs.Error);
+        var existingCustomer = await customerEmails.FindNonArchivedCustomerIdAsync(
+            command.TenantId,
+            inputs.Value.Email.Value,
+            ct
+        );
+        if (existingCustomer is { } customerId)
+            return await CustomerConflictAsync(command, customerId, visibility, ct);
         var assignment = await PrepareAssignmentAsync(
             command,
             inputs.Value,
@@ -76,6 +103,24 @@ public static class AssignExternalFormRequestHandler
         await PublishAsync(command, assignment.Value, payloadCodec, bus, correlation);
         metrics.RecordRequestAssigned();
         return Result.Success(FormRequestResponse.From(assignment.Value.Request));
+    }
+
+    // Un cliente existente se atiende como cliente, sea cual sea la visibilidad de quien envía.
+    private static async Task<AssignExternalFormRequestOutcome> CustomerConflictAsync(
+        AssignExternalFormRequestCommand command,
+        Guid customerId,
+        IFormRequestVisibilityFilter visibility,
+        CancellationToken ct
+    )
+    {
+        var visible = await visibility.CanViewCustomerAsync(
+            command.TenantId,
+            command.ByUserId,
+            command.CanViewAll,
+            customerId,
+            ct
+        );
+        return new(Failure(FormParticipantErrors.EmailBelongsToCustomer), visible ? customerId : null);
     }
 
     private sealed record PreparedAssignment(

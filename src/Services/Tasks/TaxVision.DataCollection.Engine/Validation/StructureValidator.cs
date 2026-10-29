@@ -59,7 +59,7 @@ internal sealed partial class StructureValidator
         if (!publish)
             return;
         if (definition.Pages.Count is < 1)
-            Add(issues, "limits.too_many_pages", "/pages", null, "At least one page is required.");
+            Add(issues, "page.required", "/pages", null, "At least one page is required.");
         if (definition.Pages.Count > _limits.MaxPages)
             Add(issues, "limits.too_many_pages", "/pages", null, "Definition has too many pages.");
         if (definition.Presentation == FormPresentation.SinglePage && definition.Pages.Count != 1)
@@ -108,14 +108,9 @@ internal sealed partial class StructureValidator
             if (publish)
                 conditionValidator.Validate(page.VisibleWhen, $"{pagePath}/visibleWhen", order, null, index, issues);
 
+            // Vacío no es "demasiados": código propio, como page.required.
             if (publish && page.Sections.Count is < 1)
-                Add(
-                    issues,
-                    "limits.too_many_sections",
-                    $"{pagePath}/sections",
-                    null,
-                    "At least one section is required."
-                );
+                Add(issues, "section.required", $"{pagePath}/sections", null, "At least one section is required.");
             if (page.Sections.Count > _limits.MaxSectionsPerPage)
                 Add(issues, "limits.too_many_sections", $"{pagePath}/sections", null, "Page has too many sections.");
 
@@ -201,13 +196,7 @@ internal sealed partial class StructureValidator
         }
 
         if (publish && section.Components.Count is < 1)
-            Add(
-                issues,
-                "limits.too_many_components",
-                $"{path}/components",
-                null,
-                "At least one component is required."
-            );
+            Add(issues, "component.required", $"{path}/components", null, "At least one component is required.");
         if (section.Components.Count > _limits.MaxComponentsPerSection)
             Add(issues, "limits.too_many_components", $"{path}/components", null, "Section has too many components.");
     }
@@ -245,6 +234,7 @@ internal sealed partial class StructureValidator
             return;
 
         _properties.Validate(component, componentType, path, issues);
+        StyleValidator.ValidateAgainstSection(component.Style, section.Style, $"{path}/style", issues);
         conditionValidator.Validate(
             component.VisibleWhen,
             $"{path}/visibleWhen",
@@ -328,6 +318,14 @@ internal sealed partial class StructureValidator
                     "This action is implicit and cannot be configured."
                 );
             ValidateActionConfig(action, path, issues);
+            if (signatureSteps == 0 && WaitsForSignature(action))
+                Add(
+                    issues,
+                    "signature.step_missing",
+                    $"{path}/config/waitFor",
+                    null,
+                    "Waiting for the signature requires a signatureStep component."
+                );
             conditionValidator.Validate(action.Condition, $"{path}/condition", int.MaxValue, null, index, issues);
             hasSignatureAction |= action.Type == FormActionType.RequestSignature;
         }
@@ -350,6 +348,13 @@ internal sealed partial class StructureValidator
                 "RequestSignature requires a signatureStep component."
             );
     }
+
+    private static bool WaitsForSignature(FormAction action) =>
+        action.Type == FormActionType.CreateCustomer
+        && action.Config.ValueKind == JsonValueKind.Object
+        && action.Config.TryGetProperty("waitFor", out var waitFor)
+        && waitFor.ValueKind == JsonValueKind.String
+        && waitFor.GetString() == "signatureCompleted";
 
     private static void ValidateActionConfig(FormAction action, string path, ICollection<ValidationIssue> issues)
     {

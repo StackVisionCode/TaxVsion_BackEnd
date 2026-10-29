@@ -16,6 +16,17 @@ public interface ISignatureRequestRepository
     Task<SignatureRequest?> GetByIdAsync(Guid tenantId, Guid requestId, CancellationToken ct = default);
 
     /// <summary>
+    /// P-18 — correlación de negocio: la solicitud creada desde un comando externo, por
+    /// (tenant, servicio de origen, id de origen). Idempotencia del consumer de creación.
+    /// </summary>
+    Task<SignatureRequest?> GetByExternalReferenceAsync(
+        Guid tenantId,
+        string sourceService,
+        string sourceId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Devuelve la solicitud (con firmantes) cuyo <c>SealedFileId</c> coincide con
     /// <paramref name="sealedFileId"/>, o <c>null</c>. Se usa al recibir <c>FileAvailable</c> para
     /// saber que el archivo disponible es el documento sellado y emitir el link de descarga.

@@ -36,4 +36,11 @@ public sealed class FormSensitiveAnswer : BaseEntity
         };
 
     internal void Supersede(DateTime nowUtc) => SupersededAtUtc ??= nowUtc;
+
+    // Re-cifra el identificador con la clave actual (X-9). El Last4 no cambia: el texto es el mismo.
+    public void ReEncrypt(ProtectedTaxIdentifier reEncrypted)
+    {
+        ArgumentNullException.ThrowIfNull(reEncrypted);
+        Protected = reEncrypted;
+    }
 }

@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
@@ -30,6 +31,7 @@ public static class CustomerArchivedFormRequestsConsumer
         )
         {
             var openRequests = await requests.ListOpenByCustomerAsync(evt.TenantId, evt.CustomerId, ct);
+            var outgoing = new DeferredMessages();
             foreach (var request in openRequests)
             {
                 if (request.CancelBecauseCustomerArchived(evt.CustomerId, evt.OccurredOn).IsFailure)
@@ -43,11 +45,13 @@ public static class CustomerArchivedFormRequestsConsumer
                     null,
                     "{\"reason\":\"customer_archived\"}"
                 );
-                await bus.PublishAsync(
+                outgoing.Add(
                     FormRequestIntegrationEventFactory.Cancelled(request, null, false, correlation.CorrelationId)
                 );
             }
+            // Guardar antes de publicar (T-8).
             await unitOfWork.SaveChangesAsync(ct);
+            await outgoing.PublishAsync(bus);
         }
     }
 }

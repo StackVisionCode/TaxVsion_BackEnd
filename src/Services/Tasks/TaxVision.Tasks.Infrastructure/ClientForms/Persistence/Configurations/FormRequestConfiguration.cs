@@ -1,5 +1,8 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
 
@@ -7,6 +10,8 @@ namespace TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Configurations;
 
 public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequest>
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public void Configure(EntityTypeBuilder<FormRequest> builder)
     {
         builder.ToTable(
@@ -41,6 +46,48 @@ public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequ
         builder.Property(request => request.CancelReason).HasConversion<int?>();
         builder.Property(request => request.CancelNote).HasMaxLength(2000);
         builder.Property(request => request.ProfileUpdateStatus).HasConversion<int>().IsRequired();
+        builder.Property(request => request.ProfileUpdateCommandId);
+        builder.Property(request => request.ProfileUpdateRequestedAtUtc);
+        builder.Property(request => request.ProfileUpdateResolvedAtUtc);
+
+        var stringListConverter = new ValueConverter<IReadOnlyList<string>, string>(
+            value => JsonSerializer.Serialize(value, JsonOptions),
+            value =>
+                string.IsNullOrWhiteSpace(value)
+                    ? new List<string>()
+                    : JsonSerializer.Deserialize<List<string>>(value, JsonOptions) ?? new List<string>()
+        );
+        var stringListComparer = new ValueComparer<IReadOnlyList<string>>(
+            (left, right) => left!.SequenceEqual(right!),
+            value =>
+                value.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode(StringComparison.Ordinal))),
+            value => value.ToList()
+        );
+        builder
+            .Property(request => request.PrefilledComponentIds)
+            .HasConversion(stringListConverter, stringListComparer)
+            .HasColumnName("PrefilledComponentIds")
+            .Metadata.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        var outcomeListConverter = new ValueConverter<IReadOnlyList<FormProfileUpdateOutcome>, string>(
+            value => JsonSerializer.Serialize(value, JsonOptions),
+            value =>
+                string.IsNullOrWhiteSpace(value)
+                    ? new List<FormProfileUpdateOutcome>()
+                    : JsonSerializer.Deserialize<List<FormProfileUpdateOutcome>>(value, JsonOptions)
+                        ?? new List<FormProfileUpdateOutcome>()
+        );
+        var outcomeListComparer = new ValueComparer<IReadOnlyList<FormProfileUpdateOutcome>>(
+            (left, right) => left!.SequenceEqual(right!),
+            value => value.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+            value => value.ToList()
+        );
+        builder
+            .Property(request => request.ProfileUpdateOutcomes)
+            .HasConversion(outcomeListConverter, outcomeListComparer)
+            .HasColumnName("ProfileUpdateOutcomes")
+            .Metadata.SetPropertyAccessMode(PropertyAccessMode.Field);
+
         builder.Property(request => request.RowVersion).IsRowVersion();
         builder.Ignore(request => request.Participant);
         builder.Ignore(request => request.CustomerLink);
@@ -101,6 +148,10 @@ public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequ
         builder
             .HasIndex(request => new { request.TenantId, request.FormTemplateId })
             .HasDatabaseName("IX_FormRequests_TenantId_FormTemplateId");
+        // Insights: cohortes por fecha de envío dentro del tenant.
+        builder
+            .HasIndex(request => new { request.TenantId, request.RequestedAtUtc })
+            .HasDatabaseName("IX_FormRequests_TenantId_RequestedAtUtc");
         builder
             .HasIndex(request => new
             {

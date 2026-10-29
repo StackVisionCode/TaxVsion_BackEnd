@@ -37,4 +37,7 @@ public interface IClientFormsMetrics
     void RecordConsent(FormConsentOutcome outcome);
 
     void RecordTemplatePublished(TimeSpan duration);
+
+    /// <summary>X-5 — conteos de retención por regla (p. ej. "R-2") y resultado (dry_run | purged | skipped).</summary>
+    void RecordRetentionPurged(string rule, string result, long count);
 }

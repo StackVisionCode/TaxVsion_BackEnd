@@ -27,6 +27,8 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
             .FormRequests.IgnoreQueryFilters()
             .AsSplitQuery()
             .Include(item => item.Submission)
+                .ThenInclude(submission => submission!.Revisions)
+            .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.SensitiveAnswers)
@@ -132,6 +134,43 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
             .Select(item => (Guid?)item.Id)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<IReadOnlyList<FormRequest>> ListOpenByParticipantAsync(
+        Guid tenantId,
+        Guid participantId,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .FormRequests.IgnoreQueryFilters()
+            .AsSplitQuery()
+            .Include(item => item.Submission)
+                .ThenInclude(submission => submission!.Attachments)
+            .Include(item => item.ActionRuns)
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.ParticipantId == participantId
+                && item.Status != FormRequestStatus.Completed
+                && item.Status != FormRequestStatus.Cancelled
+            )
+            .ToListAsync(ct);
+
+    public Task<FormRequest?> GetLatestIntakeRequestAsync(
+        Guid tenantId,
+        Guid intakeLinkId,
+        IReadOnlyCollection<Guid> participantIds,
+        CancellationToken ct = default
+    ) =>
+        context
+            .FormRequests.IgnoreQueryFilters()
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.IntakeLinkId == intakeLinkId
+                && item.ParticipantId != null
+                && participantIds.Contains(item.ParticipantId.Value)
+                && item.Status != FormRequestStatus.Cancelled
+            )
+            .OrderByDescending(item => item.RequestedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
         context
             .FormRequests.IgnoreQueryFilters()
@@ -189,6 +228,45 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
                 item.Submission != null && item.Submission.Attachments.Any(attachment => attachment.FileId == fileId)
             )
             .ToListAsync(ct);
+
+    // Filtro grueso: abiertas, con fecha límite dentro de la ventana y bajo el tope. El cronograma fino
+    // (etapas y último envío) lo decide ReminderSchedule en memoria. Rastreadas, para mutar y guardar.
+    public async Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
+        DateTime dueThresholdUtc,
+        int maxReminders,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .FormRequests.IgnoreQueryFilters()
+            .Where(item =>
+                (item.Status == FormRequestStatus.Pending || item.Status == FormRequestStatus.Returned)
+                && item.DueAtUtc != null
+                && item.DueAtUtc <= dueThresholdUtc
+                && item.ReminderCount < maxReminders
+            )
+            .OrderBy(item => item.DueAtUtc)
+            .ThenBy(item => item.Id)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
+        context.FormRequests.IgnoreQueryFilters().FirstOrDefaultAsync(item => item.Id == requestId, ct);
+
+    // Cross-tenant: el evento de Documents (Completed/Failed) llega por el fanout sin tenant ambiental.
+    // Trae las revisiones para que LinkPdf/MarkPdfFailed resuelvan la del PdfGenerationId. El llamador
+    // valida el tenant contra la request encontrada.
+    public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
+        context
+            .FormRequests.IgnoreQueryFilters()
+            .Include(item => item.Submission)
+                .ThenInclude(submission => submission!.Revisions)
+            .FirstOrDefaultAsync(
+                item =>
+                    item.Submission != null
+                    && item.Submission.Revisions.Any(revision => revision.PdfGenerationId == generationId),
+                ct
+            );
 }
 
 internal sealed class FormFileScanVerdictRepository(TasksDbContext context) : IFormFileScanVerdictRepository
@@ -213,27 +291,8 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
         var rows = context
             .FormRequests.IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(item => item.TenantId == query.TenantId);
-        if (!query.CanViewAll)
-        {
-            // Responsable y solicitante solo ven por sí mismos las externas; las de cliente piden asignación.
-            rows = rows.Where(item =>
-                (
-                    item.ParticipantKind == FormParticipantKind.External
-                    && (item.ResponsibleUserId == query.ActorUserId || item.RequestedByUserId == query.ActorUserId)
-                )
-                || (
-                    item.CustomerId.HasValue
-                    && context
-                        .CustomerAssignmentProjections.IgnoreQueryFilters()
-                        .Any(assignment =>
-                            assignment.TenantId == query.TenantId
-                            && assignment.CustomerId == item.CustomerId.Value
-                            && assignment.UserId == query.ActorUserId
-                        )
-                )
-            );
-        }
+            .Where(item => item.TenantId == query.TenantId)
+            .VisibleInInbox(context, query.TenantId, query.ActorUserId, query.CanViewAll);
         if (query.CustomerId.HasValue)
             rows = rows.Where(item => item.CustomerId == query.CustomerId.Value);
         rows = ApplyInboxView(rows, query.View);
@@ -294,6 +353,8 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
 
         var total = await rows.CountAsync(ct);
         var pageRows = await rows.Include(item => item.ActionRuns)
+            .Include(item => item.Submission)
+                .ThenInclude(submission => submission!.Revisions)
             .OrderByDescending(item => item.LastActivityAtUtc)
             .ThenBy(item => item.Id)
             .Skip((query.Page - 1) * query.PageSize)
@@ -421,7 +482,12 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
             request.RequestedByUserId,
             request.RequestedAtUtc,
             runs,
-            request.Origin
+            request.Origin,
+            request
+                .Submission?.Revisions.OrderByDescending(revision => revision.RevisionNumber)
+                .FirstOrDefault()
+                ?.SignatureStatus
+                ?? FormRevisionSignatureStatus.None
         );
     }
 
@@ -562,6 +628,27 @@ internal sealed class ClientFormsCustomerReader(TasksDbContext context) : IClien
                 item.Status == CustomerDirectoryStatus.Active,
                 item.DisplayName ?? "Customer"
             ))
+            .FirstOrDefaultAsync(ct);
+}
+
+internal sealed class ClientFormsCustomerEmailDirectory(TasksDbContext context) : IClientFormsCustomerEmailDirectory
+{
+    // Activo antes que inactivo; un archivado no cuenta.
+    public Task<Guid?> FindNonArchivedCustomerIdAsync(
+        Guid tenantId,
+        string normalizedEmail,
+        CancellationToken ct = default
+    ) =>
+        context
+            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId
+                && item.PrimaryEmailNormalized == normalizedEmail
+                && item.Status != CustomerDirectoryStatus.Archived
+            )
+            .OrderBy(item => item.Status)
+            .Select(item => (Guid?)item.CustomerId)
             .FirstOrDefaultAsync(ct);
 }
 

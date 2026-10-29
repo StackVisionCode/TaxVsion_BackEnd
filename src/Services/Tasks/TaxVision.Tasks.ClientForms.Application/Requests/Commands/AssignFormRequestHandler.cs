@@ -1,6 +1,9 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.DataCollection.Engine;
+using TaxVision.DataCollection.Engine.Answers;
+using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
@@ -37,6 +40,8 @@ public static class AssignFormRequestHandler
         IFormTemplateRepository templates,
         IFormTemplateVersionRepository versions,
         IFormRequestRepository requests,
+        IFormEngine engine,
+        IAnswersProtector answersProtector,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -45,37 +50,79 @@ public static class AssignFormRequestHandler
         CancellationToken ct
     )
     {
-        var input = ValidateInput(command);
-        var assignable = input.IsFailure
-            ? input
-            : await EnsureCustomerAssignableAsync(command, customers, visibility, ct);
-        if (assignable.IsFailure)
-            return Result.Failure<FormRequestResponse>(assignable.Error);
+        var text = StaffTextGuard.Validate(command.Title, command.MessageToClient);
+        if (text.IsFailure)
+            return Result.Failure<FormRequestResponse>(text.Error);
+        var customer = await EnsureCustomerAssignableAsync(command, customers, visibility, ct);
+        if (customer.IsFailure)
+            return Result.Failure<FormRequestResponse>(customer.Error);
         var version = await LoadPublishedVersionAsync(command, templates, versions, ct);
         if (version.IsFailure)
             return Result.Failure<FormRequestResponse>(version.Error);
         var free = await EnsureNoConflictsAsync(command, requests, tasks, ct);
         if (free.IsFailure)
             return Result.Failure<FormRequestResponse>(free.Error);
-        var created = Create(command, version.Value);
+
+        return await CreateAndPersistAsync(
+            command,
+            version.Value,
+            customer.Value,
+            versions,
+            requests,
+            engine,
+            answersProtector,
+            audit,
+            unitOfWork,
+            bus,
+            correlation,
+            metrics,
+            ct
+        );
+    }
+
+    private static async Task<Result<FormRequestResponse>> CreateAndPersistAsync(
+        AssignFormRequestCommand command,
+        FormTemplateVersion version,
+        ClientFormsCustomerRecord customer,
+        IFormTemplateVersionRepository versions,
+        IFormRequestRepository requests,
+        IFormEngine engine,
+        IAnswersProtector answersProtector,
+        IFormAuditLog audit,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        IClientFormsMetrics metrics,
+        CancellationToken ct
+    )
+    {
+        var prefill = await BuildPrefillAsync(
+            command,
+            version,
+            customer,
+            versions,
+            requests,
+            engine,
+            answersProtector,
+            ct
+        );
+        if (prefill.IsFailure)
+            return Result.Failure<FormRequestResponse>(prefill.Error);
+        var created = Create(command, version, prefill.Value);
         if (created.IsFailure)
             return Result.Failure<FormRequestResponse>(created.Error);
 
         requests.Add(created.Value);
         audit.Record(command.TenantId, command.TemplateId, created.Value.Id, "request.assigned", command.ByUserId);
-        await bus.PublishAsync(FormRequestIntegrationEventFactory.Assigned(created.Value, correlation.CorrelationId));
+        // Guardar antes de publicar (T-8): un choque al guardar (p. ej. el índice de request abierta) no deja
+        // salir el aviso de una asignación que no existe.
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(FormRequestIntegrationEventFactory.Assigned(created.Value, correlation.CorrelationId));
         metrics.RecordRequestAssigned();
         return Result.Success(FormRequestResponse.From(created.Value));
     }
 
-    // El prellenado todavía no existe: un id de origen se rechaza en vez de guardarse sin validar.
-    private static Result ValidateInput(AssignFormRequestCommand command) =>
-        command.PrefillFromRequestId.HasValue
-            ? Result.Failure(FormRequestErrors.PrefillNotAvailable)
-            : StaffTextGuard.Validate(command.Title, command.MessageToClient);
-
-    private static async Task<Result> EnsureCustomerAssignableAsync(
+    private static async Task<Result<ClientFormsCustomerRecord>> EnsureCustomerAssignableAsync(
         AssignFormRequestCommand command,
         IClientFormsCustomerReader customers,
         IFormRequestVisibilityFilter visibility,
@@ -84,9 +131,9 @@ public static class AssignFormRequestHandler
     {
         var customer = await customers.GetAsync(command.TenantId, command.CustomerId, ct);
         if (customer is null)
-            return Result.Failure(FormRequestErrors.NotFound);
+            return Result.Failure<ClientFormsCustomerRecord>(FormRequestErrors.NotFound);
         if (!customer.IsActive)
-            return Result.Failure(FormRequestErrors.CustomerUnavailable);
+            return Result.Failure<ClientFormsCustomerRecord>(FormRequestErrors.CustomerUnavailable);
         var visible = await visibility.CanViewCustomerAsync(
             command.TenantId,
             command.ByUserId,
@@ -94,7 +141,9 @@ public static class AssignFormRequestHandler
             command.CustomerId,
             ct
         );
-        return visible ? Result.Success() : Result.Failure(FormRequestErrors.NotFound);
+        return visible
+            ? Result.Success(customer)
+            : Result.Failure<ClientFormsCustomerRecord>(FormRequestErrors.NotFound);
     }
 
     private static async Task<Result<FormTemplateVersion>> LoadPublishedVersionAsync(
@@ -134,7 +183,83 @@ public static class AssignFormRequestHandler
         return Result.Success();
     }
 
-    private static Result<FormRequest> Create(AssignFormRequestCommand command, FormTemplateVersion version) =>
+    // P-13.1 — Prellenado "from last year": copia desde la última request Completed del mismo template y
+    // cliente; taxId y file nunca se copian. Sin toggle no hay prellenado.
+    private static async Task<Result<PrefillResult>> BuildPrefillAsync(
+        AssignFormRequestCommand command,
+        FormTemplateVersion targetVersion,
+        ClientFormsCustomerRecord customer,
+        IFormTemplateVersionRepository versions,
+        IFormRequestRepository requests,
+        IFormEngine engine,
+        IAnswersProtector answersProtector,
+        CancellationToken ct
+    )
+    {
+        if (!command.PrefillFromRequestId.HasValue)
+            return Result.Success(PrefillResult.None);
+
+        var source = await requests.GetForReviewAsync(command.TenantId, command.PrefillFromRequestId.Value, ct);
+        if (
+            source.IsFailure
+            || source.Value.EffectiveCustomerId != command.CustomerId
+            || source.Value.FormTemplateId != command.TemplateId
+            || source.Value.Status != FormRequestStatus.Completed
+            || source.Value.LatestRevision is null
+        )
+            return Result.Failure<PrefillResult>(FormRequestErrors.PrefillNotAvailable);
+
+        return await BuildFromSourceAsync(
+            command,
+            targetVersion,
+            customer,
+            source.Value,
+            versions,
+            engine,
+            answersProtector,
+            ct
+        );
+    }
+
+    private static async Task<Result<PrefillResult>> BuildFromSourceAsync(
+        AssignFormRequestCommand command,
+        FormTemplateVersion targetVersion,
+        ClientFormsCustomerRecord customer,
+        FormRequest source,
+        IFormTemplateVersionRepository versions,
+        IFormEngine engine,
+        IAnswersProtector answersProtector,
+        CancellationToken ct
+    )
+    {
+        var sourceVersion = await versions.GetByIdAsync(command.TenantId, source.FormTemplateVersionId, ct);
+        if (sourceVersion.IsFailure)
+            return Result.Failure<PrefillResult>(FormRequestErrors.PrefillNotAvailable);
+
+        var sourceDefinition = engine.ParseDefinition(sourceVersion.Value.Definition.Json);
+        var targetDefinition = engine.ParseDefinition(targetVersion.Definition.Json);
+        var sourceAnswers = engine.ParseAnswers(answersProtector.Unprotect(source.LatestRevision!.Answers));
+        if (sourceDefinition.IsFailure || targetDefinition.IsFailure || sourceAnswers.IsFailure)
+            return Result.Failure<PrefillResult>(FormRequestErrors.PrefillNotAvailable);
+
+        var (draft, prefilledComponentIds) = FormPrefillBuilder.Build(
+            sourceDefinition.Value,
+            sourceAnswers.Value,
+            targetDefinition.Value,
+            customer.DisplayName
+        );
+        if (prefilledComponentIds.Count == 0)
+            return Result.Failure<PrefillResult>(FormRequestErrors.PrefillNotAvailable);
+
+        var protectedDraft = answersProtector.Protect(FormRequestApplicationSupport.Serialize(draft));
+        return Result.Success(new PrefillResult(source.Id, protectedDraft, prefilledComponentIds));
+    }
+
+    private static Result<FormRequest> Create(
+        AssignFormRequestCommand command,
+        FormTemplateVersion version,
+        PrefillResult prefill
+    ) =>
         FormRequest.Create(
             command.TenantId,
             FormParticipantRef.Customer(command.CustomerId),
@@ -144,12 +269,22 @@ public static class AssignFormRequestHandler
             command.TaxYear,
             command.TaskId,
             command.DueAtUtc,
-            null,
-            null,
+            prefill.SourceRequestId,
+            prefill.Draft,
             FormRequestOrigin.Directed,
             null,
             null,
             command.ByUserId,
-            command.NowUtc
+            command.NowUtc,
+            prefill.PrefilledComponentIds
         );
+
+    private sealed record PrefillResult(
+        Guid? SourceRequestId,
+        Domain.Requests.ProtectedAnswers? Draft,
+        IReadOnlyList<string> PrefilledComponentIds
+    )
+    {
+        public static readonly PrefillResult None = new(null, null, []);
+    }
 }

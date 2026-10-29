@@ -27,6 +27,9 @@ public sealed class FormModuleSettings : TenantEntity
     public bool SignatureStepEnabled { get; private set; }
     public bool PushNotificationsEnabled { get; private set; }
 
+    // R-3 (X-5): override de retención de la oficina, solo hacia arriba desde el mínimo de plataforma.
+    public int? RetentionYearsOverride { get; private set; }
+
     public FormModuleCapabilities Capabilities =>
         new(
             ExternalParticipantsEnabled,
@@ -86,6 +89,19 @@ public sealed class FormModuleSettings : TenantEntity
         EnabledByUserId = byUserId;
         return Result.Success();
     }
+
+    // R-3 (X-5): solo hacia arriba. null vuelve al mínimo de plataforma; por debajo se rechaza.
+    public Result SetRetentionYearsOverride(int? years, int platformMinimumYears, Guid byUserId)
+    {
+        if (byUserId == Guid.Empty)
+            return Result.Failure(FormModuleSettingsErrors.InvalidSetting);
+        if (years is { } value && value < platformMinimumYears)
+            return Result.Failure(FormModuleSettingsErrors.InvalidSetting);
+
+        RetentionYearsOverride = years;
+        EnabledByUserId = byUserId;
+        return Result.Success();
+    }
 }
 
 /// <summary>Sub-flags efectivos de una oficina, con o sin fila de settings.</summary>
@@ -97,12 +113,13 @@ public sealed record FormModuleCapabilities(
     bool PushNotificationsEnabled
 )
 {
-    // Intake: O-16, sin Turnstile no se enciende. Firma: la real es P-18. Push encendido (decisión del dueño 2026-10-26).
+    // Todo encendido por defecto (decisión del dueño: sin toggles que limiten al preparador). Intake
+    // además exige Turnstile configurado: eso lo comprueba quien lo evalúa, no este flag.
     public static readonly FormModuleCapabilities Defaults = new(
         ExternalParticipantsEnabled: true,
-        IntakeLinksEnabled: false,
+        IntakeLinksEnabled: true,
         AutoCustomerCreationEnabled: true,
-        SignatureStepEnabled: false,
+        SignatureStepEnabled: true,
         PushNotificationsEnabled: true
     );
 

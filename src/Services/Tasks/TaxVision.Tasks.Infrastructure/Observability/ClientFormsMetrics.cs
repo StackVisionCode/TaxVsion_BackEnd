@@ -31,11 +31,13 @@ public sealed class ClientFormsMetrics : IClientFormsMetrics, IDisposable
     private readonly Counter<long> _actionRuns;
     private readonly Counter<long> _fileReassignments;
     private readonly Counter<long> _consents;
+    private readonly Counter<long> _retentionPurged;
     private readonly Histogram<double> _timeToFirstSubmit;
     private readonly Histogram<double> _reviewTurnaround;
     private readonly Histogram<double> _publishDuration;
     private readonly Histogram<double> _draftSaveDuration;
     private volatile ClientFormsBacklog? _backlog;
+    private volatile IReadOnlyDictionary<short, long>? _ciphertextVersions;
 
     /// <param name="meterName">Solo los tests lo cambian, para no escuchar las mediciones de otra suite.</param>
     public ClientFormsMetrics(string? meterName = null)
@@ -54,11 +56,13 @@ public sealed class ClientFormsMetrics : IClientFormsMetrics, IDisposable
         _actionRuns = Counter("client_forms.action_runs_total", "Form action runs by type and status");
         _fileReassignments = Counter("client_forms.file_reassignments_total", "Participant files moved to customer");
         _consents = Counter("client_forms.consents_recorded_total", "Consent evidence recorded");
+        _retentionPurged = Counter("client_forms.retention_purged_total", "Retention purges by rule and result");
         _timeToFirstSubmit = Histogram("client_forms.time_to_first_submit_hours", "h", "Assignment to first submit");
         _reviewTurnaround = Histogram("client_forms.review_turnaround_hours", "h", "Submission to review");
         _publishDuration = Histogram("client_forms.publish_duration_ms", "ms", "Template publish duration");
         _draftSaveDuration = Histogram("client_forms.draft_save_duration_ms", "ms", "Draft save duration");
         CreateBacklogGauges();
+        CreateCiphertextGauge();
     }
 
     public void RecordRequestAssigned() => _requestsAssigned.Add(1);
@@ -114,7 +118,19 @@ public sealed class ClientFormsMetrics : IClientFormsMetrics, IDisposable
 
     public void RecordTemplatePublished(TimeSpan duration) => _publishDuration.Record(duration.TotalMilliseconds);
 
+    // Sin tag de tenant, por cardinalidad. El conteo se suma al contador por regla/resultado.
+    public void RecordRetentionPurged(string rule, string result, long count)
+    {
+        if (count > 0)
+            _retentionPurged.Add(count, Tag("rule", rule), Tag("result", result));
+    }
+
     public void UpdateBacklog(ClientFormsBacklog backlog) => _backlog = backlog;
+
+    // Censo de ciphertext por versión de clave (X-9). Lo refresca un job periódico; lo lee el gauge y el health check.
+    public void UpdateCiphertextVersions(IReadOnlyDictionary<short, long> versions) => _ciphertextVersions = versions;
+
+    public IReadOnlyDictionary<short, long>? CiphertextVersions => _ciphertextVersions;
 
     public void Dispose() => _meter.Dispose();
 
@@ -144,6 +160,17 @@ public sealed class ClientFormsMetrics : IClientFormsMetrics, IDisposable
             description: "Action runs still requested after 10 minutes"
         );
     }
+
+    // Una medición por versión viva. Sin tag de tenant, por cardinalidad. Antes del primer censo no emite nada.
+    private void CreateCiphertextGauge() =>
+        _meter.CreateObservableGauge(
+            "client_forms.ciphertext_rows",
+            () =>
+                _ciphertextVersions is { } versions
+                    ? versions.Select(entry => new Measurement<long>(entry.Value, Tag("key_version", entry.Key)))
+                    : [],
+            description: "Encrypted rows by key version"
+        );
 
     private IEnumerable<Measurement<long>> Observe(Func<ClientFormsBacklog, Measurement<long>[]> read) =>
         _backlog is { } backlog ? read(backlog) : [];

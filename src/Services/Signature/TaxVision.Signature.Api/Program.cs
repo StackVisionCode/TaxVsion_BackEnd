@@ -6,6 +6,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -245,6 +246,10 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // P-18 — comandos punto a punto de Tasks (crear/cancelar firma desde un formulario). Cola nombrada,
+    // no fan-out: un solo consumidor. Inbox durable para idempotencia y reintentos.
+    options.ListenToRabbitQueue("signature-client-form-commands").UseDurableInbox();
+
     // Publica los eventos propios del microservicio al exchange fan-out del ecosistema.
     options.PublishMessage<SignatureRequestCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestReadyForSendingIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -282,6 +287,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // P-18 — resultados de la creación de firma desde un formulario (hechos al fan-out, los consume Tasks).
+    options.PublishMessage<SignatureRequestFromFormCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureRequestFromFormFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // El sellado puede adelantarse al scan de ClamAV de las imágenes de firma (el firmante las sube
     // segundos antes de completar). SignatureImageNotReadyException es transitoria: se reintenta con

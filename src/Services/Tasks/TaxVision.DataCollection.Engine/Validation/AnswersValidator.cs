@@ -9,7 +9,11 @@ using TaxVision.DataCollection.Engine.Visibility;
 
 namespace TaxVision.DataCollection.Engine.Validation;
 
-internal sealed partial class AnswersValidator(DataCollectionLimits limits, ComponentRegistry registry)
+internal sealed partial class AnswersValidator(
+    DataCollectionLimits limits,
+    ComponentRegistry registry,
+    TimeProvider timeProvider
+)
 {
     internal AnswersValidationReport Validate(
         FormDefinition definition,
@@ -291,7 +295,7 @@ internal sealed partial class AnswersValidator(DataCollectionLimits limits, Comp
                 ValidateNumber(component, value, path, rowId, true, issues);
                 break;
             case "date":
-                ValidateDate(component, value, path, rowId, issues);
+                ValidateDate(component, value, path, rowId, Today(), issues);
                 break;
             case "email":
                 ValidateEmail(component, value, path, rowId, issues);
@@ -418,6 +422,7 @@ internal sealed partial class AnswersValidator(DataCollectionLimits limits, Comp
         JsonElement value,
         string path,
         string? rowId,
+        DateOnly today,
         ICollection<ValidationIssue> issues
     )
     {
@@ -426,12 +431,14 @@ internal sealed partial class AnswersValidator(DataCollectionLimits limits, Comp
             Add(issues, "answer.invalid_date", path, component.Id, rowId, "Date is invalid.");
             return;
         }
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var min = ReadDateBound(component, "min", today);
         var max = ReadDateBound(component, "max", today);
         if ((min.HasValue && date < min) || (max.HasValue && date > max))
             Add(issues, "answer.out_of_range", path, component.Id, rowId, "Date is outside the allowed range.");
     }
+
+    // "today" = fecha UTC del reloj inyectado al validar (P-1.4).
+    private DateOnly Today() => DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
     private static DateOnly? ReadDateBound(FormComponent component, string name, DateOnly today)
     {

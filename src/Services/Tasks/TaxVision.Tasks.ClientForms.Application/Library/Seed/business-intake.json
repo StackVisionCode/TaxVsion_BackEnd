@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "title": "Business Intake",
+  "purpose": "clientIntake",
+  "presentation": "wizard",
+  "settings": { "showProgress": true },
+  "pages": [
+    {
+      "id": "pg_bizentity",
+      "title": "Business",
+      "sections": [
+        {
+          "id": "sc_bizbasic",
+          "title": "Business details",
+          "components": [
+            { "id": "fd_bizname0", "type": "text", "key": "legal_name", "label": "Legal business name", "dataClass": "personal", "props": { "autocomplete": "organization", "maxLength": 200 } },
+            { "id": "fd_bizetype", "type": "radio", "key": "entity_type", "label": "Entity type", "dataClass": "general", "props": { "layout": "vertical", "options": [ { "value": "sole_prop", "label": "Sole proprietorship" }, { "value": "partnership", "label": "Partnership" }, { "value": "s_corp", "label": "S corporation" }, { "value": "c_corp", "label": "C corporation" }, { "value": "llc", "label": "LLC" } ] } },
+            { "id": "fd_bizein01", "type": "taxId", "key": "employer_identification_number", "label": "Employer Identification Number (EIN)", "dataClass": "restricted", "props": { "kinds": ["ein"] } },
+            { "id": "fd_bizaddr1", "type": "address", "key": "business_address", "label": "Business address", "dataClass": "personal", "props": { "country": "US" } }
+          ]
+        },
+        {
+          "id": "sc_bizacct1",
+          "title": "Accounting",
+          "components": [
+            { "id": "fd_bizmeth1", "type": "radio", "key": "accounting_method", "label": "Accounting method", "dataClass": "general", "props": { "layout": "horizontal", "options": [ { "value": "cash", "label": "Cash" }, { "value": "accrual", "label": "Accrual" } ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg_bizowners",
+      "title": "Owners",
+      "sections": [
+        {
+          "id": "sc_bizprtnr",
+          "title": "Owner",
+          "repeat": { "minRows": 0, "maxRows": 20, "addLabel": "Add an owner", "rowLabel": "Owner" },
+          "components": [
+            { "id": "fd_prtnrnm1", "type": "text", "key": "owner_name", "label": "Owner legal name", "dataClass": "personal", "props": { "maxLength": 200 } },
+            { "id": "fd_prtnrpct", "type": "number", "key": "owner_ownership_percent", "label": "Ownership percentage", "dataClass": "financial", "props": { "min": 0, "max": 100, "decimals": 2, "unitLabel": "%" } },
+            { "id": "fd_prtnrtin", "type": "taxId", "key": "owner_tax_identifier", "label": "Owner SSN, ITIN or EIN", "dataClass": "restricted", "props": { "kinds": ["ssn", "itin", "ein"] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg_bizdocs00",
+      "title": "Documents",
+      "sections": [
+        {
+          "id": "sc_bizdocs1",
+          "title": "Supporting documents",
+          "components": [
+            { "id": "fd_bizform1", "type": "file", "key": "formation_documents", "label": "Formation documents", "dataClass": "personal", "props": { "maxFiles": 10, "allowedTypes": ["pdf", "jpg", "jpeg", "png"] } },
+            { "id": "fd_bizfin01", "type": "file", "key": "financial_statements", "label": "Financial statements", "dataClass": "personal", "props": { "maxFiles": 10, "allowedTypes": ["pdf", "xlsx", "csv"] } }
+          ]
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "actions": []
+}

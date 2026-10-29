@@ -7761,6 +7761,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(512)");
 
+                    b.Property<short>("TaxIdentifierKeyVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
+
                     b.Property<string>("TaxIdentifierLast4")
                         .IsRequired()
                         .HasMaxLength(4)
@@ -8102,6 +8107,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("TaxIdentifierCipher")
                         .IsRequired()
                         .HasColumnType("varbinary(512)");
+
+                    b.Property<short>("TaxIdentifierKeyVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
 
                     b.Property<string>("TaxIdentifierLast4")
                         .IsRequired()

@@ -15,7 +15,10 @@ public sealed record FormTemplateDetailResponse(
     Guid? LatestVersionId,
     DateTime DraftUpdatedAtUtc,
     Guid DraftUpdatedByUserId,
-    IReadOnlyList<FormTemplateVersionSummaryResponse> Versions
+    IReadOnlyList<FormTemplateVersionSummaryResponse> Versions,
+    LibraryOriginResponse? LibraryOrigin = null,
+    string? LibraryKey = null,
+    bool IsLibraryListed = false
 )
 {
     public static FormTemplateDetailResponse From(
@@ -35,6 +38,17 @@ public sealed record FormTemplateDetailResponse(
             template.LatestVersionId,
             template.DraftUpdatedAtUtc,
             template.DraftUpdatedByUserId,
-            versions ?? []
+            versions ?? [],
+            template.LibraryOrigin is null
+                ? null
+                : new LibraryOriginResponse(
+                    template.LibraryOrigin.LibraryKey,
+                    template.LibraryOrigin.SourceTemplateId,
+                    template.LibraryOrigin.SourceVersionNumber
+                ),
+            template.LibraryKey,
+            template.IsLibraryListed
         );
 }
+
+public sealed record LibraryOriginResponse(string LibraryKey, Guid SourceTemplateId, int SourceVersionNumber);

@@ -30,24 +30,14 @@ public static class ReturnFormRequestHandler
         CancellationToken ct
     )
     {
-        var found = await ReviewSupport.LoadVisible(
-            command.TenantId,
-            command.ByUserId,
-            command.CanViewAll,
-            command.RequestId,
-            requests,
-            visibility,
-            ct
-        );
+        var found = await LoadVisibleAsync(command, requests, visibility, ct);
         if (found.IsFailure)
             return Result.Failure<FormRequestResponse>(found.Error);
         var valid = await ValidateFeedbackAsync(command, found.Value, versions, engine, protector, ct);
         if (valid.IsFailure)
             return Result.Failure<FormRequestResponse>(valid.Error);
         var returned = ReturnForChanges(found.Value, command);
-        if (returned.IsSuccess)
-            await PublishReturnedAsync(found.Value, command.ByUserId, bus, correlation);
-        return await ReviewSupport.SaveReviewed(
+        var saved = await ReviewSupport.SaveReviewed(
             returned,
             found.Value,
             "request.returned",
@@ -59,7 +49,27 @@ public static class ReturnFormRequestHandler
             unitOfWork,
             ct
         );
+        // Guardar antes de publicar (T-8): un conflicto no deja salir el aviso de una devolución revertida.
+        if (saved.IsSuccess)
+            await PublishReturnedAsync(found.Value, command.ByUserId, bus, correlation);
+        return saved;
     }
+
+    private static Task<Result<FormRequest>> LoadVisibleAsync(
+        ReturnFormRequestCommand command,
+        IFormRequestRepository requests,
+        IFormRequestVisibilityFilter visibility,
+        CancellationToken ct
+    ) =>
+        ReviewSupport.LoadVisible(
+            command.TenantId,
+            command.ByUserId,
+            command.CanViewAll,
+            command.RequestId,
+            requests,
+            visibility,
+            ct
+        );
 
     // RowVersion vigente, textos sin identificadores y cada comentario sobre un campo de la versión fijada.
     private static async Task<Result> ValidateFeedbackAsync(

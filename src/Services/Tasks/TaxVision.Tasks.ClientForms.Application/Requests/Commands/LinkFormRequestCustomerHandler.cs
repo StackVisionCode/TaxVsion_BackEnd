@@ -2,9 +2,11 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Tasks.ClientForms.Application.Actions;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using Wolverine;
 
@@ -46,44 +48,75 @@ public static class LinkFormRequestCustomerHandler
         );
         if (found.IsFailure)
             return Result.Failure<FormRequestResponse>(found.Error);
-        var linked = await LinkAsync(command, found.Value, requests, visibility, customers, participants, ct);
+        var linked = await LinkAsync(command, found.Value, requests, visibility, customers, participants, audit, ct);
         if (linked.IsFailure)
             return Result.Failure<FormRequestResponse>(linked.Error);
-        audit.Record(
-            command.TenantId,
-            found.Value.FormTemplateId,
-            found.Value.Id,
-            "customer_link.completed",
-            command.ByUserId
-        );
+        var outgoing = await AfterLinkAsync(command, found.Value, linked.Value, requests, audit, correlation, ct);
+        // Guardar antes de publicar (T-8).
         await unitOfWork.SaveChangesAsync(ct);
-        await FormCustomerLinker.RequestFileReassignmentAsync(found.Value, bus, correlation.CorrelationId);
+        await outgoing.PublishAsync(bus);
         return Result.Success(FormRequestResponse.From(found.Value));
     }
 
-    private static async Task<Result> LinkAsync(
+    // Audit, reasignación de archivos y, si el participante pasó a ser este cliente, sus otras requests.
+    private static async Task<DeferredMessages> AfterLinkAsync(
+        LinkFormRequestCustomerCommand command,
+        FormRequest request,
+        bool participantLinked,
+        IFormRequestRepository requests,
+        IFormAuditLog audit,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        audit.Record(command.TenantId, request.FormTemplateId, request.Id, "customer_link.completed", command.ByUserId);
+        var outgoing = new DeferredMessages();
+        FormCustomerLinker.RequestFileReassignment(request, outgoing, correlation.CorrelationId);
+        if (participantLinked)
+            await FormCustomerLinker.PropagateToSiblingsAsync(
+                request,
+                command.CustomerId,
+                requests,
+                audit,
+                outgoing,
+                correlation.CorrelationId,
+                command.NowUtc,
+                ct
+            );
+        return outgoing;
+    }
+
+    // Devuelve true si el participante quedó vinculado a este cliente. Si ya era otro cliente, la request
+    // se vincula igual (decisión del staff), el participante conserva el original y queda el aviso.
+    private static async Task<Result<bool>> LinkAsync(
         LinkFormRequestCustomerCommand command,
         FormRequest request,
         IFormRequestRepository requests,
         IFormRequestVisibilityFilter visibility,
         IClientFormsCustomerReader customers,
         IFormParticipantRepository participants,
+        IFormAuditLog audit,
         CancellationToken ct
     )
     {
         var target = await ValidateTargetAsync(command, request, visibility, customers, ct);
         if (target.IsFailure)
-            return Result.Failure(target.Error);
+            return Result.Failure<bool>(target.Error);
         var free = await EnsureNoConflictAsync(command, request, requests, ct);
         if (free.IsFailure)
-            return free;
+            return Result.Failure<bool>(free.Error);
         var participant = await participants.GetAsync(command.TenantId, target.Value, ct);
-        if (participant is null)
-            return Result.Failure(FormRequestErrors.InvalidParticipant);
+        // Se valida antes de tocar la request: un fallo no deja un vínculo a medias.
+        if (participant is null || participant.Status == FormParticipantStatus.Unverified)
+            return Result.Failure<bool>(FormRequestErrors.InvalidParticipant);
         var attached = request.TryAttachCustomer(command.CustomerId, false, null, command.NowUtc);
-        return attached.IsFailure
-            ? Result.Failure(attached.Error)
-            : participant.LinkToCustomer(command.CustomerId, command.ByUserId, command.NowUtc);
+        if (attached.IsFailure)
+            return Result.Failure<bool>(attached.Error);
+        var linked = participant.LinkToCustomer(command.CustomerId, command.ByUserId, command.NowUtc);
+        if (linked.IsSuccess)
+            return Result.Success(true);
+        FormCustomerLinker.RecordConflict(request, participant.LinkedCustomerId, command.CustomerId, audit);
+        return Result.Success(false);
     }
 
     private static async Task<Result<Guid>> ValidateTargetAsync(

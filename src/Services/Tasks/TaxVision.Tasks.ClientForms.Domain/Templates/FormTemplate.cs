@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine.Serialization;
@@ -7,9 +8,12 @@ using TaxVision.Tasks.ClientForms.Domain.Versions;
 
 namespace TaxVision.Tasks.ClientForms.Domain.Templates;
 
-public sealed class FormTemplate : AggregateRoot
+public sealed partial class FormTemplate : AggregateRoot
 {
     private FormTemplate() { }
+
+    private readonly List<FormLibraryReview> _reviews = [];
+    public IReadOnlyCollection<FormLibraryReview> Reviews => _reviews;
 
     public FormTemplateName Name { get; private set; } = default!;
     public FormDescription? Description { get; private set; }
@@ -184,6 +188,87 @@ public sealed class FormTemplate : AggregateRoot
 
     public Result EnsureDeletable() =>
         LatestVersionNumber > 0 ? Result.Failure(FormTemplateErrors.HasPublishedVersions) : Result.Success();
+
+    // Marca la plantilla como de biblioteca sin listarla. Solo en el tenant de plataforma.
+    public Result MarkAsLibrary(string libraryKey, Guid platformTenantId)
+    {
+        if (TenantId != platformTenantId)
+            return Result.Failure(FormLibraryErrors.PlatformOnly);
+        var key = NormalizeLibraryKey(libraryKey);
+        if (key is null)
+            return Result.Failure(FormLibraryErrors.InvalidKey);
+        LibraryKey = key;
+        return Result.Success();
+    }
+
+    // Registra la revisión experta de la última versión publicada (D-17).
+    public Result<FormLibraryReview> RecordLibraryReview(
+        int reviewedVersionNumber,
+        string reviewerRole,
+        Guid reviewedByUserId,
+        string? note,
+        Guid platformTenantId,
+        DateTime nowUtc
+    )
+    {
+        if (TenantId != platformTenantId)
+            return Result.Failure<FormLibraryReview>(FormLibraryErrors.PlatformOnly);
+        if (LatestVersionNumber < 1)
+            return Result.Failure<FormLibraryReview>(FormLibraryErrors.NotPublished);
+        if (reviewedVersionNumber != LatestVersionNumber)
+            return Result.Failure<FormLibraryReview>(FormLibraryErrors.ReviewVersionMismatch);
+        var role = reviewerRole?.Trim();
+        if (string.IsNullOrWhiteSpace(role) || role.Length > 32)
+            return Result.Failure<FormLibraryReview>(FormLibraryErrors.InvalidReviewerRole);
+        var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (trimmedNote is { Length: > 1000 })
+            return Result.Failure<FormLibraryReview>(FormLibraryErrors.NoteTooLong);
+        var review = FormLibraryReview.Create(
+            TenantId,
+            Id,
+            reviewedVersionNumber,
+            role,
+            reviewedByUserId,
+            trimmedNote,
+            nowUtc
+        );
+        _reviews.Add(review);
+        return Result.Success(review);
+    }
+
+    // Lista la última versión publicada. Sin revisión obligatoria (decisión del dueño, 2026-10-28):
+    // la plataforma revisa y actualiza el contenido después; la revisión queda como registro opcional.
+    public Result ListInLibrary(string libraryKey, Guid platformTenantId, DateTime nowUtc)
+    {
+        if (TenantId != platformTenantId)
+            return Result.Failure(FormLibraryErrors.PlatformOnly);
+        var key = NormalizeLibraryKey(libraryKey);
+        if (key is null)
+            return Result.Failure(FormLibraryErrors.InvalidKey);
+        if (LatestVersionNumber < 1)
+            return Result.Failure(FormLibraryErrors.NotPublished);
+        LibraryKey = key;
+        IsLibraryListed = true;
+        return Result.Success();
+    }
+
+    // Despublica la plantilla: deja de verse para los tenants, sin afectar los clones existentes.
+    public Result UnlistFromLibrary(Guid platformTenantId)
+    {
+        if (TenantId != platformTenantId)
+            return Result.Failure(FormLibraryErrors.PlatformOnly);
+        IsLibraryListed = false;
+        return Result.Success();
+    }
+
+    private static string? NormalizeLibraryKey(string? libraryKey)
+    {
+        var key = libraryKey?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(key) || key.Length > 100 || !LibraryKeyPattern().IsMatch(key) ? null : key;
+    }
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,99}$")]
+    private static partial Regex LibraryKeyPattern();
 
     private Result EnsureActive() =>
         Status == FormTemplateStatus.Active ? Result.Success() : Result.Failure(FormTemplateErrors.Archived);

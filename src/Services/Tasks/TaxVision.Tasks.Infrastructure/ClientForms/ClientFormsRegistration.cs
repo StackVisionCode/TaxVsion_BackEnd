@@ -10,8 +10,11 @@ using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Insights;
 using TaxVision.Tasks.ClientForms.Application.Mapping.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Participants.Prospects;
+using TaxVision.Tasks.ClientForms.Application.Reporting;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.Infrastructure.ClientForms.Attachments;
@@ -42,6 +45,7 @@ public static class ClientFormsRegistration
         services.AddScoped<IFormCatalogUsageReader, FormCatalogUsageReader>();
         services.AddScoped<IFormTemplateRepository, FormTemplateRepository>();
         services.AddScoped<IFormTemplateVersionRepository, FormTemplateVersionRepository>();
+        services.AddScoped<IFormLibraryRepository, FormLibraryRepository>();
         services.AddScoped<IFormModuleSettingsRepository, FormModuleSettingsRepository>();
         services.AddScoped<IClientFormsAvailabilityEvaluator, ClientFormsAvailabilityEvaluator>();
         services.AddScoped<IClientFormsTenantDirectory, ClientFormsTenantDirectory>();
@@ -55,6 +59,9 @@ public static class ClientFormsRegistration
         services.AddScoped<IFormRequestStaffReadRepository, FormRequestStaffReadRepository>();
         services.AddScoped<IFormFileScanVerdictRepository, FormFileScanVerdictRepository>();
         services.AddScoped<IFormParticipantRepository, FormParticipantRepository>();
+        services.AddScoped<IProspectReadRepository, ProspectReadRepository>();
+        services.AddScoped<ProspectResponseMapper>();
+        services.AddScoped<IFormInsightsReadRepository, FormInsightsReadRepository>();
         services.AddScoped<IFormIntakeLinkRepository, FormIntakeLinkRepository>();
         services.AddScoped<IFormResponsibleUserValidator, FormResponsibleUserValidator>();
         services.AddScoped<IFormAccessGrantRepository, FormAccessGrantRepository>();
@@ -93,18 +100,37 @@ public static class ClientFormsRegistration
         );
         services.AddScoped<IFormActionAuthorizer, FormActionAuthorizer>();
         services.AddScoped<FormActionPlanner>();
+        services.AddScoped<TaxVision.Tasks.ClientForms.Application.Actions.SubmissionSummaryRequester>();
+        services.AddScoped<TaxVision.Tasks.ClientForms.Application.Actions.ClientFormSignatureDispatcher>();
+        services.AddScoped<IFormAnswerIndexRepository, FormAnswerIndexRepository>();
+        services.AddScoped<IFormAnswerIndexReadRepository, FormAnswerIndexReadRepository>();
+        services.AddScoped<FormAnswerIndexer>();
         services.AddScoped<IFormRequestVisibilityFilter, FormRequestVisibilityFilter>();
         services.AddScoped<IClientFormsCustomerReader, ClientFormsCustomerReader>();
+        services.AddScoped<IClientFormsCustomerEmailDirectory, ClientFormsCustomerEmailDirectory>();
         services.AddScoped<IClientFormsTaskReader, ClientFormsTaskReader>();
         services.AddScoped<IAnswersProtector, AnswersProtector>();
         services.AddScoped<ISensitiveValueProtector, SensitiveValueProtector>();
         services.AddScoped<FormAttachmentReconciler>();
         services.AddHostedService<FormAttachmentReconciliationJob>();
+        // X-5 — retención y eliminación: servicio scoped + job diario (default apagado y en DryRun).
+        services.AddScoped<TaxVision.Tasks.Infrastructure.ClientForms.Retention.FormRetentionService>();
+        services.AddHostedService<TaxVision.Tasks.Infrastructure.ClientForms.Retention.FormRetentionJob>();
         services.AddSingleton<ClientFormsMetrics>();
         services.AddSingleton<IClientFormsMetrics>(provider => provider.GetRequiredService<ClientFormsMetrics>());
         services.AddScoped<ClientFormsBacklogReader>();
         services.AddHostedService<ClientFormsBacklogJob>();
+        // X-9 — gestión y rotación de claves: store de re-cifrado, job de arranque, censo y health check.
+        services.AddScoped<IClientFormsCiphertextStore, FormCiphertextReEncryptionStore>();
+        services.AddHostedService<FormReEncryptionJob>();
+        services.AddHostedService<ClientFormsKeyVersionJob>();
+        services.AddSingleton<ClientFormsKeyVersionsHealthCheck>();
+        services
+            .AddHealthChecks()
+            .AddCheck<ClientFormsKeyVersionsHealthCheck>("client-forms-key-versions", tags: ["key-rotation"]);
         services.AddHostedService<ClientFormNotificationSettingsBackfillJob>();
+        services.AddHostedService<LibrarySeeder>();
+        services.AddHostedService<FormRequestReminderJob>();
         services.AddHttpContextAccessor();
         services.AddProtectedPayloadProtection(configuration);
         return services;

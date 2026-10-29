@@ -8,6 +8,10 @@ public static class FormAuditAction
     public const string TemplateRestored = "template.restored";
     public const string TemplateDuplicated = "template.duplicated";
     public const string TemplateDeleted = "template.deleted";
+    public const string TemplateClonedFromLibrary = "template.cloned_from_library";
+    public const string LibraryReviewed = "library.reviewed";
+    public const string LibraryListed = "library.listed";
+    public const string LibraryUnlisted = "library.unlisted";
     public const string ModuleAvailabilityChanged = "module.availability_changed";
     public const string IntakeLinkCreated = "intake_link.created";
     public const string IntakeLinkUpdated = "intake_link.updated";
@@ -19,4 +23,5 @@ public static class FormAuditAction
     public const string ConsentPresented = "consent.presented";
     public const string ConsentAccepted = "consent.accepted";
     public const string ConsentDeclined = "consent.declined";
+    public const string RetentionPurged = "retention.purged";
 }

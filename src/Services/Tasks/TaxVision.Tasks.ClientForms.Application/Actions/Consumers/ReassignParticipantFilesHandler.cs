@@ -44,6 +44,8 @@ public static class ReassignParticipantFilesHandler
             var blocked = false;
             foreach (var chunk in pending.Chunk(MaxFilesPerCall))
                 blocked |= await ReassignChunkAsync(request, chunk, files, ct);
+            // Guardar antes de publicar (T-8).
+            await unitOfWork.SaveChangesAsync(ct);
             if (blocked)
                 await bus.PublishAsync(
                     CustomerCreationCommandFactory.Failed(
@@ -53,7 +55,6 @@ public static class ReassignParticipantFilesHandler
                         correlation.CorrelationId
                     )
                 );
-            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 

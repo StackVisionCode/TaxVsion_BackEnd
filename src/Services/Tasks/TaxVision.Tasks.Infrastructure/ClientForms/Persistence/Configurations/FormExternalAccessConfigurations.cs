@@ -22,6 +22,8 @@ public sealed class FormParticipantConfiguration : IEntityTypeConfiguration<Form
         builder.Property(item => item.Language).HasMaxLength(10).HasDefaultValue("En").IsRequired();
         builder.Property(item => item.Status).HasConversion<int>().IsRequired();
         builder.Property(item => item.Source).HasConversion<int>().IsRequired();
+        builder.Property(item => item.LostReason).HasMaxLength(FormParticipant.LostReasonMaxLength);
+        builder.Ignore(item => item.IsLost);
         builder
             .HasIndex(item => new { item.TenantId, item.Email })
             .IsUnique()

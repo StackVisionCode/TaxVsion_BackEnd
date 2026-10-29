@@ -123,7 +123,8 @@ public static class GetFormRequestHandler
                 .FieldComments.Select(item => new FormFieldCommentResponse(item.ComponentId, item.RowId, item.Comment))
                 .ToArray(),
             revision.PdfStatus,
-            revision.PdfFileId
+            revision.PdfFileId,
+            revision.SignatureStatus
         );
 
     private sealed record DetailReferences(

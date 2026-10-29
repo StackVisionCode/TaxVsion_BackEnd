@@ -199,27 +199,28 @@ public static class FormFileScanResultConsumer
 
             var owners = OwnedByTenant(await requests.ListByAttachmentFileIdAsync(signal.FileId, ct), signal, logger);
             var projected = await verdicts.GetAsync(signal.FileId, ct);
-            if (signal.FolderType is null && projected is null && owners.Count == 0)
-                return;
-            if (projected is not null && !BelongsToTenant(projected, signal, logger))
+            if (IsUnknownOrForeign(signal, projected, owners, logger))
                 return;
 
             var nowUtc = DateTime.UtcNow;
             var projectionChanged = projected is null || ApplyToVerdict(projected, signal, nowUtc);
             projected ??= AddVerdict(signal, verdicts, nowUtc);
+            var outgoing = new DeferredMessages();
             var requestChanged = await ApplyToRequestsAsync(
                 owners,
                 signal.FileId,
                 projected,
                 nowUtc,
                 customers,
-                bus,
+                outgoing,
                 correlation,
                 ct
             );
 
+            // Guardar antes de publicar (T-8): un reintento no duplica el aviso de adjunto rechazado.
             if (projectionChanged || requestChanged)
                 await SaveAsync(signal, requestChanged, unitOfWork, metrics, ct);
+            await outgoing.PublishAsync(bus);
         }
     }
 
@@ -261,14 +262,23 @@ public static class FormFileScanResultConsumer
         FormFileScanVerdict projected,
         DateTime nowUtc,
         IClientFormsCustomerReader customers,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         var changed = false;
         foreach (var request in owners)
-            changed |= await ApplyToRequestAsync(request, fileId, projected, nowUtc, customers, bus, correlation, ct);
+            changed |= await ApplyToRequestAsync(
+                request,
+                fileId,
+                projected,
+                nowUtc,
+                customers,
+                outgoing,
+                correlation,
+                ct
+            );
         return changed;
     }
 
@@ -301,6 +311,16 @@ public static class FormFileScanResultConsumer
             nowUtc
         );
 
+    // Un borrado sin proyección ni dueños no es nuestro; un veredicto de otro tenant se ignora (y se registra).
+    private static bool IsUnknownOrForeign(
+        FormFileScanSignal signal,
+        FormFileScanVerdict? projected,
+        List<FormRequest> owners,
+        ILogger<FormRequest> logger
+    ) =>
+        (signal.FolderType is null && projected is null && owners.Count == 0)
+        || (projected is not null && !BelongsToTenant(projected, signal, logger));
+
     private static bool BelongsToTenant(
         FormFileScanVerdict projected,
         FormFileScanSignal signal,
@@ -325,7 +345,7 @@ public static class FormFileScanResultConsumer
         FormFileScanVerdict projected,
         DateTime nowUtc,
         IClientFormsCustomerReader customers,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -344,7 +364,7 @@ public static class FormFileScanResultConsumer
                 || before.GetValueOrDefault(attachment.Id) == FormAttachmentStatus.Rejected
             )
                 continue;
-            await PublishRejectedAsync(request, attachment, customers, bus, correlation.CorrelationId, ct);
+            await AddRejectedAsync(request, attachment, customers, outgoing, correlation.CorrelationId, ct);
         }
         return true;
     }
@@ -375,11 +395,11 @@ public static class FormFileScanResultConsumer
         return owned;
     }
 
-    private static async Task PublishRejectedAsync(
+    private static async Task AddRejectedAsync(
         FormRequest request,
         FormAttachment attachment,
         IClientFormsCustomerReader customers,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         string correlationId,
         CancellationToken ct
     )
@@ -391,7 +411,7 @@ public static class FormFileScanResultConsumer
             correlationId,
             ct
         );
-        await bus.PublishAsync(evt);
+        outgoing.Add(evt);
     }
 
     private static FormFileScanSignal OwnedSignal(

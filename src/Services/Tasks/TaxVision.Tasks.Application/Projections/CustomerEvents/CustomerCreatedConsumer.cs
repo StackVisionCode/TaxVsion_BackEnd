@@ -52,7 +52,7 @@ public static class CustomerCreatedConsumer
         if (existing is not null)
         {
             // El backfill, paginando en paralelo con este evento, ya pudo haber creado la fila.
-            existing.ApplyIfNewer(evt.DisplayName, CustomerDirectoryStatus.Active, evt.OccurredOn);
+            existing.ApplyIfNewer(evt.DisplayName, CustomerDirectoryStatus.Active, evt.OccurredOn, evt.PrimaryEmail);
             return;
         }
 
@@ -61,7 +61,8 @@ public static class CustomerCreatedConsumer
             evt.CustomerId,
             evt.DisplayName,
             CustomerDirectoryStatus.Active,
-            evt.OccurredOn
+            evt.OccurredOn,
+            evt.PrimaryEmail
         );
         await repository.AddAsync(entry, ct);
     }

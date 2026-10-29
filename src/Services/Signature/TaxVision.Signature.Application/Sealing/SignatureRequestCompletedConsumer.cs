@@ -8,6 +8,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
@@ -1018,6 +1019,7 @@ public static class SignatureRequestCompletedConsumer
                         : sealedDocument.DocumentId == finalSealedDocumentId ? outcome.CertificateFileId
                         : null,
                     SealedAtUtc = sealedDocument.SealedAtUtc,
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             );
         }

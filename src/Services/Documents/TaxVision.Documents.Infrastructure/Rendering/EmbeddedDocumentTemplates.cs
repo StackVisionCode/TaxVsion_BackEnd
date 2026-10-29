@@ -28,6 +28,15 @@ internal static class EmbeddedDocumentTemplates
             return true;
         }
 
+        if (
+            string.Equals(templateKey, "client_form.submission_summary.v1", StringComparison.OrdinalIgnoreCase)
+            && version == 1
+        )
+        {
+            source = ClientFormSummaryV1;
+            return true;
+        }
+
         source = string.Empty;
         return false;
     }
@@ -356,6 +365,130 @@ internal static class EmbeddedDocumentTemplates
               <span class="hash">{{ receipt.transactionReferenceMask }}</span>
             </div>
           </div>
+        </body>
+        </html>
+        """;
+
+    // Submission Summary (P-11). Datos bajo "summary" (ver ProcessClientFormSummaryGenerationHandler).
+    // NO es un certificado ni una firma legal: el pie lo dice. Branding del tenant (logo/color/nombre).
+    private const string ClientFormSummaryV1 = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>Submission summary — {{ summary.title }}</title>
+          <style>
+            :root { --brand: {{ summary.brandColor }}; --ink: #1f2933; --muted: #64748b; --line: #e6eaf0; }
+            * { box-sizing: border-box; }
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; color: var(--ink); margin: 0; padding: 36px 40px; font-size: 12px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 16px; }
+            .brand { display: flex; align-items: center; gap: 12px; }
+            .brand .logo { max-height: 44px; max-width: 180px; display: block; }
+            .brand .wordmark { font-size: 16px; font-weight: 800; color: var(--brand); }
+            .doc-meta { text-align: right; }
+            .doc-meta .kicker { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--brand); }
+            .doc-meta h1 { margin: 2px 0 6px; font-size: 20px; font-weight: 800; color: var(--ink); }
+            .doc-meta .ref { font-size: 11px; color: var(--muted); }
+            .accent { height: 4px; border-radius: 3px; background: var(--brand); opacity: .85; }
+            .heading { margin: 18px 0 4px; }
+            .heading h2 { margin: 0; font-size: 15px; color: var(--ink); }
+            .heading .who { color: var(--muted); font-size: 11px; margin-top: 2px; }
+            .page { margin-top: 20px; }
+            .page > h3 { font-size: 13px; color: var(--brand); margin: 0 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+            .section { margin: 12px 0 4px; }
+            .section > h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
+            table.qa { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+            table.qa td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+            table.qa td.q { width: 42%; color: var(--muted); }
+            table.qa td.a { color: var(--ink); font-weight: 600; }
+            .row { margin: 6px 0 6px 10px; padding: 6px 10px; border-left: 2px solid var(--line); }
+            .row .row-label { font-size: 11px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+            .attachments { margin-top: 20px; }
+            .attachments h3 { font-size: 13px; color: var(--brand); margin: 0 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+            .attachments ul { margin: 0; padding-left: 18px; }
+            .attachments li { padding: 2px 0; }
+            .attachments .label { color: var(--muted); }
+            .foot { margin-top: 32px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 9.5px; color: var(--muted); line-height: 1.6; }
+            /* P-18: caja de firma en su propia ultima pagina. Medidas en mm = ClientFormSignatureAnchor. */
+            .sign-page { page-break-before: always; position: relative; height: 100mm; }
+            .sign-page h3 { font-size: 13px; color: var(--brand); margin: 0 0 6px; }
+            .sign-note { color: var(--muted); font-size: 11px; margin: 0; }
+            .sign-box { position: absolute; top: 50mm; left: 0; width: 80mm; height: 24mm; border: 1px dashed var(--line); border-radius: 4px; display: flex; flex-direction: column; justify-content: flex-end; padding: 8px 10px; }
+            .sign-line { border-top: 1px solid var(--ink); }
+            .sign-caption { font-size: 9.5px; color: var(--muted); margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="top">
+            <div class="brand">
+              {% if summary.logo != "" %}<img class="logo" src="{{ summary.logo }}" alt="{{ summary.displayName }}" />{% else %}<div class="wordmark">{{ summary.displayName }}</div>{% endif %}
+            </div>
+            <div class="doc-meta">
+              <div class="kicker">Submission summary</div>
+              <h1>{{ summary.title }}</h1>
+              {% if summary.completedAt != "" %}<div class="ref">Completed {{ summary.completedAt }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="accent"></div>
+
+          <div class="heading">
+            <h2>{{ summary.title }}</h2>
+            {% if summary.customerName != "" %}<div class="who">{{ summary.customerName }}</div>{% endif %}
+          </div>
+
+          {% for page in summary.pages %}
+          <div class="page">
+            {% if page.title != "" %}<h3>{{ page.title }}</h3>{% endif %}
+            {% for section in page.sections %}
+            <div class="section">
+              {% if section.title != "" %}<h4>{{ section.title }}</h4>{% endif %}
+              {% if section.items.size > 0 %}
+              <table class="qa">
+                {% for item in section.items %}
+                <tr><td class="q">{{ item.label }}</td><td class="a">{{ item.value }}</td></tr>
+                {% endfor %}
+              </table>
+              {% endif %}
+              {% for row in section.rows %}
+              <div class="row">
+                <div class="row-label">{{ row.label }}</div>
+                <table class="qa">
+                  {% for item in row.items %}
+                  <tr><td class="q">{{ item.label }}</td><td class="a">{{ item.value }}</td></tr>
+                  {% endfor %}
+                </table>
+              </div>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+
+          {% if summary.hasAttachments %}
+          <div class="attachments">
+            <h3>Attachments</h3>
+            <ul>
+              {% for a in summary.attachments %}
+              <li><span class="label">{{ a.label }}:</span> {{ a.fileName }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          <div class="foot">
+            Revision {{ summary.revisionNumber }} &middot; Generated on {{ summary.generatedOn }} &middot; This is a copy of the information submitted; it is not a signed or certified document.
+          </div>
+
+          {% if summary.showSignatureBox %}
+          <div class="sign-page">
+            <h3>Signature</h3>
+            <p class="sign-note">Sign this document through the secure link we email you.</p>
+            <div class="sign-box">
+              <div class="sign-line"></div>
+              <div class="sign-caption">Signature</div>
+            </div>
+          </div>
+          {% endif %}
         </body>
         </html>
         """;

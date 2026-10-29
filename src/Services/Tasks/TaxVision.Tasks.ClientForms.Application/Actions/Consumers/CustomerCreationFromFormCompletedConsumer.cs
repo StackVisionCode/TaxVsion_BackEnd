@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
@@ -16,6 +17,7 @@ public static class CustomerCreationFromFormCompletedConsumer
         CustomerCreationFromFormCompletedIntegrationEvent evt,
         IFormRequestRepository requests,
         IFormParticipantRepository participants,
+        IFormAuditLog audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -35,18 +37,22 @@ public static class CustomerCreationFromFormCompletedConsumer
             );
             if (request is null || !Complete(request, evt))
                 return;
+            var outgoing = new DeferredMessages();
             await FormCustomerLinker.LinkCreatedCustomerAsync(
                 request,
                 evt.CustomerId,
                 requests,
                 participants,
-                bus,
+                audit,
+                outgoing,
                 correlation.CorrelationId,
                 logger,
                 evt.OccurredOn,
                 ct
             );
+            // Guardar antes de publicar (T-8).
             await unitOfWork.SaveChangesAsync(ct);
+            await outgoing.PublishAsync(bus);
             metrics.RecordActionRun(FormActionNames.CreateCustomer, FormActionRunStatus.Completed);
         }
     }

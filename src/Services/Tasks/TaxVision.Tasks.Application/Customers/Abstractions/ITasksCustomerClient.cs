@@ -37,5 +37,6 @@ public sealed record RemoteReconciliationCustomer(
     Guid TenantId,
     Guid CustomerId,
     string DisplayName,
-    CustomerDirectoryStatus Status
+    CustomerDirectoryStatus Status,
+    string? PrimaryEmail = null
 );

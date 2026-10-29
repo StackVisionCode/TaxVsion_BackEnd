@@ -93,6 +93,37 @@ public sealed class StrictJsonTests
         Assert.Equal("answers.invalid_json", result.Error.Code);
     }
 
+    [Fact]
+    public void Reports_nested_repeater_instead_of_invalid_json()
+    {
+        var json = ValidJson()
+            .Replace(
+                "\"repeat\":null",
+                "\"repeat\":{\"minRows\":0,\"maxRows\":2,\"addLabel\":\"Add\",\"rowLabel\":\"Row\"}",
+                StringComparison.Ordinal
+            )
+            .Replace(
+                "\"prefill\":null,",
+                "\"prefill\":null,\"repeat\":{\"minRows\":0,\"maxRows\":2,\"addLabel\":\"Add\",\"rowLabel\":\"Row\"},",
+                StringComparison.Ordinal
+            );
+
+        var result = EngineTestFactory.Create().ParseDefinition(json);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("repeater.nested", result.Error.Code);
+    }
+
+    [Fact]
+    public void Unknown_component_property_is_still_invalid_json()
+    {
+        var json = ValidJson().Replace("\"prefill\":null,", "\"prefill\":null,\"rows\":[],", StringComparison.Ordinal);
+
+        var result = EngineTestFactory.Create().ParseDefinition(json);
+
+        Assert.Equal("definition.invalid_json", result.Error.Code);
+    }
+
     private static string ValidJson() =>
         """
             {"schemaVersion":1,"title":"Client intake","purpose":"clientIntake","presentation":"wizard","settings":{"showProgress":true},"pages":[{"id":"pg_abcdefgh","title":"Page","description":null,"visibleWhen":null,"style":null,"sections":[{"id":"sc_abcdefgh","title":"Section","description":null,"visibleWhen":null,"repeat":null,"style":null,"components":[{"id":"fd_abcdefgh","type":"text","key":null,"label":"Name","help":null,"required":false,"requiredWhen":null,"visibleWhen":null,"dataClass":"personal","reportable":false,"prefill":null,"style":null,"props":{}}]}]}],"mappings":[],"actions":[]}

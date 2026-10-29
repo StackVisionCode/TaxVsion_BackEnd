@@ -929,6 +929,55 @@
     }
   },
   {
+    "name": "waiting for signature needs step",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "key": "create_client",
+          "type": "createCustomer",
+          "trigger": "onSubmit",
+          "config": {
+            "waitFor": "signatureCompleted"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "signature.step_missing",
+          "path": "/actions/0/config/waitFor"
+        }
+      ]
+    }
+  },
+  {
     "name": "implicit action cannot be configured",
     "mode": "structure",
     "definition": {
@@ -1356,6 +1405,498 @@
         {
           "code": "style.contrast_not_allowed",
           "path": "/pages/0/sections/0/components/0/style"
+        }
+      ]
+    }
+  },
+  {
+    "name": "component text checked against parent section background",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "style": {
+                "background": "brandSubtle"
+              },
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "heading",
+                  "props": {
+                    "text": "Title"
+                  },
+                  "style": {
+                    "textColor": "brand"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "style.contrast_not_allowed",
+          "path": "/pages/0/sections/0/components/0/style"
+        }
+      ]
+    }
+  },
+  {
+    "name": "transparent component background falls back to the section",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "style": {
+                "background": "sage"
+              },
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "heading",
+                  "props": {
+                    "text": "Title"
+                  },
+                  "style": {
+                    "textColor": "success",
+                    "background": "none"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "style.contrast_not_allowed",
+          "path": "/pages/0/sections/0/components/0/style"
+        }
+      ]
+    }
+  },
+  {
+    "name": "component background overrides the section background",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "style": {
+                "background": "brandSubtle"
+              },
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "callout",
+                  "props": {
+                    "text": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "Instructions"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "style": {
+                    "textColor": "brand",
+                    "background": "surface"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "approved text color on section background",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "style": {
+                "background": "brandSubtle"
+              },
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "heading",
+                  "props": {
+                    "text": "Title"
+                  },
+                  "style": {
+                    "textColor": "ink"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid prefill sources",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "prefill": {
+                    "source": "previousRequest"
+                  }
+                },
+                {
+                  "id": "fd_display00",
+                  "type": "text",
+                  "label": "Name",
+                  "props": {},
+                  "prefill": {
+                    "source": "customer.displayName"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "unknown prefill source rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "prefill": {
+                    "source": "customer.email"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "prefill.invalid_source",
+          "path": "/pages/0/sections/0/components/0/prefill/source"
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing prefill source rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "prefill": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "prefill.invalid_source",
+          "path": "/pages/0/sections/0/components/0/prefill/source"
+        }
+      ]
+    }
+  },
+  {
+    "name": "select placeholder at 60 characters",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ],
+                    "placeholder": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "select placeholder above 60 characters",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ],
+                    "placeholder": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "props.out_of_range",
+          "path": "/pages/0/sections/0/components/0/props/placeholder"
+        }
+      ]
+    }
+  },
+  {
+    "name": "definition without pages",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": []
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "page.required",
+          "path": "/pages"
+        }
+      ]
+    }
+  },
+  {
+    "name": "page without sections",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": []
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "section.required",
+          "path": "/pages/0/sections"
+        }
+      ]
+    }
+  },
+  {
+    "name": "section without components",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": []
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "component.required",
+          "path": "/pages/0/sections/0/components"
         }
       ]
     }

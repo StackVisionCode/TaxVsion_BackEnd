@@ -190,6 +190,9 @@ builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
 
 var app = builder.Build();
 
+// Buzón dev: se resuelve al arrancar para fijar la ruta absoluta y avisar si Enabled=true fuera de Development.
+app.Services.GetRequiredService<TaxVision.Postmaster.Infrastructure.DevMailbox.DevMailboxWriter>();
+
 // IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
 app.UseTaxVisionClientIp();
 

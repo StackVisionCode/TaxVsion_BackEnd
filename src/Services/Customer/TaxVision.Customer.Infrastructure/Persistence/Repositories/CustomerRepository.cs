@@ -161,6 +161,50 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
         return await query.Select(fp => (Guid?)fp.CustomerRelationId).FirstOrDefaultAsync(ct);
     }
 
+    // Lookup dual (B-9/X-9): un solo WHERE IN sobre los blind indexes candidatos (clave actual ∪ anterior).
+    // Sin rotación el conjunto trae un candidato y equivale a la igualdad de antes.
+    public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> blindIndexes,
+        Guid? excludeCustomerId,
+        CancellationToken ct
+    )
+    {
+        if (blindIndexes.Count == 0)
+            return null;
+
+        var query = db
+            .CustomerFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(fp => fp.TenantId == tenantId && blindIndexes.Contains(fp.TaxIdentifierBlindIndex));
+
+        if (excludeCustomerId.HasValue)
+            query = query.Where(fp => fp.CustomerId != excludeCustomerId.Value);
+
+        return await query.Select(fp => (Guid?)fp.CustomerId).FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> blindIndexes,
+        Guid? excludeRelationId,
+        CancellationToken ct
+    )
+    {
+        if (blindIndexes.Count == 0)
+            return null;
+
+        var query = db
+            .CustomerRelationFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(fp => fp.TenantId == tenantId && blindIndexes.Contains(fp.TaxIdentifierBlindIndex));
+
+        if (excludeRelationId.HasValue)
+            query = query.Where(fp => fp.CustomerRelationId != excludeRelationId.Value);
+
+        return await query.Select(fp => (Guid?)fp.CustomerRelationId).FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(DomainCustomer customer, CancellationToken ct = default)
     {
         await db.Customers.AddAsync(customer, ct);

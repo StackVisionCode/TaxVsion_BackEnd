@@ -41,7 +41,7 @@ public static class SetRelationFiscalProfileHandler
         var uniquenessCheck = await EnsureNoBlindIndexConflictAsync(
             repository,
             cmd.TenantId,
-            encryption.BlindIndex,
+            encryption.BlindIndexCandidates,
             cmd.RelationId,
             ct
         );
@@ -56,7 +56,8 @@ public static class SetRelationFiscalProfileHandler
             taxYear: cmd.TaxYear,
             qualifiesAsDependent: cmd.QualifiesAsDependent,
             livedWithTaxpayer: cmd.LivedWithTaxpayer,
-            byUserId: cmd.ModifiedByUserId
+            byUserId: cmd.ModifiedByUserId,
+            taxIdentifierKeyVersion: encryption.KeyVersion
         );
 
         if (setResult.IsFailure)
@@ -98,32 +99,43 @@ public static class SetRelationFiscalProfileHandler
 
     // ============== Cifrado ==============
 
-    private sealed record EncryptedTaxIdentifier(byte[] Cipher, string BlindIndex, string Last4);
+    private sealed record EncryptedTaxIdentifier(
+        byte[] Cipher,
+        string BlindIndex,
+        string Last4,
+        IReadOnlyCollection<string> BlindIndexCandidates,
+        short KeyVersion
+    );
 
     private static EncryptedTaxIdentifier EncryptTaxIdentifier(
         string normalizedTaxId,
         Guid tenantId,
         ISensitiveDataProtector protector
-    ) =>
-        new(
+    )
+    {
+        var candidates = protector.ComputeBlindIndexCandidates(normalizedTaxId, tenantId);
+        return new EncryptedTaxIdentifier(
             protector.Protect(normalizedTaxId),
-            protector.ComputeBlindIndex(normalizedTaxId, tenantId),
-            normalizedTaxId[^4..]
+            candidates.First(),
+            normalizedTaxId[^4..],
+            candidates,
+            protector.CurrentKeyVersion
         );
+    }
 
     // ============== Unicidad del blind index (dentro del tenant) ==============
 
     private static async Task<Result> EnsureNoBlindIndexConflictAsync(
         ICustomerRepository repository,
         Guid tenantId,
-        string blindIndex,
+        IReadOnlyCollection<string> blindIndexCandidates,
         Guid currentRelationId,
         CancellationToken ct
     )
     {
         var conflictingRelationId = await repository.FindRelationIdByFiscalBlindIndexAsync(
             tenantId,
-            blindIndex,
+            blindIndexCandidates,
             excludeRelationId: currentRelationId,
             ct
         );

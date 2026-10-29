@@ -14,4 +14,8 @@ public sealed class ClientFormsExternalOptions
     [Required]
     [ValidateObjectMembers]
     public ClientFormsBotProtectionOptions BotProtection { get; init; } = new();
+
+    // Solo desarrollo: hosts locales (localhost) que pasan la validación de host de cualquier oficina,
+    // para probar externos e intake en el navegador. Vacío por defecto; fuera de Development se ignora.
+    public string[] DevelopmentHosts { get; init; } = [];
 }

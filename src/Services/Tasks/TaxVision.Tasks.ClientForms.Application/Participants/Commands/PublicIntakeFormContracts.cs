@@ -45,4 +45,10 @@ public static class PublicIntakeFormErrors
         "PublicForm.VerificationFailed",
         "The verification code is invalid."
     );
+
+    // Tras verificar el código: la misma persona ya envió este enlace y la oficina lo revisa.
+    public static readonly Error AlreadySubmitted = new(
+        "PublicForm.AlreadySubmitted",
+        "You already sent this form. Your office is reviewing it."
+    );
 }

@@ -175,6 +175,44 @@
           "response": []
         },
         {
+          "name": "SearchCustomersByBody",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"term\": \"maria@example.com\",\n  \"status\": \"NotArchived\",\n  \"page\": 1,\n  \"size\": 20,\n  \"kind\": null,\n  \"sort\": \"Name\",\n  \"dir\": \"Asc\"\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/customers/search",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "search"
+              ]
+            },
+            "description": "Busqueda con el termino en el cuerpo (no en la URL). Misma politica customer.h.search y misma respuesta PagedResult que GET /customers."
+          },
+          "response": []
+        },
+        {
           "name": "SearchCustomers",
           "request": {
             "auth": {

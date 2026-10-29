@@ -365,6 +365,54 @@ public sealed class TasksArchitectureTests
         );
     }
 
+    /// <summary>
+    /// La lectura entre tenants que sirve a los tenants (la biblioteca) filtra por TenantId
+    /// (<c>== PlatformTenant.Id</c>). Cualquier <c>IgnoreQueryFilters</c> en Infrastructure/ClientForms
+    /// debe ir acompañado, en el mismo archivo, de un filtro explícito de <c>TenantId</c>, salvo los
+    /// lectores cross-tenant sancionados (gauges de observabilidad y uso de catálogo de plataforma),
+    /// que deben agregarse a <see cref="SanctionedCrossTenantReaders"/> a propósito.
+    /// </summary>
+    [Fact]
+    public void ClientForms_IgnoreQueryFilters_must_filter_by_tenant()
+    {
+        var violations = new List<string>();
+
+        foreach (var file in ClientFormsInfrastructureSourceFiles())
+        {
+            var name = Path.GetFileName(file);
+            if (SanctionedCrossTenantReaders.Contains(name))
+                continue;
+            var text = File.ReadAllText(file);
+            if (
+                text.Contains("IgnoreQueryFilters", StringComparison.Ordinal)
+                && !text.Contains("TenantId", StringComparison.Ordinal)
+            )
+                violations.Add(name);
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "IgnoreQueryFilters sin filtro de TenantId en ClientForms: " + string.Join(", ", violations)
+        );
+    }
+
+    // Lectores cross-tenant a propósito: gauges para todos los tenants y uso de catálogo (plataforma).
+    private static readonly HashSet<string> SanctionedCrossTenantReaders = new(StringComparer.Ordinal)
+    {
+        "ClientFormsBacklogReader.cs",
+        "FormCatalogUsageReader.cs",
+    };
+
+    private static IEnumerable<string> ClientFormsInfrastructureSourceFiles() =>
+        Directory
+            .EnumerateFiles(
+                Path.Combine(ServiceRoot, "TaxVision.Tasks.Infrastructure", "ClientForms"),
+                "*.cs",
+                SearchOption.AllDirectories
+            )
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
+
     private static readonly Regex HandlerDeclarationPattern = new(
         @"^(?<indent>[ \t]*)(?:public|internal)\s+(?:static\s+|sealed\s+|abstract\s+|partial\s+)*class\s+(?<name>\w+(?:Handler|Consumer))\b",
         RegexOptions.Multiline | RegexOptions.Compiled

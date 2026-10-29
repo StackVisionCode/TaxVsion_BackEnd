@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Actions;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.Tests.Dependencies;
 using Wolverine;
@@ -16,7 +17,7 @@ public sealed class FormActionPlannerTests
         var (request, version, bus) = await PlanAsync();
 
         var run = Assert.Single(request.ActionRuns);
-        var command = Assert.IsType<CustomerCreationFromFormRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        var command = Assert.IsType<CustomerCreationFromFormRequestedIntegrationEvent>(Assert.Single(bus.Messages));
         Assert.Equal(FormActionRunStatus.Requested, run.Status);
         Assert.Equal(run.CommandId, command.RequestId);
         Assert.Equal(run.IdempotencyKey, command.IdempotencyKey);
@@ -32,7 +33,7 @@ public sealed class FormActionPlannerTests
     public async Task The_payload_carries_only_create_customer_targets_with_transforms_and_constants()
     {
         var (request, _, bus) = await PlanAsync();
-        var command = (CustomerCreationFromFormRequestedIntegrationEvent)bus.Published.Single();
+        var command = (CustomerCreationFromFormRequestedIntegrationEvent)bus.Messages.Single();
 
         var values = Unprotect(command, request).Values.ToDictionary(item => item.TargetKey);
 
@@ -52,7 +53,7 @@ public sealed class FormActionPlannerTests
         var (request, _, bus) = await PlanAsync(
             """[{"key":"create_client","type":"createCustomer","trigger":"onSubmit","config":{"kind":{"constant":"Individual"},"language":{"mapped":true},"postCreate":["primaryAddress"]}}]"""
         );
-        var command = (CustomerCreationFromFormRequestedIntegrationEvent)bus.Published.Single();
+        var command = (CustomerCreationFromFormRequestedIntegrationEvent)bus.Messages.Single();
 
         var address = Unprotect(command, request)
             .Values.Single(item => item.TargetKey == "customer.address.home")
@@ -72,7 +73,7 @@ public sealed class FormActionPlannerTests
         Assert.Equal(FormActionRunStatus.Skipped, run.Status);
         Assert.Equal(FormActionRunErrors.ConditionNotMetCode, run.ErrorCode);
         Assert.Null(run.CommandId);
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Messages);
     }
 
     [Fact]
@@ -81,7 +82,7 @@ public sealed class FormActionPlannerTests
         var (request, _, bus) = await PlanAsync(autoCreate: false);
 
         Assert.Empty(request.ActionRuns);
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Messages);
     }
 
     [Fact]
@@ -90,7 +91,7 @@ public sealed class FormActionPlannerTests
         var (request, _, bus) = await PlanAsync(autoCreate: null);
 
         Assert.Single(request.ActionRuns);
-        Assert.IsType<CustomerCreationFromFormRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.IsType<CustomerCreationFromFormRequestedIntegrationEvent>(Assert.Single(bus.Messages));
     }
 
     [Fact]
@@ -101,7 +102,7 @@ public sealed class FormActionPlannerTests
         );
 
         Assert.Empty(request.ActionRuns);
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Messages);
     }
 
     [Fact]
@@ -111,7 +112,7 @@ public sealed class FormActionPlannerTests
         var participant = Participant();
         var request = ExternalRequest(version, participant);
         var planner = Planner(new MemoryFormTemplateVersionRepository(version));
-        var bus = new FakeMessageBus();
+        var bus = new DeferredMessages();
         var answers = Submit(request, participant);
         await planner.PlanAsync(request, FormActionTrigger.OnSubmit, answers, bus, Now, default);
         request.ReturnForChanges("Please fix.", [], Responsible, Now);
@@ -120,7 +121,7 @@ public sealed class FormActionPlannerTests
         await planner.PlanAsync(request, FormActionTrigger.OnSubmit, answers, bus, Now, default);
 
         Assert.Single(request.ActionRuns);
-        Assert.Single(bus.Published);
+        Assert.Single(bus.Messages);
     }
 
     [Fact]
@@ -132,7 +133,7 @@ public sealed class FormActionPlannerTests
         var participant = Participant();
         var request = ExternalRequest(version, participant);
         Submit(request, participant);
-        var bus = new FakeMessageBus();
+        var bus = new DeferredMessages();
 
         await Planner(new MemoryFormTemplateVersionRepository(version))
             .PlanAsync(request, FormActionTrigger.OnComplete, null, bus, Now, default);
@@ -146,7 +147,7 @@ public sealed class FormActionPlannerTests
                 Assert.Equal(FormActionRunErrors.NotSupportedCode, run.ErrorCode);
             }
         );
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Messages);
     }
 
     [Fact]
@@ -159,7 +160,7 @@ public sealed class FormActionPlannerTests
         Assert.Equal(FormActionRunStatus.Failed, run.Status);
         Assert.Equal(FormActionRunErrors.PayloadUnavailableCode, run.ErrorCode);
         Assert.True(run.IsRetryable);
-        var failed = Assert.IsType<FormActionFailedIntegrationEvent>(Assert.Single(bus.Published));
+        var failed = Assert.IsType<FormActionFailedIntegrationEvent>(Assert.Single(bus.Messages));
         Assert.Equal(Responsible, failed.ResponsibleUserId);
     }
 
@@ -187,7 +188,7 @@ public sealed class FormActionPlannerTests
             )
             .Value;
         request.Submit(new ProtectedAnswers(Answers, 1), [], [], FormActor.PortalUser(Guid.NewGuid()), Now);
-        var bus = new FakeMessageBus();
+        var bus = new DeferredMessages();
 
         await Planner(new MemoryFormTemplateVersionRepository(version))
             .PlanAsync(
@@ -200,7 +201,7 @@ public sealed class FormActionPlannerTests
             );
 
         Assert.Empty(request.ActionRuns);
-        Assert.Empty(bus.Published);
+        Assert.Empty(bus.Messages);
     }
 
     // La atomicidad depende de publicar con el bus del handler: el planificador no puede tener uno propio.
@@ -256,14 +257,14 @@ public sealed class FormActionPlannerTests
     private static async Task<(
         FormRequest Request,
         TaxVision.Tasks.ClientForms.Domain.Versions.FormTemplateVersion Version,
-        FakeMessageBus Bus
+        DeferredMessages Bus
     )> PlanAsync(string? actions = null, bool? autoCreate = true, string answers = Answers)
     {
         var version = Version(actions);
         var participant = Participant();
         var request = ExternalRequest(version, participant);
         var parsed = Submit(request, participant, answers);
-        var bus = new FakeMessageBus();
+        var bus = new DeferredMessages();
         await Planner(new MemoryFormTemplateVersionRepository(version), autoCreate: autoCreate)
             .PlanAsync(request, FormActionTrigger.OnSubmit, parsed, bus, Now, default);
         return (request, version, bus);

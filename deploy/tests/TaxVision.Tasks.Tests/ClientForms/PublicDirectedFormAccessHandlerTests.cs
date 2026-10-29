@@ -750,6 +750,12 @@ public sealed class PublicDirectedFormAccessHandlerTests
 
         public string UnprotectEmail(string emailCipher, short keyVersion) => emailCipher["cipher:".Length..];
 
+        public FormProtectedEmail ReEncryptEmail(Guid tenantId, string emailCipher, short fromKeyVersion) =>
+            ProtectEmail(tenantId, UnprotectEmail(emailCipher, fromKeyVersion));
+
+        public FormReEncryptedToken ReEncryptToken(string tokenCipher, short fromKeyVersion) =>
+            new(tokenCipher, fromKeyVersion);
+
         public IReadOnlyCollection<string> EmailLookupHashes(Guid tenantId, string email) => [$"lookup:{email}"];
     }
 

@@ -20,6 +20,19 @@ public static class FormParticipantErrors
         "FormParticipant.AlreadyLinked",
         "The participant is linked to another customer."
     );
+    public static readonly Error AlreadyConverted = new(
+        "FormParticipant.AlreadyConverted",
+        "This prospect is already a client and cannot be marked as lost."
+    );
+    public static readonly Error InvalidLostReason = new(
+        "FormParticipant.InvalidLostReason",
+        "The lost reason must be 200 characters or fewer."
+    );
+    public static readonly Error EmailBelongsToCustomer = new(
+        "FormParticipant.EmailBelongsToCustomer",
+        "This email belongs to an existing client. Assign the form to the client instead."
+    );
+    public static readonly Error NotFound = new("FormParticipant.NotFound", "The prospect was not found.");
     public static readonly Error IntakeLinkInvalid = new("FormIntakeLink.Invalid", "The intake link is invalid.");
     public static readonly Error IntakeLinkUnavailable = new(
         "FormIntakeLink.Unavailable",

@@ -15,6 +15,7 @@ public sealed class CustomerDirectoryEntryConfiguration : IEntityTypeConfigurati
         builder.Property(x => x.TenantId).IsRequired();
         builder.Property(x => x.CustomerId).IsRequired();
         builder.Property(x => x.DisplayName).HasMaxLength(300);
+        builder.Property(x => x.PrimaryEmailNormalized).HasMaxLength(254);
         builder.Property(x => x.Status).HasConversion<int>().IsRequired();
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
 
@@ -25,5 +26,9 @@ public sealed class CustomerDirectoryEntryConfiguration : IEntityTypeConfigurati
         builder
             .HasIndex(x => new { x.TenantId, x.DisplayName })
             .HasDatabaseName("IX_CustomerDirectoryEntries_TenantId_DisplayName");
+        builder
+            .HasIndex(x => new { x.TenantId, x.PrimaryEmailNormalized })
+            .HasFilter("[PrimaryEmailNormalized] IS NOT NULL")
+            .HasDatabaseName("IX_CustomerDirectoryEntries_TenantId_PrimaryEmail");
     }
 }

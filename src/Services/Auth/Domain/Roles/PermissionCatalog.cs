@@ -1970,18 +1970,14 @@ public static class PermissionCatalog
             FormRequestsExport,
             "tasks",
             "Run reports and export client form answers.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000203"),
             FormRequestsApplyProfile,
             "tasks",
             "Apply approved client form answers to the client profile.",
-            false,
-            IsAssignableByTenant: false,
-            IsReserved: true
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000204"),

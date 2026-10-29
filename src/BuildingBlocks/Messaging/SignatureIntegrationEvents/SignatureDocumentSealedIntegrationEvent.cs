@@ -11,4 +11,7 @@ public sealed record SignatureDocumentSealedIntegrationEvent : IntegrationEvent
     public required string DocumentHashPost { get; init; }
     public Guid? CertificateFileId { get; init; }
     public required DateTime SealedAtUtc { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

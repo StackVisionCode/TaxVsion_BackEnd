@@ -39,4 +39,7 @@ internal sealed class RecordingClientFormsMetrics : IClientFormsMetrics
     public void RecordConsent(FormConsentOutcome outcome) => Recorded.Add($"consent:{outcome}");
 
     public void RecordTemplatePublished(TimeSpan duration) => Recorded.Add("published");
+
+    public void RecordRetentionPurged(string rule, string result, long count) =>
+        Recorded.Add($"retention:{rule}:{result}:{count}");
 }

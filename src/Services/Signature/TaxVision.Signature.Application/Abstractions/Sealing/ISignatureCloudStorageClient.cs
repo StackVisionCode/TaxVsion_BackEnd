@@ -23,7 +23,10 @@ public sealed record SignatureFileMetadata(
     string? ChecksumSha256,
     string? ContentType,
     long SizeBytes,
-    string? ObjectKey
+    string? ObjectKey,
+    // P-18: owner/carpeta reales en CloudStorage, para validar que la copia a firmar es Signature/Signatures.
+    string? OwnerType = null,
+    string? FolderType = null
 );
 
 /// <summary>

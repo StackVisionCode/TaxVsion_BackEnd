@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "title": "Document Checklist",
+  "purpose": "documentRequest",
+  "presentation": "singlePage",
+  "settings": { "showProgress": true },
+  "pages": [
+    {
+      "id": "pg_docchk01",
+      "title": "Documents we need",
+      "sections": [
+        {
+          "id": "sc_docintr0",
+          "components": [
+            { "id": "fd_docintro", "type": "paragraph", "label": null, "key": null, "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "Upload each document below. If one does not apply to you, check \"I don't have this\"." } ] } ] } } }
+          ]
+        },
+        {
+          "id": "sc_docw2001",
+          "title": "W-2 forms",
+          "components": [
+            { "id": "fd_chkw2001", "type": "checkbox", "key": "has_no_w2", "label": "I don't have this", "dataClass": "general", "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "I don't have any W-2 forms." } ] } ] } } },
+            { "id": "fd_filw2001", "type": "file", "key": "w2_documents", "label": "W-2 forms", "dataClass": "personal", "requiredWhen": { "field": "fd_chkw2001", "op": "isFalse" }, "props": { "maxFiles": 10, "allowedTypes": ["pdf", "jpg", "jpeg", "png"] } }
+          ]
+        },
+        {
+          "id": "sc_doc10991",
+          "title": "1099 forms",
+          "components": [
+            { "id": "fd_chk10991", "type": "checkbox", "key": "has_no_1099", "label": "I don't have this", "dataClass": "general", "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "I don't have any 1099 forms." } ] } ] } } },
+            { "id": "fd_fil10991", "type": "file", "key": "documents_1099", "label": "1099 forms", "dataClass": "personal", "requiredWhen": { "field": "fd_chk10991", "op": "isFalse" }, "props": { "maxFiles": 10, "allowedTypes": ["pdf", "jpg", "jpeg", "png"] } }
+          ]
+        },
+        {
+          "id": "sc_docpyr01",
+          "title": "Prior year return",
+          "components": [
+            { "id": "fd_chkpyr01", "type": "checkbox", "key": "has_no_prior_return", "label": "I don't have this", "dataClass": "general", "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "I don't have a prior year return to share." } ] } ] } } },
+            { "id": "fd_filpyr01", "type": "file", "key": "prior_return_documents", "label": "Prior year tax return", "dataClass": "personal", "requiredWhen": { "field": "fd_chkpyr01", "op": "isFalse" }, "props": { "maxFiles": 5, "allowedTypes": ["pdf"] } }
+          ]
+        },
+        {
+          "id": "sc_docid001",
+          "title": "Photo ID",
+          "components": [
+            { "id": "fd_chkid001", "type": "checkbox", "key": "has_no_id", "label": "I don't have this", "dataClass": "general", "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "I can't provide a photo ID right now." } ] } ] } } },
+            { "id": "fd_filid001", "type": "file", "key": "id_documents", "label": "Government-issued photo ID", "dataClass": "personal", "requiredWhen": { "field": "fd_chkid001", "op": "isFalse" }, "props": { "maxFiles": 2, "allowedTypes": ["pdf", "jpg", "jpeg", "png"] } }
+          ]
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "actions": []
+}

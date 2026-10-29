@@ -45,6 +45,20 @@ public static class InfrastructureRegistration
 
         services.AddSingleton<ISensitiveDataProtector, AesGcmSensitiveDataProtector>();
 
+        // B-9/X-9 — gestión y rotación de clave fiscal: primitiva de re-cifrado, store, job de arranque que
+        // re-cifra los perfiles fiscales fuera de la versión actual, censo periódico, gauge y health check.
+        services.AddScoped<TaxVision.Customer.Application.Customers.FiscalProfiles.SensitiveDataReEncryptor>();
+        services.AddScoped<
+            TaxVision.Customer.Application.Customers.FiscalProfiles.ICustomerFiscalCiphertextStore,
+            CustomerFiscalReEncryptionStore
+        >();
+        services.AddSingleton<TaxVision.Customer.Infrastructure.Observability.CustomerFiscalMetrics>();
+        services.AddHostedService<CustomerFiscalReEncryptionJob>();
+        services.AddHostedService<CustomerFiscalKeyVersionJob>();
+        // El health check se expone en Program.cs (AddHealthChecks vive en el ensamblado Api); aquí solo
+        // se registra la instancia que ese check resuelve.
+        services.AddSingleton<CustomerFiscalKeyVersionsHealthCheck>();
+
         // Comandos de formularios de cliente: payload cifrado con la clave compartida y lock de alta por email.
         services.AddProtectedPayloadProtection(config);
         services.AddScoped<ICustomerCreationLock, SqlCustomerCreationLock>();

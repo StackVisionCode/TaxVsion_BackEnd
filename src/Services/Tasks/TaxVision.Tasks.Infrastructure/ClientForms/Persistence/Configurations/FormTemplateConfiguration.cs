@@ -66,6 +66,12 @@ public sealed class FormTemplateConfiguration : IEntityTypeConfiguration<FormTem
         builder.Property(template => template.LatestVersionNumber).HasDefaultValue(0);
         builder.Property(template => template.RowVersion).IsRowVersion();
         builder
+            .HasMany(template => template.Reviews)
+            .WithOne()
+            .HasForeignKey(review => review.FormTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Metadata.FindNavigation(nameof(FormTemplate.Reviews))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+        builder
             .HasIndex(template => new
             {
                 template.TenantId,

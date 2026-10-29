@@ -52,6 +52,13 @@ public interface IHtmlToPdfConverter
     Task<Result<byte[]>> ConvertAsync(string html, CancellationToken ct = default);
 }
 
+/// <summary>Cuenta las páginas de un PDF ya renderizado (P-18: ubicar la caja de firma en la última
+/// página). Implementación PdfSharp en Infrastructure, solo lee la estructura, no renderiza fuentes.</summary>
+public interface IPdfPageCounter
+{
+    int CountPages(byte[] pdf);
+}
+
 /// <summary>Codifica un texto (p.ej. el link de pago con el subdominio del tenant) en un QR y lo
 /// devuelve como data-URI PNG embebible (sin red, respeta el CSP de la plantilla). Documents solo
 /// codifica la URL que recibe; no la fabrica.</summary>

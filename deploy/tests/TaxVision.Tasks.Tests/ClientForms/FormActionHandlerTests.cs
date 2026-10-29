@@ -24,7 +24,9 @@ public sealed class FormActionHandlerTests
     private static readonly Guid CustomerId = Guid.Parse("30000000-0000-0000-0000-0000000000b7");
 
     [Fact]
-    public async Task Submit_creates_the_run_and_its_command_in_the_same_outbox_commit()
+    // T-8: el run se guarda primero y su comando y el hecho del envío se publican después del SaveChanges
+    // (quedan en el outbox de Wolverine, que los confirma al cerrar el handler).
+    public async Task Submit_saves_the_run_before_publishing_its_command()
     {
         var fixture = Fixture(submitted: false);
         var (bus, outbox) = OutboxMessageBus.Create();
@@ -34,8 +36,9 @@ public sealed class FormActionHandlerTests
 
         Assert.True(result.Value.Submitted);
         Assert.Single(fixture.Request.ActionRuns);
-        Assert.Contains(outbox.Flushed, message => message is CustomerCreationFromFormRequestedIntegrationEvent);
-        Assert.Contains(outbox.Flushed, message => message is FormRequestSubmittedIntegrationEvent);
+        Assert.Empty(outbox.Flushed);
+        Assert.Contains(outbox.Pending, message => message is CustomerCreationFromFormRequestedIntegrationEvent);
+        Assert.Contains(outbox.Pending, message => message is FormRequestSubmittedIntegrationEvent);
         Assert.Equal(["submitted:False:True", "action:CreateCustomer:Requested"], metrics.Recorded);
     }
 
@@ -271,6 +274,7 @@ public sealed class FormActionHandlerTests
             },
             fixture.Requests,
             new ActionParticipantRepository(fixture.Participant),
+            new RecordingFormAuditLog(),
             new RecordingUnitOfWork(),
             bus,
             new TestCorrelationContext(),
@@ -430,6 +434,7 @@ public sealed class FormActionHandlerTests
             Completed(run, fixture.Request),
             fixture.Requests,
             new ActionParticipantRepository(fixture.Participant),
+            new RecordingFormAuditLog(),
             unitOfWork ?? new RecordingUnitOfWork(),
             bus,
             new TestCorrelationContext(),
@@ -498,7 +503,7 @@ public sealed class FormActionHandlerTests
                 fixture.Request,
                 FormActionTrigger.OnSubmit,
                 FormTemplateHandlerTestDoubles.Engine().ParseAnswers(Answers).Value,
-                new FakeMessageBus(),
+                new DeferredMessages(),
                 Now,
                 default
             )

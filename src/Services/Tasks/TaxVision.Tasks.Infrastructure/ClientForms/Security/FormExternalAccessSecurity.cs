@@ -115,6 +115,15 @@ public sealed class FormExternalAccessSecurity : IFormExternalAccessSecurity
     public string UnprotectEmail(string emailCipher, short keyVersion) =>
         _protector.Unprotect(Unpack(emailCipher, keyVersion));
 
+    public FormProtectedEmail ReEncryptEmail(Guid tenantId, string emailCipher, short fromKeyVersion) =>
+        ProtectEmail(tenantId, UnprotectEmail(emailCipher, fromKeyVersion));
+
+    public FormReEncryptedToken ReEncryptToken(string tokenCipher, short fromKeyVersion)
+    {
+        var secret = _protector.Protect(UnprotectToken(tokenCipher, fromKeyVersion));
+        return new FormReEncryptedToken(Pack(secret), secret.KeyVersion);
+    }
+
     public IReadOnlyCollection<string> EmailLookupHashes(Guid tenantId, string email)
     {
         var normalized = NormalizeEmail(tenantId, email);

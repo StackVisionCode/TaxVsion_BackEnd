@@ -15,6 +15,9 @@ public static class CustomerDataCollectionTargets
     ];
 
     private static readonly DataCollectionOperation[] UpdateOnly = [DataCollectionOperation.UpdateCustomerProfile];
+
+    // Solo creación: el tipo de cliente no se puede cambiar en un perfil existente.
+    private static readonly DataCollectionOperation[] CreateOnly = [DataCollectionOperation.CreateCustomer];
     private static readonly string[] CustomerManage = ["customers.manage"];
     private const string KindTarget = "customer.kind";
     private const string LanguageTarget = "customer.language";
@@ -58,6 +61,7 @@ public static class CustomerDataCollectionTargets
             "Customer kind",
             DataCollectionTargetType.Enum,
             enums: [Individual, Business],
+            operations: CreateOnly,
             requiredFor: [Required(DataCollectionOperation.CreateCustomer)],
             sensitivity: DataCollectionSensitivity.General
         ),

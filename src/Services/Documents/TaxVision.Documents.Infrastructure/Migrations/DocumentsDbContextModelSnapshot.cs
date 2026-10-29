@@ -130,6 +130,9 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid?>("ExternalReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("FileId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("FileId");
@@ -161,6 +164,12 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<int?>("SignatureAnchorPage")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SignatureCopyFileId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("SourceService")
                         .IsRequired()

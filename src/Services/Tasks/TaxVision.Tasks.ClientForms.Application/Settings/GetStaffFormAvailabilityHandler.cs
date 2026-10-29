@@ -37,6 +37,7 @@ public static class GetStaffFormAvailabilityHandler
         GetStaffFormAvailabilityQuery query,
         IClientFormsAvailabilityEvaluator availability,
         IFormModuleSettingsRepository settings,
+        IFormIntakeBotProtection botProtection,
         CancellationToken ct
     )
     {
@@ -44,6 +45,10 @@ public static class GetStaffFormAvailabilityHandler
         if (!module.Enabled)
             return new(false, module.Reason, null);
         var row = await settings.GetAsync(query.TenantId, ct);
-        return new(true, null, FormCapabilitiesResponse.From(FormModuleCapabilities.Of(row)));
+        var capabilities = FormModuleCapabilities.Of(row);
+        // Igual que el endpoint público: sin Turnstile listo los intake links no pueden operar.
+        if (!botProtection.IsReady)
+            capabilities = capabilities with { IntakeLinksEnabled = false };
+        return new(true, null, FormCapabilitiesResponse.From(capabilities));
     }
 }

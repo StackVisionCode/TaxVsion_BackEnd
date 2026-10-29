@@ -1591,6 +1591,42 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureRequest", b =>
                 {
+                    b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.ExternalReference", "ExternalReference", b1 =>
+                        {
+                            b1.Property<Guid>("SignatureRequestId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("SourceId")
+                                .IsRequired()
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)")
+                                .HasColumnName("ExternalReference_SourceId");
+
+                            b1.Property<string>("SourceService")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("nvarchar(64)")
+                                .HasColumnName("ExternalReference_SourceService");
+
+                            b1.Property<string>("SourceType")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("nvarchar(64)")
+                                .HasColumnName("ExternalReference_SourceType");
+
+                            b1.HasKey("SignatureRequestId");
+
+                            b1.HasIndex("SourceService", "SourceId")
+                                .IsUnique()
+                                .HasDatabaseName("UX_SignatureRequests_ExternalReference")
+                                .HasFilter("[ExternalReference_SourceId] IS NOT NULL");
+
+                            b1.ToTable("SignatureRequests");
+
+                            b1.WithOwner()
+                                .HasForeignKey("SignatureRequestId");
+                        });
+
                     b.OwnsOne("TaxVision.Signature.Domain.Requests.ValueObjects.PartialCopyAudience", "PartialCopyAudience", b1 =>
                         {
                             b1.Property<Guid>("SignatureRequestId")
@@ -1649,6 +1685,8 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("SignatureRequestId");
                         });
+
+                    b.Navigation("ExternalReference");
 
                     b.Navigation("PartialCopyAudience")
                         .IsRequired();

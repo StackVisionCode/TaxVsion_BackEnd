@@ -49,5 +49,14 @@ public sealed record PortalFormRequestDetailResponse(
     string RowVersion,
     IReadOnlyList<PortalFormAttachmentResponse> Attachments,
     IReadOnlyList<FormConsentPresentationResponse> Consents,
-    PortalFormReviewResponse? Review
+    PortalFormReviewResponse? Review,
+    // P-11 — copia del formulario enviado (Submission Summary) cuando ya está lista.
+    PortalFormSummaryResponse? Summary,
+    // P-13.1 — componentes prellenados (y secciones repeater): el portal muestra el callout "please review".
+    IReadOnlyList<string> PrefilledComponentIds
+);
+
+public sealed record PortalFormSummaryResponse(
+    TaxVision.Tasks.ClientForms.Domain.Requests.FormRevisionPdfStatus PdfStatus,
+    Guid? PdfFileId
 );

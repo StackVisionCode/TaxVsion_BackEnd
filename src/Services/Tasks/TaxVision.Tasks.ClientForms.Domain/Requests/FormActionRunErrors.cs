@@ -10,6 +10,10 @@ public static class FormActionRunErrors
     public const string NotSupportedCode = "FormAction.NotSupported";
     public const string PayloadUnavailableCode = "FormAction.PayloadUnavailable";
 
+    // waitFor=signatureCompleted: la firma terminó sin completarse, o la versión no tiene paso de firma.
+    public const string SignatureNotCompletedCode = "signature_not_completed";
+    public const string SignatureNotConfiguredCode = "signature_not_configured";
+
     public static readonly Error NotFound = new("FormActionRun.NotFound", "The form action run was not found.");
     public static readonly Error NotRetryable = new(
         "FormActionRun.NotRetryable",

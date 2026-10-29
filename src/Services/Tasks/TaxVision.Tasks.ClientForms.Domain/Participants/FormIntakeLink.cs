@@ -136,6 +136,15 @@ public sealed class FormIntakeLink : AggregateRoot
         return Result.Success();
     }
 
+    // Re-cifra el token existente con la clave actual (X-9). El hash (SHA-256) y el last4 no cambian.
+    public void ReEncryptToken(string cipher, short keyVersion)
+    {
+        if (string.IsNullOrWhiteSpace(cipher))
+            throw new ArgumentException("The re-encrypted token is invalid.", nameof(cipher));
+        TokenCipher = cipher;
+        TokenKeyVersion = keyVersion;
+    }
+
     public Result RegenerateToken(string hash, string last4, string cipher, short keyVersion)
     {
         if (

@@ -82,6 +82,7 @@ public static class AuthAuditAction
     public const string EmailChanged = "auth.email.changed";
     public const string PhoneVerificationRequested = "auth.phone.verification_requested";
     public const string PhoneVerified = "auth.phone.verified";
+    public const string PhoneUpdated = "auth.phone.updated";
     public const string InvitationCreated = "auth.invitation.created";
     public const string InvitationAccepted = "auth.invitation.accepted";
     public const string InvitationCancelled = "auth.invitation.cancelled";

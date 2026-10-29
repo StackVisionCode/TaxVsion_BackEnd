@@ -222,6 +222,7 @@ public static class SubmitSignatureHandler
                     IsRequestCompleted = request.Status == SignatureRequestStatus.Completed,
                     ClientIp = clientIp,
                     MappedCustomerId = signer.MappedCustomerId,
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             )
             .AsTask();
@@ -260,6 +261,7 @@ public static class SubmitSignatureHandler
                             SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             )
             .AsTask();

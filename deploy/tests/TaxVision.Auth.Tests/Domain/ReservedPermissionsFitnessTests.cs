@@ -11,12 +11,8 @@ public sealed class ReservedPermissionsFitnessTests
     [Fact]
     public void Only_client_form_permissions_without_an_endpoint_are_reserved()
     {
-        string[] approved =
-        [
-            TasksPermissions.FormRequestsExport,
-            TasksPermissions.FormRequestsApplyProfile,
-            TasksPermissions.FormsLibraryManage,
-        ];
+        // export (P-12) y apply_profile (P-13) ya tienen endpoint y quedaron liberados; library sigue sin uno.
+        string[] approved = [TasksPermissions.FormsLibraryManage];
         var reserved = PermissionCatalog
             .All.Where(definition => definition.IsReserved)
             .Select(definition => definition.Code)

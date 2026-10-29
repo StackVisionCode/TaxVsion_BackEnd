@@ -22,6 +22,9 @@ public enum NotificationStatus
 
     /// <summary>Rebotó después de salir (dirección inexistente, buzón lleno…).</summary>
     Bounced,
+
+    /// <summary>No había a dónde entregar (p. ej. push sin dispositivo registrado); no es un fallo.</summary>
+    Skipped,
 }
 
 /// <summary>
@@ -99,6 +102,13 @@ public sealed class NotificationLog : TenantEntity
     {
         Status = NotificationStatus.Failed;
         Error = Truncate(error, 512);
+    }
+
+    // La razón va en Error para que el historial diga por qué no salió.
+    public void MarkSkipped(string reason)
+    {
+        Status = NotificationStatus.Skipped;
+        Error = Truncate(reason, 512);
     }
 
     /// <summary>Solo desde Sent: un fallo no se "arregla" con un aviso tardío del proveedor.</summary>

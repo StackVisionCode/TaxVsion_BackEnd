@@ -415,7 +415,8 @@ public sealed class Customer : TenantEntity
         bool isReturningCustomer,
         byte[]? refundBankAccountCipher,
         byte[]? refundBankRoutingCipher,
-        Guid byUserId
+        Guid byUserId,
+        short taxIdentifierKeyVersion = 1
     )
     {
         EnsureActive();
@@ -432,7 +433,8 @@ public sealed class Customer : TenantEntity
                 updatedByUserId: byUserId,
                 filingStatus: filingStatus,
                 priorYearAgi: priorYearAgi,
-                isReturningCustomer: isReturningCustomer
+                isReturningCustomer: isReturningCustomer,
+                taxIdentifierKeyVersion: taxIdentifierKeyVersion
             );
             if (createResult.IsFailure)
                 return createResult;
@@ -449,7 +451,8 @@ public sealed class Customer : TenantEntity
                 taxIdentifierBlindIndex,
                 taxIdentifierLast4,
                 subjectKind,
-                byUserId
+                byUserId,
+                taxIdentifierKeyVersion
             );
             FiscalProfile.Update(filingStatus, priorYearAgi, isReturningCustomer, byUserId);
             FiscalProfile.SetRefundBank(refundBankAccountCipher, refundBankRoutingCipher, byUserId);

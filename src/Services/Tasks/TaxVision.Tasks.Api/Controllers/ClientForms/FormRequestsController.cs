@@ -16,6 +16,7 @@ using TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Commands;
 using TaxVision.Tasks.ClientForms.Application.Requests.Queries;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using Wolverine;
 
@@ -133,7 +134,7 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
-        var result = await bus.InvokeAsync<Result<FormRequestResponse>>(
+        var outcome = await bus.InvokeAsync<AssignExternalFormRequestOutcome>(
             new AssignExternalFormRequestCommand(
                 tenantId,
                 userId,
@@ -145,13 +146,25 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                 request.MessageToClient,
                 request.DueAtUtc,
                 request.TaxYear,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                await CanViewAllAsync(ct)
             ),
             ct
         );
-        return result.IsFailure
-            ? StatusCode(result.Error.ToHttpStatusCode(), result.Error)
-            : CreatedAtAction(nameof(Get), new { id = result.Value.Id }, result.Value);
+        var result = outcome.Result;
+        if (result.IsSuccess)
+            return CreatedAtAction(nameof(Get), new { id = result.Value.Id }, result.Value);
+        // El customerId solo va en el cuerpo si el handler lo dejó pasar por ABAC.
+        return result.Error.Code == FormParticipantErrors.EmailBelongsToCustomer.Code
+            ? StatusCode(
+                result.Error.ToHttpStatusCode(),
+                new ExternalCustomerConflictResponse(
+                    result.Error.Code,
+                    result.Error.Message,
+                    outcome.ExistingCustomerId
+                )
+            )
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{id:guid}/external-access/resend")]
@@ -360,6 +373,22 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         );
     }
 
+    // Recordatorio manual: mismo tope que el automático. 409 si ya se alcanzó.
+    [HttpPost("{id:guid}/reminders")]
+    [HasPermission(TasksPermissions.FormRequestsManage)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> SendReminder(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new SendFormRequestReminderCommand(tenantId, userId, await CanViewAllAsync(ct), id, DateTime.UtcNow),
+                ct
+            )
+        );
+    }
+
     [HttpPost("{id:guid}/sensitive-answers/{sensitiveAnswerId:guid}/reveal")]
     [HasPermission(TasksPermissions.FormSubmissionsReveal)]
     [RateLimit("task.n.form_sensitive_reveal")]
@@ -406,6 +435,52 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         );
     }
 
+    // P-13 — campos mapeables al perfil (checklist) + estado/motivos del último intento.
+    [HttpGet("{id:guid}/profile-update/fields")]
+    [HasPermission(TasksPermissions.FormRequestsApplyProfile)]
+    [RateLimit("task.f.form_read")]
+    public async Task<IActionResult> ListProfileUpdateFields(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        return ToActionResult(
+            await bus.InvokeAsync<Result<ProfileUpdateFieldsResponse>>(
+                new ListProfileUpdateFieldsQuery(tenantId, userId, await CanViewAllAsync(ct), id),
+                ct
+            )
+        );
+    }
+
+    // P-13 — aplicar las respuestas aprobadas al perfil del cliente. Autoriza ANTES de emitir.
+    [HttpPost("{id:guid}/profile-update")]
+    [HasPermission(TasksPermissions.FormRequestsApplyProfile)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> ApplyProfile(Guid id, ApplyFormProfileRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        if (!await permissions.HasPermissionAsync(User, CustomersPermissions.Manage, ct))
+            return Forbid();
+        var actorType = User.GetActorType();
+        return ToAcceptedResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new ApplyFormProfileUpdateCommand(
+                    tenantId,
+                    userId,
+                    actorType?.ToString() ?? string.Empty,
+                    await CanViewAllAsync(ct),
+                    actorType == ActorType.TenantAdmin,
+                    User.IsPlatformAdmin(),
+                    id,
+                    request.ComponentIds,
+                    request.IncludeTaxIdentifier,
+                    DateTime.UtcNow
+                ),
+                ct
+            )
+        );
+    }
+
     // Solo desde un resultado definitivo que garantiza que no se hizo nada; nunca desde Requested.
     [HttpPost("{id:guid}/actions/{runId:guid}/retry")]
     [HasPermission(TasksPermissions.FormRequestsReview)]
@@ -435,6 +510,22 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         return ToActionResult(
             await bus.InvokeAsync<Result<FormRequestResponse>>(
                 new RetryFormCustomerLinkCommand(tenantId, userId, await CanViewAllAsync(ct), id, DateTime.UtcNow),
+                ct
+            )
+        );
+    }
+
+    // Reintenta el Submission Summary (P-11) de la revisión completada: nuevo GenerationId, mismo contenido.
+    [HttpPost("{id:guid}/summary/retry")]
+    [HasPermission(TasksPermissions.FormRequestsReview)]
+    [RateLimit("task.h.form_requests_write")]
+    public async Task<IActionResult> RetrySummary(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        return ToActionResult(
+            await bus.InvokeAsync<Result<FormRequestResponse>>(
+                new RetrySubmissionSummaryCommand(tenantId, userId, await CanViewAllAsync(ct), id, DateTime.UtcNow),
                 ct
             )
         );

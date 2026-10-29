@@ -44,8 +44,12 @@ public sealed class TurnstileFormIntakeBotProtection(HttpClient httpClient, IOpt
             }
 
             var result = await response.Content.ReadFromJsonAsync<TurnstileSiteVerifyResponse>(cancellationToken: ct);
+            // Las claves de prueba de Cloudflare no devuelven action y siempre pasan.
             return result is { Success: true }
-                && string.Equals(result.Action, _options.ExpectedAction, StringComparison.Ordinal);
+                && (
+                    string.Equals(result.Action, _options.ExpectedAction, StringComparison.Ordinal)
+                    || (result.Action is null && result.Metadata?.ResultWithTestingKey == true)
+                );
         }
         catch (HttpRequestException)
         {
@@ -59,6 +63,11 @@ public sealed class TurnstileFormIntakeBotProtection(HttpClient httpClient, IOpt
 
     private sealed record TurnstileSiteVerifyResponse(
         [property: JsonPropertyName("success")] bool Success,
-        [property: JsonPropertyName("action")] string? Action
+        [property: JsonPropertyName("action")] string? Action,
+        [property: JsonPropertyName("metadata")] TurnstileSiteVerifyMetadata? Metadata
+    );
+
+    private sealed record TurnstileSiteVerifyMetadata(
+        [property: JsonPropertyName("result_with_testing_key")] bool? ResultWithTestingKey
     );
 }

@@ -17,6 +17,7 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
     {
         var template = await context
             .FormTemplates.IgnoreQueryFilters()
+            .Include(item => item.Reviews)
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == templateId, ct);
         return template is null ? Result.Failure<FormTemplate>(FormTemplateErrors.NotFound) : Result.Success(template);
     }

@@ -5,7 +5,7 @@ using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.Infrastructure.ClientForms.Security;
 
-internal sealed class AnswersProtector(IRotatingSecretProtector protector) : IAnswersProtector
+public sealed class AnswersProtector(IRotatingSecretProtector protector) : IAnswersProtector
 {
     public ProtectedAnswers Protect(string json)
     {
@@ -40,7 +40,7 @@ internal sealed class AnswersProtector(IRotatingSecretProtector protector) : IAn
     private sealed record PackedSecret(string Ciphertext, string Nonce, string Tag);
 }
 
-internal sealed class SensitiveValueProtector(IRotatingSecretProtector protector) : ISensitiveValueProtector
+public sealed class SensitiveValueProtector(IRotatingSecretProtector protector) : ISensitiveValueProtector
 {
     public ProtectedSensitiveValue Protect(string normalized)
     {

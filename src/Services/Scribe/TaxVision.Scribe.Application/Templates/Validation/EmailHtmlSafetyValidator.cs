@@ -17,14 +17,15 @@ public sealed record EmailHtmlSafetyValidationOutcome(
 
 /// <summary>
 /// Preflight de seguridad/compatibilidad de HTML de email (Fase 4.6, §Scribe_Email_Style_Guide.md).
-/// Puro: solo regex sobre el string, sin dependencias externas. El wiring real en
-/// PublishTemplateVersionHandler/PublishLayoutVersionHandler queda para Fase 5 — esos handlers
-/// todavía no existen (Fase 2 los excluyó explícitamente).
+/// Las reglas de CSS/imágenes son regex sobre el string; las de contenido activo (XSS) parsean el
+/// HTML con AngleSharp (<see cref="EmailHtmlActiveContentInspector"/>). Lo usan publish/validate de
+/// plantillas y layouts.
 /// </summary>
 public sealed partial class EmailHtmlSafetyValidator
 {
     public EmailHtmlSafetyValidationOutcome Validate(string html)
     {
+        html ??= string.Empty;
         var errors = new List<EmailHtmlSafetyIssue>();
         var warnings = new List<EmailHtmlSafetyIssue>();
 
@@ -33,8 +34,7 @@ public sealed partial class EmailHtmlSafetyValidator
         CheckPositionAbsolute(html, errors);
         CheckPositionFixed(html, errors);
         CheckExternalStylesheet(html, errors);
-        CheckScript(html, errors);
-        CheckIframe(html, errors);
+        EmailHtmlActiveContentInspector.Inspect(html, errors);
         CheckRemoteImages(html, errors);
         CheckImageDimensions(html, warnings);
 
@@ -90,25 +90,6 @@ public sealed partial class EmailHtmlSafetyValidator
             );
     }
 
-    private static void CheckScript(string html, List<EmailHtmlSafetyIssue> errors)
-    {
-        if (ScriptTagPattern().IsMatch(html))
-            errors.Add(
-                new EmailHtmlSafetyIssue(
-                    "EmailHtmlSafety.Script",
-                    "<script> is stripped by email clients and may trigger spam filters."
-                )
-            );
-    }
-
-    private static void CheckIframe(string html, List<EmailHtmlSafetyIssue> errors)
-    {
-        if (IframeTagPattern().IsMatch(html))
-            errors.Add(
-                new EmailHtmlSafetyIssue("EmailHtmlSafety.Iframe", "<iframe> is not supported by email clients.")
-            );
-    }
-
     private static void CheckRemoteImages(string html, List<EmailHtmlSafetyIssue> errors)
     {
         if (RemoteImagePattern().IsMatch(html))
@@ -151,12 +132,6 @@ public sealed partial class EmailHtmlSafetyValidator
 
     [GeneratedRegex(@"<link[^>]+rel\s*=\s*[""']stylesheet[""']", RegexOptions.IgnoreCase)]
     private static partial Regex ExternalStylesheetPattern();
-
-    [GeneratedRegex(@"<script\b", RegexOptions.IgnoreCase)]
-    private static partial Regex ScriptTagPattern();
-
-    [GeneratedRegex(@"<iframe\b", RegexOptions.IgnoreCase)]
-    private static partial Regex IframeTagPattern();
 
     [GeneratedRegex(@"<img\b[^>]*\bsrc\s*=\s*[""']https?://", RegexOptions.IgnoreCase)]
     private static partial Regex RemoteImagePattern();

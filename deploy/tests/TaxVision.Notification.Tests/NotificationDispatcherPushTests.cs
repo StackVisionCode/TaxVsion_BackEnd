@@ -305,6 +305,109 @@ public sealed class NotificationDispatcherPushTests
         Assert.Empty(devices.RevokedIds);
     }
 
+    [Fact]
+    public async Task Sin_dispositivo_el_log_queda_Skipped_no_device_y_no_llama_a_FCM()
+    {
+        var sender = new RecordingPushSender();
+        var logs = new RecordingNotificationLogRepository();
+        var metrics = new CountingDispatchMetrics();
+        var dispatcher = BuildDispatcher(sender, new FakePushDeviceTokenRepository(), logs, metrics);
+
+        var result = await dispatcher.SendPushAsync(
+            TenantId,
+            UserId,
+            "Tarea vencida: X",
+            "Vencía ayer y sigue abierta.",
+            NotificationCategory.Collaboration,
+            "task.overdue",
+            Guid.NewGuid(),
+            "corr"
+        );
+
+        Assert.Equal("Notification.NoPushDevices", result.Error.Code);
+        Assert.Empty(sender.Sent);
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationStatus.Skipped, log.Status);
+        Assert.Equal(NotificationDispatcher.NoDeviceReason, log.Error);
+        Assert.Equal(0, metrics.Failed);
+        Assert.Equal(1, metrics.NoRecipient);
+    }
+
+    [Fact]
+    public async Task Con_dispositivo_y_error_de_FCM_el_log_queda_Failed()
+    {
+        var sender = new RecordingPushSender();
+        sender.FailNextWith(new Error(PushErrorCodes.Unavailable, "fcm down"));
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "token");
+        var logs = new RecordingNotificationLogRepository();
+        var metrics = new CountingDispatchMetrics();
+        var dispatcher = BuildDispatcher(sender, devices, logs, metrics);
+
+        var outcome = await dispatcher.DispatchPushAsync(FormPush(Guid.NewGuid()));
+
+        Assert.Equal(PushErrorCodes.Unavailable, outcome.Error?.Code);
+        Assert.Single(sender.Sent);
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationStatus.Failed, log.Status);
+        Assert.Equal("fcm down", log.Error);
+        Assert.Equal(1, metrics.Failed);
+    }
+
+    [Fact]
+    public async Task Con_dispositivo_y_envio_exitoso_el_log_queda_Sent()
+    {
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "token");
+        var logs = new RecordingNotificationLogRepository();
+        var metrics = new CountingDispatchMetrics();
+        var dispatcher = BuildDispatcher(sender, devices, logs, metrics);
+
+        var outcome = await dispatcher.DispatchPushAsync(FormPush(Guid.NewGuid()));
+
+        Assert.Null(outcome.Error);
+        Assert.Single(sender.Sent);
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationStatus.Sent, log.Status);
+        Assert.Null(log.Error);
+        Assert.Equal(1, metrics.Sent);
+        Assert.Equal(0, metrics.Failed);
+    }
+
+    private static NotificationDispatcher BuildDispatcher(
+        IPushSender pushSender,
+        IPushDeviceTokenRepository pushDeviceTokens,
+        INotificationLogRepository logs,
+        INotificationDispatchMetrics metrics
+    ) =>
+        new(
+            NoOpSmsSender.Instance,
+            pushSender,
+            pushDeviceTokens,
+            logs,
+            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            new NoOpIntegrationEventPublisher(),
+            new NoOpUnitOfWork(),
+            metrics,
+            NullLogger<NotificationDispatcher>.Instance
+        );
+
+    private sealed class CountingDispatchMetrics : INotificationDispatchMetrics
+    {
+        public int Sent { get; private set; }
+        public int Failed { get; private set; }
+        public int NoRecipient { get; private set; }
+
+        public void RecordSent(string kind, string channel) => Sent++;
+
+        public void RecordSuppressedByPreference(string kind, string channel) { }
+
+        public void RecordFailed(string kind, string channel) => Failed++;
+
+        public void RecordNoRecipient(string kind, string channel) => NoRecipient++;
+    }
+
     private static PushDispatchRequest FormPush(Guid eventId) =>
         new(
             TenantId,

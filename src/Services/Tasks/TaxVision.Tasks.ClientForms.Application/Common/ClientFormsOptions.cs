@@ -23,4 +23,8 @@ public sealed class ClientFormsOptions
     [Required]
     [ValidateObjectMembers]
     public ClientFormsExternalOptions External { get; init; } = new();
+
+    [Required]
+    [ValidateObjectMembers]
+    public ClientFormsRetentionOptions Retention { get; init; } = new();
 }

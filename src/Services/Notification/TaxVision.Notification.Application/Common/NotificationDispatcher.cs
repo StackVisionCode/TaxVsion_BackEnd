@@ -65,6 +65,8 @@ public sealed class NotificationDispatcher(
     ILogger<NotificationDispatcher> logger
 )
 {
+    public const string NoDeviceReason = "no_device";
+
     public async Task SendSmsAsync(
         Guid tenantId,
         string phoneNumber,
@@ -139,7 +141,7 @@ public sealed class NotificationDispatcher(
     /// un solo dispositivo entregado ya cuenta como Sent — mismo criterio que
     /// el multicast nativo de FCM/APNs, para no perder el aviso por un
     /// dispositivo viejo/desinstalado). Falla con `Notification.NoPushDevices`
-    /// si el usuario no tiene ningún token registrado.
+    /// si el usuario no tiene ningún token registrado (el log queda Skipped, no Failed).
     /// </summary>
     public async Task<Result> SendPushAsync(
         Guid tenantId,
@@ -264,10 +266,11 @@ public sealed class NotificationDispatcher(
         var log = logResult.Value;
         await logs.AddAsync(log, ct);
 
+        // Sin dispositivo no hay entrega posible: Skipped, no Failed. El error sigue saliendo para Campaigns.
         if (devices.Count == 0)
         {
             var error = new Error("Notification.NoPushDevices", "Recipient has no registered push devices.");
-            log.MarkFailed(error.Message);
+            log.MarkSkipped(NoDeviceReason);
             metrics.RecordNoRecipient(request.Kind, "Push");
             await unitOfWork.SaveChangesAsync(ct);
             return new(error, [], []);

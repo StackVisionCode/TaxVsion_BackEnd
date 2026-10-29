@@ -23,6 +23,16 @@ public sealed class FormSubmissionRevisionConfiguration : IEntityTypeConfigurati
         builder.Property(revision => revision.ReviewMessage).HasMaxLength(2000);
         builder.Property(revision => revision.CompletionNote).HasMaxLength(2000);
         builder.Property(revision => revision.PdfStatus).HasConversion<int>().IsRequired();
+
+        // P-18 — estado y referencias de la firma del Submission Summary.
+        builder.Property(revision => revision.SignatureStatus).HasConversion<int>().IsRequired();
+        builder.Property(revision => revision.SignatureRequestId);
+        builder.Property(revision => revision.SignatureCopyFileId);
+        builder.Property(revision => revision.DocumentHashPre).HasMaxLength(64);
+        builder.Property(revision => revision.DocumentHashPost).HasMaxLength(64);
+        builder.Property(revision => revision.SealedFileId);
+        builder.Property(revision => revision.SignatureCertificateFileId);
+
         builder
             .HasIndex(revision => new { revision.FormSubmissionId, revision.RevisionNumber })
             .IsUnique()

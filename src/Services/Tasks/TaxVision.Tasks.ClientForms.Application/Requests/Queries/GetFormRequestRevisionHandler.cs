@@ -79,6 +79,7 @@ public static class GetFormRequestRevisionHandler
                 .ToArray(),
             revision.PdfStatus,
             revision.PdfFileId,
+            revision.SignatureStatus,
             FormJson.Parse(protector.Unprotect(revision.Answers)),
             EvidenceFor(revision.RevisionNumber, consents)
         );

@@ -7,6 +7,139 @@ namespace TaxVision.DataCollection.Engine.Tests;
 public sealed class StructureValidatorTests
 {
     [Fact]
+    public void Definition_without_pages_reports_page_required()
+    {
+        var definition = EngineTestFactory.WithPages(EngineTestFactory.Definition(), []);
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        var issue = Assert.Single(report.Issues);
+        Assert.Equal(("page.required", "/pages"), (issue.Code, issue.Path));
+    }
+
+    [Theory]
+    [InlineData("previousRequest", true)]
+    [InlineData("customer.displayName", true)]
+    [InlineData("customer.email", false)]
+    [InlineData("", false)]
+    public void Prefill_source_must_be_supported(string source, bool valid)
+    {
+        var definition = EngineTestFactory.WithComponents(
+            new FormComponent
+            {
+                Id = "fd_abcdefgh",
+                Type = "text",
+                Label = "Name",
+                Prefill = new FormPrefill { Source = source },
+                Props = JsonSerializer.SerializeToElement(new { }),
+            }
+        );
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.Equal(valid, report.IsValid);
+        if (!valid)
+            Assert.Contains(
+                report.Issues,
+                issue =>
+                    issue.Code == "prefill.invalid_source"
+                    && issue.Path == "/pages/0/sections/0/components/0/prefill/source"
+            );
+    }
+
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(61, false)]
+    public void Select_placeholder_is_limited_to_60_characters(int length, bool valid)
+    {
+        var definition = EngineTestFactory.Definition(
+            "select",
+            new { options = new[] { new { value = "first", label = "First" } }, placeholder = new string('p', length) }
+        );
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.Equal(valid, report.IsValid);
+        if (!valid)
+            Assert.Contains(
+                report.Issues,
+                issue =>
+                    issue.Code == "props.out_of_range"
+                    && issue.Path == "/pages/0/sections/0/components/0/props/placeholder"
+            );
+    }
+
+    [Theory]
+    [InlineData("brandSubtle", "brand", null, false)]
+    [InlineData("brandSubtle", "brand", "none", false)]
+    [InlineData("brandSubtle", "brand", "surface", true)]
+    [InlineData("brandSubtle", "ink", null, true)]
+    [InlineData(null, "brand", null, true)]
+    public void Component_text_is_checked_against_the_parent_section_background(
+        string? sectionBackground,
+        string textColor,
+        string? componentBackground,
+        bool valid
+    )
+    {
+        var heading = new FormComponent
+        {
+            Id = "fd_abcdefgh",
+            Type = "heading",
+            Style = new FormStyle { TextColor = textColor, Background = componentBackground },
+            Props = JsonSerializer.SerializeToElement(new { text = "Title" }),
+        };
+        var definition = WithSectionStyle(new FormStyle { Background = sectionBackground }, heading);
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.Equal(valid, report.IsValid);
+        if (!valid)
+            Assert.Contains(
+                report.Issues,
+                issue =>
+                    issue.Code == "style.contrast_not_allowed" && issue.Path == "/pages/0/sections/0/components/0/style"
+            );
+    }
+
+    [Theory]
+    [InlineData("sunken", "muted", false)]
+    [InlineData("sage", "success", false)]
+    [InlineData("sand", "ink", true)]
+    [InlineData("surface", "muted", true)]
+    public void Section_contrast_uses_the_approved_matrix(string background, string textColor, bool valid)
+    {
+        var component = EngineTestFactory.Definition().Pages[0].Sections[0].Components[0];
+        var definition = WithSectionStyle(new FormStyle { Background = background, TextColor = textColor }, component);
+
+        var report = EngineTestFactory.Create().ValidateForPublish(definition);
+
+        Assert.Equal(valid, report.IsValid);
+    }
+
+    private static FormDefinition WithSectionStyle(FormStyle style, FormComponent component) =>
+        EngineTestFactory.WithPages(
+            EngineTestFactory.Definition(),
+            [
+                new FormPage
+                {
+                    Id = "pg_abcdefgh",
+                    Title = "About you",
+                    Sections =
+                    [
+                        new FormSection
+                        {
+                            Id = "sc_abcdefgh",
+                            Title = "Information",
+                            Style = style,
+                            Components = [component],
+                        },
+                    ],
+                },
+            ]
+        );
+
+    [Fact]
     public void Minimal_text_definition_is_publishable()
     {
         var report = EngineTestFactory.Create().ValidateForPublish(EngineTestFactory.Definition());

@@ -49,11 +49,23 @@ public sealed class ClientFormsAvailabilityTests
     }
 
     [Fact]
-    public async Task Office_without_settings_row_gets_external_participants_but_not_intake_links()
+    public async Task Office_without_settings_row_gets_external_participants_and_intake_links()
     {
         var capabilities = Capabilities(new MemoryFormModuleSettingsRepository(), ["planner"]);
 
         Assert.True(await capabilities.IsExternalParticipantAvailableAsync(FormTemplateHandlerTestDoubles.TenantId));
+        Assert.True(await capabilities.IsIntakeLinkAvailableAsync(FormTemplateHandlerTestDoubles.TenantId));
+    }
+
+    [Fact]
+    public async Task Intake_links_stay_unavailable_until_turnstile_is_configured()
+    {
+        var capabilities = new ClientFormsPublicCapabilityEvaluator(
+            WithModules("planner"),
+            new MemoryFormModuleSettingsRepository(),
+            new UnavailableBotProtection()
+        );
+
         Assert.False(await capabilities.IsIntakeLinkAvailableAsync(FormTemplateHandlerTestDoubles.TenantId));
     }
 
@@ -102,25 +114,40 @@ public sealed class ClientFormsAvailabilityTests
         Assert.True(result.Value.ExternalParticipantsEnabled);
         Assert.True(result.Value.AutoCustomerCreationEnabled);
         Assert.True(result.Value.SignatureStepEnabled);
-        Assert.False(result.Value.IntakeLinksEnabled);
+        Assert.True(result.Value.IntakeLinksEnabled);
         Assert.True(result.Value.PushNotificationsEnabled);
         Assert.Single(repository.Items);
         Assert.Empty(recorder.Pending);
     }
 
     [Fact]
-    public async Task Staff_availability_returns_default_capabilities_for_an_office_without_row()
+    public async Task Staff_availability_returns_everything_on_for_an_office_without_row()
     {
         var result = await GetStaffFormAvailabilityHandler.Handle(
             new GetStaffFormAvailabilityQuery(FormTemplateHandlerTestDoubles.TenantId),
             new ClientFormsAvailabilityEvaluator(new MemoryModulesReader(["planner"])),
             new MemoryFormModuleSettingsRepository(),
+            new AvailableBotProtection(),
             default
         );
 
         Assert.True(result.Enabled);
         Assert.Null(result.Reason);
-        Assert.Equal(new FormCapabilitiesResponse(true, false, true, false, true), result.Capabilities);
+        Assert.Equal(new FormCapabilitiesResponse(true, true, true, true, true), result.Capabilities);
+    }
+
+    [Fact]
+    public async Task Staff_availability_reports_intake_links_off_while_turnstile_is_not_configured()
+    {
+        var result = await GetStaffFormAvailabilityHandler.Handle(
+            new GetStaffFormAvailabilityQuery(FormTemplateHandlerTestDoubles.TenantId),
+            new ClientFormsAvailabilityEvaluator(new MemoryModulesReader(["planner"])),
+            new MemoryFormModuleSettingsRepository(),
+            new UnavailableBotProtection(),
+            default
+        );
+
+        Assert.Equal(new FormCapabilitiesResponse(true, false, true, true, true), result.Capabilities);
     }
 
     [Fact]
@@ -135,6 +162,7 @@ public sealed class ClientFormsAvailabilityTests
             new GetStaffFormAvailabilityQuery(FormTemplateHandlerTestDoubles.TenantId),
             new ClientFormsAvailabilityEvaluator(new MemoryModulesReader(["planner"])),
             new MemoryFormModuleSettingsRepository(settings),
+            new AvailableBotProtection(),
             default
         );
 
@@ -148,6 +176,7 @@ public sealed class ClientFormsAvailabilityTests
             new GetStaffFormAvailabilityQuery(FormTemplateHandlerTestDoubles.TenantId),
             new ClientFormsAvailabilityEvaluator(new MemoryModulesReader(["wallet"])),
             new MemoryFormModuleSettingsRepository(),
+            new AvailableBotProtection(),
             default
         );
 
@@ -170,7 +199,7 @@ public sealed class ClientFormsAvailabilityTests
         );
 
         Assert.Equal(
-            """{"enabled":true,"reason":null,"capabilities":{"externalParticipantsEnabled":true,"intakeLinksEnabled":false,"autoCustomerCreationEnabled":true,"signatureStepEnabled":false,"pushNotificationsEnabled":true}}""",
+            """{"enabled":true,"reason":null,"capabilities":{"externalParticipantsEnabled":true,"intakeLinksEnabled":true,"autoCustomerCreationEnabled":true,"signatureStepEnabled":true,"pushNotificationsEnabled":true}}""",
             json
         );
     }
@@ -266,7 +295,7 @@ public sealed class ClientFormsAvailabilityTests
         Assert.Null(noRow.Note);
         Assert.True(noRow.ExternalParticipantsEnabled);
         Assert.True(noRow.AutoCustomerCreationEnabled);
-        Assert.False(noRow.IntakeLinksEnabled);
+        Assert.True(noRow.IntakeLinksEnabled);
         var row = Assert.Single(list, item => item.TenantId == withoutPlanner);
         Assert.False(row.Enabled);
         Assert.Equal(ClientFormsAvailabilityReasons.ModuleUnavailable, row.Reason);

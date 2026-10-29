@@ -4,10 +4,19 @@ using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
 
 namespace TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 
+// Cuerpo constante del 202 del challenge: idéntico se haya enviado o no el código, así no es un oráculo.
+// Solo informa el cupo para que la página lo muestre de antemano.
+public sealed record PublicFormChallengeAcceptedResponse(int CodeLimitPerHour, int? RetryAfterSeconds)
+{
+    public const int CodeLimit = 5;
+
+    public static readonly PublicFormChallengeAcceptedResponse Instance = new(CodeLimit, null);
+}
+
 internal static class PublicFormChallengeIssuance
 {
     internal static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(10);
-    private const int MaxIssuesPerEmailPerHour = 5;
+    private const int MaxIssuesPerEmailPerHour = PublicFormChallengeAcceptedResponse.CodeLimit;
 
     // Sin bloqueo vigente, fuera de la espera entre reenvíos y dentro de los cupos por email y tenant.
     internal static async Task<bool> CanIssueAsync(

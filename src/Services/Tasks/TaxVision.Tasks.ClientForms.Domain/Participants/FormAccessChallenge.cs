@@ -76,6 +76,16 @@ public sealed class FormAccessChallenge : AggregateRoot
         return Result.Success(challenge);
     }
 
+    // Re-cifra el email con la clave actual (X-9) y actualiza el hash de búsqueda a la versión nueva.
+    public void ReEncryptEmail(string emailCipher, short emailKeyVersion, string emailLookupHash)
+    {
+        if (string.IsNullOrWhiteSpace(emailCipher) || string.IsNullOrWhiteSpace(emailLookupHash))
+            throw new ArgumentException("The re-encrypted email is invalid.");
+        EmailCipher = emailCipher;
+        EmailKeyVersion = emailKeyVersion;
+        EmailLookupHash = emailLookupHash;
+    }
+
     public bool IsBlockedAt(DateTime nowUtc) => BlockedUntilUtc.HasValue && nowUtc < BlockedUntilUtc.Value;
 
     // Un bloqueo vigente impide emitir otro código: si no, cada reemisión regalaría 5 intentos más.

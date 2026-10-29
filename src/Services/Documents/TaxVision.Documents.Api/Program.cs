@@ -142,6 +142,9 @@ builder.Host.UseWolverine(options =>
         .ListenToRabbitQueue("documents-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();
 
+    // P-11 — comando punto a punto de Tasks: el Submission Summary de un formulario completado.
+    options.ListenToRabbitQueue("documents-client-form-summary").UseDurableInbox();
+
     // Eventos que Documents publica al bus compartido (guardrail #13: routing explícito por tipo).
     options.PublishMessage<DocumentGenerationStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DocumentGenerationCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");

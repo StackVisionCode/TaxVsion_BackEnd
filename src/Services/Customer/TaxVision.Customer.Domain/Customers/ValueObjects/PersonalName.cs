@@ -36,6 +36,23 @@ public sealed record PersonalName
             return Result.Failure<PersonalName>(new Error("PersonalName.LastName", "Last name is required."));
         if (firstName.Length > 80 || lastName.Length > 80)
             return Result.Failure<PersonalName>(new Error("PersonalName.Length", "Name exceeds maximum length."));
+        var optionalPart =
+            TooLong(middleName, MiddleNameMaxLength, "Middle name")
+            ?? TooLong(prefix, PrefixMaxLength, "Prefix")
+            ?? TooLong(suffix, SuffixMaxLength, "Suffix");
+        if (optionalPart is not null)
+            return Result.Failure<PersonalName>(optionalPart);
         return Result.Success(new PersonalName(prefix, firstName, middleName, lastName, suffix));
     }
+
+    // Mismos límites que las columnas (CustomerConfiguration y CustomerRelationConfiguration).
+    public const int MiddleNameMaxLength = 80;
+    public const int PrefixMaxLength = 20;
+    public const int SuffixMaxLength = 20;
+
+    // Se mide el valor recortado: es el que se guarda.
+    private static Error? TooLong(string? value, int maxLength, string label) =>
+        value is not null && value.Trim().Length > maxLength
+            ? new Error("PersonalName.Length", $"{label} exceeds maximum length of {maxLength} characters.")
+            : null;
 }

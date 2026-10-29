@@ -25,6 +25,9 @@ public sealed record AssignExternalFormRequestRequest(
     int? TaxYear
 );
 
+// P-13 — aplicar al perfil: campos elegidos (null = todos los mapeados) y si incluir el tax identifier (admin).
+public sealed record ApplyFormProfileRequest(IReadOnlyList<string>? ComponentIds, bool IncludeTaxIdentifier);
+
 public sealed record FormFieldCommentRequest(string ComponentId, string? RowId, string Comment);
 
 public sealed record ReturnFormRequestRequest(
@@ -64,3 +67,6 @@ public sealed record CapturePortalSensitiveAnswerRequest(
     FormTaxIdentifierKind Kind,
     string Value
 );
+
+// Motivo opcional (<= 200), con el mismo filtro de datos sensibles que los demás textos del staff.
+public sealed record MarkProspectLostRequest(string? Reason);

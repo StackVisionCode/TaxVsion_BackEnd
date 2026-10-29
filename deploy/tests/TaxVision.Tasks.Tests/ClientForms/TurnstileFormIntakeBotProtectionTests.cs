@@ -55,6 +55,27 @@ public sealed class TurnstileFormIntakeBotProtectionTests
     }
 
     [Fact]
+    public async Task Testing_key_result_without_action_is_accepted()
+    {
+        var handler = new RecordingHandler(
+            HttpStatusCode.OK,
+            "{\"success\":true,\"metadata\":{\"result_with_testing_key\":true}}"
+        );
+        var protection = Create(handler, "secret");
+
+        Assert.True(await protection.VerifyAsync("turnstile-token", "203.0.113.10"));
+    }
+
+    [Fact]
+    public async Task Real_result_without_action_is_rejected()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK, "{\"success\":true}");
+        var protection = Create(handler, "secret");
+
+        Assert.False(await protection.VerifyAsync("turnstile-token", "203.0.113.10"));
+    }
+
+    [Fact]
     public async Task Oversized_token_is_rejected_before_the_network_call()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, SuccessResponse());

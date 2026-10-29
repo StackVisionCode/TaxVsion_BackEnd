@@ -5,12 +5,12 @@ using TaxVision.DataCollection.Engine;
 using TaxVision.DataCollection.Engine.Answers;
 using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.DataCollection.Engine.Mapping;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
-using Wolverine;
 
 namespace TaxVision.Tasks.ClientForms.Application.Actions;
 
@@ -20,8 +20,8 @@ namespace TaxVision.Tasks.ClientForms.Application.Actions;
 public sealed record FormActionEmission(FormActionRun Run, object Message);
 
 /// <summary>
-/// Tabla de estados de las acciones: crea los runs y publica sus comandos con el bus del handler que
-/// la invoca, así run, comando y transición se confirman en la misma transacción del outbox.
+/// Tabla de estados de las acciones: crea los runs y entrega sus comandos al handler que la invoca, que
+/// guarda y después publica; así run, comando y transición se confirman en la misma transacción del outbox.
 /// </summary>
 public sealed class FormActionPlanner(
     IFormTemplateVersionRepository versions,
@@ -34,11 +34,12 @@ public sealed class FormActionPlanner(
 )
 {
     // Devuelve la foto previa de los runs: quien guarda mide lo planificado una vez confirmado.
+    // Los comandos van a `outgoing`: quien llama los publica después de guardar (T-8).
     public async Task<FormActionRunTally> PlanAsync(
         FormRequest request,
         FormActionTrigger trigger,
         FormAnswers? answers,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         DateTime nowUtc,
         CancellationToken ct
     )
@@ -52,10 +53,65 @@ public sealed class FormActionPlanner(
             if (action.Trigger != trigger || action.Type is FormActionType.NotifyStaff or FormActionType.RouteToReview)
                 continue;
             if (action.Type == FormActionType.CreateCustomer)
-                await PlanCustomerCreationAsync(request, action, context, answers, bus, nowUtc, ct);
+                await PlanCustomerCreationAsync(request, action, context, answers, outgoing, nowUtc, ct);
             else
                 Skip(request, action, FormActionRunErrors.NotSupportedCode, nowUtc);
         }
+        return tally;
+    }
+
+    // P-18 — la firma de la revisión terminó: completada ejecuta el alta que la esperaba (waitFor), si no
+    // queda Skipped(signature_not_completed). Idempotente ante eventos repetidos. No publica: el consumer
+    // guarda y después publica lo que deja en `outgoing` (T-8).
+    public async Task<FormActionRunTally> PlanAfterSignatureAsync(
+        FormRequest request,
+        int revisionNumber,
+        bool signatureCompleted,
+        DeferredMessages outgoing,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var tally = FormActionRunTally.Of(request);
+        // Una firma de una revisión vieja (p.ej. cancelada por un reenvío) no decide nada.
+        if (
+            revisionNumber != request.CurrentRevisionNumber
+            || !AwaitsCustomer(request)
+            || request.HasActiveAction(FormActionNames.CreateCustomer)
+        )
+            return tally;
+        var context = await LoadAsync(request, ct);
+        var action = context?.Rules.Actions.FirstOrDefault(item =>
+            item.Type == FormActionType.CreateCustomer
+            && item.Trigger != FormActionTrigger.Manual
+            && WaitsForSignature(item)
+        );
+        if (context is null || action is null)
+            return tally;
+        if (!signatureCompleted)
+        {
+            // Un rechazo tardío no deshace una firma que ya se completó o selló.
+            if (
+                request.RevisionSignatureStatus(revisionNumber)
+                is FormRevisionSignatureStatus.Completed
+                    or FormRevisionSignatureStatus.Sealed
+            )
+                return tally;
+            SkipOnce(request, action, FormActionRunErrors.SignatureNotCompletedCode, nowUtc);
+            return tally;
+        }
+        var tenantSettings = await settings.GetAsync(request.TenantId, ct);
+        if (!FormModuleCapabilities.Of(tenantSettings).AutoCustomerCreationEnabled)
+            return tally;
+        var answers = LatestAnswers(request);
+        if (answers is null || !engine.EvaluateCondition(context.Definition, answers, action.Condition))
+        {
+            SkipOnce(request, action, FormActionRunErrors.ConditionNotMetCode, nowUtc);
+            return tally;
+        }
+        var emission = Emit(request, action, context, answers, null, nowUtc);
+        if (emission.IsSuccess)
+            outgoing.Add(emission.Value.Message);
         return tally;
     }
 
@@ -87,7 +143,7 @@ public sealed class FormActionPlanner(
         FormAction action,
         FormActionContext context,
         FormAnswers? answers,
-        IMessageBus bus,
+        DeferredMessages outgoing,
         DateTime nowUtc,
         CancellationToken ct
     )
@@ -98,14 +154,18 @@ public sealed class FormActionPlanner(
         if (!FormModuleCapabilities.Of(tenantSettings).AutoCustomerCreationEnabled)
             return;
         if (WaitsForSignature(action))
-            Skip(request, action, FormActionRunErrors.NotSupportedCode, nowUtc);
+        {
+            // Espera la firma de la revisión: la planifica PlanAfterSignatureAsync. Sin paso de firma no llegaría nunca.
+            if (!HasSignatureStep(context.Definition))
+                Skip(request, action, FormActionRunErrors.SignatureNotConfiguredCode, nowUtc);
+        }
         else if (answers is null || !engine.EvaluateCondition(context.Definition, answers, action.Condition))
             Skip(request, action, FormActionRunErrors.ConditionNotMetCode, nowUtc);
         else
         {
             var emission = Emit(request, action, context, answers, null, nowUtc);
             if (emission.IsSuccess)
-                await bus.PublishAsync(emission.Value.Message);
+                outgoing.Add(emission.Value.Message);
         }
     }
 
@@ -204,12 +264,24 @@ public sealed class FormActionPlanner(
         && request.ResponsibleUserId.HasValue
         && request.CurrentRevisionNumber > 0;
 
-    // La firma previa todavía no existe como acción: queda para el arranque manual.
+    // config.waitFor = "signatureCompleted": el alta espera a que la firma de la revisión se complete.
     private static bool WaitsForSignature(FormAction action) =>
         action.Config.ValueKind == System.Text.Json.JsonValueKind.Object
         && action.Config.TryGetProperty("waitFor", out var waitFor)
         && waitFor.ValueKind == System.Text.Json.JsonValueKind.String
         && waitFor.GetString() == "signatureCompleted";
+
+    private static bool HasSignatureStep(FormDefinition definition) =>
+        definition
+            .Pages.SelectMany(page => page.Sections)
+            .SelectMany(section => section.Components)
+            .Any(component => string.Equals(component.Type, "signatureStep", StringComparison.Ordinal));
+
+    private static void SkipOnce(FormRequest request, FormAction action, string reason, DateTime nowUtc)
+    {
+        if (!request.HasClosedAction(action.Key, request.CurrentRevisionNumber, reason))
+            Skip(request, action, reason, nowUtc);
+    }
 
     private static void Skip(FormRequest request, FormAction action, string reason, DateTime nowUtc) =>
         request.CloseActionWithoutCommand(

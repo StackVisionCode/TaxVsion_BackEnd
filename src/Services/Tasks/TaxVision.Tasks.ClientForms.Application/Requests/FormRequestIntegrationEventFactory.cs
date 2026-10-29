@@ -132,6 +132,27 @@ public static class FormRequestIntegrationEventFactory
         };
     }
 
+    public static FormRequestReminderDueIntegrationEvent ReminderDue(
+        FormRequest request,
+        bool isOverdue,
+        bool isManual,
+        Guid? sentByUserId,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = request.TenantId,
+            CorrelationId = correlationId,
+            FormRequestId = request.Id,
+            Participant = Participant(request),
+            Title = request.Title,
+            DueAtUtc = request.DueAtUtc,
+            IsOverdue = isOverdue,
+            ReminderNumber = request.ReminderCount,
+            IsManual = isManual,
+            SentByUserId = sentByUserId,
+        };
+
     public static ClientFormParticipant Participant(FormRequest request) =>
         new()
         {

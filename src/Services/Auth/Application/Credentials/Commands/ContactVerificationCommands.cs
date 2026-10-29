@@ -234,6 +234,49 @@ public static class RequestPhoneVerificationHandler
     }
 }
 
+// ---------------------------------------------------------------------------
+// Teléfono propio sin OTP (el dueño decidió no verificarlo; el flujo con código queda por compatibilidad)
+// ---------------------------------------------------------------------------
+
+public sealed record UpdateMyPhoneCommand(Guid UserId, string? PhoneNumber);
+
+public static class UpdateMyPhoneHandler
+{
+    public static async Task<Result> Handle(
+        UpdateMyPhoneCommand command,
+        IUserRepository users,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var user = await users.GetByIdAsync(command.UserId, ct);
+        if (user is null || !user.IsActive)
+            return Result.Failure(new Error("User.NotFound", "User does not exist."));
+
+        var updated = user.UpdatePhoneNumber(command.PhoneNumber);
+        if (updated.IsFailure)
+            return updated;
+
+        await audit.AddAsync(
+            AuthAuditLog.Record(
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PhoneUpdated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
 public sealed record ConfirmPhoneVerificationCommand(Guid UserId, string Code);
 
 public static class ConfirmPhoneVerificationHandler

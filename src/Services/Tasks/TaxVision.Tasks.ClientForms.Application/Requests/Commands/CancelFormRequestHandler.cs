@@ -41,8 +41,8 @@ public static class CancelFormRequestHandler
             return Result.Failure<FormRequestResponse>(writable.Error);
         var cancelled = found.Value.Cancel(command.Note, command.ByUserId, command.NowUtc);
         if (cancelled.IsSuccess)
-            await CloseAccessAndAnnounceAsync(found.Value, command, grants, sessions, bus, correlation, ct);
-        return await ReviewSupport.Save(
+            await FormExternalAccessRevoker.RevokeAsync(found.Value, command.NowUtc, grants, sessions, ct);
+        var saved = await ReviewSupport.Save(
             cancelled,
             found.Value,
             "request.cancelled",
@@ -51,19 +51,19 @@ public static class CancelFormRequestHandler
             unitOfWork,
             ct
         );
+        // Guardar antes de publicar (T-8): un conflicto no anuncia una cancelación revertida.
+        if (saved.IsSuccess)
+            await AnnounceAsync(found.Value, command, bus, correlation);
+        return saved;
     }
 
-    private static async Task CloseAccessAndAnnounceAsync(
+    private static async Task AnnounceAsync(
         FormRequest request,
         CancelFormRequestCommand command,
-        IFormAccessGrantRepository grants,
-        IFormAccessSessionRepository sessions,
         IMessageBus bus,
-        ICorrelationContext correlation,
-        CancellationToken ct
+        ICorrelationContext correlation
     )
     {
-        await FormExternalAccessRevoker.RevokeAsync(request, command.NowUtc, grants, sessions, ct);
         await bus.PublishAsync(
             FormRequestIntegrationEventFactory.Cancelled(
                 request,

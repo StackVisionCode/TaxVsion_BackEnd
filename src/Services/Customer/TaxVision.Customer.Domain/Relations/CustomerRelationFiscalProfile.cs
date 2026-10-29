@@ -12,6 +12,9 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
     public byte[] TaxIdentifierCipher { get; private set; } = default!;
     public string TaxIdentifierBlindIndex { get; private set; } = default!;
     public string TaxIdentifierLast4 { get; private set; } = default!;
+
+    // B-9/X-9: versión de la clave con la que está cifrado el tax identifier (ver CustomerFiscalProfile).
+    public short TaxIdentifierKeyVersion { get; private set; } = 1;
     public int TaxYear { get; private set; }
     public bool QualifiesAsDependent { get; private set; }
     public bool LivedWithTaxpayer { get; private set; }
@@ -26,7 +29,8 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
         string taxIdentifierBlindIndex,
         string taxIdentifierLast4,
         int taxYear,
-        Guid updatedByUserId
+        Guid updatedByUserId,
+        short taxIdentifierKeyVersion = 1
     )
     {
         if (customerRelationId == Guid.Empty)
@@ -50,6 +54,7 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
             TaxIdentifierCipher = taxIdentifierCipher,
             TaxIdentifierBlindIndex = taxIdentifierBlindIndex,
             TaxIdentifierLast4 = taxIdentifierLast4,
+            TaxIdentifierKeyVersion = taxIdentifierKeyVersion,
             TaxYear = taxYear,
             UpdatedAtUtc = DateTime.UtcNow,
             UpdatedByUserId = updatedByUserId,
@@ -66,12 +71,27 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
         UpdatedByUserId = updatedByUserId;
     }
 
-    public void ReplaceTaxIdentifier(byte[] cipher, string blindIndex, string last4, Guid updatedByUserId)
+    public void ReplaceTaxIdentifier(
+        byte[] cipher,
+        string blindIndex,
+        string last4,
+        Guid updatedByUserId,
+        short keyVersion = 1
+    )
     {
         TaxIdentifierCipher = cipher;
         TaxIdentifierBlindIndex = blindIndex;
         TaxIdentifierLast4 = last4;
+        TaxIdentifierKeyVersion = keyVersion;
         UpdatedAtUtc = DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
+    }
+
+    // B-9/X-9: re-cifrado del sweep de rotación (ver CustomerFiscalProfile).
+    public void ReEncryptTaxIdentifier(byte[] cipher, string blindIndex, short keyVersion)
+    {
+        TaxIdentifierCipher = cipher;
+        TaxIdentifierBlindIndex = blindIndex;
+        TaxIdentifierKeyVersion = keyVersion;
     }
 }

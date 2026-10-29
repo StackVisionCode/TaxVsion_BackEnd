@@ -641,6 +641,16 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("LinkedCustomerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("LostAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LostByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LostReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("PhoneE164")
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
@@ -763,6 +773,68 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.ToTable("FormActionRuns", null, t =>
                         {
                             t.HasCheckConstraint("CK_FormActionRuns_Command", "([Status] = 5 AND [CommandId] IS NULL) OR ([Status] = 4) OR ([Status] IN (1, 2, 3) AND [CommandId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormAnswerIndexEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("ParticipantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RowIndex")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("ValueDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("ValueNumber")
+                        .HasColumnType("decimal(19,6)");
+
+                    b.Property<string>("ValueText")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "FormRequestId")
+                        .HasDatabaseName("IX_FormAnswerIndexEntries_TenantId_Request");
+
+                    b.HasIndex("TenantId", "FormTemplateId", "Key", "ValueText")
+                        .HasDatabaseName("IX_FormAnswerIndexEntries_TenantId_Template_Key_Value");
+
+                    b.ToTable("FormAnswerIndexEntries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormAnswerIndexEntries_CustomerOrParticipant", "[CustomerId] IS NOT NULL OR [ParticipantId] IS NOT NULL");
                         });
                 });
 
@@ -1009,6 +1081,25 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PrefillSourceRequestId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("PrefilledComponentIds")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("PrefilledComponentIds");
+
+                    b.Property<Guid?>("ProfileUpdateCommandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProfileUpdateOutcomes")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ProfileUpdateOutcomes");
+
+                    b.Property<DateTime?>("ProfileUpdateRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProfileUpdateResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("ProfileUpdateStatus")
                         .HasColumnType("int");
 
@@ -1056,6 +1147,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "FormTemplateId")
                         .HasDatabaseName("IX_FormRequests_TenantId_FormTemplateId");
+
+                    b.HasIndex("TenantId", "RequestedAtUtc")
+                        .HasDatabaseName("IX_FormRequests_TenantId_RequestedAtUtc");
 
                     b.HasIndex("TenantId", "CustomerId", "FormTemplateId")
                         .IsUnique()
@@ -1160,6 +1254,14 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("DocumentHashPost")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("DocumentHashPre")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("FormSubmissionId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1188,6 +1290,21 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevisionNumber")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("SealedFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SignatureCertificateFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SignatureCopyFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SignatureRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SignatureStatus")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("SubmittedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1204,6 +1321,56 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_FormSubmissionRevisions_SubmittedBy", "([SubmittedByKind] = N'PortalUser' AND [SubmittedByPortalUserId] IS NOT NULL AND [SubmittedByParticipantId] IS NULL AND [SubmittedBySessionId] IS NULL) OR ([SubmittedByKind] = N'ExternalSession' AND [SubmittedByPortalUserId] IS NULL AND [SubmittedByParticipantId] IS NOT NULL AND [SubmittedBySessionId] IS NOT NULL)");
                         });
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Retention.FormRetentionTombstone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CurrentRevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FinalStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("FormRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LastSubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("PurgedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "FormRequestId");
+
+                    b.ToTable("FormRetentionTombstones", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Settings.FormModuleSettings", b =>
@@ -1245,6 +1412,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<int?>("RetentionYearsOverride")
+                        .HasColumnType("int");
+
                     b.Property<bool>("SignatureStepEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1253,6 +1423,43 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("FormModuleSettings", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormLibraryReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReviewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ReviewedVersionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewerRole")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormTemplateId", "ReviewedVersionNumber")
+                        .HasDatabaseName("IX_FormLibraryReviews_Template_Version");
+
+                    b.ToTable("FormLibraryReviews", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", b =>
@@ -1722,6 +1929,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<string>("PrimaryEmailNormalized")
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -1739,6 +1950,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "DisplayName")
                         .HasDatabaseName("IX_CustomerDirectoryEntries_TenantId_DisplayName");
+
+                    b.HasIndex("TenantId", "PrimaryEmailNormalized")
+                        .HasDatabaseName("IX_CustomerDirectoryEntries_TenantId_PrimaryEmail")
+                        .HasFilter("[PrimaryEmailNormalized] IS NOT NULL");
 
                     b.ToTable("CustomerDirectoryEntries", (string)null);
                 });
@@ -2524,6 +2739,15 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormLibraryReview", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", null)
+                        .WithMany("Reviews")
+                        .HasForeignKey("FormTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", b =>
                 {
                     b.OwnsOne("TaxVision.Tasks.ClientForms.Domain.Templates.LibraryOrigin", "LibraryOrigin", b1 =>
@@ -2903,6 +3127,11 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Requests.FormSubmissionRevision", b =>
                 {
                     b.Navigation("FieldComments");
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.ClientForms.Domain.Templates.FormTemplate", b =>
+                {
+                    b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.ClientRequests.ClientRequest", b =>

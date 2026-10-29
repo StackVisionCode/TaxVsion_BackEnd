@@ -55,6 +55,11 @@ const repeaterDefinition = (minRows = 1, maxRows = 3) => definition([], {
   }],
 });
 
+// Sección con estilo propio para probar el contraste contra el fondo del padre.
+const onSection = (style, components) => definition([], {
+  pages: [{ id: 'pg_abcdefgh', title: 'Page', sections: [{ id: 'sc_abcdefgh', title: 'Section', style, components }] }],
+});
+
 const toggle = component('yesNo', {}, { id: 'fd_toggle000', required: true, label: 'Continue?' });
 const detail = component('text', {}, { id: 'fd_detail000', required: true, visibleWhen: { field: 'fd_toggle000', op: 'isTrue' }, label: 'Details' });
 const conditionalDefinition = definition([toggle, detail]);
@@ -85,6 +90,7 @@ const structure = [
   fixture('card collection is forbidden', 'structure', definition([component('text', {}, { label: 'Enter card number' })]), undefined, issue('component.unsupported_restricted_data', '/pages/0/sections/0/components/0')),
   fixture('signature step needs action', 'structure', definition([component('signatureStep', { documentSource: 'submissionSummary', verification: 'emailOtp' })]), undefined, issue('signature.action_missing', '/actions')),
   fixture('signature action needs step', 'structure', definition(undefined, { actions: [{ key: 'sign', type: 'requestSignature', trigger: 'onSubmit' }] }), undefined, issue('signature.action_missing', '/actions')),
+  fixture('waiting for signature needs step', 'structure', definition(undefined, { actions: [{ key: 'create_client', type: 'createCustomer', trigger: 'onSubmit', config: { waitFor: 'signatureCompleted' } }] }), undefined, issue('signature.step_missing', '/actions/0/config/waitFor')),
   fixture('implicit action cannot be configured', 'structure', definition(undefined, { actions: [{ key: 'notify', type: 'notifyStaff', trigger: 'onSubmit' }] }), undefined, issue('props.out_of_range', '/actions/0/type')),
   fixture('action rejects unknown config', 'structure', definition(undefined, { actions: [{ key: 'create_client', type: 'createCustomer', trigger: 'onSubmit', config: { endpoint: 'https://example.com' } }] }), undefined, issue('props.unknown', '/actions/0/config/endpoint')),
   fixture('wizard page title required', 'structure', definition(undefined, { pages: [{ id: 'pg_abcdefgh', sections: [{ id: 'sc_abcdefgh', title: 'Section', components: [component()] }] }] }), undefined, issue('page.title_required', '/pages/0/title')),
@@ -95,6 +101,18 @@ const structure = [
   fixture('valid style tokens', 'structure', definition([component('yesNo', {}, { style: { width: 'half', align: 'left', textSize: 'body', textColor: 'ink', background: 'surface', spacingTop: 4, spacingBottom: 4 } })]), undefined),
   fixture('invalid style token', 'structure', definition([component('yesNo', {}, { style: { width: '480px' } })]), undefined, issue('style.token_invalid', '/pages/0/sections/0/components/0/style/width')),
   fixture('invalid style contrast', 'structure', definition([component('yesNo', {}, { style: { textColor: 'brand', background: 'brandSubtle' } })]), undefined, issue('style.contrast_not_allowed', '/pages/0/sections/0/components/0/style')),
+  fixture('component text checked against parent section background', 'structure', onSection({ background: 'brandSubtle' }, [component('heading', { text: 'Title' }, { style: { textColor: 'brand' } })]), undefined, issue('style.contrast_not_allowed', '/pages/0/sections/0/components/0/style')),
+  fixture('transparent component background falls back to the section', 'structure', onSection({ background: 'sage' }, [component('heading', { text: 'Title' }, { style: { textColor: 'success', background: 'none' } })]), undefined, issue('style.contrast_not_allowed', '/pages/0/sections/0/components/0/style')),
+  fixture('component background overrides the section background', 'structure', onSection({ background: 'brandSubtle' }, [component('callout', { text: richText() }, { style: { textColor: 'brand', background: 'surface' } })]), undefined),
+  fixture('approved text color on section background', 'structure', onSection({ background: 'brandSubtle' }, [component('heading', { text: 'Title' }, { style: { textColor: 'ink' } })]), undefined),
+  fixture('valid prefill sources', 'structure', definition([component('text', {}, { prefill: { source: 'previousRequest' } }), component('text', {}, { id: 'fd_display00', label: 'Name', prefill: { source: 'customer.displayName' } })]), undefined),
+  fixture('unknown prefill source rejected', 'structure', definition([component('text', {}, { prefill: { source: 'customer.email' } })]), undefined, issue('prefill.invalid_source', '/pages/0/sections/0/components/0/prefill/source')),
+  fixture('missing prefill source rejected', 'structure', definition([component('text', {}, { prefill: {} })]), undefined, issue('prefill.invalid_source', '/pages/0/sections/0/components/0/prefill/source')),
+  fixture('select placeholder at 60 characters', 'structure', definition([component('select', { options, placeholder: 'p'.repeat(60) })]), undefined),
+  fixture('select placeholder above 60 characters', 'structure', definition([component('select', { options, placeholder: 'p'.repeat(61) })]), undefined, issue('props.out_of_range', '/pages/0/sections/0/components/0/props/placeholder')),
+  fixture('definition without pages', 'structure', definition([], { pages: [] }), undefined, issue('page.required', '/pages')),
+  fixture('page without sections', 'structure', definition(undefined, { pages: [{ id: 'pg_abcdefgh', title: 'Page', sections: [] }] }), undefined, issue('section.required', '/pages/0/sections')),
+  fixture('section without components', 'structure', definition(undefined, { pages: [{ id: 'pg_abcdefgh', title: 'Page', sections: [{ id: 'sc_abcdefgh', title: 'Section', components: [] }] }] }), undefined, issue('component.required', '/pages/0/sections/0/components')),
   fixture('valid mapping contract', 'structure', definition([component('yesNo', {}, { key: 'email_opt_in' })], { mappings: [{ componentId: 'fd_abcdefgh', targetKey: 'customer.email_enabled', transform: 'none' }] }), undefined),
   fixture('mapping source must exist', 'structure', definition(undefined, { mappings: [{ componentId: 'fd_unknown00', targetKey: 'customer.primary_email', transform: 'lowercase' }] }), undefined, issue('mapping.invalid_target', '/mappings/0/componentId')),
   fixture('signature instructions reject javascript link', 'structure', definition([component('signatureStep', { documentSource: 'submissionSummary', verification: 'emailOtp', instructions: { type: 'doc', blocks: [{ type: 'paragraph', children: [{ type: 'link', href: 'javascript:alert(1)', children: [{ type: 'text', text: 'Sign' }] }] }] } })], { actions: [signAction] }), undefined, issue('richtext.invalid_link', '/pages/0/sections/0/components/0/props/instructions/blocks/0/children/0/href')),

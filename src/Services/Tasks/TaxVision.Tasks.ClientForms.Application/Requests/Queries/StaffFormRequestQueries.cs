@@ -49,10 +49,31 @@ public sealed record FormRequestListItemResponse(
     Guid RequestedByUserId,
     DateTime RequestedAtUtc,
     IReadOnlyList<FormActionRunResponse> ActionRuns,
-    FormRequestOrigin Origin
+    FormRequestOrigin Origin,
+    // P-18 — estado de la firma de la última revisión, para el chip de la bandeja.
+    FormRevisionSignatureStatus LatestSignatureStatus
 );
 
 public sealed record GetFormRequestQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, Guid RequestId);
+
+// P-13.2 — campos mapeables a UpdateCustomerProfile de la versión fijada, para el checklist del CRM.
+public sealed record ListProfileUpdateFieldsQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, Guid RequestId);
+
+public sealed record ProfileUpdateFieldResponse(
+    string ComponentId,
+    string Label,
+    string TargetKey,
+    string TargetDisplayName,
+    string DataType,
+    bool RequiresAdmin,
+    bool IsTaxId
+);
+
+public sealed record ProfileUpdateFieldsResponse(
+    FormProfileUpdateStatus Status,
+    IReadOnlyList<ProfileUpdateFieldResponse> Fields,
+    IReadOnlyList<FormProfileUpdateOutcomeResponse> Outcomes
+);
 
 public sealed record GetFormRequestRevisionQuery(
     Guid TenantId,
@@ -79,7 +100,8 @@ public sealed record FormRequestRevisionSummaryResponse(
     string? ReviewMessage,
     IReadOnlyList<FormFieldCommentResponse> FieldComments,
     FormRevisionPdfStatus PdfStatus,
-    Guid? PdfFileId
+    Guid? PdfFileId,
+    FormRevisionSignatureStatus SignatureStatus
 );
 
 public sealed record FormRequestRevisionResponse(
@@ -90,6 +112,7 @@ public sealed record FormRequestRevisionResponse(
     IReadOnlyList<FormFieldCommentResponse> FieldComments,
     FormRevisionPdfStatus PdfStatus,
     Guid? PdfFileId,
+    FormRevisionSignatureStatus SignatureStatus,
     JsonElement Answers,
     IReadOnlyList<FormConsentEvidenceResponse> Consents
 );

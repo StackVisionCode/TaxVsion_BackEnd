@@ -34,7 +34,7 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("access/{token}/challenge")]
     [EnableRateLimiting("public-forms-challenge")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(PublicFormChallengeAcceptedResponse), StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Challenge(string token, CancellationToken ct)
     {
         var host = ResolveSourceHost();
@@ -45,7 +45,7 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
                 ct
             );
         }
-        return Accepted();
+        return Accepted(PublicFormChallengeAcceptedResponse.Instance);
     }
 
     [HttpPost("access/{token}/verify")]
@@ -86,7 +86,7 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("intake/{token}/challenge")]
     [EnableRateLimiting("public-forms-challenge")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(PublicFormChallengeAcceptedResponse), StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ChallengeIntake(
         string token,
         RequestPublicIntakeChallengeRequest request,
@@ -109,7 +109,7 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
                 ct
             );
         }
-        return Accepted();
+        return Accepted(PublicFormChallengeAcceptedResponse.Instance);
     }
 
     [HttpPost("intake/{token}/verify")]
@@ -136,7 +136,12 @@ public sealed class PublicFormsController(IMessageBus bus) : ControllerBase
             ),
             ct
         );
-        return result.IsSuccess ? Ok(result.Value) : BadRequest(PublicIntakeFormErrors.VerificationFailed);
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        // Solo tras un código válido: la misma persona ya envió este enlace.
+        return result.Error.Code == PublicIntakeFormErrors.AlreadySubmitted.Code
+            ? Conflict(PublicIntakeFormErrors.AlreadySubmitted)
+            : BadRequest(PublicIntakeFormErrors.VerificationFailed);
     }
 
     private string? ResolveSourceHost() => PublicFormRequestHost.Resolve(Request);

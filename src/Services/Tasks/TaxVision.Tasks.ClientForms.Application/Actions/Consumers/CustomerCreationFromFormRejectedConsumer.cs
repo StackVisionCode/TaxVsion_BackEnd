@@ -33,6 +33,8 @@ public static class CustomerCreationFromFormRejectedConsumer
             );
             if (request is null || !Reject(request, evt))
                 return;
+            // Guardar antes de publicar (T-8): el reintento en línea no duplica el aviso de fallo.
+            await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
                 CustomerCreationCommandFactory.Failed(
                     request,
@@ -41,7 +43,6 @@ public static class CustomerCreationFromFormRejectedConsumer
                     correlation.CorrelationId
                 )
             );
-            await unitOfWork.SaveChangesAsync(ct);
             metrics.RecordActionRun(FormActionNames.CreateCustomer, FormActionRunStatus.Rejected);
         }
     }

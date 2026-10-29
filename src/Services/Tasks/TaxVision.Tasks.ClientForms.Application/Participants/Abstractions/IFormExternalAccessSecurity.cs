@@ -12,6 +12,8 @@ public sealed record FormProtectedToken(
 
 public sealed record FormProtectedEmail(string Cipher, short KeyVersion, string LookupHash);
 
+public sealed record FormReEncryptedToken(string Cipher, short KeyVersion);
+
 public interface IFormExternalAccessSecurity
 {
     FormOpaqueToken GenerateToken();
@@ -23,6 +25,10 @@ public interface IFormExternalAccessSecurity
     bool VerifyOtp(Guid tenantId, Guid sourceId, string email, string code, string storedHash);
     FormProtectedEmail ProtectEmail(Guid tenantId, string email);
     string UnprotectEmail(string emailCipher, short keyVersion);
+
+    // Re-cifrado para la rotación (X-9): descifran con la versión del blob y reescriben con la actual.
+    FormProtectedEmail ReEncryptEmail(Guid tenantId, string emailCipher, short fromKeyVersion);
+    FormReEncryptedToken ReEncryptToken(string tokenCipher, short fromKeyVersion);
 
     // Un hash por cada versión de clave vigente, para seguir encontrando filas durante la rotación.
     IReadOnlyCollection<string> EmailLookupHashes(Guid tenantId, string email);

@@ -12,6 +12,7 @@ using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Consents;
 using TaxVision.Tasks.ClientForms.Domain.Participants;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
+using TaxVision.Tasks.ClientForms.Domain.Retention;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
@@ -25,6 +26,7 @@ using TaxVision.Tasks.Domain.RateLimiting;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
+using TaxVision.Tasks.Infrastructure.ClientForms.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence;
 
@@ -53,6 +55,8 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
 
     public DbSet<FormTemplateVersion> FormTemplateVersions => Set<FormTemplateVersion>();
 
+    public DbSet<FormLibraryReview> FormLibraryReviews => Set<FormLibraryReview>();
+
     public DbSet<FormAuditEntry> FormAuditEntries => Set<FormAuditEntry>();
 
     public DbSet<FormModuleSettings> FormModuleSettings => Set<FormModuleSettings>();
@@ -66,6 +70,9 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<FormAttachment> FormAttachments => Set<FormAttachment>();
 
     public DbSet<FormSensitiveAnswer> FormSensitiveAnswers => Set<FormSensitiveAnswer>();
+
+    // Índice de reporting (P-12): append-only, poblado en Complete.
+    public DbSet<FormAnswerIndexEntry> FormAnswerIndexEntries => Set<FormAnswerIndexEntry>();
 
     public DbSet<FormFileScanVerdict> FormFileScanVerdicts => Set<FormFileScanVerdict>();
 
@@ -86,6 +93,9 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<ConsentNoticeVersion> ConsentNoticeVersions => Set<ConsentNoticeVersion>();
 
     public DbSet<FormConsentRecord> FormConsentRecords => Set<FormConsentRecord>();
+
+    // X-5 — lápidas de entregas purgadas (R-3/R-9): ids/fechas/estado, sin contenido.
+    public DbSet<FormRetentionTombstone> FormRetentionTombstones => Set<FormRetentionTombstone>();
 
     // Nadie las escribe desde Task: las mantiene el bus y las lee ProjectionPermissionsSource.
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
@@ -130,6 +140,7 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        FormInsightsDbFunctions.Register(modelBuilder);
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

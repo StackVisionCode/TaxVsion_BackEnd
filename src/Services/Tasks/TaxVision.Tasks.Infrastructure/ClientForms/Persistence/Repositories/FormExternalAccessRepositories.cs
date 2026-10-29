@@ -25,6 +25,21 @@ internal sealed class FormParticipantRepository(TasksDbContext context) : IFormP
                 ct
             );
 
+    public async Task<IReadOnlyList<Guid>> ListIdsByEmailAsync(
+        Guid tenantId,
+        string email,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        return await context
+            .FormParticipants.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.Email == normalized)
+            .Select(item => item.Id)
+            .ToArrayAsync(ct);
+    }
+
     public void Add(FormParticipant participant) => context.FormParticipants.Add(participant);
 
     public void Untrack(FormParticipant participant) => context.Entry(participant).State = EntityState.Detached;
