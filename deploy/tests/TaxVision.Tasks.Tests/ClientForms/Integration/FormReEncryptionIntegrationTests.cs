@@ -12,7 +12,7 @@ using TaxVision.Tasks.ClientForms.Domain.Versions;
 using TaxVision.Tasks.Infrastructure.ClientForms.Security;
 using TaxVision.Tasks.Infrastructure.Persistence;
 
-namespace TaxVision.Tasks.Tests.ClientForms;
+namespace TaxVision.Tasks.Tests.ClientForms.Integration;
 
 /// <summary>
 /// X-9.6 — el job re-cifra ~10.000 filas contra SQL real, con interrupción y reanudación (idempotente y
