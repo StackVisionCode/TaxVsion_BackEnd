@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.Infrastructure.Persistence;
 
-namespace TaxVision.Tasks.Tests.ClientForms;
+namespace TaxVision.Tasks.Tests.ClientForms.Integration;
 
 /// <summary>
 /// Las consultas de plantillas contra SQL Server real: ordenan y filtran por la columna del nombre

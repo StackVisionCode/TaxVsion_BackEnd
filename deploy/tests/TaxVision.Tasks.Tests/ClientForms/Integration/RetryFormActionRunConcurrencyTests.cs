@@ -20,7 +20,7 @@ using TaxVision.Tasks.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.Tracking;
 
-namespace TaxVision.Tasks.Tests.ClientForms;
+namespace TaxVision.Tasks.Tests.ClientForms.Integration;
 
 /// <summary>
 /// T-8 (P-17.5) contra SQL Server real: dos reintentos simultáneos sobre el mismo run rechazado.
