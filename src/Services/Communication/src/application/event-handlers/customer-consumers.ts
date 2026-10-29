@@ -6,6 +6,9 @@ import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
+import { emitUserProfileChanged, readOptionalGuid } from './user-profile-realtime.js';
 import {
   CustomerSocketEvents,
   type CustomerChangedDto,
@@ -46,8 +49,34 @@ export function bindCustomerConsumers(
     customerPreparerAssignments: CustomerPreparerAssignmentRepository;
     customerAssignments: CustomerAssignmentProjectionRepository;
     inAppSource: 'Communication' | 'Notification';
+    /**
+     * F5 avatares — para anunciar `user.profile.changed` del usuario de portal enlazado cuando cambia la
+     * foto del cliente. Opcionales: sin ellos solo se proyecta (y sale `customer.changed` como siempre).
+     */
+    customerPortalAccounts?: CustomerPortalAccountRepository;
+    userDirectory?: UserDirectoryRepository;
   },
 ): void {
+  /** La foto del cliente es la de su cuenta de portal: si tiene una activa, avisar por su userId. */
+  async function announcePortalAvatarChanged(
+    env: IncomingEnvelope,
+    customerId: string,
+    customerDisplayName: string,
+    avatarFileId: string | null,
+  ): Promise<void> {
+    if (!deps.customerPortalAccounts) return;
+    const account = await deps.customerPortalAccounts.findActiveByCustomerId(customerId);
+    if (!account) return;
+    // El chat muestra al cliente con su nombre de Auth; si no hay fila, el de la ficha.
+    const entry = deps.userDirectory ? await deps.userDirectory.findByUserId(account.userId) : null;
+    emitUserProfileChanged(
+      deps.emitter,
+      env.tenantId,
+      { userId: account.userId, displayName: entry?.displayName ?? customerDisplayName, avatarFileId },
+      env.correlationId,
+    );
+  }
+
   register('customer.bulk_imported.v1', async (env) => {
     if (deps.inAppSource === 'Notification') return;
     const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
@@ -121,12 +150,14 @@ export function bindCustomerConsumers(
     const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
     const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
     if (!customerId || !displayName || !email) return;
+    const avatarFileId = readOptionalGuid(env.payload, 'avatarFileId', 'AvatarFileId');
     await deps.customerDirectory.upsert({
       customerId,
       tenantId: env.tenantId,
       displayName,
       email,
       isActive: true,
+      ...(avatarFileId !== undefined ? { avatarFileId } : {}),
     });
     emitCustomerChanged(env, deps.emitter, customerId, 'created');
   });
@@ -136,6 +167,8 @@ export function bindCustomerConsumers(
     const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
     const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
     if (!customerId || !displayName || !email) return;
+    // Clave ausente = publicador viejo (antes de F3): no tocar la foto guardada.
+    const avatarFileId = readOptionalGuid(env.payload, 'avatarFileId', 'AvatarFileId');
     const existing = await deps.customerDirectory.findByCustomerId(env.tenantId, customerId);
     await deps.customerDirectory.upsert({
       customerId,
@@ -143,8 +176,12 @@ export function bindCustomerConsumers(
       displayName,
       email,
       isActive: existing?.isActive ?? true,
+      ...(avatarFileId !== undefined ? { avatarFileId } : {}),
     });
     emitCustomerChanged(env, deps.emitter, customerId, 'updated');
+    if (avatarFileId !== undefined && avatarFileId !== (existing?.avatarFileId ?? null)) {
+      await announcePortalAvatarChanged(env, customerId, displayName, avatarFileId);
+    }
   });
 
   register('customer.deactivated.v1', async (env) => {
@@ -162,8 +199,14 @@ export function bindCustomerConsumers(
   register('customer.archived.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     if (!customerId) return;
+    // F5: archivar borra la foto en Customer y el evento no la trae; la proyeccion la limpia igual.
+    const existing = await deps.customerDirectory.findByCustomerId(env.tenantId, customerId);
     await deps.customerDirectory.markInactive(customerId);
+    await deps.customerDirectory.clearAvatar(customerId);
     emitCustomerChanged(env, deps.emitter, customerId, 'archived');
+    if (existing?.avatarFileId) {
+      await announcePortalAvatarChanged(env, customerId, existing.displayName, null);
+    }
   });
 
   // Fase B2 (chat tipado) — mantiene al dia CustomerPreparerAssignment, la

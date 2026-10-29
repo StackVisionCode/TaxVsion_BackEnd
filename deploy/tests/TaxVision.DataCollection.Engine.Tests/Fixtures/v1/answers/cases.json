@@ -1,0 +1,2426 @@
+[
+  {
+    "name": "valid text",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "Alice"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid textarea",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "textarea",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "Line one\nLine two"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid number",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "number",
+                  "label": "Answer",
+                  "props": {
+                    "decimals": 2
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "12.50"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid currency",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "currency",
+                  "label": "Answer",
+                  "props": {
+                    "currency": "USD"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "25.00"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid date",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "date",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "2026-10-20"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid email",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "email",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "person@example.com"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid phone",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "phone",
+                  "label": "Answer",
+                  "props": {
+                    "defaultCountry": "US"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "+18095551234"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid select",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "first"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid radio",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "radio",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "second"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid checkbox group",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "checkboxGroup",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ],
+                    "minSelected": 1,
+                    "maxSelected": 2
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": [
+          "first"
+        ]
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid yes no",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "yesNo",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": true
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid checkbox",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "checkbox",
+                  "label": "Answer",
+                  "props": {
+                    "text": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "I agree"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": true
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid file",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "file",
+                  "label": "Answer",
+                  "props": {
+                    "maxFiles": 2
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": [
+          {
+            "fileId": "00000000-0000-0000-0000-000000000001"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid address",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "address",
+                  "label": "Answer",
+                  "props": {
+                    "country": "US"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "line1": "10 Main St",
+          "city": "Albany",
+          "state": "NY",
+          "postalCode": "12207",
+          "country": "US"
+        }
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "valid tax id reference",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "taxId",
+                  "label": "Answer",
+                  "props": {
+                    "kinds": [
+                      "ssn"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "sensitiveRef": "00000000-0000-0000-0000-000000000001",
+          "last4": "1234",
+          "kind": "ssn"
+        }
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "number too many decimals",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "number",
+                  "label": "Answer",
+                  "props": {
+                    "decimals": 2
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "1.234"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.too_many_decimals",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "impossible date",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "date",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "2026-02-30"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.invalid_date",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid email",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "email",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "invalid@example"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.invalid_email",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid phone",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "phone",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "555-1234"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.invalid_phone",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid option",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "third"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.invalid_option",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "checkbox group exceeds max",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "checkboxGroup",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ],
+                    "maxSelected": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": [
+          "first",
+          "second"
+        ]
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.selection_count",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "required unanswered on submit",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {}
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.required",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "required unanswered in draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {}
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "required checkbox unchecked in draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "checkbox",
+                  "label": "Answer",
+                  "props": {
+                    "text": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "I agree"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": false
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "required checkbox must be true",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "checkbox",
+                  "label": "Answer",
+                  "props": {
+                    "text": {
+                      "type": "doc",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "I agree"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": false
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.must_be_checked",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "too many files",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "file",
+                  "label": "Answer",
+                  "props": {
+                    "maxFiles": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": [
+          {
+            "fileId": "00000000-0000-0000-0000-000000000001"
+          },
+          {
+            "fileId": "00000000-0000-0000-0000-000000000002"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.too_many_files",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "tax id requires server reference",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "taxId",
+                  "label": "Answer",
+                  "props": {
+                    "kinds": [
+                      "ssn"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "last4": "1234",
+          "kind": "ssn"
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.sensitive_invalid",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "partial address is valid draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "address",
+                  "label": "Answer",
+                  "props": {
+                    "country": "US"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "line1": "10 Main St",
+          "country": "US"
+        }
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "partial address fails submit",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "address",
+                  "label": "Answer",
+                  "props": {
+                    "country": "US"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "line1": "10 Main St",
+          "country": "US"
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.required",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown answer key",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_unknown00": "value"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.unknown_component",
+          "path": "/values/fd_unknown00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text rejects tax identifier",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "123-45-6789"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_tax_identifier",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text rejects card number",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "4111111111111111"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_card_number",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate repeater row id",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 1,
+                "maxRows": 3,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "sc_repeat000": {
+          "rows": [
+            {
+              "rowId": "rw_abcdefghij",
+              "values": {
+                "fd_rowname00": "A"
+              }
+            },
+            {
+              "rowId": "rw_abcdefghij",
+              "values": {
+                "fd_rowname00": "B"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.row_id_duplicate",
+          "path": "/values/sc_repeat000/rows/1/rowId"
+        }
+      ]
+    }
+  },
+  {
+    "name": "repeater below min is valid draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 1,
+                "maxRows": 3,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "sc_repeat000": {
+          "rows": []
+        }
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "repeater below min fails submit",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 1,
+                "maxRows": 3,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "sc_repeat000": {
+          "rows": []
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.rows_below_min",
+          "path": "/values/sc_repeat000/rows"
+        }
+      ]
+    }
+  },
+  {
+    "name": "required answer is missing",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {}
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.required",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "wrong answer type",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": 42
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "address rejects extra property",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "address",
+                  "label": "Answer",
+                  "props": {
+                    "country": "US"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": {
+          "line1": "10 Main St",
+          "city": "Albany",
+          "state": "NY",
+          "postalCode": "12207",
+          "country": "US",
+          "admin": true
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "file rejects extra property",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "file",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": [
+          {
+            "fileId": "00000000-0000-0000-0000-000000000001",
+            "name": "secret.pdf"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text rejects nine digit tax identifier",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "id 123456789"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_tax_identifier",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text rejects ein pattern",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "EIN 12-3456789"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_tax_identifier",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "scattered digits are not a tax identifier",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "Unit 12, floor 3, ref 123456"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "ten digit run is not a tax identifier",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "Order 1234567890"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "text rejects dashed card number",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "4111-1111-1111-1111"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_card_number",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text rejects card followed by other digits",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "4111111111111111 5551234"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_card_number",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "phone with trailing newline rejected",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "phone",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "+18095551234\n"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.invalid_phone",
+          "path": "/values/fd_abcdefgh"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hidden value is still guarded in draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": false,
+        "fd_detail000": "123-45-6789"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.looks_like_tax_identifier",
+          "path": "/values/fd_detail000"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hidden value type is checked in draft",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": false,
+        "fd_detail000": 42
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_detail000"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hidden value is ignored on submit",
+    "mode": "submit",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": false,
+        "fd_detail000": "123-45-6789"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "rows above max are reported and not evaluated",
+    "mode": "draft",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 0,
+                "maxRows": 2,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "sc_repeat000": {
+          "rows": [
+            {
+              "rowId": "rw_aaaaaaaaaa",
+              "values": {
+                "fd_rowname00": "A"
+              }
+            },
+            {
+              "rowId": "rw_bbbbbbbbbb",
+              "values": {
+                "fd_rowname00": "B"
+              }
+            },
+            {
+              "rowId": "rw_cccccccccc",
+              "values": {
+                "fd_rowname00": 42
+              }
+            }
+          ]
+        }
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.rows_above_max",
+          "path": "/values/sc_repeat000/rows"
+        }
+      ]
+    }
+  }
+]

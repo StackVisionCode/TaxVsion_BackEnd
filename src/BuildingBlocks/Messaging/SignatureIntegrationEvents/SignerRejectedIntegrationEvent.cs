@@ -16,4 +16,7 @@ public sealed record SignerRejectedIntegrationEvent : IntegrationEvent
 
     /// <summary>Snapshot de contacto de los firmantes aún pendientes — se les notifica que la solicitud fue cancelada.</summary>
     public required IReadOnlyList<SignerContactSnapshot> PendingSigners { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

@@ -40,6 +40,13 @@ public sealed class SignatureRequestsControllerOwnershipTests
                 _byId.TryGetValue(requestId, out var request) && request.TenantId == tenantId ? request : null
             );
 
+        public Task<SignatureRequest?> GetByExternalReferenceAsync(
+            Guid tenantId,
+            string sourceService,
+            string sourceId,
+            CancellationToken ct = default
+        ) => Task.FromResult<SignatureRequest?>(null);
+
         public Task<SignatureRequest?> GetBySealedFileIdAsync(
             Guid tenantId,
             Guid sealedFileId,

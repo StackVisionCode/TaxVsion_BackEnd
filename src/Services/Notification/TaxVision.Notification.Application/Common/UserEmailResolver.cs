@@ -25,7 +25,7 @@ public sealed class UserEmailResolver(
     IUserContactSnapshotClient snapshotClient,
     IUnitOfWork unitOfWork,
     ILogger<UserEmailResolver> logger
-)
+) : IUserEmailResolver
 {
     /// <summary>Devuelve la dirección, o <c>null</c> si no hay a quién escribirle (o no corresponde).</summary>
     public async Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default)

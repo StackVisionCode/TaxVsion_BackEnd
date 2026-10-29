@@ -249,6 +249,90 @@ public sealed class RecycleBinHandlerTests
     }
 
     [Fact]
+    public async Task GetRecycleBin_does_not_list_deleted_profile_photos()
+    {
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var document = SoftDeletedFile(tenantId, now);
+        var avatar = AvatarTestFiles.Avatar(tenantId, OwnerType.User, Guid.NewGuid());
+        Assert.True(avatar.SoftDelete(now, TimeSpan.FromDays(30)).IsSuccess);
+        var files = new FakeFileObjectRepository();
+        files.Seed(document);
+        files.Seed(avatar);
+
+        var result = await GetRecycleBinHandler.Handle(
+            new GetRecycleBinQuery(tenantId, 0, 50),
+            files,
+            new FakeFolderRepository(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(document.Id, Assert.Single(result).Id);
+    }
+
+    [Fact]
+    public async Task Restore_of_a_profile_photo_is_refused()
+    {
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var avatar = AvatarTestFiles.Avatar(tenantId, OwnerType.Customer, Guid.NewGuid());
+        Assert.True(avatar.SoftDelete(now, TimeSpan.FromDays(30)).IsSuccess);
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var bus = new FakeMessageBus();
+        var unitOfWork = new FakeUnitOfWork();
+
+        // La foto se reemplaza subiendo otra; restaurar la vieja la volvería a servir sin que Auth/Customer apunten a ella.
+        var result = await RestoreFileHandler.Handle(
+            new RestoreFileCommand(tenantId, Guid.NewGuid(), avatar.Id, Audit()),
+            files,
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(now),
+            unitOfWork,
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        Assert.Equal(FileStatus.SoftDeleted, avatar.Status);
+        Assert.Empty(bus.Published);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task EmptyRecycleBin_still_purges_hidden_profile_photos_with_all_their_versions()
+    {
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var avatar = AvatarTestFiles.Avatar(tenantId, OwnerType.User, Guid.NewGuid());
+        Assert.True(avatar.SoftDelete(now, TimeSpan.FromDays(30)).IsSuccess);
+        var files = new FakeFileObjectRepository();
+        files.Seed(avatar);
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100_000, maxFileSizeBytes: 100_000));
+        var storage = new FakeObjectStorage();
+
+        var purgedCount = await EmptyRecycleBinHandler.Handle(
+            new EmptyRecycleBinCommand(tenantId, Guid.NewGuid(), Audit()),
+            files,
+            new FakeFolderRepository(),
+            limits,
+            new FakeStorageAuditRepository(),
+            storage,
+            Options.Create(new CloudStorageOptions()),
+            new FakeSystemClock(now),
+            new FakeUnitOfWork(),
+            NullLogger<EmptyRecycleBinCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, purgedCount);
+        Assert.True(files.Removed(avatar.Id));
+        Assert.Single(storage.DeletedAllVersions, d => d.ObjectKey == avatar.ObjectKey);
+    }
+
+    [Fact]
     public async Task GetRecycleBin_only_lists_the_caller_tenant_s_soft_deleted_files()
     {
         var tenantId = Guid.NewGuid();

@@ -53,6 +53,7 @@ public static class PermissionCatalog
     public const string CloudStorageFileUpload = CloudStoragePermissions.FileUpload;
     public const string CloudStorageFileDownload = CloudStoragePermissions.FileDownload;
     public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
+    public const string CloudStorageReassignFormParticipant = CloudStoragePermissions.ReassignFormParticipant;
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
     public const string CloudStorageAuditView = CloudStoragePermissions.AuditView;
     public const string CloudStorageRecycleBinManage = CloudStoragePermissions.RecycleBinManage;
@@ -219,6 +220,22 @@ public static class PermissionCatalog
     public const string TasksTemplatesManage = TasksPermissions.TemplatesManage;
     public const string TasksClientRequestsManage = TasksPermissions.ClientRequestsManage;
     public const string TasksPortalClientRequests = TasksPermissions.PortalClientRequests;
+    public const string FormTemplatesRead = TasksPermissions.FormTemplatesRead;
+    public const string FormTemplatesManage = TasksPermissions.FormTemplatesManage;
+    public const string FormTemplatesPublish = TasksPermissions.FormTemplatesPublish;
+    public const string FormRequestsRead = TasksPermissions.FormRequestsRead;
+    public const string FormRequestsManage = TasksPermissions.FormRequestsManage;
+    public const string FormRequestsReview = TasksPermissions.FormRequestsReview;
+    public const string FormRequestsExport = TasksPermissions.FormRequestsExport;
+    public const string FormRequestsApplyProfile = TasksPermissions.FormRequestsApplyProfile;
+    public const string FormSubmissionsReveal = TasksPermissions.FormSubmissionsReveal;
+    public const string FormsLibraryManage = TasksPermissions.FormsLibraryManage;
+    public const string FormsPlatformManage = TasksPermissions.FormsPlatformManage;
+    public const string PortalForms = TasksPermissions.PortalForms;
+    public const string FormTemplatesConfigureActions = TasksPermissions.FormTemplatesConfigureActions;
+    public const string FormRequestsSendExternal = TasksPermissions.FormRequestsSendExternal;
+    public const string FormIntakeLinksManage = TasksPermissions.FormIntakeLinksManage;
+    public const string FormConsentsManage = TasksPermissions.FormConsentsManage;
 
     public const string CalendarRead = CalendarPermissions.Read;
     public const string CalendarWrite = CalendarPermissions.Write;
@@ -647,6 +664,15 @@ public static class PermissionCatalog
             "cloudstorage",
             "Delete files",
             false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000212"),
+            CloudStorageReassignFormParticipant,
+            "cloudstorage",
+            "Reassign Client Forms files from an external participant to a customer",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000027"),
@@ -1896,6 +1922,124 @@ public static class PermissionCatalog
             "The client sees their requests and uploads what they're asked for",
             true
         ),
+        // Client Forms.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000196"),
+            FormTemplatesRead,
+            "tasks",
+            "View client form templates, versions and the template library.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000197"),
+            FormTemplatesManage,
+            "tasks",
+            "Create and edit client form templates.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000198"),
+            FormTemplatesPublish,
+            "tasks",
+            "Publish new versions of client form templates.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000199"),
+            FormRequestsRead,
+            "tasks",
+            "View client form requests and the answers of assigned clients.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000200"),
+            FormRequestsManage,
+            "tasks",
+            "Assign, cancel and remind client forms.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000201"),
+            FormRequestsReview,
+            "tasks",
+            "Review submitted client forms, request changes and complete them.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000202"),
+            FormRequestsExport,
+            "tasks",
+            "Run reports and export client form answers.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000203"),
+            FormRequestsApplyProfile,
+            "tasks",
+            "Apply approved client form answers to the client profile.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000204"),
+            FormSubmissionsReveal,
+            "tasks",
+            "Reveal sensitive tax identifiers submitted in client forms.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000205"),
+            FormsLibraryManage,
+            "tasks",
+            "Manage the TaxVision client form library.",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true,
+            IsReserved: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000206"),
+            FormsPlatformManage,
+            "tasks",
+            "Enable client forms for tenants.",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000207"),
+            PortalForms,
+            "tasks",
+            "Complete forms requested by the tax office in the client portal.",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000208"),
+            FormTemplatesConfigureActions,
+            "tasks",
+            "Configure data mapping and post-submission actions for client form templates.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000209"),
+            FormRequestsSendExternal,
+            "tasks",
+            "Send client forms to people who are not registered clients yet.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000210"),
+            FormIntakeLinksManage,
+            "tasks",
+            "Manage public intake links for client forms.",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000211"),
+            FormConsentsManage,
+            "tasks",
+            "Manage consent notices used in client forms.",
+            false
+        ),
         // Marca del SISTEMA: solo PlatformAdmin. PlatformOnly excluye este permiso del bundle del
         // rol "Tenant Admin"; IsAssignableByTenant: false impide que un rol custom lo incluya.
         new(
@@ -2098,6 +2242,15 @@ public static class PermissionCatalog
                 // Quien pide el documento es quien cierra lo que llega: separarlo obligaria a que
                 // otra persona valide cada W-2, que no es como trabaja una firma.
                 TasksClientRequestsManage,
+                FormTemplatesRead,
+                FormTemplatesManage,
+                FormTemplatesPublish,
+                FormRequestsManage,
+                // Ver, revisar y enviar a externos es el trabajo diario del preparador; revelar el SSN,
+                // los enlaces públicos y los avisos de consentimiento quedan para el admin.
+                FormRequestsRead,
+                FormRequestsReview,
+                FormRequestsSendExternal,
                 // El preparador agenda con sus clientes y bloquea su propia agenda. Fuera quedan
                 // manage_all y types.manage: configuracion de la firma.
                 CalendarRead,
@@ -2136,6 +2289,7 @@ public static class PermissionCatalog
             [
                 PortalFoldersView,
                 TasksPortalClientRequests,
+                PortalForms,
                 // El cliente lee las notas que su preparador marcó ClientVisible (PortalNotesController,
                 // GET /notes/portal). Faltaba en el bundle del rol → el Portal recibía 403 aunque no
                 // hubiera notas. `notes.manage`/`notes.read` son del staff; PortalRead es exclusivo del cliente.

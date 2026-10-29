@@ -148,6 +148,26 @@ builder.Services.AddRateLimiter(options =>
         }
     );
 
+    // Fotos de perfil anónimas (GET storage/avatars/{fileId}): generoso para listas largas con muchas
+    // caras, pero frena a quien intente adivinar fileIds. Por IP sola: variar el fileId no abre bucket nuevo.
+    options.AddPolicy(
+        TaxVision.CloudStorage.Api.Controllers.PublicAvatarsController.AvatarRateLimitPolicy,
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:avatars",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 600,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+
     // 8.2 — el "Download all (ZIP)" público arma y streamea toda la carpeta: mucho más caro que
     // resolver un token. Se le da un límite propio (6/min por IP), sin ramificar por token para
     // que un mismo atacante no lo sortee variando el token.
@@ -230,7 +250,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConnection);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
@@ -245,6 +265,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<FileInfectedDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileBlockedByPolicyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FilePendingReviewIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileScanFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileBlockedByDmcaTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileReinstatedFromTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileDeletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -262,6 +283,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<LegalHoldPlacedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<LegalHoldLiftedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DmcaCounterNoticeSubmittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // X-5 — salto de borrado (dueño/carpeta/tenant no coinciden, legal hold o inexistente).
+    options.PublishMessage<FileDeletionSkippedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // X-5 — cola de comandos punto a punto: el job de retención de Tasks pide borrar archivos de Client Forms.
+    options.ListenToRabbitQueue("cloudstorage-file-deletions").UseDurableInbox();
 
     options
         .ListenToRabbitQueue(

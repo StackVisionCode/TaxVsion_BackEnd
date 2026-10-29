@@ -101,6 +101,7 @@ public sealed class FcmPushSender : IPushSender
             Token = message.Token,
             Notification = new FcmNotification { Title = message.Title, Body = message.Body },
             Data = message.Data,
+            Webpush = BuildWebpush(message),
         };
 
         try
@@ -123,9 +124,52 @@ public sealed class FcmPushSender : IPushSender
                 Mask(message.Token),
                 ex.MessagingErrorCode
             );
-            return Result.Failure(new Error("Notification.PushFailed", ex.Message));
+            return Result.Failure(new Error(MapError(ex.MessagingErrorCode), ex.Message));
+        }
+        catch (Exception ex)
+            when (ex is FirebaseException or HttpRequestException
+                || (ex is OperationCanceledException && !ct.IsCancellationRequested)
+            )
+        {
+            // Red, timeout o error del SDK sin código de mensajería: transitorio, se reintenta.
+            _logger.LogWarning(
+                ex,
+                "FCM send no disponible para {Platform} token {Token}.",
+                message.Platform,
+                Mask(message.Token)
+            );
+            return Result.Failure(new Error(PushErrorCodes.Unavailable, ex.Message));
         }
     }
+
+    private static WebpushConfig? BuildWebpush(PushMessage message)
+    {
+        if (message.Platform != TaxVision.Notification.Domain.Notifications.PushPlatform.Web)
+            return null;
+        var headers = string.IsNullOrWhiteSpace(message.Topic)
+            ? null
+            : new Dictionary<string, string> { ["Topic"] = message.Topic };
+        return new WebpushConfig
+        {
+            Headers = headers,
+            Notification = string.IsNullOrWhiteSpace(message.Tag)
+                ? null
+                : new WebpushNotification { Tag = message.Tag },
+            FcmOptions = string.IsNullOrWhiteSpace(message.Link) ? null : new WebpushFcmOptions { Link = message.Link },
+        };
+    }
+
+    private static string MapError(MessagingErrorCode? code) =>
+        code switch
+        {
+            MessagingErrorCode.InvalidArgument => PushErrorCodes.InvalidArgument,
+            MessagingErrorCode.SenderIdMismatch => PushErrorCodes.SenderIdMismatch,
+            MessagingErrorCode.ThirdPartyAuthError => PushErrorCodes.ThirdPartyAuthError,
+            MessagingErrorCode.Unavailable => PushErrorCodes.Unavailable,
+            MessagingErrorCode.Internal => PushErrorCodes.Internal,
+            MessagingErrorCode.QuotaExceeded => PushErrorCodes.QuotaExceeded,
+            _ => "Notification.PushFailed",
+        };
 
     private static string Mask(string token) => token.Length <= 6 ? "***" : $"{token[..3]}***{token[^3..]}";
 }

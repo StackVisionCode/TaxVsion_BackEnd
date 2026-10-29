@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "title": "What Changed This Year",
+  "purpose": "questionnaire",
+  "presentation": "singlePage",
+  "settings": { "showProgress": true },
+  "pages": [
+    {
+      "id": "pg_chgmain0",
+      "title": "What changed this year",
+      "sections": [
+        {
+          "id": "sc_chgmove0",
+          "title": "Moving",
+          "components": [
+            { "id": "fd_chgmoveq", "type": "yesNo", "key": "moved_this_year", "label": "Did you move this year?", "dataClass": "general", "props": {} },
+            { "id": "fd_chgmoved", "type": "textarea", "key": "moved_details", "label": "Tell us about your move", "dataClass": "personal", "visibleWhen": { "field": "fd_chgmoveq", "op": "isTrue" }, "props": { "maxLength": 1000, "rows": 3 } }
+          ]
+        },
+        {
+          "id": "sc_chgmarr0",
+          "title": "Marriage",
+          "components": [
+            { "id": "fd_chgmarrq", "type": "yesNo", "key": "marital_status_changed", "label": "Did your marital status change?", "dataClass": "general", "props": {} },
+            { "id": "fd_chgmarrd", "type": "textarea", "key": "marriage_details", "label": "Tell us what changed", "dataClass": "personal", "visibleWhen": { "field": "fd_chgmarrq", "op": "isTrue" }, "props": { "maxLength": 1000, "rows": 3 } }
+          ]
+        },
+        {
+          "id": "sc_chgkids0",
+          "title": "Children",
+          "components": [
+            { "id": "fd_chgkidsq", "type": "yesNo", "key": "had_or_adopted_child", "label": "Did you have or adopt a child?", "dataClass": "general", "props": {} },
+            { "id": "fd_chgkidsd", "type": "textarea", "key": "children_details", "label": "Tell us about your new dependent", "dataClass": "personal", "visibleWhen": { "field": "fd_chgkidsq", "op": "isTrue" }, "props": { "maxLength": 1000, "rows": 3 } }
+          ]
+        },
+        {
+          "id": "sc_chgjob01",
+          "title": "Employment",
+          "components": [
+            { "id": "fd_chgjobq1", "type": "yesNo", "key": "employment_changed", "label": "Did your employment change?", "dataClass": "general", "props": {} },
+            { "id": "fd_chgjobd1", "type": "textarea", "key": "job_details", "label": "Tell us about the change", "dataClass": "personal", "visibleWhen": { "field": "fd_chgjobq1", "op": "isTrue" }, "props": { "maxLength": 1000, "rows": 3 } }
+          ]
+        },
+        {
+          "id": "sc_chgsold0",
+          "title": "Home sale",
+          "components": [
+            { "id": "fd_chgsoldq", "type": "yesNo", "key": "sold_home", "label": "Did you sell a home?", "dataClass": "general", "props": {} },
+            { "id": "fd_chgsoldd", "type": "textarea", "key": "sold_home_details", "label": "Tell us about the sale", "dataClass": "personal", "visibleWhen": { "field": "fd_chgsoldq", "op": "isTrue" }, "props": { "maxLength": 1000, "rows": 3 } }
+          ]
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "actions": []
+}

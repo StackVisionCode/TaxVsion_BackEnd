@@ -16,6 +16,8 @@ public sealed class CustomerRelationFiscalProfileConfiguration : IEntityTypeConf
         b.Property(fp => fp.TaxIdentifierCipher).HasColumnType("varbinary(512)").IsRequired();
         b.Property(fp => fp.TaxIdentifierBlindIndex).HasMaxLength(64).IsRequired();
         b.Property(fp => fp.TaxIdentifierLast4).HasMaxLength(4).IsRequired();
+        // B-9/X-9: versión de clave del cipher (ver CustomerFiscalProfileConfiguration).
+        b.Property(fp => fp.TaxIdentifierKeyVersion).HasDefaultValue((short)1).IsRequired();
         b.Property(fp => fp.TaxYear).IsRequired();
         b.Property(fp => fp.QualifiesAsDependent).IsRequired();
         b.Property(fp => fp.LivedWithTaxpayer).IsRequired();

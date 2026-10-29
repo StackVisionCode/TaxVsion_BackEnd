@@ -23,6 +23,26 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
 
         builder.Property(request => request.CertificateFileId);
 
+        // P-18 — correlación de negocio con el origen (owned VO, nullable). Índice único filtrado para
+        // idempotencia: una sola solicitud por (tenant, servicio, id de origen).
+        builder.OwnsOne(
+            request => request.ExternalReference,
+            reference =>
+            {
+                reference
+                    .Property(r => r.SourceService)
+                    .HasColumnName("ExternalReference_SourceService")
+                    .HasMaxLength(64);
+                reference.Property(r => r.SourceType).HasColumnName("ExternalReference_SourceType").HasMaxLength(64);
+                reference.Property(r => r.SourceId).HasColumnName("ExternalReference_SourceId").HasMaxLength(128);
+                reference
+                    .HasIndex(r => new { r.SourceService, r.SourceId })
+                    .IsUnique()
+                    .HasFilter("[ExternalReference_SourceId] IS NOT NULL")
+                    .HasDatabaseName("UX_SignatureRequests_ExternalReference");
+            }
+        );
+
         builder.Property(request => request.RequiresSequentialSigning).IsRequired();
         builder.Property(request => request.RequiresConsent).IsRequired();
         builder.Property(request => request.GenerateCertificate).IsRequired();

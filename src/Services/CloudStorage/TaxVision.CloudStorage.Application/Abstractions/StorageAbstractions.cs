@@ -20,18 +20,27 @@ public interface IFileObjectRepository
     Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct);
 
     /// <summary>
+    /// Lee el archivo bloqueando la fila hasta el commit de la transacción en curso: otra
+    /// escritura concurrente espera, así lo comprobado sobre la fila sigue valiendo al guardar.
+    /// Exige una transacción abierta.
+    /// </summary>
+    Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct);
+
+    /// <summary>
     /// Listado plano del tenant (sin la papelera). <paramref name="restrictedCustomerId"/> es el
     /// limite de seguridad del portal de cliente (siempre aplicado si viene, nunca opcional);
     /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es
     /// portal de cliente estos se ignoran, ya que restrictedCustomerId ya fuerza el alcance real.
     /// </summary>
     /// <summary><paramref name="assignedCustomerIds"/> null = sin filtro ABAC (portal/view_all/flag off); set (aun vacío) acota recursos Customer a su contenido.</summary>
+    /// <summary><paramref name="folderType"/> null = todos menos Avatars (las fotos de perfil nunca salen en listados de documentos); Avatars solo si se pide explícito.</summary>
     Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        FolderType? folderType,
         int skip,
         int take,
         CancellationToken ct
@@ -428,6 +437,31 @@ public interface IObjectStorage
         CancellationToken ct
     );
     Task DeleteAsync(string bucket, string objectKey, CancellationToken ct);
+
+    /// <summary>Etiqueta la versión actual del objeto (p.ej. kind=avatar, que filtra la regla de lifecycle del bucket).</summary>
+    Task SetObjectTagsAsync(
+        string bucket,
+        string objectKey,
+        IReadOnlyDictionary<string, string> tags,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// Borra TODAS las versiones del objeto (bucket con versionado): un DeleteAsync solo deja un delete
+    /// marker y los bytes siguen en la versión no actual. Para datos personales (fotos de perfil).
+    /// </summary>
+    Task DeleteAllVersionsAsync(string bucket, string objectKey, CancellationToken ct);
+}
+
+/// <summary>Etiquetas de objeto que gobiernan el ciclo de vida en MinIO.</summary>
+public static class StorageObjectTags
+{
+    public const string KindKey = "kind";
+    public const string AvatarKind = "avatar";
+
+    /// <summary>Lo filtra la regla de lifecycle del bucket principal (versiones no actuales expiran a 1 día).</summary>
+    public static IReadOnlyDictionary<string, string> Avatar { get; } =
+        new Dictionary<string, string> { [KindKey] = AvatarKind };
 }
 
 /// <summary>
@@ -565,6 +599,9 @@ public sealed record StorageActorScope(bool IsCustomerPortal, Guid? CustomerId)
 {
     /// <summary>TenantId del portal — necesario para resolver reglas tenant-scope (key = <c>(TenantScope, TenantId)</c>).</summary>
     public Guid TenantId { get; init; } = Guid.Empty;
+
+    /// <summary>True si el token es M2M (actor_type=Service). Solo un servicio puede subir a carpetas reservadas (Avatars).</summary>
+    public bool IsService { get; init; }
 
     /// <summary>Clientes visibles cuando <see cref="BypassAssignmentFilter"/>=false; set vacío ⇒ solo recursos no-Customer.</summary>
     public IReadOnlyCollection<Guid> AssignedCustomerIds { get; init; } = [];

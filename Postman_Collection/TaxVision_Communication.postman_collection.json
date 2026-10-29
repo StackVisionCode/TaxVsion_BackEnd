@@ -673,31 +673,30 @@
 				{
 					"name": "Buscar clientes en el directorio",
 					"request": {
-						"method": "GET",
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"q\": \"Garcia\",\n  \"limit\": 10\n}"
+						},
 						"url": {
-							"raw": "{{UrlBase}}/communication/directory/customers?q=Garcia&limit=10",
+							"raw": "{{UrlBase}}/communication/directory/customers/search",
 							"host": [
 								"{{UrlBase}}"
 							],
 							"path": [
 								"communication",
 								"directory",
-								"customers"
-							],
-							"query": [
-								{
-									"key": "q",
-									"value": "Garcia",
-									"description": "Nombre a buscar, 1-100 caracteres (requerido)"
-								},
-								{
-									"key": "limit",
-									"value": "10",
-									"description": "Maximo de resultados, 1-25 (opcional)"
-								}
+								"customers",
+								"search"
 							]
 						},
-						"description": "Requiere estar autenticado. Autocomplete de clientes del tenant para armar invitaciones de meeting (InviteToMeetingPanel)."
+						"description": "Requiere estar autenticado como staff con communication.chat.start. Autocomplete de clientes del tenant (invitaciones de meeting, iniciar chat con un cliente, tarjeta Chat del perfil). Body: q (nombre o email, 1-100 caracteres, requerido), limit (1-25, opcional, por defecto 10). El término va en el cuerpo y no en la URL para que no quede en los logs del Gateway/servicio. Responde 400 Directory.InvalidSearch si q/limit no son válidos. GET /communication/directory/customers?q= sigue existiendo solo por compatibilidad durante el despliegue."
 					}
 				},
 				{

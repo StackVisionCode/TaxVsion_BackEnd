@@ -18,6 +18,9 @@ public sealed record FileAvailableIntegrationEvent : IntegrationEvent
     public Guid? OwnerId { get; init; }
 
     public Guid? FolderId { get; init; }
+    public string? FolderType { get; init; }
+    public string? OriginalName { get; init; }
+    public int? TaxYear { get; init; }
 }
 
 public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
@@ -25,6 +28,9 @@ public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
     public required Guid FileId { get; init; }
     public required string ObjectKey { get; init; }
     public required string ScanReport { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
 }
 
 /// <summary>
@@ -37,6 +43,20 @@ public sealed record FileBlockedByPolicyIntegrationEvent : IntegrationEvent
     public required string ObjectKey { get; init; }
     public required string PolicyReason { get; init; }
     public required Guid CreatedBy { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
+}
+
+public sealed record FileScanFailedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required string ObjectKey { get; init; }
+    public required string Reason { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
+    public Guid? CreatedBy { get; init; }
 }
 
 /// <summary>
@@ -305,4 +325,49 @@ public sealed record ReassignFileOwnerRequestedIntegrationEvent : IntegrationEve
     public required string NewOwnerType { get; init; }
     public Guid? NewOwnerId { get; init; }
     public required Guid ActorId { get; init; }
+}
+
+/// <summary>
+/// X-5 — un archivo cuya eliminación pide un servicio (punto a punto, cola
+/// <c>cloudstorage-file-deletions</c>). El dueño esperado es el ACTUAL del archivo
+/// (<see cref="ExpectedOwnerType"/>/<see cref="ExpectedOwnerId"/>); si no coincide, CloudStorage
+/// salta publicando <see cref="FileDeletionSkippedIntegrationEvent"/>. Nunca lleva bytes.
+/// </summary>
+public sealed record FileDeletionTarget
+{
+    public required Guid FileId { get; init; }
+
+    /// <summary>Dueño actual esperado. Debe matchear el enum OwnerType de CloudStorage.Domain.</summary>
+    public required string ExpectedOwnerType { get; init; }
+    public required Guid ExpectedOwnerId { get; init; }
+
+    /// <summary>Debe matchear el enum FolderType de CloudStorage.Domain (siempre "ClientForms" en X-5).</summary>
+    public required string ExpectedFolderType { get; init; }
+}
+
+/// <summary>
+/// X-5 — comando de retención hacia CloudStorage. Sin <c>CustomerId</c> y sin bytes: solo
+/// <see cref="FileDeletionTarget.FileId"/> con el contexto de propiedad para verificar antes de borrar.
+/// </summary>
+public sealed record FilesDeletionRequestedIntegrationEvent : IntegrationEvent
+{
+    /// <summary>Servicio origen, p. ej. "tasks.client_forms".</summary>
+    public required string SourceService { get; init; }
+
+    /// <summary>Referencia del origen (el FormRequestId en X-5).</summary>
+    public required Guid SourceReferenceId { get; init; }
+
+    /// <summary>Motivo del borrado, p. ej. "retention".</summary>
+    public required string Reason { get; init; }
+    public required IReadOnlyList<FileDeletionTarget> Files { get; init; }
+}
+
+/// <summary>
+/// X-5 — CloudStorage salta un archivo del lote de borrado (no coincide dueño/carpeta/tenant,
+/// legal hold o ya no existe). El servicio origen reintenta en la corrida siguiente con el dueño nuevo.
+/// </summary>
+public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required string Reason { get; init; }
 }

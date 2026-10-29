@@ -41,12 +41,28 @@ public static class ReassignFileOwnerHandler
                 return;
             }
 
+            if (file.FolderType == FolderType.ClientForms)
+            {
+                logger.LogWarning("ReassignFileOwner {FileId}: Client Forms files are exclusive.", evt.FileId);
+                return;
+            }
+
             if (!Enum.TryParse<OwnerType>(evt.NewOwnerType, ignoreCase: true, out var ownerType))
             {
                 logger.LogError(
                     "ReassignFileOwner {FileId}: invalid OwnerType '{OwnerType}' — dropping.",
                     evt.FileId,
                     evt.NewOwnerType
+                );
+                return;
+            }
+
+            // Un participante externo solo recibe archivos por el flujo propio de Client Forms.
+            if (ownerType == OwnerType.FormParticipant)
+            {
+                logger.LogWarning(
+                    "ReassignFileOwner {FileId}: FormParticipant is not a valid destination owner — dropping.",
+                    evt.FileId
                 );
                 return;
             }

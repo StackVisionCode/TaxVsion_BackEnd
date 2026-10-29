@@ -40,4 +40,21 @@ public static class TasksPermissions
     /// único permiso de este catálogo cuyo destinatario está fuera de la firma.
     /// </summary>
     public const string PortalClientRequests = "tasks.portal.client_requests";
+
+    public const string FormTemplatesRead = "tasks.form_templates.read";
+    public const string FormTemplatesManage = "tasks.form_templates.manage";
+    public const string FormTemplatesPublish = "tasks.form_templates.publish";
+    public const string FormRequestsRead = "tasks.form_requests.read";
+    public const string FormRequestsManage = "tasks.form_requests.manage";
+    public const string FormRequestsReview = "tasks.form_requests.review";
+    public const string FormRequestsExport = "tasks.form_requests.export";
+    public const string FormRequestsApplyProfile = "tasks.form_requests.apply_profile";
+    public const string FormSubmissionsReveal = "tasks.form_submissions.reveal";
+    public const string FormsLibraryManage = "tasks.forms.library.manage";
+    public const string FormsPlatformManage = "tasks.forms.platform.manage";
+    public const string PortalForms = "tasks.portal.forms";
+    public const string FormTemplatesConfigureActions = "tasks.form_templates.configure_actions";
+    public const string FormRequestsSendExternal = "tasks.form_requests.send_external";
+    public const string FormIntakeLinksManage = "tasks.form_intake_links.manage";
+    public const string FormConsentsManage = "tasks.form_consents.manage";
 }

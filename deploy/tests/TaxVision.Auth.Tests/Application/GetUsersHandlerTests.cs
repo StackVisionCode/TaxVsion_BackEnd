@@ -98,6 +98,28 @@ public sealed class GetUsersHandlerTests
         Assert.Equal(kind, users.AskedForKind);
     }
 
+    /// <summary>La lista del staff trae la foto confirmada; una pendiente todavía no se muestra.</summary>
+    [Fact]
+    public async Task Rows_carry_the_confirmed_avatar_but_not_a_pending_one()
+    {
+        var tenantId = Guid.NewGuid();
+        var withPhoto = AvatarDoubles.Employee(tenantId);
+        var avatar = AvatarDoubles.GiveConfirmedAvatar(withPhoto);
+        var onlyPending = AvatarDoubles.Employee(tenantId);
+        onlyPending.BeginAvatarChange(Guid.NewGuid(), DateTime.UtcNow);
+
+        var result = await GetUsersHandler.Handle(
+            new GetUsersQuery(tenantId),
+            new FakeUserRepository { Page = [withPhoto, onlyPending] },
+            new FakeRoleRepository(),
+            new FakeSlotProjectionRepository(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(avatar, result.Value.Items[0].AvatarFileId);
+        Assert.Null(result.Value.Items[1].AvatarFileId);
+    }
+
     private sealed class FakeUserRepository : IUserRepository
     {
         public IReadOnlyList<User> Page { get; init; } = [];

@@ -31,7 +31,8 @@ RUN mkdir -p models && curl -fL \
     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
 
 # ---------- Stage 2: TS build ----------
-FROM node:20.11-bookworm-slim AS build
+# Node 24 LTS fijado al patch; bookworm igual que whisper-build (misma glibc/libgomp).
+FROM node:24.22.2-bookworm-slim AS build
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
@@ -41,7 +42,7 @@ COPY src ./src
 RUN npm run build
 
 # ---------- Stage 3: runtime ----------
-FROM node:20.11-bookworm-slim AS runtime
+FROM node:24.22.2-bookworm-slim AS runtime
 WORKDIR /app
 
 # ffmpeg: transcodifica la grabacion original a WAV 16kHz mono (whisper.cpp

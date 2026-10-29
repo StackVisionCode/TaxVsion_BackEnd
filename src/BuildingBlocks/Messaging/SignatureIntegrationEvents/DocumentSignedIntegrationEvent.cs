@@ -19,4 +19,7 @@ public sealed record DocumentSignedIntegrationEvent : IntegrationEvent
 
     /// <summary>Fase 6 del plan de notificaciones dinámicas — ver <see cref="SignerContactSnapshot.MappedCustomerId"/>.</summary>
     public Guid? MappedCustomerId { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

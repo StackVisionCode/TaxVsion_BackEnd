@@ -156,6 +156,7 @@ function eligibleSuccessor(userId: string): UserDirectoryEntrySnapshot {
     email: 'successor@example.com',
     isActive: true,
     actorType: 'TenantEmployee',
+    avatarFileId: null,
     updatedAtUtc: new Date(),
   };
 }

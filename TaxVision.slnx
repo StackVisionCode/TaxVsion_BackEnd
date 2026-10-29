@@ -10,6 +10,9 @@
   <Folder Name="/src/BuildingBlocks/CustomerVisibility/">
     <Project Path="src/BuildingBlocks/CustomerVisibility/BuildingBlocks.CustomerVisibility.csproj" />
   </Folder>
+  <Folder Name="/src/BuildingBlocks/Imaging/">
+    <Project Path="src/BuildingBlocks/Imaging/BuildingBlocks.Imaging.csproj" />
+  </Folder>
   <Folder Name="/src/BuildingBlocks/Messaging/" />
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
@@ -125,6 +128,9 @@
 
   <!-- TasksService -->
   <Folder Name="/src/Services/Tasks/">
+    <Project Path="src/Services/Tasks/TaxVision.DataCollection.Engine/TaxVision.DataCollection.Engine.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.ClientForms.Application/TaxVision.Tasks.ClientForms.Application.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.ClientForms.Domain/TaxVision.Tasks.ClientForms.Domain.csproj" />
     <Project Path="src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" />
     <Project Path="src/Services/Tasks/TaxVision.Tasks.Application/TaxVision.Tasks.Application.csproj" />
     <Project Path="src/Services/Tasks/TaxVision.Tasks.Domain/TaxVision.Tasks.Domain.csproj" />
@@ -188,6 +194,7 @@
   </Folder>
   <Folder Name="/deploy/" />
   <Folder Name="/deploy/tests/">
+    <Project Path="deploy/tests/TaxVision.DataCollection.Engine.Tests/TaxVision.DataCollection.Engine.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />

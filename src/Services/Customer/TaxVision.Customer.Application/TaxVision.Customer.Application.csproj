@@ -3,6 +3,8 @@
     <ProjectReference Include="..\TaxVision.Customer.Domain\TaxVision.Customer.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <!-- Normalizador de fotos de perfil (SkiaSharp). No referenciar junto con Signature.Infrastructure. -->
+    <ProjectReference Include="..\..\..\BuildingBlocks\Imaging\BuildingBlocks.Imaging.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="WolverineFx" Version="6.14.0" />

@@ -66,6 +66,9 @@ public sealed class DocumentGenerationConfiguration : IEntityTypeConfiguration<D
             .IsFixedLength();
 
         builder.Property(g => g.IdempotencyKey).HasMaxLength(200).IsRequired();
+        builder.Property(g => g.ExternalReferenceId);
+        builder.Property(g => g.SignatureCopyFileId);
+        builder.Property(g => g.SignatureAnchorPage);
         builder.Property(g => g.AttemptCount).IsRequired();
         builder.Property(g => g.ErrorCode).HasMaxLength(100);
         builder.Property(g => g.ErrorMessage).HasMaxLength(2000);

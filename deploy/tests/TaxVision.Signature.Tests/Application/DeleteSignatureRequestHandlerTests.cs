@@ -107,6 +107,13 @@ public sealed class DeleteSignatureRequestHandlerTests
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
+        public Task<SignatureRequest?> GetByExternalReferenceAsync(
+            Guid tenantId,
+            string sourceService,
+            string sourceId,
+            CancellationToken ct = default
+        ) => Task.FromResult<SignatureRequest?>(null);
+
         public Task<SignatureRequest?> GetBySealedFileIdAsync(
             Guid tenantId,
             Guid sealedFileId,

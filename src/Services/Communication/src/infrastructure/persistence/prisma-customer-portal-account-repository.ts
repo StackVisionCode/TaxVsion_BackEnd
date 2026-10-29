@@ -1,10 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
+  CustomerPortalAccountReconcileOutcome,
+  CustomerPortalAccountReconcileWriter,
   CustomerPortalAccountRepository,
   CustomerPortalAccountSnapshot,
 } from '../../application/ports/customer-portal-account-repository.js';
 
-export class PrismaCustomerPortalAccountRepository implements CustomerPortalAccountRepository {
+export class PrismaCustomerPortalAccountRepository
+  implements CustomerPortalAccountRepository, CustomerPortalAccountReconcileWriter
+{
   constructor(private readonly prisma: PrismaClient) {}
 
   async upsert(snapshot: { customerId: string; tenantId: string; userId: string }): Promise<void> {
@@ -22,6 +26,24 @@ export class PrismaCustomerPortalAccountRepository implements CustomerPortalAcco
         IsActive: true,
       },
     });
+  }
+
+  async applyReconciled(snapshot: {
+    customerId: string;
+    tenantId: string;
+    userId: string;
+    isActive: boolean;
+  }): Promise<CustomerPortalAccountReconcileOutcome> {
+    if (snapshot.isActive) {
+      await this.upsert(snapshot);
+      return 'upserted';
+    }
+    // Inactiva: solo la fila de ese mismo usuario y si sigue activa (no pisa la cuenta nueva del cliente).
+    const result = await this.prisma.customerPortalAccount.updateMany({
+      where: { CustomerId: snapshot.customerId, UserId: snapshot.userId, IsActive: true },
+      data: { IsActive: false },
+    });
+    return result.count > 0 ? 'deactivated' : 'unchanged';
   }
 
   async markInactiveByUserId(userId: string): Promise<void> {

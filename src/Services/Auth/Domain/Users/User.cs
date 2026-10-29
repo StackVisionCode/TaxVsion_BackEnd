@@ -40,6 +40,14 @@ public sealed class User : AggregateRoot
     public bool PhoneVerified { get; private set; }
     public DateTime? PasswordChangedAtUtc { get; private set; }
 
+    // Foto de perfil (solo staff): la confirmada y la que espera el antivirus de CloudStorage.
+    public Guid? AvatarFileId { get; private set; }
+    public Guid? PendingAvatarFileId { get; private set; }
+    public DateTime? PendingAvatarRequestedAtUtc { get; private set; }
+
+    /// <summary>Pasado este tiempo sin resultado del antivirus, la foto pendiente se da por fallida.</summary>
+    public static readonly TimeSpan AvatarPendingTimeout = TimeSpan.FromMinutes(10);
+
     // MFA
     public bool MfaEnabled { get; private set; }
 
@@ -212,6 +220,95 @@ public sealed class User : AggregateRoot
     {
         PhoneNumber = phoneNumber.Trim();
         PhoneVerified = true;
+    }
+
+    /// <summary>
+    /// Teléfono de contacto puesto por el propio usuario, sin OTP: vacío lo quita. No se marca verificado;
+    /// la MFA por SMS usa su propio destino confirmado (MfaMethod), no este campo.
+    /// </summary>
+    public Result UpdatePhoneNumber(string? phoneNumber)
+    {
+        var phone = phoneNumber?.Trim() ?? string.Empty;
+        if (phone.Length == 0)
+        {
+            PhoneNumber = null;
+            PhoneVerified = false;
+            return Result.Success();
+        }
+
+        if (phone.Length is < 7 or > 20 || !phone.All(c => char.IsDigit(c) || c is '+' or '-' or ' '))
+            return Result.Failure(new Error("User.Phone", "Phone number is invalid."));
+
+        PhoneNumber = phone;
+        PhoneVerified = false;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Deja la foto nueva pendiente del antivirus. Reemplaza a otra pendiente (la última subida gana);
+    /// la confirmada sigue visible hasta que llegue el resultado.
+    /// </summary>
+    public Result BeginAvatarChange(Guid fileId, DateTime nowUtc)
+    {
+        if (fileId == Guid.Empty)
+            return Result.Failure(new Error("User.AvatarFile", "Avatar file is required."));
+
+        if (ActorType == UserActorType.CustomerPortal)
+            return Result.Failure(
+                new Error("User.AvatarNotAllowed", "Portal clients manage their photo from their client profile.")
+            );
+
+        PendingAvatarFileId = fileId;
+        PendingAvatarRequestedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Hay una foto pendiente y todavía no venció.</summary>
+    public bool HasLivePendingAvatar(DateTime nowUtc) =>
+        PendingAvatarFileId.HasValue
+        && PendingAvatarRequestedAtUtc is { } requestedAt
+        && nowUtc - requestedAt <= AvatarPendingTimeout;
+
+    /// <summary>
+    /// Confirma la pendiente si es esa foto. Devuelve la foto anterior (para borrarla), o null si no
+    /// había o si el evento no corresponde a la pendiente (viejo o repetido): en ese caso no cambia nada.
+    /// </summary>
+    public Guid? ConfirmAvatar(Guid fileId)
+    {
+        if (PendingAvatarFileId != fileId)
+            return null;
+
+        var previous = AvatarFileId;
+        AvatarFileId = fileId;
+        PendingAvatarFileId = null;
+        PendingAvatarRequestedAtUtc = null;
+        return previous == fileId ? null : previous;
+    }
+
+    /// <summary>Descarta la pendiente solo si es esa foto; true si la descartó.</summary>
+    public bool DiscardPendingAvatar(Guid fileId)
+    {
+        if (PendingAvatarFileId != fileId)
+            return false;
+
+        PendingAvatarFileId = null;
+        PendingAvatarRequestedAtUtc = null;
+        return true;
+    }
+
+    /// <summary>Quita la foto confirmada y la pendiente. Devuelve las que había, para pedir su borrado.</summary>
+    public IReadOnlyList<Guid> RemoveAvatar()
+    {
+        var removed = new List<Guid>(2);
+        if (AvatarFileId is { } current)
+            removed.Add(current);
+        if (PendingAvatarFileId is { } pending && pending != AvatarFileId)
+            removed.Add(pending);
+
+        AvatarFileId = null;
+        PendingAvatarFileId = null;
+        PendingAvatarRequestedAtUtc = null;
+        return removed;
     }
 
     public void VerifyEmail() => EmailVerified = true;

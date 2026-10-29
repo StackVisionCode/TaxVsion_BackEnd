@@ -26,6 +26,25 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .Include(request => request.Documents)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
+    public Task<SignatureRequest?> GetByExternalReferenceAsync(
+        Guid tenantId,
+        string sourceService,
+        string sourceId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Signers)
+            .Include(request => request.Documents)
+            .FirstOrDefaultAsync(
+                request =>
+                    request.TenantId == tenantId
+                    && request.ExternalReference != null
+                    && request.ExternalReference.SourceService == sourceService
+                    && request.ExternalReference.SourceId == sourceId,
+                ct
+            );
+
     public Task<SignatureRequest?> GetBySealedFileIdAsync(
         Guid tenantId,
         Guid sealedFileId,

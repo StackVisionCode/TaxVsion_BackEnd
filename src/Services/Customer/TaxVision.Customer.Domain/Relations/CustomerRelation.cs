@@ -63,7 +63,8 @@ public sealed class CustomerRelation : TenantEntity
         int taxYear,
         bool qualifiesAsDependent,
         bool livedWithTaxpayer,
-        Guid byUserId
+        Guid byUserId,
+        short taxIdentifierKeyVersion = 1
     )
     {
         var taxRelevant =
@@ -88,7 +89,8 @@ public sealed class CustomerRelation : TenantEntity
                 taxIdentifierBlindIndex: taxIdentifierBlindIndex,
                 taxIdentifierLast4: taxIdentifierLast4,
                 taxYear: taxYear,
-                updatedByUserId: byUserId
+                updatedByUserId: byUserId,
+                taxIdentifierKeyVersion: taxIdentifierKeyVersion
             );
             if (createResult.IsFailure)
                 return createResult;
@@ -102,7 +104,8 @@ public sealed class CustomerRelation : TenantEntity
                 taxIdentifierCipher,
                 taxIdentifierBlindIndex,
                 taxIdentifierLast4,
-                byUserId
+                byUserId,
+                taxIdentifierKeyVersion
             );
             FiscalProfile.UpdateEligibility(qualifiesAsDependent, livedWithTaxpayer, byUserId);
         }

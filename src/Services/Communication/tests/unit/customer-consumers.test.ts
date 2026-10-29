@@ -44,6 +44,7 @@ function setup() {
     upsert: vi.fn(),
     findByCustomerId: vi.fn(),
     markInactive: vi.fn(),
+    clearAvatar: vi.fn(),
   } as unknown as CustomerDirectoryRepository;
   const customerPreparerAssignments = {
     assign: vi.fn(),

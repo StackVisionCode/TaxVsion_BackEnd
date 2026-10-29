@@ -74,6 +74,38 @@ public sealed class ScribeRenderClient(
         );
     }
 
+    public async Task<Result<ScribeRenderedText>> RenderTextAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        CancellationToken ct = default
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+            return Result.Failure<ScribeRenderedText>(
+                new Error("Notification.ScribeAuth", "No Scribe credentials available.")
+            );
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "scribe/render");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(
+            new RenderRequestDto(eventKey, tenantId, variables, "Push"),
+            options: Json
+        );
+        using var response = await httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+            return Result.Failure<ScribeRenderedText>(
+                new Error("Notification.ScribeRender", $"Scribe render request failed ({(int)response.StatusCode}).")
+            );
+        var payload = await response.Content.ReadFromJsonAsync<RenderResponseDto>(Json, ct);
+        return payload?.Text is { } text
+            ? Result.Success(new ScribeRenderedText(payload.Subject, text))
+            : Result.Failure<ScribeRenderedText>(
+                new Error("Notification.ScribeRender", "Scribe returned no push text.")
+            );
+    }
+
     /// <summary>
     /// Scope desconocido o ausente = System. Un valor que no se entiende no puede terminar mandando el
     /// correo por el buzon de una oficina.
@@ -84,7 +116,8 @@ public sealed class ScribeRenderClient(
     private sealed record RenderRequestDto(
         string EventKey,
         Guid? TenantId,
-        IReadOnlyDictionary<string, object?> Variables
+        IReadOnlyDictionary<string, object?> Variables,
+        string Channel = "Email"
     );
 
     /// <summary>

@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.Scribe.Domain;
+using TaxVision.Scribe.Domain.Templates;
 using TaxVision.Scribe.Domain.ValueObjects;
 
 namespace TaxVision.Scribe.Application.Rendering;
@@ -16,7 +17,8 @@ public sealed record RenderEmailQuery(
     Guid? TenantId,
     string? Locale,
     IReadOnlyDictionary<string, object?> Variables,
-    LogoScope LogoScope = LogoScope.System
+    LogoScope LogoScope = LogoScope.System,
+    TemplateChannel Channel = TemplateChannel.Email
 );
 
 public static class RenderEmailHandler
@@ -40,7 +42,14 @@ public static class RenderEmailHandler
             locale = localeResult.Value;
         }
 
-        var request = new RenderRequest(eventKeyResult.Value, query.TenantId, locale, query.Variables, query.LogoScope);
+        var request = new RenderRequest(
+            eventKeyResult.Value,
+            query.TenantId,
+            locale,
+            query.Variables,
+            query.LogoScope,
+            query.Channel
+        );
         return await renderer.RenderAsync(request, ct);
     }
 }

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Permissions;
@@ -59,7 +60,14 @@ builder
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "customer-service");
+
+// CustomerFiscalMetrics va como meter adicional: AddTaxVisionOpenTelemetry solo registra AddMeter(serviceName),
+// y un Meter propio no declarado acá no exporta nada (los gauges suben en memoria y el panel queda vacío).
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "customer-service",
+    TaxVision.Customer.Infrastructure.Observability.CustomerFiscalMetrics.MeterName
+);
 
 // Autorización por permiso ([HasPermission("customers.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
@@ -116,7 +124,12 @@ var rabbitUri = new Uri(
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<CustomerDbContext>("sql-server", tags: ["ready"])
-    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"]);
+    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"])
+    // B-9/X-9 — semáforo de rotación de clave fiscal; fuera de "ready" (ver /health/key-versions más abajo).
+    .AddCheck<TaxVision.Customer.Infrastructure.Security.CustomerFiscalKeyVersionsHealthCheck>(
+        "customer-fiscal-key-versions",
+        tags: ["key-rotation"]
+    );
 
 builder.Host.UseWolverine(options =>
 {
@@ -127,7 +140,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CustomerDbContext>();
@@ -154,6 +167,9 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // Comandos de formularios de cliente: punto a punto, nunca enlazada al fanout.
+    options.ListenToRabbitQueue("customer-client-form-commands").UseDurableInbox();
+
     options.PublishMessage<CustomerArchivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -165,9 +181,20 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerPreparerAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPreparerUnassignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerAssignmentsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerCreationFromFormCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerCreationFromFormRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // P-13 — hechos de "apply to profile" (Customer → Tasks).
+    options
+        .PublishMessage<CustomerProfileUpdateFromFormAppliedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<CustomerProfileUpdateFromFormRejectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
     // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Foto de cliente reemplazada/quitada/archivada: borrado punto a punto (cola que escucha CloudStorage).
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
 });
 
 builder.Services.AddTaxVisionClientIpForwarding(builder.Configuration);
@@ -206,6 +233,12 @@ app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
+// Semáforo de rotación de clave fiscal (B-9/X-9): fuera de "ready" para que no tumbe el servicio.
+app.MapHealthChecks(
+    "/health/key-versions",
+    new HealthCheckOptions { Predicate = check => check.Tags.Contains("key-rotation") }
+);
 
 app.MapControllers();
 

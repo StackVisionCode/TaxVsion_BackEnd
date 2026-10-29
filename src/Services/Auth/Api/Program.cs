@@ -2,6 +2,7 @@ using System.Net;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.Imaging;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
@@ -60,6 +61,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
+
+// Fotos de perfil del staff: 512 px WebP sin metadatos, con tope de decodificaciones simultáneas.
+builder.Services.AddAvatarImageNormalizer();
 
 // RateLimit Fase 2 — quotas tier-aware por PlanCode. Flag OFF por default (fail-open a la cuota
 // base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
@@ -497,7 +501,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(new Uri(rabbitUri)).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
@@ -565,12 +569,16 @@ builder.Host.UseWolverine(options =>
     // no tiene ninguna ruta para el mensaje y lo descarta en silencio — mismo patrón exacto que
     // Documents.Api Program.cs usa para el mismo evento (cola dedicada point-to-point).
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-external-uploads");
+    // Fotos de perfil reemplazadas/quitadas/huérfanas: borrado por comando punto a punto (CloudStorage
+    // verifica dueño User y carpeta Avatars antes de mandarlas a la papelera).
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
     // Expiración/Dunning (Fase 3) — Auth resuelve el admin del tenant y republica el email-request para
     // que Notification lo renderice y envíe. Sin esta ruta, Wolverine lo entregaría solo in-process y
     // Notification (otro servicio) nunca se enteraría — mismo antipatrón que los comentarios de arriba.
     options.PublishMessage<TenantSubscriptionEmailRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
+    // Eventos consumidos (Tenant, Customer, Subscription y el resultado del antivirus de CloudStorage para
+    // las fotos de perfil, UserAvatarScanResultConsumer) — misma cola durable.
     options
         .ListenToRabbitQueue(
             "auth-tenant-events",

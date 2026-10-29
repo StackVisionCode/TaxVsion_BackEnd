@@ -19,16 +19,16 @@ public sealed class EmailTemplateVersion : BaseEntity
     public int VersionNumber { get; private set; }
     public EmailVersionStatus Status { get; private set; }
     public string Subject { get; private set; } = default!;
-    public string HtmlStorageKey { get; private set; } = default!;
-    public Guid HtmlFileId { get; private set; }
+    public string? HtmlStorageKey { get; private set; }
+    public Guid? HtmlFileId { get; private set; }
     public string? TextStorageKey { get; private set; }
     public Guid? TextFileId { get; private set; }
     public string? DesignJsonStorageKey { get; private set; }
     public Guid? DesignJsonFileId { get; private set; }
     public string? PreviewImageStorageKey { get; private set; }
     public Guid? PreviewImageFileId { get; private set; }
-    public Guid LayoutId { get; private set; }
-    public int LayoutVersionNumber { get; private set; }
+    public Guid? LayoutId { get; private set; }
+    public int? LayoutVersionNumber { get; private set; }
     public DateTime? PublishedAtUtc { get; private set; }
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
@@ -43,16 +43,17 @@ public sealed class EmailTemplateVersion : BaseEntity
         Guid emailTemplateId,
         int versionNumber,
         string subject,
-        string htmlStorageKey,
-        Guid htmlFileId,
+        string? htmlStorageKey,
+        Guid? htmlFileId,
         string? textStorageKey,
         Guid? textFileId,
         string? designJsonStorageKey,
         Guid? designJsonFileId,
         string? previewImageStorageKey,
         Guid? previewImageFileId,
-        Guid layoutId,
-        int layoutVersionNumber,
+        Guid? layoutId,
+        int? layoutVersionNumber,
+        TemplateChannel channel,
         IReadOnlyList<(
             string Name,
             VariableType Type,
@@ -64,12 +65,19 @@ public sealed class EmailTemplateVersion : BaseEntity
         int? seedContentVersion = null
     )
     {
-        if (string.IsNullOrWhiteSpace(subject) || subject.Length > 500)
+        var subjectLimit = channel == TemplateChannel.Push && !HasLiquid(subject) ? 65 : 500;
+        if (string.IsNullOrWhiteSpace(subject) || subject.Length > subjectLimit)
             return Result.Failure<EmailTemplateVersion>(
-                new Error("EmailTemplateVersion.Subject", "Subject is required and must be at most 500 characters.")
+                new Error(
+                    "EmailTemplateVersion.Subject",
+                    $"Subject is required and must be at most {subjectLimit} characters."
+                )
             );
 
-        if (string.IsNullOrWhiteSpace(htmlStorageKey) || htmlStorageKey.Length > 500)
+        if (
+            channel == TemplateChannel.Email
+            && (string.IsNullOrWhiteSpace(htmlStorageKey) || htmlStorageKey.Length > 500)
+        )
             return Result.Failure<EmailTemplateVersion>(
                 new Error(
                     "EmailTemplateVersion.HtmlStorageKey",
@@ -77,12 +85,12 @@ public sealed class EmailTemplateVersion : BaseEntity
                 )
             );
 
-        if (htmlFileId == Guid.Empty)
+        if (channel == TemplateChannel.Email && (!htmlFileId.HasValue || htmlFileId == Guid.Empty))
             return Result.Failure<EmailTemplateVersion>(
                 new Error("EmailTemplateVersion.HtmlFileId", "HtmlFileId is required.")
             );
 
-        if (layoutId == Guid.Empty)
+        if (channel == TemplateChannel.Email && (!layoutId.HasValue || layoutId == Guid.Empty))
             return Result.Failure<EmailTemplateVersion>(
                 new Error(
                     "EmailTemplateVersion.LayoutRequired",
@@ -90,7 +98,7 @@ public sealed class EmailTemplateVersion : BaseEntity
                 )
             );
 
-        if (layoutVersionNumber <= 0)
+        if (channel == TemplateChannel.Email && (!layoutVersionNumber.HasValue || layoutVersionNumber <= 0))
             return Result.Failure<EmailTemplateVersion>(
                 new Error(
                     "EmailTemplateVersion.LayoutVersionRequired",
@@ -146,6 +154,9 @@ public sealed class EmailTemplateVersion : BaseEntity
 
         return Result.Success(version);
     }
+
+    private static bool HasLiquid(string value) =>
+        value.Contains("{{", StringComparison.Ordinal) || value.Contains("{%", StringComparison.Ordinal);
 
     internal Result Publish(Guid publishedByUserId, DateTime publishedAtUtc)
     {

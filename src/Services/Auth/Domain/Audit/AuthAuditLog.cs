@@ -82,6 +82,7 @@ public static class AuthAuditAction
     public const string EmailChanged = "auth.email.changed";
     public const string PhoneVerificationRequested = "auth.phone.verification_requested";
     public const string PhoneVerified = "auth.phone.verified";
+    public const string PhoneUpdated = "auth.phone.updated";
     public const string InvitationCreated = "auth.invitation.created";
     public const string InvitationAccepted = "auth.invitation.accepted";
     public const string InvitationCancelled = "auth.invitation.cancelled";
@@ -90,6 +91,8 @@ public static class AuthAuditAction
     public const string UserReactivated = "auth.user.reactivated";
     public const string UserOffboarded = "auth.user.offboarded";
     public const string UserProfileUpdated = "auth.user.profile_updated";
+    public const string UserAvatarUploaded = "auth.user.avatar_uploaded";
+    public const string UserAvatarRemoved = "auth.user.avatar_removed";
     public const string UserRolesChanged = "auth.user.roles_changed";
     public const string UserPermissionOverridesChanged = "auth.user.permission_overrides_changed";
     public const string UserSlotPriorityOverridden = "auth.user.slot_priority_overridden";

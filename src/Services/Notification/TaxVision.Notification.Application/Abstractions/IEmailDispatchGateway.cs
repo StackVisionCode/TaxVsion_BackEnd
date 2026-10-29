@@ -26,6 +26,10 @@ public interface IEmailDispatchGateway
 /// Fase 4 (evento hacia Postmaster) y NO se usan hoy — la implementación in-process solo lee To,
 /// Subject, HtmlBody, TextBody, TemplateKey, RelatedEventId, CorrelationId, TenantId.
 /// </summary>
+/// <param name="Confidential">
+/// El cuerpo lleva un secreto (código de un solo uso, enlace de acceso): va directo a la cola de
+/// Postmaster y nunca al fanout <c>taxvision-events</c>, donde quedaría en inboxes y DLQs ajenos.
+/// </param>
 /// <param name="InlineAssets">
 /// Logos/imágenes CID resueltas por Scribe para este render (Hardening Fase 9) — el consumer las
 /// obtiene de <c>ScribeRenderedEmail.InlineAssets</c> y las reenvía tal cual. Solo
@@ -51,7 +55,8 @@ public sealed record EmailDispatchRequest(
     string? PriorityHint = null,
     Guid? ReplyToThreadId = null,
     IReadOnlyList<Guid>? AttachmentFileIds = null,
-    IReadOnlyList<EmailInlineAssetReference>? InlineAssets = null
+    IReadOnlyList<EmailInlineAssetReference>? InlineAssets = null,
+    bool Confidential = false
 );
 
 public sealed record EmailDispatchResult(

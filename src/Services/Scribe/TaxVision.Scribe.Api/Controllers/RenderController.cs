@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
+using TaxVision.Scribe.Domain.Templates;
 using Wolverine;
 
 namespace TaxVision.Scribe.Api.Controllers;
@@ -30,7 +31,8 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
         Guid? TenantId,
         string? Locale,
         IReadOnlyDictionary<string, object?> Variables,
-        LogoScope LogoScope = LogoScope.System
+        LogoScope LogoScope = LogoScope.System,
+        TemplateChannel Channel = TemplateChannel.Email
     );
 
     [HttpPost]
@@ -44,7 +46,8 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
             request.TenantId,
             request.Locale,
             request.Variables,
-            request.LogoScope
+            request.LogoScope,
+            request.Channel
         );
         var result = await bus.InvokeAsync<Result<RenderedContent>>(query, ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

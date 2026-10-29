@@ -1,11 +1,17 @@
 import type { MeetingParticipantSnapshot } from '../../domain/meetings/meeting-participant.js';
 import type { MeetingSnapshot } from '../../domain/meetings/meeting.js';
 import type { MeetingParticipantDto, MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
+import type { AvatarLookup } from './resolve-avatars.js';
 
-export function participantSnapshotToDto(snap: MeetingParticipantSnapshot): MeetingParticipantDto {
+/** Sin `avatars` el DTO sale sin `avatarFileId` (el front conserva la foto que ya tenia). */
+export function participantSnapshotToDto(
+  snap: MeetingParticipantSnapshot,
+  avatars?: AvatarLookup,
+): MeetingParticipantDto {
   return {
     userId: snap.userId,
     displayName: snap.displayName,
+    ...(avatars ? { avatarFileId: avatars.of(snap.userId) } : {}),
     role: snap.role,
     status: snap.status,
     joinOrder: snap.joinOrder,
@@ -26,6 +32,7 @@ export function buildMeetingSnapshotDto(
   snapshot: MeetingSnapshot,
   yourRole: MeetingSnapshotDto['yourRole'],
   conversationId: string | null,
+  avatars?: AvatarLookup,
 ): MeetingSnapshotDto {
   return {
     meetingId: snapshot.id,
@@ -33,7 +40,7 @@ export function buildMeetingSnapshotDto(
     strategy: snapshot.strategy,
     hostUserId: snapshot.hostUserId,
     isLocked: snapshot.isLocked,
-    participants: snapshot.participants.map(participantSnapshotToDto),
+    participants: snapshot.participants.map((p) => participantSnapshotToDto(p, avatars)),
     yourRole,
     sequence: 0,
     conversationId,

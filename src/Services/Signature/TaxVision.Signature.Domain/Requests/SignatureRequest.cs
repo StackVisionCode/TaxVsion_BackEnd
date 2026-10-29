@@ -62,6 +62,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public string Category { get; private set; } = default!;
     public SignatureRequestStatus Status { get; private set; }
 
+    /// <summary>P-18: correlación con el origen (otro servicio) que pidió esta firma. Nulo si la creó el staff.</summary>
+    public ExternalReference? ExternalReference { get; private set; }
+
     public Guid? CertificateFileId { get; private set; }
 
     public bool RequiresSequentialSigning { get; private set; }
@@ -274,6 +277,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         request.SetTenant(tenantId);
         return Result.Success(request);
     }
+
+    /// <summary>P-18: fija la correlación de negocio con el origen (idempotente: no se re-sobrescribe).</summary>
+    public void AttachExternalReference(ExternalReference reference) => ExternalReference ??= reference;
 
     [Obsolete("Create the request first and add documents explicitly.")]
     public static Result<SignatureRequest> CreateDraft(

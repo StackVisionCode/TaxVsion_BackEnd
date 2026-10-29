@@ -63,6 +63,35 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
     }
 
     [Fact]
+    public async Task CustomerSearchByBody_trips_with_user_layer_at_the_search_policy_limit()
+    {
+        // POST /customers/search comparte política (y contador) con GET /customers.
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(tenantId, userId);
+
+        var first = await client.PostAsJsonAsync(
+            "/customers/search",
+            new
+            {
+                Term = "ratelimit.search@ratelimit-test.local",
+                Status = "NotArchived",
+                Page = 1,
+                Size = 20,
+            }
+        );
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("no-store", first.Headers.CacheControl?.ToString());
+
+        var tripped = await FireUntilTrippedAsync(
+            () => client.PostAsJsonAsync("/customers/search", new { Term = "ratelimit" }),
+            maxAttempts: 2 * BaseLimit("customer.h.search")
+        );
+
+        await AssertTripped(tripped, expectedPolicy: "customer.h.search", expectedLayer: "user");
+    }
+
+    [Fact]
     public async Task FiscalReveal_trips_with_user_layer_at_its_catalog_limit()
     {
         var tenantId = Guid.NewGuid();

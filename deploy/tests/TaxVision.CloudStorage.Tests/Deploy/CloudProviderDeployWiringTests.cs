@@ -29,7 +29,10 @@ public sealed class CloudProviderDeployWiringTests
         var line = $"{varName}=${{{{ secrets.{varName} }}}}";
         var deployJob = workflow.IndexOf("environment: production-extra", StringComparison.Ordinal);
         Assert.True(deployJob > 0, "The deploy job (environment: production-extra) was not found.");
-        Assert.True(workflow.IndexOf(line, StringComparison.Ordinal) > deployJob, $"{varName} must be written by the deploy job.");
+        Assert.True(
+            workflow.IndexOf(line, StringComparison.Ordinal) > deployJob,
+            $"{varName} must be written by the deploy job."
+        );
         Assert.Equal(1, Regex.Matches(workflow, Regex.Escape(line)).Count);
     }
 

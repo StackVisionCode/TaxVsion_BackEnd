@@ -20,6 +20,7 @@ function entry(overrides: Partial<UserDirectoryEntrySnapshot>): UserDirectoryEnt
     email: 'someone@example.com',
     isActive: true,
     actorType: 'TenantEmployee',
+    avatarFileId: null,
     updatedAtUtc: new Date(),
     ...overrides,
   };

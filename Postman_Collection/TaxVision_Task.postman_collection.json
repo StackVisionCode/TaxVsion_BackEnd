@@ -2484,6 +2484,3638 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Client Forms",
+      "description": "Plantillas versionadas, solicitudes al cliente o a externos, enlaces de captacion, portal y sitio publico. El sitio publico no usa token: la sesion va en X-Form-Session y el tenant sale del host de Origin.",
+      "item": [
+        {
+          "name": "Plantillas",
+          "item": [
+            {
+              "name": "Crear borrador",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Annual client intake\",\n  \"description\": \"Collect client details.\",\n  \"purpose\": \"ClientIntake\",\n  \"presentation\": \"Wizard\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formTemplateId\", body.id);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Listar",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates?status=Active&search=intake&page=1&pageSize=25",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Active"
+                    },
+                    {
+                      "key": "search",
+                      "value": "intake"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "25"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Asignables",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/assignable?search=intake",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "assignable"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "intake"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Obtener por id",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Renombrar",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Annual client intake 2026\",\n  \"description\": \"Collect client details.\",\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Guardar borrador",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/draft",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "draft"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"definition\": {\n    \"schemaVersion\": 1,\n    \"title\": \"Annual client intake\",\n    \"purpose\": \"clientIntake\",\n    \"presentation\": \"wizard\",\n    \"settings\": {\n      \"showProgress\": true\n    },\n    \"pages\": [\n      {\n        \"id\": \"pg_abcdefgh\",\n        \"title\": \"Client details\",\n        \"description\": null,\n        \"visibleWhen\": null,\n        \"style\": null,\n        \"sections\": [\n          {\n            \"id\": \"sc_abcdefgh\",\n            \"title\": \"Identity\",\n            \"description\": null,\n            \"visibleWhen\": null,\n            \"repeat\": null,\n            \"style\": null,\n            \"components\": [\n              {\n                \"id\": \"fd_abcdefgh\",\n                \"type\": \"text\",\n                \"key\": \"first_name\",\n                \"label\": \"First name\",\n                \"help\": null,\n                \"required\": true,\n                \"requiredWhen\": null,\n                \"visibleWhen\": null,\n                \"dataClass\": \"personal\",\n                \"reportable\": false,\n                \"prefill\": null,\n                \"style\": null,\n                \"props\": {\n                  \"maxLength\": 80\n                }\n              }\n            ]\n          }\n        ]\n      }\n    ],\n    \"mappings\": [],\n    \"actions\": []\n  },\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                },
+                "description": "422 con los issues si la definicion no valida; 200 con el nuevo rowVersion si se guardo."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Validar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/validate",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "validate"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Publicar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/publish",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "publish"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.versionNumber) pm.collectionVariables.set(\"formVersionNumber\", body.versionNumber);",
+                      "if (body.id) pm.collectionVariables.set(\"formTemplateVersionId\", body.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Versiones",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/versions",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "versions"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Version publicada",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/versions/{{formVersionNumber}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "versions",
+                    "{{formVersionNumber}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Duplicar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/duplicate",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "duplicate"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fromVersionNumber\": null\n}"
+                },
+                "description": "fromVersionNumber null copia el borrador; con numero copia esa version publicada."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formDuplicateTemplateId\", body.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revertir borrador a una version",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/revert",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "revert"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"versionNumber\": {{formVersionNumber}},\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Archivar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/archive",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "archive"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Restaurar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/restore",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formTemplateId}}",
+                    "restore"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{formTemplateRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formTemplateRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Borrar (sin versiones publicadas)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/templates/{{formDuplicateTemplateId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "templates",
+                    "{{formDuplicateTemplateId}}"
+                  ]
+                },
+                "description": "Solo una plantilla que nunca se publico; la publicada se archiva."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Catalogo y disponibilidad",
+          "item": [
+            {
+              "name": "Disponibilidad (staff)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/availability",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "availability"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Catalogo de mapeo",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/mapping-catalog",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "mapping-catalog"
+                  ]
+                },
+                "description": "Requiere tasks.forms.templates.configure_actions."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Plataforma",
+          "item": [
+            {
+              "name": "Tenants y flags",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{platformAdminToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/platform/tenants",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "platform",
+                    "tenants"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Habilitar tenant",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{platformAdminToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/platform/tenants/{{tenantId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "platform",
+                    "tenants",
+                    "{{tenantId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enabled\": true,\n  \"note\": \"Pilot office\",\n  \"externalParticipantsEnabled\": true,\n  \"intakeLinksEnabled\": true,\n  \"autoCustomerCreationEnabled\": true,\n  \"signatureStepEnabled\": null,\n  \"pushNotificationsEnabled\": null\n}"
+                },
+                "description": "Los flags null no cambian el valor actual."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Uso del catalogo",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{platformAdminToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/platform/catalog-usage?targetKey=customer.profile",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "platform",
+                    "catalog-usage"
+                  ],
+                  "query": [
+                    {
+                      "key": "targetKey",
+                      "value": "customer.profile"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Avisos de consentimiento",
+          "item": [
+            {
+              "name": "Listar",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Crear",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"key\": \"privacy_notice\",\n  \"title\": \"Privacy notice\",\n  \"purpose\": \"General\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"consentNoticeId\", body.id);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"consentNoticeRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Obtener por id",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices/{{consentNoticeId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices",
+                    "{{consentNoticeId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"consentNoticeRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Renombrar",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices/{{consentNoticeId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices",
+                    "{{consentNoticeId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Privacy and data use notice\",\n  \"rowVersion\": \"{{consentNoticeRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"consentNoticeRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Publicar version",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices/{{consentNoticeId}}/versions",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices",
+                    "{{consentNoticeId}}",
+                    "versions"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"language\": \"en\",\n  \"body\": {\n    \"type\": \"doc\",\n    \"blocks\": [\n      {\n        \"type\": \"paragraph\",\n        \"children\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"We use your answers only to prepare your tax return.\"\n          }\n        ]\n      }\n    ]\n  },\n  \"rowVersion\": \"{{consentNoticeRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"consentNoticeRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Archivar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/consent-notices/{{consentNoticeId}}/archive",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "consent-notices",
+                    "{{consentNoticeId}}",
+                    "archive"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{consentNoticeRowVersion}}\"\n}"
+                },
+                "description": "Un aviso fijado por un enlace o una plantilla publicada no se archiva."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Solicitudes (staff)",
+          "item": [
+            {
+              "name": "Asignar a un cliente",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"templateId\": \"{{formTemplateId}}\",\n  \"title\": \"2025 intake\",\n  \"messageToClient\": \"Please complete before March 1.\",\n  \"dueAtUtc\": \"2026-03-01T17:00:00Z\",\n  \"taxYear\": 2025,\n  \"taskId\": null,\n  \"prefillFromRequestId\": null\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formRequestId\", body.id);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Asignar a un externo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/external",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "external"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prospect@example.com\",\n  \"fullName\": \"Prospect Example\",\n  \"templateId\": \"{{formTemplateId}}\",\n  \"entryNoticeKey\": \"privacy_notice\",\n  \"title\": \"New client intake\",\n  \"messageToClient\": null,\n  \"dueAtUtc\": null,\n  \"taxYear\": 2025\n}"
+                },
+                "description": "El enlace con el token va solo por correo: copiar el token a formAccessToken para la carpeta publica."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formExternalRequestId\", body.id);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formExternalRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Listar",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests?status=Submitted&participantKind=Customer&overdue=false&page=1&pageSize=25",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "Submitted"
+                    },
+                    {
+                      "key": "participantKind",
+                      "value": "Customer"
+                    },
+                    {
+                      "key": "overdue",
+                      "value": "false"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "25"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Obtener por id",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set(\"formRequestRowVersion\", body.request.rowVersion);",
+                      "if (body.request.currentRevisionNumber) pm.collectionVariables.set(\"formRevisionNumber\", body.request.currentRevisionNumber);",
+                      "if (body.actionRuns && body.actionRuns.length) pm.collectionVariables.set(\"formActionRunId\", body.actionRuns[0].id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revision enviada",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/revisions/{{formRevisionNumber}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}",
+                    "revisions",
+                    "{{formRevisionNumber}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Devolver con comentarios",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/return",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}",
+                    "return"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"Please double check your first name.\",\n  \"fieldComments\": [\n    {\n      \"componentId\": \"fd_abcdefgh\",\n      \"rowId\": null,\n      \"comment\": \"Use your legal name.\"\n    }\n  ],\n  \"rowVersion\": \"{{formRequestRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Completar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/complete",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"internalNote\": \"Reviewed.\",\n  \"rowVersion\": \"{{formRequestRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cancelar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formExternalRequestId}}/cancel",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formExternalRequestId}}",
+                    "cancel"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"note\": \"Duplicated request.\",\n  \"rowVersion\": \"{{formExternalRequestRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cambiar vencimiento",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/due-date",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}",
+                    "due-date"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"dueAtUtc\": \"2026-03-15T17:00:00Z\",\n  \"rowVersion\": \"{{formRequestRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reenviar acceso externo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formExternalRequestId}}/external-access/resend",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formExternalRequestId}}",
+                    "external-access",
+                    "resend"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revelar dato sensible",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/sensitive-answers/{{formSensitiveAnswerId}}/reveal",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formRequestId}}",
+                    "sensitive-answers",
+                    "{{formSensitiveAnswerId}}",
+                    "reveal"
+                  ]
+                },
+                "description": "Requiere tasks.forms.submissions.reveal. Queda auditado; nunca se guarda el valor en variables."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Accion · crear cliente",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formExternalRequestId}}/actions/create-customer",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formExternalRequestId}}",
+                    "actions",
+                    "create-customer"
+                  ]
+                },
+                "description": "Requiere ademas customers.manage. 202: Customer responde por evento."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"202\", () => pm.response.to.have.status(202));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formActionRunId\", body.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Accion · reintentar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formExternalRequestId}}/actions/{{formActionRunId}}/retry",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formExternalRequestId}}",
+                    "actions",
+                    "{{formActionRunId}}",
+                    "retry"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"202\", () => pm.response.to.have.status(202));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formActionRunId\", body.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reintentar vinculo con el cliente",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/requests/{{formExternalRequestId}}/customer-link/retry",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "requests",
+                    "{{formExternalRequestId}}",
+                    "customer-link",
+                    "retry"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Enlaces de captacion",
+          "item": [
+            {
+              "name": "Crear",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Website intake\",\n  \"formTemplateId\": \"{{formTemplateId}}\",\n  \"formTemplateVersionId\": null,\n  \"entryNoticeKey\": \"privacy_notice\",\n  \"expiresAtUtc\": \"2026-12-31T23:59:59Z\",\n  \"maxSubmissions\": 100,\n  \"responsibleUserId\": \"{{userId}}\"\n}"
+                },
+                "description": "El token completo se devuelve solo aqui y al regenerarlo."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);",
+                      "pm.collectionVariables.set(\"intakeLinkId\", link.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Listar",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Obtener por id",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Ver token",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/token",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "token"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Pausar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/pause",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "pause"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{intakeLinkRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reanudar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/resume",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "resume"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{intakeLinkRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Fijar version",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/pin-version",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "pin-version"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"formTemplateVersionId\": \"{{formTemplateVersionId}}\",\n  \"rowVersion\": \"{{intakeLinkRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Regenerar token",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/regenerate-token",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "regenerate-token"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{intakeLinkRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Revocar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/forms/intake-links/{{intakeLinkId}}/revoke",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "forms",
+                    "intake-links",
+                    "{{intakeLinkId}}",
+                    "revoke"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{intakeLinkRowVersion}}\"\n}"
+                },
+                "description": "Irreversible: el enlace deja de abrir para siempre."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "const link = body.link || body;",
+                      "pm.collectionVariables.set(\"intakeLinkRowVersion\", link.rowVersion);",
+                      "if (body.token) pm.collectionVariables.set(\"formIntakeToken\", body.token);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Portal",
+          "item": [
+            {
+              "name": "Disponibilidad (portal)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/availability",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "availability"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Mis formularios",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms?onlyOpen=true",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms"
+                  ],
+                  "query": [
+                    {
+                      "key": "onlyOpen",
+                      "value": "true"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Obtener por id",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Abrir",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/open",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "open"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Aceptar consentimiento",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/consents",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "consents"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_consent01\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Rechazar consentimiento",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/consents/decline",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "consents",
+                    "decline"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_consent01\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Guardar borrador",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/draft",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "draft"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"answers\": {\n    \"schemaVersion\": 1,\n    \"values\": {\n      \"fd_abcdefgh\": \"Maria\"\n    }\n  },\n  \"rowVersion\": \"{{formRequestRowVersion}}\"\n}"
+                },
+                "description": "422 con los issues si el borrador no valida."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Capturar dato sensible",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/sensitive-answers",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "sensitive-answers"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_taxid001\",\n  \"rowId\": null,\n  \"kind\": \"Ssn\",\n  \"value\": \"123456789\"\n}"
+                },
+                "description": "Solo devuelve el sensitiveRef y los ultimos 4: el valor no vuelve nunca."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.sensitiveRef) pm.collectionVariables.set(\"formSensitiveAnswerId\", body.sensitiveRef);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Registrar adjunto",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/attachments",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "attachments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_upload001\",\n  \"rowId\": null,\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"w2.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 182044\n}"
+                },
+                "description": "El archivo se sube antes a CloudStorage (carpeta ClientForms) y aqui solo se registra."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set(\"formAttachmentId\", body.id);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Quitar adjunto",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/attachments/{{formAttachmentId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "attachments",
+                    "{{formAttachmentId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Enviar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{PortalAccessToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/portal/forms/{{formRequestId}}/submit",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "portal",
+                    "forms",
+                    "{{formRequestId}}",
+                    "submit"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{formRequestRowVersion}}\"\n}"
+                },
+                "description": "422 con los issues si falta algo obligatorio."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formRequestRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Publico · acceso",
+          "item": [
+            {
+              "name": "Enlace dirigido · ver",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/access/{{formAccessToken}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "access",
+                    "{{formAccessToken}}"
+                  ]
+                },
+                "description": "Sin token de usuario. Responde 404 generico si el enlace no existe o el host no es del tenant."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Enlace dirigido · pedir codigo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/access/{{formAccessToken}}/challenge",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "access",
+                    "{{formAccessToken}}",
+                    "challenge"
+                  ]
+                },
+                "description": "Siempre 202, exista o no el enlace."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"202\", () => pm.response.to.have.status(202));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Enlace dirigido · verificar codigo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/access/{{formAccessToken}}/verify",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "access",
+                    "{{formAccessToken}}",
+                    "verify"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"{{formOtpCode}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set(\"formSessionToken\", body.sessionToken);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Captacion · ver",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/intake/{{formIntakeToken}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "intake",
+                    "{{formIntakeToken}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Captacion · pedir codigo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/intake/{{formIntakeToken}}/challenge",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "intake",
+                    "{{formIntakeToken}}",
+                    "challenge"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prospect@example.com\",\n  \"captchaToken\": \"{{formCaptchaToken}}\"\n}"
+                },
+                "description": "Siempre 202. Con las claves de prueba de Turnstile cualquier token pasa."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"202\", () => pm.response.to.have.status(202));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Captacion · verificar codigo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/intake/{{formIntakeToken}}/verify",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "intake",
+                    "{{formIntakeToken}}",
+                    "verify"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prospect@example.com\",\n  \"code\": \"{{formOtpCode}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "pm.collectionVariables.set(\"formSessionToken\", body.sessionToken);",
+                      "if (body.requestId) pm.collectionVariables.set(\"formPublicRequestId\", body.requestId);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Publico · sesion",
+          "item": [
+            {
+              "name": "Formulario de la sesion",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/request",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "request"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Aceptar consentimiento",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/consents",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "consents"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_consent01\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Rechazar consentimiento",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/consents/decline",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "consents",
+                    "decline"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_consent01\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Guardar borrador",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/draft",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "draft"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"answers\": {\n    \"schemaVersion\": 1,\n    \"values\": {\n      \"fd_abcdefgh\": \"Maria\"\n    }\n  },\n  \"rowVersion\": \"{{formPublicRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Capturar dato sensible",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/sensitive-answers",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "sensitive-answers"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_taxid001\",\n  \"rowId\": null,\n  \"kind\": \"Ssn\",\n  \"value\": \"123456789\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Adjunto · pedir subida",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/attachments/uploads",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "attachments",
+                    "uploads"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"componentId\": \"fd_upload001\",\n  \"rowId\": null,\n  \"originalName\": \"w2.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 182044\n}"
+                },
+                "description": "Devuelve el POST prefirmado; el navegador sube directo al almacenamiento."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"201\", () => pm.response.to.have.status(201));",
+                      "const body = pm.response.json();",
+                      "if (body.fileId) pm.collectionVariables.set(\"formPublicFileId\", body.fileId);",
+                      "if (body.attachmentId) pm.collectionVariables.set(\"formPublicAttachmentId\", body.attachmentId);",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Adjunto · confirmar subida",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/attachments/{{formPublicFileId}}/complete",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "attachments",
+                    "{{formPublicFileId}}",
+                    "complete"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"202\", () => pm.response.to.have.status(202));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Adjunto · quitar",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/attachments/{{formPublicAttachmentId}}",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "attachments",
+                    "{{formPublicAttachmentId}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Enviar",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/submit",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "submit"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rowVersion\": \"{{formPublicRowVersion}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                      "const body = pm.response.json();",
+                      "if (body.rowVersion) pm.collectionVariables.set(\"formPublicRowVersion\", body.rowVersion);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Cerrar sesion",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Origin",
+                    "value": "{{formPublicOrigin}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Form-Session",
+                    "value": "{{formSessionToken}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{UrlBase}}/tasks/public/forms/session/logout",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "tasks",
+                    "public",
+                    "forms",
+                    "session",
+                    "logout"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -2551,6 +6183,141 @@
     },
     {
       "key": "PortalAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formTemplateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formTemplateRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formTemplateVersionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formVersionNumber",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formDuplicateTemplateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "consentNoticeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "consentNoticeRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formRequestRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formRevisionNumber",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formExternalRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formExternalRequestRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formSensitiveAnswerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formAttachmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formActionRunId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "intakeLinkId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "intakeLinkRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formIntakeToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formOtpCode",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formCaptchaToken",
+      "value": "XXXX.DUMMY.TOKEN.XXXX",
+      "type": "string"
+    },
+    {
+      "key": "formPublicOrigin",
+      "value": "http://localhost:4200",
+      "type": "string"
+    },
+    {
+      "key": "formSessionToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formPublicRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formPublicRowVersion",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formPublicFileId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "formPublicAttachmentId",
       "value": "",
       "type": "string"
     }

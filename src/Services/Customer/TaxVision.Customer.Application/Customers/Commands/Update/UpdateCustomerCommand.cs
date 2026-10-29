@@ -18,7 +18,6 @@ public sealed record UpdateCustomerCommand(
     // Preferencias y contacto
     Language Language,
     Guid? OccupationId,
-    Guid? ProfilePictureFileId,
     string PrimaryEmail,
     string? PrimaryPhone,
     // ==== NUEVO: identidad editable ====

@@ -47,6 +47,16 @@ public sealed record FileResponse(
 
 public sealed record DownloadUrlResponse(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
+public sealed record CopyFileRequest(
+    OwnerType OwnerType,
+    Guid? OwnerId,
+    FolderType FolderType,
+    int? TaxYear,
+    Guid? FolderId = null
+);
+
+public sealed record CopiedFileResponse(Guid FileId, FileStatus Status);
+
 /// <summary>
 /// Fase B2 — body de POST storage/files/zip. FolderIds (Fase B2.1) agrega el
 /// contenido COMPLETO de cada carpeta (recursivo, incluye subcarpetas) al ZIP,

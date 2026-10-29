@@ -6,6 +6,8 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Postmaster.Application.Abstractions;
@@ -16,6 +18,7 @@ using TaxVision.Postmaster.Application.RateLimit;
 using TaxVision.Postmaster.Application.RateLimiting.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Application.Suppression;
+using TaxVision.Postmaster.Infrastructure.DevMailbox;
 using TaxVision.Postmaster.Infrastructure.Feedback;
 using TaxVision.Postmaster.Infrastructure.Feedback.Dsn;
 using TaxVision.Postmaster.Infrastructure.Feedback.Smtp2Go;
@@ -93,8 +96,50 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         AddRateLimitTierQuotas(services, configuration);
+        AddDevMailbox(services, configuration);
         return services;
     }
+
+    // Buzón dev: envuelve los dos caminos de envío (SMTP y buzón conectado); el writer decide si está activo.
+    private static void AddDevMailbox(IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<DevMailboxOptions>(configuration.GetSection(DevMailboxOptions.SectionName));
+        services.AddSingleton(sp => new DevMailboxWriter(
+            sp.GetRequiredService<IOptions<DevMailboxOptions>>().Value,
+            sp.GetService<IHostEnvironment>(),
+            sp.GetRequiredService<ILogger<DevMailboxWriter>>(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System
+        ));
+        Decorate<IEmailSender>(
+            services,
+            (sp, inner) => new DevMailboxEmailSender(inner, sp.GetRequiredService<DevMailboxWriter>())
+        );
+        Decorate<IConnectedMailboxSender>(
+            services,
+            (sp, inner) => new DevMailboxConnectedMailboxSender(inner, sp.GetRequiredService<DevMailboxWriter>())
+        );
+    }
+
+    // Reemplaza el último registro de TService por un decorador con el mismo ciclo de vida.
+    private static void Decorate<TService>(
+        IServiceCollection services,
+        Func<IServiceProvider, TService, TService> decorate
+    )
+        where TService : class
+    {
+        var original = services.Last(d => d.ServiceType == typeof(TService));
+        var index = services.IndexOf(original);
+        services[index] = ServiceDescriptor.Describe(
+            typeof(TService),
+            sp => decorate(sp, (TService)CreateOriginal(sp, original)),
+            original.Lifetime
+        );
+    }
+
+    private static object CreateOriginal(IServiceProvider sp, ServiceDescriptor descriptor) =>
+        descriptor.ImplementationInstance
+        ?? descriptor.ImplementationFactory?.Invoke(sp)
+        ?? ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType!);
 
     // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
     // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El

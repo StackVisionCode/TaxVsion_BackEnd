@@ -31,4 +31,6 @@ public interface INotificationDispatchMetrics
     /// SMS sin phone verificado, etc. No es un error de provider — es ausencia
     /// de surface para entregar.</summary>
     void RecordNoRecipient(string kind, string channel);
+
+    void RecordClientFormPushFailure(string code) { }
 }

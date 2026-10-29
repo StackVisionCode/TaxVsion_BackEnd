@@ -32,6 +32,7 @@ using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Application.Templates;
 using TaxVision.Tasks.Application.Templates.Abstractions;
 using TaxVision.Tasks.Application.Timers.Abstractions;
+using TaxVision.Tasks.Infrastructure.ClientForms;
 using TaxVision.Tasks.Infrastructure.CloudStorage;
 using TaxVision.Tasks.Infrastructure.Customers;
 using TaxVision.Tasks.Infrastructure.Jobs;
@@ -91,6 +92,7 @@ public static class DependencyInjection
         AddRateLimitTierQuotas(services, configuration);
         AddPermissionsPullRecovery(services);
         AddCustomerDirectory(services, configuration);
+        services.AddClientForms(configuration);
 
         return services;
     }

@@ -1,0 +1,1179 @@
+[
+  {
+    "name": "forward condition rejected",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_later0000",
+                    "op": "isAnswered"
+                  }
+                },
+                {
+                  "id": "fd_later0000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.forward_reference",
+          "path": "/pages/0/sections/0/components/0/visibleWhen/field"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown condition field",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_unknown00",
+                    "op": "isAnswered"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.unknown_field",
+          "path": "/pages/0/sections/0/components/0/visibleWhen/field"
+        }
+      ]
+    }
+  },
+  {
+    "name": "operator not allowed",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "gt",
+                    "value": 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.op_not_allowed",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/op"
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition value required",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_select000",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_select000",
+                    "op": "equals"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition value forbidden",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue",
+                    "value": true
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition shape is closed",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "all": [
+                      {
+                        "field": "fd_toggle000",
+                        "op": "isTrue"
+                      }
+                    ],
+                    "op": "isAnswered"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen"
+        }
+      ]
+    }
+  },
+  {
+    "name": "rows count over platform limit",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 0,
+                "maxRows": 3,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "sc_later0000",
+              "title": "Later",
+              "visibleWhen": {
+                "rows": "sc_repeat000",
+                "op": "countGte",
+                "value": 51
+              },
+              "components": [
+                {
+                  "id": "fd_later0000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hidden conditional field",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": false,
+        "fd_detail000": "kept in draft"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_toggle000"
+      ]
+    }
+  },
+  {
+    "name": "visible conditional field",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": true,
+        "fd_detail000": "shown"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_toggle000",
+        "fd_detail000"
+      ]
+    }
+  },
+  {
+    "name": "in values must be field options",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "in",
+                    "value": [
+                      "first",
+                      "third"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "contains value must be a field option",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "checkboxGroup",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "contains",
+                    "value": "third"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "number comparison requires a number",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "number",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "gt",
+                    "value": "10"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "date comparison requires an iso date",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "date",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "gte",
+                    "value": "10/20/2026"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text equality requires a string",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "equals",
+                    "value": 5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "condition.value_invalid",
+          "path": "/pages/0/sections/0/components/1/visibleWhen/value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "typed condition values are valid",
+    "mode": "structure",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "number",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_when00000",
+                  "type": "date",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_choice000",
+                  "type": "select",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "all": [
+                      {
+                        "field": "fd_source000",
+                        "op": "gt",
+                        "value": 10.5
+                      },
+                      {
+                        "field": "fd_when00000",
+                        "op": "gte",
+                        "value": "2026-01-01"
+                      },
+                      {
+                        "field": "fd_choice000",
+                        "op": "in",
+                        "value": [
+                          "first"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "valid": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "date condition with numeric value is false",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "date",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "gt",
+                    "value": 20260101
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_source000": "2026-10-20"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_source000"
+      ]
+    }
+  },
+  {
+    "name": "notContains over non-string answers is false",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "checkboxGroup",
+                  "label": "Answer",
+                  "props": {
+                    "options": [
+                      {
+                        "value": "first",
+                        "label": "First"
+                      },
+                      {
+                        "value": "second",
+                        "label": "Second"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "notContains",
+                    "value": "first"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_source000": [
+          1,
+          2
+        ]
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_source000"
+        }
+      ],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_source000"
+      ]
+    }
+  },
+  {
+    "name": "thousands separator is not a number",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "number",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "equals",
+                    "value": 1000
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_source000": "1,000"
+      }
+    },
+    "expected": {
+      "valid": false,
+      "issues": [
+        {
+          "code": "answer.type_mismatch",
+          "path": "/values/fd_source000"
+        }
+      ],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_source000"
+      ]
+    }
+  },
+  {
+    "name": "numbers compare by value",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_source000",
+                  "type": "currency",
+                  "label": "Answer",
+                  "props": {}
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "visibleWhen": {
+                    "field": "fd_source000",
+                    "op": "equals",
+                    "value": 1000.5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_source000": "1000.50"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_source000",
+        "fd_detail000"
+      ]
+    }
+  },
+  {
+    "name": "rows count reveals section",
+    "mode": "visibility",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_repeat000",
+              "title": "Dependents",
+              "repeat": {
+                "minRows": 0,
+                "maxRows": 3,
+                "addLabel": "Add row",
+                "rowLabel": "Dependent"
+              },
+              "components": [
+                {
+                  "id": "fd_rowname00",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            },
+            {
+              "id": "sc_later0000",
+              "title": "Later",
+              "visibleWhen": {
+                "rows": "sc_repeat000",
+                "op": "countGte",
+                "value": 1
+              },
+              "components": [
+                {
+                  "id": "fd_later0000",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "sc_repeat000": {
+          "rows": [
+            {
+              "rowId": "rw_abcdefghij",
+              "values": {
+                "fd_rowname00": "A"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_repeat000",
+        "fd_rowname00",
+        "sc_later0000",
+        "fd_later0000"
+      ]
+    }
+  }
+]

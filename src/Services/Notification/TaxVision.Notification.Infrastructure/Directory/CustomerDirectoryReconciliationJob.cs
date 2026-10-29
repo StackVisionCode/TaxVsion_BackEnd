@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TaxVision.Notification.Application.Directory;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Directory;
 
@@ -77,14 +78,13 @@ internal sealed class CustomerDirectoryReconciliationJob(
     {
         using var scope = serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<INotificationCustomerClient>();
-        var repository = scope.ServiceProvider.GetRequiredService<ICustomerEmailDirectoryRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         var page = 1;
         var written = 0;
 
         while (!ct.IsCancellationRequested)
         {
+            var snapshotAtUtc = DateTime.UtcNow;
             var result = await client.ListAllForReconciliationAsync(page, pageSize, ct);
             if (result is null)
             {
@@ -96,9 +96,7 @@ internal sealed class CustomerDirectoryReconciliationJob(
             }
 
             foreach (var contact in result.Items)
-                written += await UpsertAsync(repository, contact, ct) ? 1 : 0;
-
-            await unitOfWork.SaveChangesAsync(ct);
+                written += await ReconcileContactAsync(contact, snapshotAtUtc, ct) ? 1 : 0;
 
             if (!result.HasMore)
                 break;
@@ -107,6 +105,45 @@ internal sealed class CustomerDirectoryReconciliationJob(
         }
 
         logger.LogInformation("CustomerDirectoryReconciliationJob wrote {Count} customer address(es).", written);
+    }
+
+    // Cada cliente en su propio scope y guardado: un choque con el consumer (índice único) descarta solo
+    // ese cliente, no la página entera. La próxima corrida lo vuelve a intentar.
+    private async Task<bool> ReconcileContactAsync(
+        RemoteCustomerContact contact,
+        DateTime snapshotAtUtc,
+        CancellationToken ct
+    )
+    {
+        using var scope = serviceProvider.CreateScope();
+        var services = scope.ServiceProvider;
+        try
+        {
+            var written = await UpsertAsync(
+                services.GetRequiredService<ICustomerEmailDirectoryRepository>(),
+                contact,
+                ct
+            );
+            await CustomerContactPolicySnapshot.ApplyAsync(
+                services.GetRequiredService<ICustomerContactPolicyRepository>(),
+                services.GetRequiredService<ICustomerContactPolicySnapshotWriter>(),
+                contact,
+                snapshotAtUtc,
+                ct
+            );
+            await services.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
+            return written;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "CustomerDirectoryReconciliationJob skipped customer {CustomerId} of tenant {TenantId}.",
+                contact.CustomerId,
+                contact.TenantId
+            );
+            return false;
+        }
     }
 
     private static async Task<bool> UpsertAsync(

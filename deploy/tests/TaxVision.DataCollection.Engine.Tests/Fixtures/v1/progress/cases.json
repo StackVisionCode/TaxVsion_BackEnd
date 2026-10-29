@@ -1,0 +1,223 @@
+[
+  {
+    "name": "one required answered",
+    "mode": "progress",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_abcdefgh": "done"
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_abcdefgh"
+      ],
+      "progress": {
+        "required": 1,
+        "answered": 1
+      }
+    }
+  },
+  {
+    "name": "one required unanswered",
+    "mode": "progress",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_abcdefgh",
+                  "type": "text",
+                  "label": "Answer",
+                  "props": {},
+                  "required": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {}
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_abcdefgh"
+      ],
+      "progress": {
+        "required": 1,
+        "answered": 0
+      }
+    }
+  },
+  {
+    "name": "hidden required excluded",
+    "mode": "progress",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": false
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_toggle000"
+      ],
+      "progress": {
+        "required": 1,
+        "answered": 1
+      }
+    }
+  },
+  {
+    "name": "visible required included",
+    "mode": "progress",
+    "definition": {
+      "schemaVersion": 1,
+      "title": "Fixture form",
+      "purpose": "clientIntake",
+      "presentation": "wizard",
+      "pages": [
+        {
+          "id": "pg_abcdefgh",
+          "title": "Page",
+          "sections": [
+            {
+              "id": "sc_abcdefgh",
+              "title": "Section",
+              "components": [
+                {
+                  "id": "fd_toggle000",
+                  "type": "yesNo",
+                  "label": "Continue?",
+                  "props": {},
+                  "required": true
+                },
+                {
+                  "id": "fd_detail000",
+                  "type": "text",
+                  "label": "Details",
+                  "props": {},
+                  "required": true,
+                  "visibleWhen": {
+                    "field": "fd_toggle000",
+                    "op": "isTrue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "answers": {
+      "schemaVersion": 1,
+      "values": {
+        "fd_toggle000": true
+      }
+    },
+    "expected": {
+      "valid": true,
+      "issues": [],
+      "visible": [
+        "pg_abcdefgh",
+        "sc_abcdefgh",
+        "fd_toggle000",
+        "fd_detail000"
+      ],
+      "progress": {
+        "required": 2,
+        "answered": 1
+      }
+    }
+  }
+]

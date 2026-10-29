@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Tasks.Infrastructure\TaxVision.Tasks.Infrastructure.csproj" />
+    <ProjectReference Include="..\TaxVision.Tasks.ClientForms.Application\TaxVision.Tasks.ClientForms.Application.csproj" />
+    <ProjectReference Include="..\TaxVision.Tasks.ClientForms.Domain\TaxVision.Tasks.ClientForms.Domain.csproj" />
+    <ProjectReference Include="..\TaxVision.DataCollection.Engine\TaxVision.DataCollection.Engine.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />

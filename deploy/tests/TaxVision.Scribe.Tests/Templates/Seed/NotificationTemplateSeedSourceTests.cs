@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Fluid;
 using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Validation;
+using TaxVision.Scribe.Domain.Templates;
 
 namespace TaxVision.Scribe.Tests.Templates.Seed;
 
@@ -41,6 +42,148 @@ public sealed class NotificationTemplateSeedSourceTests
             Assert.DoesNotContain("TaxVision", seed.Html);
             Assert.DoesNotContain("TaxVision", seed.Subject);
         }
+    }
+
+    [Fact]
+    public void Client_form_push_seeds_are_text_only_safe_and_render_within_limits()
+    {
+        var expected = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "task.form_request_assigned.push.v1",
+            "task.form_request_returned.push.v1",
+            "task.form_request_reminder.push.v1",
+            "task.form_attachment_rejected.push.v1",
+            "task.form_request_completed.push.v1",
+            "task.form_request_submitted.push.v1",
+            "task.form_action_failed.push.v1",
+        };
+        var seeds = NotificationTemplateSeedSource.All.Where(seed => seed.Channel == TemplateChannel.Push).ToArray();
+
+        Assert.True(expected.SetEquals(seeds.Select(seed => seed.EventKey)));
+        foreach (var seed in seeds)
+        {
+            Assert.Equal(string.Empty, seed.Html);
+            Assert.False(string.IsNullOrWhiteSpace(seed.Text));
+            Assert.DoesNotContain("| raw", seed.Subject + seed.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotMatch(@"https?://|www\.", seed.Subject + seed.Text);
+            Assert.DoesNotContain(
+                seed.Variables,
+                variable => variable.Name is "form_title" or "customer_name" or "email" or "token" or "message"
+            );
+            AssertRenderedLimits(seed, "En", isOverdue: false);
+            AssertRenderedLimits(seed, "Es", isOverdue: true);
+        }
+    }
+
+    private static void AssertRenderedLimits(NotificationTemplateSeed seed, string language, bool isOverdue)
+    {
+        var context = new TemplateContext();
+        context.SetValue("language", language);
+        context.SetValue("is_overdue", isOverdue);
+        var subject = Parser.Parse(seed.Subject).Render(context);
+        var text = Parser.Parse(seed.Text!).Render(context);
+
+        Assert.InRange(subject.Length, 1, 65);
+        Assert.InRange(text.Length, 1, 180);
+    }
+
+    [Theory]
+    [InlineData("task.form_access_link.v1", "Formulario seguro", "Abrir formulario seguro")]
+    [InlineData("task.form_access_code.v1", "código de verificación", "Verifica tu identidad")]
+    [InlineData("task.form_request_assigned.v1", "Acción requerida", "Abrir formulario")]
+    [InlineData("task.form_request_returned.v1", "Cambios solicitados", "Inicia sesión")]
+    [InlineData("task.form_request_completed.v1", "Recibido", "como completado")]
+    [InlineData("task.form_attachment_rejected.v1", "No pudimos aceptar", "análisis de seguridad")]
+    [InlineData("task.form_request_reminder.v1", "Recordatorio", "está vencido")]
+    [InlineData("task.form_participant_returned.v1", "Cambios solicitados", "pide a tu oficina")]
+    [InlineData("task.form_participant_completed.v1", "Recibido", "No necesitas hacer nada")]
+    [InlineData("task.form_participant_cancelled.v1", "Cancelado", "canceló")]
+    [InlineData("task.form_participant_attachment_rejected.v1", "No pudimos aceptar", "análisis de seguridad")]
+    [InlineData("task.form_participant_reminder.v1", "Recordatorio", "está vencido")]
+    public void Client_form_emails_for_clients_and_externals_render_in_spanish(
+        string templateKey,
+        string spanishSubject,
+        string spanishBody
+    )
+    {
+        var seed = Assert.Single(NotificationTemplateSeedSource.All, s => s.TemplateKey == templateKey);
+
+        var spanish = Render(seed, "Es");
+        var english = Render(seed, "En");
+
+        Assert.Contains(seed.Variables, variable => variable.Name == "language");
+        Assert.Contains(spanishSubject, spanish.Subject, StringComparison.Ordinal);
+        Assert.Contains(spanishBody, spanish.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain(spanishBody, english.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hi ", spanish.Html, StringComparison.Ordinal);
+        var preheader = NotificationTemplateSeedSource
+            .VariablesWithPreheader(seed)
+            .Single(variable => variable.Name == "preheader")
+            .DefaultValue!;
+        Assert.NotEqual(RenderText(preheader, "Es"), RenderText(preheader, "En"));
+        // Una plantilla ya sembrada que cambia sube su ContentVersion para que el seeder la republique.
+        Assert.True(seed.ContentVersion > 21 || templateKey == "task.form_participant_reminder.v1");
+    }
+
+    [Fact]
+    public void Spanish_client_form_texts_carry_their_accents()
+    {
+        var unaccented = new[]
+        {
+            "envio ",
+            "solicito ",
+            "marco ",
+            "sesion ",
+            "revision",
+            "Accion",
+            "atencion",
+            "esta vencido",
+        };
+        var seeds = NotificationTemplateSeedSource.All.Where(seed =>
+            seed.TemplateKey.StartsWith("task.form_", StringComparison.Ordinal)
+        );
+
+        foreach (var seed in seeds)
+        {
+            var spanish = Render(seed, "Es");
+            var content = $"{spanish.Subject} {spanish.Html} {spanish.Text}";
+            foreach (var word in unaccented)
+                Assert.DoesNotContain(word, content, StringComparison.Ordinal);
+        }
+    }
+
+    private static string RenderText(string source, string language)
+    {
+        var context = new TemplateContext();
+        context.SetValue("language", language);
+        return Parser.Parse(source).Render(context, NullEncoder.Default);
+    }
+
+    private static (string Subject, string Html, string Text) Render(NotificationTemplateSeed seed, string language)
+    {
+        var context = new TemplateContext();
+        context.SetValue("language", language);
+        context.SetValue("is_overdue", true);
+        context.SetValue("customer_name", "Ana");
+        context.SetValue("participant_name", "Ana");
+        context.SetValue("request_title", "Organizer");
+        context.SetValue("form_title", "Organizer");
+        context.SetValue("comment_count", 2);
+        context.SetValue("due_date", "2026-11-01");
+        context.SetValue("has_message", true);
+        context.SetValue("file_extension", "pdf");
+        context.SetValue("client_message", "The file couldn't be accepted because our security scan flagged it.");
+        context.SetValue(
+            "client_message_es",
+            "No pudimos aceptar el archivo porque nuestro análisis de seguridad lo marcó."
+        );
+        context.SetValue("code", "123456");
+        context.SetValue("expires_at", "2026-11-01 10:00");
+        return (
+            Parser.Parse(seed.Subject).Render(context, NullEncoder.Default),
+            Parser.Parse(seed.Html).Render(context, NullEncoder.Default),
+            seed.Text is null ? string.Empty : Parser.Parse(seed.Text).Render(context, NullEncoder.Default)
+        );
     }
 
     [Fact]

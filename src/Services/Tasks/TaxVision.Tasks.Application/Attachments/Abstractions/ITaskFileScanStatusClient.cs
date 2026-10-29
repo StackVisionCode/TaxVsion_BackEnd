@@ -11,6 +11,20 @@ public enum RemoteFileScanStatus
     Deleted = 4,
 }
 
+public sealed record RemoteFileMetadata(
+    RemoteFileScanStatus Status,
+    string? OwnerType,
+    Guid? OwnerId,
+    string? FolderType,
+    string? ContentType,
+    long? SizeBytes,
+    string? OriginalName
+)
+{
+    public static RemoteFileMetadata Unknown { get; } =
+        new(RemoteFileScanStatus.Unknown, null, null, null, null, null, null);
+}
+
 /// <summary>
 /// Sólo metadatos: el estado del escaneo, nunca el byte. Existe porque el veredicto se publica una
 /// vez y no se republica; un adjunto creado después de esa publicación se quedaría esperando para
@@ -19,4 +33,5 @@ public enum RemoteFileScanStatus
 public interface ITaskFileScanStatusClient
 {
     Task<RemoteFileScanStatus> GetStatusAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
+    Task<RemoteFileMetadata> GetFileMetadataAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 }

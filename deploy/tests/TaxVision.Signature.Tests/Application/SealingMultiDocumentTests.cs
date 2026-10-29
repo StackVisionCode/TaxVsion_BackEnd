@@ -290,6 +290,13 @@ public sealed class SealingMultiDocumentTests
 
         public void Remove(SignatureRequest item) { }
 
+        public Task<SignatureRequest?> GetByExternalReferenceAsync(
+            Guid tenantId,
+            string sourceService,
+            string sourceId,
+            CancellationToken ct = default
+        ) => Task.FromResult<SignatureRequest?>(null);
+
         public Task<SignatureRequest?> GetBySealedFileIdAsync(
             Guid tenantId,
             Guid sealedFileId,

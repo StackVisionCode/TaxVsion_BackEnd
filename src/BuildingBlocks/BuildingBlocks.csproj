@@ -10,6 +10,8 @@
     <Compile Remove="BuildingBlocks.Web\**\*.cs" />
     <!-- Kit de visibilidad por-cliente (P2): su propio ensamblado (usa EF Core + Messaging, que Domain no referencia). -->
     <Compile Remove="CustomerVisibility\**\*.cs" />
+    <!-- Normalizador de avatares: su propio ensamblado para no arrastrar SkiaSharp a todos los servicios. -->
+    <Compile Remove="Imaging\**\*.cs" />
     <!--
       Los contratos de integración son su propio ensamblado (BuildingBlocks.Messaging). Son el
       folder más volátil del repo y ningún proyecto Domain los consume: dejarlos acá obligaba a

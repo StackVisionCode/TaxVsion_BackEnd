@@ -13,7 +13,8 @@ public sealed record CreateEmailTemplateCommand(
     string TemplateKey,
     string Name,
     string? Description,
-    Guid CreatedByUserId
+    Guid CreatedByUserId,
+    TemplateChannel Channel = TemplateChannel.Email
 );
 
 public static class CreateEmailTemplateHandler
@@ -38,6 +39,13 @@ public static class CreateEmailTemplateHandler
         var templateKeyResult = TemplateKey.Create(command.TemplateKey);
         if (templateKeyResult.IsFailure)
             return Result.Failure<EmailTemplateResponse>(templateKeyResult.Error);
+        if (await ChannelMismatchAsync(command, templateKeyResult.Value, repository, ct))
+            return Result.Failure<EmailTemplateResponse>(
+                new Error(
+                    "EmailTemplate.ChannelMismatch",
+                    "A tenant override must use the same channel as the system template it replaces."
+                )
+            );
 
         var templateResult = EmailTemplate.CreateNew(
             command.Scope,
@@ -46,7 +54,8 @@ public static class CreateEmailTemplateHandler
             command.Name,
             command.Description,
             command.CreatedByUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.Channel
         );
         if (templateResult.IsFailure)
             return Result.Failure<EmailTemplateResponse>(templateResult.Error);
@@ -54,5 +63,19 @@ public static class CreateEmailTemplateHandler
         await repository.AddAsync(templateResult.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(EmailTemplateMapper.ToResponse(templateResult.Value));
+    }
+
+    // El override reemplaza a la plantilla del sistema por clave: con otro canal, el render la rechazaría.
+    private static async Task<bool> ChannelMismatchAsync(
+        CreateEmailTemplateCommand command,
+        TemplateKey templateKey,
+        IEmailTemplateRepository repository,
+        CancellationToken ct
+    )
+    {
+        if (command.Scope != TemplateScope.Tenant)
+            return false;
+        var system = await repository.GetByKeyAsync(templateKey, null, ct);
+        return system.IsSuccess && system.Value.Channel != command.Channel;
     }
 }

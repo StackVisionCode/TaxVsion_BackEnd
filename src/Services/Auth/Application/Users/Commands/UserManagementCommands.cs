@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Users.Avatars;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
@@ -213,6 +214,8 @@ public sealed record OffboardUserCommand(
 
 public static class OffboardUserHandler
 {
+    public const string OffboardedAvatarReason = "user_offboarded";
+
     public static async Task<Result> Handle(
         OffboardUserCommand command,
         IUserRepository users,
@@ -279,6 +282,10 @@ public static class OffboardUserHandler
         if (offboard.IsFailure)
             return offboard;
 
+        // La foto de quien se va no se queda: se quita aquí y se pide su borrado tras guardar.
+        var hadAvatar = target.AvatarFileId.HasValue;
+        var removedAvatars = target.RemoveAvatar();
+
         // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
         await SessionAccessCutoff.ForUserAsync(target, "admin_revoke", sessions, denylist, revocations, ct);
 
@@ -311,6 +318,18 @@ public static class OffboardUserHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        var avatarDeletion = UserAvatarMessages.FilesDeletionRequested(
+            target,
+            removedAvatars,
+            OffboardedAvatarReason,
+            correlation.CorrelationId
+        );
+        if (avatarDeletion is not null)
+            await bus.PublishAsync(avatarDeletion);
+        if (hadAvatar)
+            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(target, correlation.CorrelationId));
+
         return Result.Success();
     }
 }
@@ -352,20 +371,9 @@ public static class UpdateMyProfileHandler
 
         // Solo publicar cuando el nombre realmente cambio — evita ruido en el bus
         // (y en la proyeccion de displayName de Communication) cuando el usuario
-        // solo actualizo su TimeZoneId.
+        // solo actualizo su TimeZoneId. Lleva la foto actual: el evento es el perfil completo.
         if (nameChanged)
-        {
-            await bus.PublishAsync(
-                new UserProfileUpdatedIntegrationEvent
-                {
-                    TenantId = user.TenantId,
-                    UserId = user.Id,
-                    Name = user.Name,
-                    LastName = user.LastName,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            );
-        }
+            await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(user, correlation.CorrelationId));
 
         await audit.AddAsync(
             AuthAuditLog.Record(

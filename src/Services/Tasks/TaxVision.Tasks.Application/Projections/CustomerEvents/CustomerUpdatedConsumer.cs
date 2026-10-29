@@ -48,7 +48,7 @@ public static class CustomerUpdatedConsumer
         if (existing is not null)
         {
             // Update sólo sincroniza el nombre; el status no le corresponde a este evento.
-            existing.ApplyIfNewer(evt.DisplayName, existing.Status, evt.OccurredOn);
+            existing.ApplyIfNewer(evt.DisplayName, existing.Status, evt.OccurredOn, evt.PrimaryEmail);
             return;
         }
 
@@ -59,7 +59,8 @@ public static class CustomerUpdatedConsumer
             evt.CustomerId,
             evt.DisplayName,
             CustomerDirectoryStatus.Active,
-            evt.OccurredOn
+            evt.OccurredOn,
+            evt.PrimaryEmail
         );
         await repository.AddAsync(entry, ct);
     }

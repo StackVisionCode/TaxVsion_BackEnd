@@ -1,11 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TaxVision.Customer.Domain.Customers.ValueObjects;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Infrastructure.Persistence.Configurations;
 
 public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCustomer>
 {
+    // Propiedades de EF sobre los campos privados del aggregate: el nombre tiene que ser el del campo.
+    public const string OriginSourceService = "_originSourceService";
+    public const string OriginSourceReferenceId = "_originSourceReferenceId";
+
     public void Configure(EntityTypeBuilder<DomainCustomer> b)
     {
         b.ToTable("Customers");
@@ -17,6 +22,12 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.DateOfBirth);
         b.Property(c => c.Language).HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(c => c.ProfilePictureFileId);
+        b.Property(c => c.PendingProfilePictureFileId);
+        b.Property(c => c.PendingProfilePictureRequestedAtUtc);
+        // El barrido de pendientes vencidas filtra por fecha; filtrado = solo las filas con pendiente.
+        b.HasIndex(c => c.PendingProfilePictureRequestedAtUtc)
+            .HasDatabaseName("IX_Customers_PendingProfilePictureRequestedAtUtc")
+            .HasFilter("[PendingProfilePictureRequestedAtUtc] IS NOT NULL");
         b.Property(c => c.OccupationId);
         b.Property(c => c.AssignedPreparerUserId);
         b.Property(c => c.CreatedAtUtc).IsRequired();
@@ -25,6 +36,17 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.LastModifiedByUserId);
         b.Property(c => c.ArchivedAtUtc);
         b.Property(c => c.ArchivedByUserId);
+
+        // Origen técnico del alta: columnas de la raíz para que el índice único lleve TenantId.
+        b.Ignore(c => c.Origin);
+        b.Property<string?>(OriginSourceService)
+            .HasColumnName("OriginSourceService")
+            .HasMaxLength(CustomerOrigin.SourceServiceMaxLength);
+        b.Property<Guid?>(OriginSourceReferenceId).HasColumnName("OriginSourceReferenceId");
+        b.HasIndex(nameof(DomainCustomer.TenantId), OriginSourceService, OriginSourceReferenceId)
+            .IsUnique()
+            .HasDatabaseName("UX_Customers_Tenant_Origin")
+            .HasFilter("[OriginSourceReferenceId] IS NOT NULL");
 
         // ---- Owned types: VOs embebidos como columnas dentro de Customers ----
 

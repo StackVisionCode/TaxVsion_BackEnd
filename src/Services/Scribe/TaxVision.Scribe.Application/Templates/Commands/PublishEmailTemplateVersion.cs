@@ -50,6 +50,7 @@ public static class PublishEmailTemplateVersionHandler
 
         var validationResult = await TemplateVersionValidator.ValidateAsync(
             version,
+            template.Channel,
             template.TenantId,
             storageService,
             htmlSafetyValidator,

@@ -1,0 +1,166 @@
+{
+  "info": {
+    "name": "TaxVision - Client Forms H3",
+    "description": "Disponibilidad, plantillas versionadas y bandeja de decisiones del preparador.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{AccessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Availability",
+      "item": [
+        {
+          "name": "Staff availability",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/availability" }
+        },
+        {
+          "name": "Portal availability",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{PortalAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{UrlBase}}/tasks/portal/forms/availability"
+          }
+        },
+        {
+          "name": "Platform list tenant flags",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/platform/tenants" }
+        },
+        {
+          "name": "Platform set tenant capabilities",
+          "request": {
+            "description": "Disponibilidad = plan (planner). Lo omitido se conserva; note \"\" la borra; enabled=false responde 400 FormModuleSettings.EnabledNotSupported.",
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"H1 pilot\",\n  \"externalParticipantsEnabled\": true,\n  \"autoCustomerCreationEnabled\": true,\n  \"signatureStepEnabled\": false,\n  \"intakeLinksEnabled\": false,\n  \"pushNotificationsEnabled\": false\n}" },
+            "url": "{{UrlBase}}/tasks/forms/platform/tenants/{{tenantId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Templates",
+      "item": [
+        {
+          "name": "Create draft",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Annual client intake\",\n  \"description\": \"Collect client details.\",\n  \"purpose\": \"ClientIntake\",\n  \"presentation\": \"Wizard\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/templates"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('201', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.collectionVariables.set('formTemplateId', body.id);", "pm.collectionVariables.set('formRowVersion', body.rowVersion);"] } }]
+        },
+        {
+          "name": "Update draft",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"rowVersion\": \"{{formRowVersion}}\",\n  \"definition\": {\n    \"schemaVersion\": 1,\n    \"title\": \"Annual client intake\",\n    \"purpose\": \"clientIntake\",\n    \"presentation\": \"wizard\",\n    \"settings\": { \"showProgress\": true },\n    \"pages\": [{ \"id\": \"pg_abcdefgh\", \"title\": \"Client details\", \"description\": null, \"visibleWhen\": null, \"style\": null, \"sections\": [{ \"id\": \"sc_abcdefgh\", \"title\": \"Identity\", \"description\": null, \"visibleWhen\": null, \"repeat\": null, \"style\": null, \"components\": [{ \"id\": \"fd_abcdefgh\", \"type\": \"text\", \"key\": \"first_name\", \"label\": \"First name\", \"help\": null, \"required\": true, \"requiredWhen\": null, \"visibleWhen\": null, \"dataClass\": \"personal\", \"reportable\": false, \"prefill\": null, \"style\": null, \"props\": { \"maxLength\": 80 } }] }] }],\n    \"mappings\": [],\n    \"actions\": []\n  }\n}" },
+            "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/draft"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "if (body.rowVersion) pm.collectionVariables.set('formRowVersion', body.rowVersion);"] } }]
+        },
+        {
+          "name": "Validate",
+          "request": { "method": "POST", "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/validate" }
+        },
+        {
+          "name": "Publish",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"rowVersion\": \"{{formRowVersion}}\" }" },
+            "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/publish"
+          }
+        },
+        {
+          "name": "Get template",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('formRowVersion', pm.response.json().rowVersion);"] } }]
+        },
+        {
+          "name": "List templates",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/templates?page=1&pageSize=25" }
+        },
+        {
+          "name": "List versions",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/templates/{{formTemplateId}}/versions" }
+        }
+      ]
+    },
+    {
+      "name": "Submission inbox",
+      "item": [
+        {
+          "name": "List needs action",
+          "request": {
+            "method": "GET",
+            "url": "{{UrlBase}}/tasks/forms/requests?view=NeedsAction&page=1&pageSize=25"
+          }
+        },
+        {
+          "name": "Get request detail",
+          "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('requestRowVersion', body.request.rowVersion);", "const latest = (body.actionRuns || []).find(run => run.isLatestAttempt);", "if (latest) pm.collectionVariables.set('actionRunId', latest.id);"] } }]
+        },
+        {
+          "name": "Link existing customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/link-customer"
+          }
+        },
+        {
+          "name": "Assign responsible",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{responsibleUserId}}\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/responsible"
+          }
+        },
+        {
+          "name": "Start customer onboarding",
+          "request": {
+            "method": "POST",
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/actions/create-customer"
+          }
+        },
+        {
+          "name": "Retry action",
+          "request": {
+            "method": "POST",
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/actions/{{actionRunId}}/retry"
+          }
+        },
+        {
+          "name": "Archive request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Handled outside the form workflow.\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
+            "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/archive"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "UrlBase", "value": "http://localhost:5047" },
+    { "key": "AccessToken", "value": "" },
+    { "key": "PortalAccessToken", "value": "" },
+    { "key": "tenantId", "value": "" },
+    { "key": "formTemplateId", "value": "" },
+    { "key": "formRowVersion", "value": "" },
+    { "key": "formRequestId", "value": "" },
+    { "key": "requestRowVersion", "value": "" },
+    { "key": "customerId", "value": "" },
+    { "key": "responsibleUserId", "value": "" },
+    { "key": "actionRunId", "value": "" }
+  ]
+}

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Application.Imports.Helpers;
 using TaxVision.Customer.Domain.Customers;
@@ -8,19 +9,17 @@ using TaxVision.Customer.Infrastructure.Persistence;
 namespace TaxVision.Customer.Infrastructure.Imports;
 
 /// <summary>
-/// Detecta duplicados batch usando:
-///   - Blind index HMAC por tenant (SSN/EIN) via CustomerFiscalProfile.TaxIdentifierBlindIndex
-///   - Email normalizado via Customer.PrimaryEmailNormalized (owned VO)
-///   - Phone E164 via Customer.PrimaryPhone.E164Value
-///   - (NombreNormalizado + DOB) via DisplayName + DateOfBirth
+/// Detecta duplicados con las reglas del alta (<see cref="CustomerDuplicateRules"/>): Email; Teléfono + Nombre;
+/// Nombre + DOB; sin archivados. El import suma antes el identificador fiscal por blind index (el alta no lo pide).
 ///
-/// Prioridad descendente: el primer match HARD gana; si solo hay match por nombre+DOB,
-/// se reporta. Las filas sin match no aparecen en el resultado.
-/// UNA sola query por chunk.
+/// IgnoreQueryFilters (B-29): el import corre en un scope DI propio sin tenant ambiente y el filtro fail-closed
+/// escondía todo; el tenant va explícito en cada consulta.
 /// </summary>
-internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, ISensitiveDataProtector protector)
+public sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, ISensitiveDataProtector protector)
     : ICustomerDuplicateDetector
 {
+    private const string ByTaxIdentifier = "TaxIdentifier";
+
     public async Task<IReadOnlyList<DuplicateMatch>> FindDuplicatesAsync(
         Guid tenantId,
         IReadOnlyList<ImportCustomerRow> chunk,
@@ -30,76 +29,48 @@ internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, I
         if (chunk.Count == 0)
             return [];
 
-        // ---- Preparar criterios de busqueda ----
-        var blindIndexByRow = new Dictionary<int, string>();
-        var emailByRow = new Dictionary<int, string>();
-        var phoneByRow = new Dictionary<int, string>();
-        var nameDobByRow = new Dictionary<int, (string Name, DateOnly Dob)>();
+        // ---- Llaves por fila: las mismas que arma el alta, más el blind index ----
+        var rows = chunk
+            .Select(row => new RowKeys(row.RowNumber, ImportDuplicateKeys.From(row), BlindIndexesOf(row, tenantId)))
+            .ToList();
 
-        var allBlindIndexes = new HashSet<string>();
-        var allEmails = new HashSet<string>();
-        var allPhones = new HashSet<string>();
-        var allNameDobs = new HashSet<(string Name, DateOnly Dob)>();
+        var allBlindIndexes = rows.SelectMany(r => r.BlindIndexes).ToHashSet();
+        var allEmails = rows.Select(r => r.Keys.Email).OfType<string>().ToHashSet();
+        var allPhones = rows.Where(r => r.Keys.Name is not null)
+            .Select(r => r.Keys.PhoneE164)
+            .OfType<string>()
+            .ToHashSet();
+        var allNames = rows.Select(r => r.Keys.Name).OfType<string>().ToHashSet();
 
-        foreach (var row in chunk)
-        {
-            var normalizedTaxId = IdentifierNormalizer.NormalizeDigits(row.TaxIdentifier);
-            if (normalizedTaxId.Length == 9)
-            {
-                var bi = protector.ComputeBlindIndex(normalizedTaxId, tenantId);
-                blindIndexByRow[row.RowNumber] = bi;
-                allBlindIndexes.Add(bi);
-            }
-
-            if (!string.IsNullOrWhiteSpace(row.Email))
-            {
-                var normalizedEmail = row.Email.Trim().ToLowerInvariant();
-                emailByRow[row.RowNumber] = normalizedEmail;
-                allEmails.Add(normalizedEmail);
-            }
-
-            if (!string.IsNullOrWhiteSpace(row.Phone))
-            {
-                var digits = IdentifierNormalizer.NormalizeDigits(row.Phone);
-                if (digits.Length >= 10)
-                {
-                    var e164 = digits.StartsWith("1") ? $"+{digits}" : $"+1{digits}";
-                    phoneByRow[row.RowNumber] = e164;
-                    allPhones.Add(e164);
-                }
-            }
-
-            if (
-                !string.IsNullOrWhiteSpace(row.FirstName)
-                && !string.IsNullOrWhiteSpace(row.LastName)
-                && !string.IsNullOrWhiteSpace(row.DateOfBirth)
-                && DateOnly.TryParse(row.DateOfBirth, out var dob)
-            )
-            {
-                var name = $"{row.FirstName.Trim()} {row.LastName.Trim()}".ToLowerInvariant();
-                nameDobByRow[row.RowNumber] = (name, dob);
-                allNameDobs.Add((name, dob));
-            }
-        }
-
-        // ---- Buscar candidatos en BD: UNA query con OR de todos los criterios ----
+        // ---- UNA query por chunk: superconjunto de candidatos, la decisión exacta es en memoria ----
         var candidates = await (
             from c in db
                 .Customers.AsNoTracking()
+                .IgnoreQueryFilters()
                 .Where(c => c.TenantId == tenantId && c.Status != CustomerStatus.Archived)
-            from fp in db.CustomerFiscalProfiles.AsNoTracking().Where(fp => fp.CustomerId == c.Id).DefaultIfEmpty()
+            from fp in db
+                .CustomerFiscalProfiles.AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(fp => fp.CustomerId == c.Id)
+                .DefaultIfEmpty()
             where
                 (fp != null && allBlindIndexes.Contains(fp.TaxIdentifierBlindIndex))
-                || (allEmails.Contains(c.PrimaryEmail.NormalizedValue))
-                || (c.PrimaryPhone != null && allPhones.Contains(c.PrimaryPhone.E164Value))
-                || (c.DateOfBirth != null && allNameDobs.Select(nd => nd.Name).Contains(c.DisplayName.ToLower()))
+                || allEmails.Contains(c.PrimaryEmail.NormalizedValue)
+                || (
+                    c.PrimaryPhone != null
+                    && allPhones.Contains(c.PrimaryPhone.E164Value)
+                    && allNames.Contains(c.DisplayName.ToLower())
+                )
+                || (c.DateOfBirth != null && allNames.Contains(c.DisplayName.ToLower()))
             select new
             {
-                c.Id,
-                c.DisplayName,
-                c.DateOfBirth,
-                EmailNormalized = c.PrimaryEmail.NormalizedValue,
-                PhoneE164 = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
+                Customer = new CustomerDuplicateRules.ExistingCustomer(
+                    c.Id,
+                    c.DisplayName,
+                    c.DateOfBirth,
+                    c.PrimaryEmail.NormalizedValue,
+                    c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null
+                ),
                 BlindIndex = fp != null ? fp.TaxIdentifierBlindIndex : null,
             }
         ).ToListAsync(ct);
@@ -107,69 +78,38 @@ internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, I
         if (candidates.Count == 0)
             return [];
 
-        // ---- Matchear filas con candidatos por prioridad descendente ----
+        var existing = candidates.Select(c => c.Customer).ToList();
         var matches = new List<DuplicateMatch>(chunk.Count);
 
-        foreach (var row in chunk)
+        foreach (var row in rows)
         {
-            // Prioridad 1: SSN/EIN blind index
-            if (blindIndexByRow.TryGetValue(row.RowNumber, out var bi))
+            // Prioridad 1 (solo import): blind index contra cualquiera de los candidatos de la fila.
+            var byTaxId = candidates.FirstOrDefault(c =>
+                c.BlindIndex != null && row.BlindIndexes.Contains(c.BlindIndex)
+            );
+            if (byTaxId is not null)
             {
-                var hit = candidates.FirstOrDefault(c => c.BlindIndex == bi);
-                if (hit is not null)
-                {
-                    matches.Add(new DuplicateMatch(row.RowNumber, hit.Id, hit.DisplayName, "TaxIdentifier"));
-                    continue;
-                }
-            }
-
-            // Prioridad 2: Email normalizado
-            if (emailByRow.TryGetValue(row.RowNumber, out var email))
-            {
-                var hit = candidates.FirstOrDefault(c => c.EmailNormalized == email);
-                if (hit is not null)
-                {
-                    matches.Add(new DuplicateMatch(row.RowNumber, hit.Id, hit.DisplayName, "Email"));
-                    continue;
-                }
-            }
-
-            // Prioridad 3: Phone E164
-            if (phoneByRow.TryGetValue(row.RowNumber, out var phone))
-            {
-                var hit = candidates.FirstOrDefault(c => c.PhoneE164 == phone);
-                if (hit is not null)
-                {
-                    matches.Add(new DuplicateMatch(row.RowNumber, hit.Id, hit.DisplayName, "Phone"));
-                    continue;
-                }
-            }
-
-            // Prioridad 4: Nombre + DOB
-            if (nameDobByRow.TryGetValue(row.RowNumber, out var nd))
-            {
-                var hit = candidates.FirstOrDefault(c =>
-                    c.DisplayName.Equals(nd.Name, StringComparison.OrdinalIgnoreCase) && c.DateOfBirth == nd.Dob
+                matches.Add(
+                    new DuplicateMatch(
+                        row.RowNumber,
+                        byTaxId.Customer.Id,
+                        byTaxId.Customer.DisplayName,
+                        ByTaxIdentifier
+                    )
                 );
-                if (hit is not null)
-                {
-                    matches.Add(new DuplicateMatch(row.RowNumber, hit.Id, hit.DisplayName, "Name+DOB"));
-                    continue;
-                }
+                continue;
             }
+
+            if (CustomerDuplicateRules.Match(row.Keys, existing) is { } hit)
+                matches.Add(
+                    new DuplicateMatch(row.RowNumber, hit.Customer.Id, hit.Customer.DisplayName, hit.MatchedBy)
+                );
         }
 
         return matches;
     }
 
-    /// <summary>
-    /// El mismo criterio y el mismo orden de prioridad que el import, para un solo candidato.
-    ///
-    /// <para>
-    /// Es una consulta y no reusa la del chunk porque acá no hay identificador fiscal —el alta no lo
-    /// pide— y porque hay que poder excluirse a uno mismo al editar.
-    /// </para>
-    /// </summary>
+    /// <summary>Las reglas del alta para un solo candidato; excluye al propio cliente al editar.</summary>
     public async Task<DuplicateMatch?> FindDuplicateAsync(
         Guid tenantId,
         CustomerDuplicateCandidate candidate,
@@ -177,19 +117,19 @@ internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, I
         CancellationToken ct
     )
     {
-        var email = candidate.Email.Trim().ToLowerInvariant();
-        var phone = string.IsNullOrWhiteSpace(candidate.PhoneE164) ? null : candidate.PhoneE164.Trim();
-        var name = string.IsNullOrWhiteSpace(candidate.DisplayName)
-            ? null
-            : candidate.DisplayName.Trim().ToLowerInvariant();
-        var dob = candidate.DateOfBirth;
+        var keys = CustomerDuplicateRules.KeysOf(candidate);
+        var email = keys.Email;
+        var phone = keys.PhoneE164;
+        var name = keys.Name;
+        var dob = keys.DateOfBirth;
 
-        var candidates = await db
+        var existing = await db
             .Customers.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(c => c.TenantId == tenantId && c.Status != CustomerStatus.Archived)
             .Where(c => excludeCustomerId == null || c.Id != excludeCustomerId)
             .Where(c =>
-                c.PrimaryEmail.NormalizedValue == email
+                (email != null && c.PrimaryEmail.NormalizedValue == email)
                 || (
                     phone != null
                     && name != null
@@ -199,46 +139,30 @@ internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, I
                 )
                 || (name != null && dob != null && c.DateOfBirth == dob && c.DisplayName.ToLower() == name)
             )
-            .Select(c => new
-            {
+            .Select(c => new CustomerDuplicateRules.ExistingCustomer(
                 c.Id,
                 c.DisplayName,
                 c.DateOfBirth,
-                EmailNormalized = c.PrimaryEmail.NormalizedValue,
-                PhoneE164 = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
-            })
+                c.PrimaryEmail.NormalizedValue,
+                c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null
+            ))
             .ToListAsync(ct);
 
-        if (candidates.Count == 0)
-            return null;
-
-        // El correo manda: es la llave del portal y la que la base exige unica por tenant.
-        var byEmail = candidates.FirstOrDefault(c => c.EmailNormalized == email);
-        if (byEmail is not null)
-            return new DuplicateMatch(0, byEmail.Id, byEmail.DisplayName, "Email");
-
-        // El telefono NO alcanza solo, y esto se aprendio dandole de alta a alguien de verdad: una
-        // familia comparte el numero de la casa, asi que el telefono a secas bloquea al conyuge y al
-        // hijo. Y con Overwrite encima, sobreescribiria a la persona equivocada. Tiene que coincidir
-        // tambien el nombre — que es lo que pedia el CRM viejo.
-        if (phone is not null && name is not null)
-        {
-            var byPhone = candidates.FirstOrDefault(c =>
-                c.PhoneE164 == phone && c.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)
-            );
-            if (byPhone is not null)
-                return new DuplicateMatch(0, byPhone.Id, byPhone.DisplayName, "Phone+Name");
-        }
-
-        if (name is not null && dob is not null)
-        {
-            var byName = candidates.FirstOrDefault(c =>
-                c.DateOfBirth == dob && c.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)
-            );
-            if (byName is not null)
-                return new DuplicateMatch(0, byName.Id, byName.DisplayName, "Name+DOB");
-        }
-
-        return null;
+        return CustomerDuplicateRules.Match(keys, existing) is { } hit
+            ? new DuplicateMatch(0, hit.Customer.Id, hit.Customer.DisplayName, hit.MatchedBy)
+            : null;
     }
+
+    // Lookup dual (B-9/X-9): clave actual ∪ anterior, para casar filas aún no re-cifradas durante la rotación.
+    private IReadOnlyCollection<string> BlindIndexesOf(ImportCustomerRow row, Guid tenantId)
+    {
+        var normalizedTaxId = IdentifierNormalizer.NormalizeDigits(row.TaxIdentifier);
+        return normalizedTaxId.Length == 9 ? protector.ComputeBlindIndexCandidates(normalizedTaxId, tenantId) : [];
+    }
+
+    private sealed record RowKeys(
+        int RowNumber,
+        CustomerDuplicateRules.Keys Keys,
+        IReadOnlyCollection<string> BlindIndexes
+    );
 }

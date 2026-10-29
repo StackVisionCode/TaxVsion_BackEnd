@@ -1,0 +1,22 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[CustomerDirectoryEntry] ADD [AvatarFileId] UNIQUEIDENTIFIER;
+
+-- AlterTable
+ALTER TABLE [dbo].[UserDirectoryEntry] ADD [AvatarFileId] UNIQUEIDENTIFIER;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

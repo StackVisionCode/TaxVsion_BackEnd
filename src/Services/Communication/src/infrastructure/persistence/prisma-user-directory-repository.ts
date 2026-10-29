@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, UserDirectoryEntry } from '@prisma/client';
 import type {
   UserDirectoryRepository,
   UserDirectoryEntrySnapshot,
@@ -14,6 +14,7 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
     email: string;
     isActive: boolean;
     actorType?: string;
+    avatarFileId?: string | null;
   }): Promise<void> {
     await this.prisma.userDirectoryEntry.upsert({
       where: { UserId: snapshot.userId },
@@ -24,6 +25,7 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
         Email: snapshot.email,
         IsActive: snapshot.isActive,
         ActorType: snapshot.actorType ?? 'TenantEmployee',
+        AvatarFileId: snapshot.avatarFileId ?? null,
       },
       update: {
         TenantId: snapshot.tenantId,
@@ -33,6 +35,8 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
         // `profile_updated` no conoce actorType (el evento no lo lleva) — no
         // pisar el valor ya guardado por `registered` con el default.
         ...(snapshot.actorType !== undefined ? { ActorType: snapshot.actorType } : {}),
+        // `registered` no trae foto: undefined deja la guardada.
+        ...(snapshot.avatarFileId !== undefined ? { AvatarFileId: snapshot.avatarFileId } : {}),
       },
     });
   }
@@ -40,15 +44,7 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
   async findByUserId(userId: string): Promise<UserDirectoryEntrySnapshot | null> {
     const row = await this.prisma.userDirectoryEntry.findUnique({ where: { UserId: userId } });
     if (!row) return null;
-    return {
-      userId: row.UserId,
-      tenantId: row.TenantId,
-      displayName: row.DisplayName,
-      email: row.Email,
-      isActive: row.IsActive,
-      actorType: row.ActorType,
-      updatedAtUtc: row.UpdatedAtUtc,
-    };
+    return toSnapshot(row);
   }
 
   async findByUserIds(userIds: readonly string[]): Promise<UserDirectoryEntrySnapshot[]> {
@@ -58,15 +54,7 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
     const rows = await this.prisma.userDirectoryEntry.findMany({
       where: { UserId: { in: uniqueUserIds } },
     });
-    return rows.map((row) => ({
-      userId: row.UserId,
-      tenantId: row.TenantId,
-      displayName: row.DisplayName,
-      email: row.Email,
-      isActive: row.IsActive,
-      actorType: row.ActorType,
-      updatedAtUtc: row.UpdatedAtUtc,
-    }));
+    return rows.map(toSnapshot);
   }
 
   async markInactive(userId: string): Promise<void> {
@@ -99,14 +87,19 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
       orderBy: { DisplayName: 'asc' },
       take: limit,
     });
-    return rows.map((row) => ({
-      userId: row.UserId,
-      tenantId: row.TenantId,
-      displayName: row.DisplayName,
-      email: row.Email,
-      isActive: row.IsActive,
-      actorType: row.ActorType,
-      updatedAtUtc: row.UpdatedAtUtc,
-    }));
+    return rows.map(toSnapshot);
   }
+}
+
+function toSnapshot(row: UserDirectoryEntry): UserDirectoryEntrySnapshot {
+  return {
+    userId: row.UserId,
+    tenantId: row.TenantId,
+    displayName: row.DisplayName,
+    email: row.Email,
+    isActive: row.IsActive,
+    actorType: row.ActorType,
+    avatarFileId: row.AvatarFileId ?? null,
+    updatedAtUtc: row.UpdatedAtUtc,
+  };
 }

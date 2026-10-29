@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "title": "Individual Tax Intake",
+  "purpose": "clientIntake",
+  "presentation": "wizard",
+  "settings": { "showProgress": true },
+  "pages": [
+    {
+      "id": "pg_indabout",
+      "title": "About you",
+      "sections": [
+        {
+          "id": "sc_persona1",
+          "title": "Personal information",
+          "components": [
+            { "id": "fd_firstname", "type": "text", "key": "first_name", "label": "Legal first name", "dataClass": "personal", "props": { "autocomplete": "given-name", "maxLength": 100 } },
+            { "id": "fd_lastname0", "type": "text", "key": "last_name", "label": "Legal last name", "dataClass": "personal", "props": { "autocomplete": "family-name", "maxLength": 100 } },
+            { "id": "fd_dob00001", "type": "date", "key": "date_of_birth", "label": "Date of birth", "dataClass": "personal", "props": { "max": "today" } },
+            { "id": "fd_taxid001", "type": "taxId", "key": "tax_identifier", "label": "Social Security Number or ITIN", "dataClass": "restricted", "props": { "kinds": ["ssn", "itin"] } },
+            { "id": "fd_address1", "type": "address", "key": "mailing_address", "label": "Mailing address", "dataClass": "personal", "props": { "country": "US" } }
+          ]
+        },
+        {
+          "id": "sc_filing01",
+          "title": "Filing status",
+          "components": [
+            { "id": "fd_filingst", "type": "radio", "key": "filing_status", "label": "What is your filing status?", "dataClass": "general", "props": { "layout": "vertical", "options": [ { "value": "single", "label": "Single" }, { "value": "married", "label": "Married filing jointly" }, { "value": "married_sep", "label": "Married filing separately" }, { "value": "hoh", "label": "Head of household" }, { "value": "qss", "label": "Qualifying surviving spouse" } ] } }
+          ]
+        },
+        {
+          "id": "sc_spouse01",
+          "title": "Spouse information",
+          "visibleWhen": { "field": "fd_filingst", "op": "equals", "value": "married" },
+          "components": [
+            { "id": "fd_spousenm", "type": "text", "key": "spouse_name", "label": "Spouse legal name", "dataClass": "personal", "props": { "maxLength": 200 } },
+            { "id": "fd_spousein", "type": "taxId", "key": "spouse_tax_identifier", "label": "Spouse Social Security Number or ITIN", "dataClass": "restricted", "props": { "kinds": ["ssn", "itin"] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg_inddeps0",
+      "title": "Dependents",
+      "sections": [
+        {
+          "id": "sc_depintro",
+          "components": [
+            { "id": "fd_dephead1", "type": "paragraph", "label": null, "key": null, "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "Add anyone you plan to claim as a dependent this year." } ] } ] } } }
+          ]
+        },
+        {
+          "id": "sc_deprep01",
+          "title": "Dependent",
+          "repeat": { "minRows": 0, "maxRows": 10, "addLabel": "Add a dependent", "rowLabel": "Dependent" },
+          "components": [
+            { "id": "fd_depfirst", "type": "text", "key": "dependent_first_name", "label": "First name", "dataClass": "personal", "props": { "maxLength": 100 } },
+            { "id": "fd_deplast0", "type": "text", "key": "dependent_last_name", "label": "Last name", "dataClass": "personal", "props": { "maxLength": 100 } },
+            { "id": "fd_depdob01", "type": "date", "key": "dependent_dob", "label": "Date of birth", "dataClass": "personal", "props": { "max": "today" } },
+            { "id": "fd_depssn01", "type": "taxId", "key": "dependent_tax_identifier", "label": "Dependent Social Security Number or ITIN", "dataClass": "restricted", "props": { "kinds": ["ssn", "itin"] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg_indincome",
+      "title": "Income",
+      "sections": [
+        {
+          "id": "sc_incsrc01",
+          "title": "Income sources",
+          "components": [
+            { "id": "fd_incsrc01", "type": "checkboxGroup", "key": "income_sources", "label": "Which income did you have this year?", "dataClass": "general", "props": { "options": [ { "value": "w2", "label": "W-2 wages" }, { "value": "n1099", "label": "1099 or self-employment" }, { "value": "crypto", "label": "Cryptocurrency" }, { "value": "other", "label": "Other" } ], "minSelected": 0 } }
+          ]
+        },
+        {
+          "id": "sc_incw2001",
+          "title": "W-2 wages",
+          "visibleWhen": { "field": "fd_incsrc01", "op": "contains", "value": "w2" },
+          "components": [
+            { "id": "fd_w2count1", "type": "number", "key": "w2_count", "label": "How many W-2 forms will you provide?", "dataClass": "financial", "props": { "min": 0, "max": 50, "decimals": 0 } }
+          ]
+        },
+        {
+          "id": "sc_inc10991",
+          "title": "Self-employment",
+          "visibleWhen": { "field": "fd_incsrc01", "op": "contains", "value": "n1099" },
+          "components": [
+            { "id": "fd_senote01", "type": "textarea", "key": "self_employment_note", "label": "Describe your self-employment income", "dataClass": "personal", "props": { "maxLength": 2000, "rows": 4 } }
+          ]
+        },
+        {
+          "id": "sc_inccry01",
+          "title": "Cryptocurrency",
+          "visibleWhen": { "field": "fd_incsrc01", "op": "contains", "value": "crypto" },
+          "components": [
+            { "id": "fd_crynote1", "type": "textarea", "key": "crypto_note", "label": "Describe your cryptocurrency activity", "dataClass": "personal", "props": { "maxLength": 2000, "rows": 4 } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg_inddeduct",
+      "title": "Deductions and acknowledgements",
+      "sections": [
+        {
+          "id": "sc_deduct01",
+          "title": "Deductions",
+          "components": [
+            { "id": "fd_homeown1", "type": "yesNo", "key": "owns_home", "label": "Did you own a home this year?", "dataClass": "general", "props": {} },
+            { "id": "fd_charity1", "type": "yesNo", "key": "made_charitable_gifts", "label": "Did you make charitable contributions?", "dataClass": "general", "props": {} },
+            { "id": "fd_deducttx", "type": "textarea", "key": "deduction_notes", "label": "Anything else we should know about your deductions?", "dataClass": "personal", "required": false, "props": { "maxLength": 2000, "rows": 4 } }
+          ]
+        },
+        {
+          "id": "sc_ackbank1",
+          "components": [
+            { "id": "fd_bankcall", "type": "callout", "label": null, "key": null, "props": { "tone": "info", "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "Please share any banking information for refunds through your office's secure channel, not in this form." } ] } ] } } }
+          ]
+        },
+        {
+          "id": "sc_ackchk01",
+          "components": [
+            { "id": "fd_ackcheck", "type": "checkbox", "key": "acknowledgement", "label": "Acknowledgement", "required": true, "dataClass": "general", "props": { "text": { "type": "doc", "blocks": [ { "type": "paragraph", "children": [ { "type": "text", "text": "I confirm the information I provided is accurate to the best of my knowledge." } ] } ] } } }
+          ]
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "actions": []
+}

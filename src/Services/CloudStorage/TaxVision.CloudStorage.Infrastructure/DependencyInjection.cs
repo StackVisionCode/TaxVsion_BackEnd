@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Files.Avatars;
 using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
@@ -46,6 +47,12 @@ public static class DependencyInjection
         services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();
         services.AddScoped<IShareLinkRepository, ShareLinkRepository>();
         services.AddScoped<IDmcaNoticeRepository, DmcaNoticeRepository>();
+
+        // Fotos de perfil públicas (GET storage/avatars/{fileId}): lookup cross-tenant + caché de aciertos.
+        services.AddMemoryCache();
+        services.AddSingleton<IPublicAvatarCache, MemoryPublicAvatarCache>();
+        services.AddScoped<IPublicAvatarLookup, EfPublicAvatarLookup>();
+        services.AddScoped<PublicAvatarReader>();
         services.AddScoped<
             TaxVision.CloudStorage.Application.CustomerAccess.ICustomerAccessRuleRepository,
             CustomerAccessRuleRepository

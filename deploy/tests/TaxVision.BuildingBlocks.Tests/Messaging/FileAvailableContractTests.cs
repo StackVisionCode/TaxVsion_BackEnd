@@ -35,6 +35,9 @@ public sealed class FileAvailableContractTests
         Assert.Null(evt.OwnerType);
         Assert.Null(evt.OwnerId);
         Assert.Null(evt.FolderId);
+        Assert.Null(evt.FolderType);
+        Assert.Null(evt.OriginalName);
+        Assert.Null(evt.TaxYear);
     }
 
     /// <summary>
@@ -56,6 +59,9 @@ public sealed class FileAvailableContractTests
             OwnerType = "Customer",
             OwnerId = Guid.NewGuid(),
             FolderId = Guid.NewGuid(),
+            FolderType = "Documents",
+            OriginalName = "w2.pdf",
+            TaxYear = 2026,
         };
 
         var round = JsonSerializer.Deserialize<FileAvailableIntegrationEvent>(JsonSerializer.Serialize(original));

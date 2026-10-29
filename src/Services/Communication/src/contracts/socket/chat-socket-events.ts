@@ -178,6 +178,11 @@ export interface MessageDto {
   conversationId: string;
   senderId: string;
   senderDisplayName: string;
+  /**
+   * F5 avatares — foto del remitente, solo en el historial (`GET .../messages`). Ausente en los eventos
+   * en vivo (`chat.message.new`): el front usa la de los participantes. null = sin foto.
+   */
+  senderAvatarFileId?: string | null;
   kind: 'Text' | 'Attachment' | 'System';
   body: string | null;
   attachmentFileId: string | null;
@@ -311,6 +316,8 @@ export interface ConversationParticipantAddedDto {
   addedByUserId: string;
   newParticipantUserId: string;
   newParticipantDisplayName: string;
+  /** F5 avatares — foto del nuevo miembro; ausente si no se pudo resolver, null = sin foto. */
+  newParticipantAvatarFileId?: string | null;
   addedAtUtc: string;
 }
 

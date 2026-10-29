@@ -1,7 +1,11 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -17,8 +21,12 @@ using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Tasks.Api.Authorization;
+using TaxVision.Tasks.Api.Filters;
 using TaxVision.Tasks.Application;
 using TaxVision.Tasks.Infrastructure;
 using TaxVision.Tasks.Infrastructure.Observability;
@@ -36,12 +44,16 @@ builder.Host.UseTaxVisionSerilog("tasks-service");
 
 // ---------- MVC + JSON ----------
 builder
-    .Services.AddControllers()
+    .Services.AddControllers(options => options.Filters.Add<ClientFormsAccessFilter>())
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
     .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<ClientFormsAccessFilter>();
+builder.Services.AddScoped<FormSessionFilter>();
+builder.Services.AddScoped<PublicFormSessionContext>();
+builder.Services.AddScoped<FormPublisherCapabilitiesResolver>();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
@@ -50,10 +62,15 @@ builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
-// TaskMetrics.MeterName va como meter adicional: AddTaxVisionOpenTelemetry solo registra
+// TaskMetrics y ClientFormsMetrics van como meters adicionales: AddTaxVisionOpenTelemetry solo registra
 // AddMeter(serviceName), y un Meter propio no declarado acá no exporta nada — los contadores suben
 // en memoria y el panel queda vacío sin ningún error.
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tasks-service", TaskMetrics.MeterName);
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "tasks-service",
+    TaskMetrics.MeterName,
+    ClientFormsMetrics.MeterName
+);
 
 // Autorización por permiso: [HasPermission("tasks.read")]. Los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -91,6 +108,13 @@ if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
     >();
 }
 builder.Services.AddTieredRateLimiting();
+builder.Services.AddRateLimiter(options =>
+{
+    options.UseTaxVisionRejectionResponse();
+    AddPublicFormsPolicy(options, "public-forms", 20);
+    AddPublicFormsPolicy(options, "public-forms-upload", 10);
+    AddPublicFormsPolicy(options, "public-forms-challenge", 5);
+});
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -105,6 +129,7 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+    options.Discovery.IncludeAssembly(typeof(TaxVision.Tasks.ClientForms.Application.AssemblyMarker).Assembly);
 
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
     // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.
@@ -116,7 +141,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
@@ -146,6 +171,52 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ClientRequestCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestFulfilledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestDocumentRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestSubmittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestReturnedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormAttachmentRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormActionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FormRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<FormAccessLinkDeliveryRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<FormAccessCodeDeliveryRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<FormParticipantNotificationRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<ClientFormNotificationSettingsSyncRequestedIntegrationEvent>()
+        .ToRabbitQueue("notification-client-form-commands");
+    options
+        .PublishMessage<CustomerCreationFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("customer-client-form-commands");
+    // P-13 — aplicar al perfil: comando punto a punto a Customer (ProtectedPayload).
+    options
+        .PublishMessage<CustomerProfileUpdateFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("customer-client-form-commands");
+    // P-11 — Submission Summary: comando punto a punto a Documents (snapshot cifrado).
+    options
+        .PublishMessage<FormSubmissionSummaryRequestedIntegrationEvent>()
+        .ToRabbitQueue("documents-client-form-summary");
+    // P-18 — firma: comandos punto a punto a Signature (solo FileId, hash y datos del firmante).
+    options
+        .PublishMessage<SignatureRequestFromFormRequestedIntegrationEvent>()
+        .ToRabbitQueue("signature-client-form-commands");
+    options
+        .PublishMessage<SignatureRequestCancellationRequestedIntegrationEvent>()
+        .ToRabbitQueue("signature-client-form-commands");
+
+    // X-5 — retención: comando punto a punto a CloudStorage para borrar archivos de Client Forms.
+    options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
+
+    // Local y durable: la reasignación HTTP de archivos se reintenta fuera de la transacción que vinculó.
+    options
+        .LocalQueueFor<TaxVision.Tasks.ClientForms.Application.Actions.ReassignParticipantFilesRequested>()
+        .UseDurableInbox();
 
     // Contratos de Reminder, no de Task: los define Reminder y Task sólo los publica.
     options.PublishMessage<ReminderRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -190,12 +261,44 @@ app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
+// Semáforo de rotación de clave (X-9): fuera de "ready" para que no tumbe el servicio.
+app.MapHealthChecks(
+    "/health/key-versions",
+    new HealthCheckOptions { Predicate = check => check.Tags.Contains("key-rotation") }
+);
+
 app.MapControllers();
 
 app.Run();
+
+static void AddPublicFormsPolicy(RateLimiterOptions options, string name, int permitLimit)
+{
+    options.AddPolicy(
+        name,
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
+            return TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                $"{client}:{routeKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permitLimit,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+}
 
 public partial class Program;

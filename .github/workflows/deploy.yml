@@ -65,7 +65,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          # Igual al FROM de los Dockerfiles de Communication/TranscriptWorker: se prueba con lo que se despliega.
+          node-version: 24.22.2
           package-manager-cache: false
 
       - name: Test Communication (Node)
@@ -660,6 +661,10 @@ jobs:
           CAMPAIGN_EMAIL_API_FROM_ADDRESS=${{ secrets.CAMPAIGN_EMAIL_API_FROM_ADDRESS }}
           CAMPAIGN_EMAIL_API_FROM_NAME=${{ secrets.CAMPAIGN_EMAIL_API_FROM_NAME }}
           CAMPAIGN_EMAIL_MAX_PER_MIN=${{ secrets.CAMPAIGN_EMAIL_MAX_PER_MIN }}
+          # Tasks Client Forms: Turnstile para enlaces publicos de captacion.
+          # Ambas vacias mantienen IntakeLinksEnabled cerrado. La site key es publica.
+          TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY }}
+          TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
           EOF
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este

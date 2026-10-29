@@ -12,5 +12,10 @@ public sealed record NotificationCatalogEntry(
     string TitleKey,
     string? BodyKey,
     NotificationResourceType ResourceType,
-    NotificationAction Action
-);
+    NotificationAction Action,
+    IReadOnlySet<NotificationChannel>? MandatoryChannels = null
+)
+{
+    public bool IsMandatoryFor(NotificationChannel channel) =>
+        IsMandatory && (MandatoryChannels ?? AllowedChannels).Contains(channel);
+}

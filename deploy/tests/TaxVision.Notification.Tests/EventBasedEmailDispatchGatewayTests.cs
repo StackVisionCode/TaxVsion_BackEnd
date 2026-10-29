@@ -64,6 +64,40 @@ public sealed class EventBasedEmailDispatchGatewayTests
     }
 
     [Fact]
+    public async Task QueueEmailAsync_sends_confidential_email_only_to_the_postmaster_queue()
+    {
+        var publisher = new RecordingIntegrationEventPublisher();
+        var uow = new NoOpUnitOfWork();
+        var gateway = new EventBasedEmailDispatchGateway(
+            publisher,
+            new RecordingNotificationLogRepository(),
+            uow,
+            NullLogger<EventBasedEmailDispatchGateway>.Instance
+        );
+        var request = new EmailDispatchRequest(
+            TenantId: Guid.NewGuid(),
+            To: "external@test.com",
+            Subject: "Your verification code",
+            HtmlBody: "<p>123456</p>",
+            TextBody: "123456",
+            TemplateKey: "task.form_access_code.v1",
+            RelatedEventId: Guid.NewGuid(),
+            CorrelationId: "corr-1",
+            Confidential: true
+        );
+
+        var result = await gateway.QueueEmailAsync(request, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(publisher.Published);
+        var sent = Assert.Single(publisher.SentToQueue);
+        Assert.Equal("postmaster-events", sent.Queue);
+        var evt = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(sent.Message);
+        Assert.Equal("<p>123456</p>", evt.HtmlBody);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
     public async Task QueueEmailAsync_redacts_sensitive_subject_only_in_persistence()
     {
         var publisher = new RecordingIntegrationEventPublisher();
@@ -462,6 +496,15 @@ public sealed class EventBasedEmailDispatchGatewayTests
             where T : class
         {
             Published.Add(message);
+            return Task.CompletedTask;
+        }
+
+        public List<(string Queue, object Message)> SentToQueue { get; } = [];
+
+        public Task SendToQueueAsync<T>(string queueName, T message, CancellationToken ct = default)
+            where T : class
+        {
+            SentToQueue.Add((queueName, message));
             return Task.CompletedTask;
         }
     }

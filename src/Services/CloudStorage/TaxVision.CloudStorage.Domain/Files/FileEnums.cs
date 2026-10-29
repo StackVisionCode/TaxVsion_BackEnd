@@ -41,6 +41,9 @@ public enum OwnerType
     /// persiste como string, así que no hay valores que correr.
     /// </summary>
     SaaSPayment,
+
+    // Participante externo de Client Forms antes de vincularse a un Customer.
+    FormParticipant,
 }
 
 public enum FolderType
@@ -96,6 +99,9 @@ public enum FolderType
     /// que no necesita carpeta. Sin RequiresYear: no es un documento fiscal del cliente.
     /// </summary>
     SaaSReceipts,
+
+    // Adjuntos exclusivos del producto Client Forms.
+    ClientForms = 17,
 }
 
 public static class FolderTypeRules
@@ -115,6 +121,7 @@ public static class FolderTypeRules
         {
             FolderType.EmailIncoming => "email-incoming",
             FolderType.EmailOutgoing => "email-outgoing",
+            FolderType.ClientForms => "client-forms",
             _ => type.ToString().ToLowerInvariant(),
         };
 

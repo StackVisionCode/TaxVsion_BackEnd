@@ -12,6 +12,7 @@ import {
 } from '../../contracts/events/meeting-events.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { buildMeetingSnapshotDto } from './meeting-mappers.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 import { ensureMeetingConversation } from './ensure-meeting-conversation.js';
 import { issueIceCredentials, type IssueIceCredentialsResult } from './issue-ice-credentials.js';
 
@@ -55,6 +56,8 @@ export interface JoinMeetingDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly conversations: ConversationRepository;
   readonly turn: TurnCredentialFactory;
+  /** F5: fotos de los participantes del snapshot. Opcional (sin el, salen sin `avatarFileId`). */
+  readonly avatars?: AvatarResolver;
 }
 
 export async function joinMeeting(
@@ -170,7 +173,11 @@ export async function joinMeeting(
     }
   }
 
-  const dto = buildMeetingSnapshotDto(snapshot, yourRole, conversationId);
+  const avatars = await resolveAvatars(
+    deps.avatars,
+    snapshot.participants.map((p) => p.userId),
+  );
+  const dto = buildMeetingSnapshotDto(snapshot, yourRole, conversationId, avatars);
 
   // Best-effort: `issueIceCredentials` no tiene ningun camino de fallo real
   // hoy (ver docblock de JoinMeetingResult.iceServers), pero si algun dia lo

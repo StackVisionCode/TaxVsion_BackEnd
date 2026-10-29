@@ -175,7 +175,6 @@ public sealed class CustomerDuplicateGuardTests
                 ModifiedByUserId: User,
                 Language: Language.En,
                 OccupationId: null,
-                ProfilePictureFileId: null,
                 PrimaryEmail: email,
                 PrimaryPhone: null,
                 FirstName: null,

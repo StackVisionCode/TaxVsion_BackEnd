@@ -17,14 +17,34 @@ public static class CustomerContactPolicyConsumer
         ICustomerContactPolicyRepository repository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
-    ) => UpsertAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, evt.EmailEnabled, evt.SmsEnabled, ct);
+    ) =>
+        UpsertAsync(
+            repository,
+            unitOfWork,
+            evt.TenantId,
+            evt.CustomerId,
+            evt.EmailEnabled,
+            evt.SmsEnabled,
+            evt.Language,
+            ct
+        );
 
     public static Task Handle(
         CustomerUpdatedIntegrationEvent evt,
         ICustomerContactPolicyRepository repository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
-    ) => UpsertAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, evt.EmailEnabled, evt.SmsEnabled, ct);
+    ) =>
+        UpsertAsync(
+            repository,
+            unitOfWork,
+            evt.TenantId,
+            evt.CustomerId,
+            evt.EmailEnabled,
+            evt.SmsEnabled,
+            evt.Language,
+            ct
+        );
 
     private static async Task UpsertAsync(
         ICustomerContactPolicyRepository repository,
@@ -33,17 +53,18 @@ public static class CustomerContactPolicyConsumer
         Guid customerId,
         bool emailEnabled,
         bool smsEnabled,
+        string language,
         CancellationToken ct
     )
     {
         var existing = await repository.GetByCustomerIdAsync(tenantId, customerId, ct);
         if (existing is null)
             await repository.AddAsync(
-                CustomerContactPolicyProjection.Create(tenantId, customerId, emailEnabled, smsEnabled),
+                CustomerContactPolicyProjection.Create(tenantId, customerId, emailEnabled, smsEnabled, language),
                 ct
             );
         else
-            existing.Reconcile(emailEnabled, smsEnabled);
+            existing.Reconcile(emailEnabled, smsEnabled, language);
 
         await unitOfWork.SaveChangesAsync(ct);
     }

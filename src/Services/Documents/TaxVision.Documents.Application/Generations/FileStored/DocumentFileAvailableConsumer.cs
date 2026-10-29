@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Documents.Application.Abstractions;
+using TaxVision.Documents.Application.Generations.ClientFormSummary;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.ValueObjects;
 using Wolverine;
@@ -131,6 +132,8 @@ public static class DocumentFileAvailableConsumer
                 TenantId = generation.TenantId,
                 CorrelationId = correlationId,
                 GenerationId = generation.Id,
+                // Id externo de correlación (p.ej. Tasks: el GenerationId guardado en la revisión).
+                ExternalReferenceId = generation.ExternalReferenceId,
                 // El tipo real de la generación. Estaba fijo en "Invoice", así que los recibos se
                 // anunciaban como facturas; solo no rompía porque cada consumer filtra por OwnerType.
                 DocumentType = generation.DocumentType.Value,
@@ -142,8 +145,52 @@ public static class DocumentFileAvailableConsumer
                 ContentType = storage.ContentType,
                 SizeBytes = storage.SizeBytes,
                 ContentHash = generation.ContentHash?.Value,
+                // P-18: copias + ancla de firma. Vacío/nulo salvo que esta generación pidiera copia de firma.
+                Copies = BuildCopies(generation, storage),
+                SignatureAnchor = BuildSignatureAnchor(generation),
             }
         );
+    }
+
+    private static IReadOnlyList<DocumentGenerationCopy> BuildCopies(
+        DocumentGeneration generation,
+        StorageReference storage
+    )
+    {
+        if (generation.SignatureCopyFileId is not { } signatureFileId)
+            return [];
+
+        var hash = generation.ContentHash?.Value;
+        return
+        [
+            new DocumentGenerationCopy
+            {
+                Purpose = ClientFormSignatureAnchor.PurposeClientForms,
+                FileId = storage.FileId,
+                ContentHash = hash,
+            },
+            new DocumentGenerationCopy
+            {
+                Purpose = ClientFormSignatureAnchor.PurposeSignatures,
+                FileId = signatureFileId,
+                ContentHash = hash,
+            },
+        ];
+    }
+
+    private static DocumentSignatureAnchor? BuildSignatureAnchor(DocumentGeneration generation)
+    {
+        if (generation.SignatureCopyFileId is null)
+            return null;
+
+        return new DocumentSignatureAnchor
+        {
+            Page = generation.SignatureAnchorPage ?? 1,
+            X = ClientFormSignatureAnchor.X,
+            Y = ClientFormSignatureAnchor.Y,
+            W = ClientFormSignatureAnchor.W,
+            H = ClientFormSignatureAnchor.H,
+        };
     }
 
     private static string ResolveCorrelationId(FileAvailableIntegrationEvent evt) =>

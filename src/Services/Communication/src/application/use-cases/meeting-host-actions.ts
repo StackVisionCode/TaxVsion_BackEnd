@@ -16,6 +16,7 @@ import type { MeetingParticipantDto, MeetingSnapshotDto } from '../../contracts/
 import { buildMeetingSnapshotDto, participantSnapshotToDto } from './meeting-mappers.js';
 import { ensureMeetingConversation, removeFromMeetingConversation } from './ensure-meeting-conversation.js';
 import { logHostAction } from './host-audit.js';
+import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
 export interface AdmitCommand {
   readonly tenantId: string;
@@ -38,6 +39,7 @@ export async function admitParticipant(
     publisher: IntegrationEventPublisher;
     conversations: ConversationRepository;
     userDirectory: UserDirectoryRepository;
+    avatars?: AvatarResolver;
   },
 ): Promise<Result<AdmitResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
@@ -89,14 +91,18 @@ export async function admitParticipant(
   );
 
   const conversationId = chatResult.isSuccess ? chatResult.value.conversationId : null;
+  const avatars = await resolveAvatars(
+    deps.avatars,
+    snapshot.participants.map((p) => p.userId),
+  );
   return Result.ok({
-    participant: participantSnapshotToDto(target),
+    participant: participantSnapshotToDto(target, avatars),
     conversationId,
     // Snapshot para el admitido: el backend no reenvia uno en la admision, y el
     // `participant.changed` solo trae su propio participante — sin esto el cliente
     // recien admitido no conoce conversationId ni la lista completa (rompia el chat
     // del meeting y el arranque de SFU tras la sala de espera).
-    snapshot: buildMeetingSnapshotDto(snapshot, target.role, conversationId),
+    snapshot: buildMeetingSnapshotDto(snapshot, target.role, conversationId, avatars),
   });
 }
 

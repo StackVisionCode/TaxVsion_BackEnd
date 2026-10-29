@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -65,6 +66,7 @@ public static class CancelSignatureRequestHandler
                     CanceledAtUtc = canceledAtUtc,
                     Reason = cmd.Reason,
                     PendingSignerIds = pendingSignerIds,
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             )
             .AsTask();

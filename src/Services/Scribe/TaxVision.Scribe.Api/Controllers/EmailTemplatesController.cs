@@ -11,6 +11,7 @@ using TaxVision.Scribe.Application.Templates.Commands;
 using TaxVision.Scribe.Application.Templates.Commands.SetDispatchScope;
 using TaxVision.Scribe.Application.Templates.Validation;
 using TaxVision.Scribe.Domain;
+using TaxVision.Scribe.Domain.Templates;
 using Wolverine;
 
 namespace TaxVision.Scribe.Api.Controllers;
@@ -32,16 +33,17 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
         TemplateScope Scope,
         string TemplateKey,
         string Name,
-        string? Description
+        string? Description,
+        TemplateChannel Channel = TemplateChannel.Email
     );
 
     public sealed record AddDraftVersionRequest(
         string Subject,
-        string HtmlContent,
+        string? HtmlContent,
         string? TextContent,
         string? DesignJson,
-        Guid LayoutId,
-        int LayoutVersionNumber,
+        Guid? LayoutId,
+        int? LayoutVersionNumber,
         IReadOnlyList<VariableDefinitionInput> VariableDefinitions
     );
 
@@ -92,7 +94,8 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
             request.TemplateKey,
             request.Name,
             request.Description,
-            userId
+            userId,
+            request.Channel
         );
         var result = await bus.InvokeAsync<Result<EmailTemplateResponse>>(command, ct);
         return result.IsSuccess

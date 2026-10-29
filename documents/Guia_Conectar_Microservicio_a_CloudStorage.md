@@ -76,7 +76,8 @@ vive solo en CloudStorage** — vos nunca la reimplementás.
 │              │    FileAvailable/Infected/        │  bucket     │
 │              │    BlockedByPolicy                │  final)     │
 │              │                                  └─────────────┘
-│              │   4. Descarga/borra vía HTTP+M2M
+│              │   4. Descarga vía HTTP+M2M; borra por
+│              │      evento FilesDeletionRequested
 │              │ ───────────────────────────────▶ CloudStorage API
 └──────────────┘
 ```
@@ -143,12 +144,17 @@ subir (`s3:PutObject`) dentro de su propia carpeta en `taxvision-temp/`.
    Es idempotente — correrlo de nuevo no rompe nada, solo actualiza la
    password si el user ya existe.
 
-#### Paso 2 — Cliente M2M en Auth (para descargar/borrar)
+#### Paso 2 — Cliente M2M en Auth (solo para descargar)
 
-Si tu servicio necesita **leer o borrar** el archivo después (Caso A2, o
-cualquier borrado), necesita un token de servicio. Se pide un cliente M2M
-nuevo en Auth — **esto es config, no código nuevo** (Auth ya tiene toda la
-maquinaria de client-credentials armada):
+Si tu servicio necesita **leer** el archivo después (Caso A2), necesita un
+token de servicio. Se pide un cliente M2M nuevo en Auth — **esto es config, no
+código nuevo** (Auth ya tiene toda la maquinaria de client-credentials armada).
+
+> **Borrar NO usa el token de servicio.** `DELETE storage/files/{id}` solo admite
+> staff (TenantEmployee/TenantAdmin/PlatformAdmin): con un token M2M responde
+> **403**. Un backend borra publicando `FilesDeletionRequestedIntegrationEvent` en
+> la cola `cloudstorage-file-deletions` (ver Paso 4). Por eso **no** le des
+> `cloudstorage.file.delete` al cliente M2M.
 
 1. En `docker-compose.yml`, en el bloque `environment` de `auth-api`, agregá
    un índice nuevo (mirá los que ya existen, `ServiceAuth__Clients__0/1/2/3`,
@@ -159,12 +165,10 @@ maquinaria de client-credentials armada):
    ServiceAuth__Clients__N__Secret: ${TU_SERVICIO_SERVICE_CLIENT_SECRET:-}
    ServiceAuth__Clients__N__Permissions__0: cloudstorage.file.download
    ServiceAuth__Clients__N__Permissions__1: cloudstorage.file.view
-   ServiceAuth__Clients__N__Permissions__2: cloudstorage.file.delete   # solo si vas a borrar
    ```
 
    Dale **solo los permisos que realmente necesitás** (principio de menor
-   privilegio) — si tu servicio nunca borra archivos, no le des
-   `cloudstorage.file.delete`.
+   privilegio). El borrado va por evento (Paso 4), no por este cliente.
 
 2. Para desarrollo local (`dotnet run`, sin Docker), das de alta el mismo
    cliente directo en los user-secrets de Auth:
@@ -203,7 +207,7 @@ public sealed class TuServicioMinioOptions
     public string SourcePrefix { get; set; } = "<tu-servicio>";
 }
 
-// ServiceAuthClientOptions.cs + CloudStorageClientOptions.cs (solo si descargás/borrás)
+// ServiceAuthClientOptions.cs + CloudStorageClientOptions.cs (solo si descargás)
 public sealed class ServiceAuthClientOptions
 {
     public const string SectionName = "ServiceAuthClient";
@@ -297,19 +301,46 @@ public async Task<Result<byte[]>> DownloadAsync(Guid tenantId, Guid fileId, Canc
 }
 ```
 
-Para **borrar**:
+Para **borrar** (por evento, sin HTTP ni token — `DELETE storage/files/{id}` no admite tokens de servicio):
 
 ```csharp
-public async Task<Result> DeleteAsync(Guid tenantId, Guid fileId, CancellationToken ct)
+public async Task DeleteAsync(Guid tenantId, Guid fileId, Guid ownerId, CancellationToken ct)
 {
-    var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
-    var response = await httpClient.DeleteAsync($"storage/files/{fileId}", /* Bearer token */);
-    // 404 tambien cuenta como éxito (ya no existe = objetivo cumplido)
-    return (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
-        ? Result.Success()
-        : Result.Failure(...);
+    await bus.PublishAsync(new FilesDeletionRequestedIntegrationEvent
+    {
+        TenantId = tenantId,
+        SourceService = "<tu-servicio>",        // solo para auditoría
+        SourceReferenceId = miEntidad.Id,       // tu referencia (ej. el aggregate dueño)
+        Reason = "replaced",                    // motivo libre, queda en la auditoría
+        Files =
+        [
+            new FileDeletionTarget
+            {
+                FileId = fileId,
+                ExpectedOwnerType = "Customer",  // el dueño ACTUAL del archivo
+                ExpectedOwnerId = ownerId,
+                ExpectedFolderType = "Documents",
+            },
+        ],
+        CorrelationId = correlation.CorrelationId,
+    });
 }
 ```
+
+Y en el `Program.cs` de tu servicio, ruteá el evento a la cola punto a punto
+(no al fanout `taxvision-events`):
+
+```csharp
+options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
+```
+
+CloudStorage verifica cada archivo contra el dueño, la carpeta y el tenant
+esperados y que no tenga legal hold; si todo cuadra lo manda a la papelera y
+publica `FileDeletedIntegrationEvent`. Si algo no coincide publica
+`FileDeletionSkippedIntegrationEvent` con el motivo (`not_found`,
+`owner_mismatch`, `folder_mismatch`, `legal_hold`, `already_deleted`) para que
+tu servicio reintente o lo dé por cerrado. Es idempotente: pedir dos veces el
+mismo borrado no rompe nada.
 
 #### Paso 5 — Registrar todo en DI
 
@@ -436,7 +467,8 @@ cuando el escaneo termine:
 - [ ] Cliente M2M en `ServiceAuth:Clients` (Auth) — docker-compose **y** user-secrets locales
 - [ ] Permisos M2M acotados a lo que realmente usás (menor privilegio)
 - [ ] `TuServicioMinioOptions` + `ServiceAuthClientOptions` + `CloudStorageClientOptions`
-- [ ] Cliente Upload/Download/Delete registrado en DI (`AddHttpClient`, `IMinioClient` singleton)
+- [ ] Cliente Upload/Download registrado en DI (`AddHttpClient`, `IMinioClient` singleton)
+- [ ] (Si borrás) `FilesDeletionRequestedIntegrationEvent` ruteado a la cola `cloudstorage-file-deletions`
 - [ ] Paquetes NuGet `Minio` + `Microsoft.Extensions.Http`
 - [ ] docker-compose.yml: env vars del servicio + `depends_on: minio`
 - [ ] (Si Caso A2) Consumer de `FileAvailable`/`FileInfectedDetected`/`FileBlockedByPolicy`
@@ -457,8 +489,9 @@ cuando el escaneo termine:
   — si tu archivo no encaja (ej. mandás un `.exe`), el escaneo lo va a
   bloquear igual aunque la subida a MinIO haya sido exitosa. Revisá la
   policy del `FolderType` que uses antes de asumir que "ya está".
-- **Darle de más permisos al cliente M2M** — si tu servicio nunca borra,
-  no le des `cloudstorage.file.delete`.
+- **Darle de más permisos al cliente M2M** — `cloudstorage.file.delete` no
+  sirve de nada con un token de servicio (`DELETE storage/files/{id}` lo
+  rechaza con 403); el borrado va por `FilesDeletionRequestedIntegrationEvent`.
 
 ---
 
@@ -539,7 +572,7 @@ backend, el usuario sube más rápido (un salto menos).
 |---|---|---|
 | ¿Quién sube los bytes? | Tu backend | El navegador del usuario |
 | ¿Necesitás cuenta MinIO propia? | Sí | No |
-| ¿Necesitás cliente M2M? | Sí (si leés/borrás) | No |
+| ¿Necesitás cliente M2M? | Sí (si leés; borrar va por evento) | No |
 | ¿Necesitás consumer de eventos? | Solo si leés de vuelta (A2) | Sí, siempre |
 | Carga en tu servicio | Sube/baja los bytes él mismo | Cero — solo escucha eventos |
 | Ejemplo real | Signature, Notification, Customer, CommunicationTranscriptWorker | Communication (chat) |
@@ -560,6 +593,8 @@ public enum FolderType
 }
 ```
 
+`Avatars` no admite subida directa de usuarios (ver "Fotos de perfil" abajo).
+
 Cada `FolderType` tiene su propia whitelist de extensiones/tamaño máximo en
 `CloudStorageOptions.FolderTypePolicies` — revisala antes de asumir que tu
 tipo de archivo va a pasar el escaneo.
@@ -572,7 +607,15 @@ tipo de archivo va a pasar el escaneo.
 | `POST storage/files/uploads/initiate-multipart` | Frontend (Caso B, archivos grandes) | `cloudstorage.file.upload` |
 | `POST storage/files/{id}/complete` / `complete-multipart` | Frontend (Caso B) | `cloudstorage.file.upload` |
 | `POST storage/files/{id}/download-url` | Tu backend (Caso A, M2M) | `cloudstorage.file.download` |
-| `DELETE storage/files/{id}` | Tu backend (Caso A, M2M) | `cloudstorage.file.delete` |
+| `DELETE storage/files/{id}` | Staff (TenantEmployee/TenantAdmin/PlatformAdmin) — **no** admite tokens de servicio; un backend borra por `FilesDeletionRequestedIntegrationEvent` | `cloudstorage.file.delete` |
+| `GET storage/avatars/{fileId}` | Navegador (`<img src>`), anónimo | Ninguno — solo sirve `FolderType=Avatars` disponibles; cualquier otro id → 404. Rate limit 600/min por IP |
+| `GET storage/files?folderType=...` | Frontend | `cloudstorage.file.view` — sin `folderType`, los `Avatars` nunca salen en el listado |
+
+**Fotos de perfil (`Avatars`):** carpeta reservada a servicios. `POST storage/files/uploads` (y multipart/copias)
+con `folderType=Avatars` desde un usuario devuelve **403 `File.FolderReserved`**. Auth y Customer guardan la foto
+normalizada por `SaveFileRequestedIntegrationEvent` y borran la reemplazada publicando
+`FilesDeletionRequestedIntegrationEvent` (cola `cloudstorage-file-deletions`, `ExpectedFolderType=Avatars`,
+`ExpectedOwnerType=User|Customer`) — no con `DELETE storage/files/{id}`, que no admite tokens de servicio.
 
 ### Grant M2M (client-credentials)
 

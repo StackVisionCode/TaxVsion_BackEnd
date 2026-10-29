@@ -24,6 +24,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.Domain\TaxVision.Tasks.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.Application\TaxVision.Tasks.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.ClientForms.Domain\TaxVision.Tasks.ClientForms.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.ClientForms.Application\TaxVision.Tasks.ClientForms.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.DataCollection.Engine\TaxVision.DataCollection.Engine.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.Infrastructure\TaxVision.Tasks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tasks\TaxVision.Tasks.Api\TaxVision.Tasks.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />

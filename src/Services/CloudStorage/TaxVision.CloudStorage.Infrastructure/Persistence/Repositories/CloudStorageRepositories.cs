@@ -29,12 +29,27 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         db.Files.IgnoreQueryFilters().SingleOrDefaultAsync(file => file.TenantId == tenantId && file.Id == fileId, ct);
 
+    // UPDLOCK dura hasta el commit solo dentro de una transacción; sin ella no protegería nada.
+    public Task<FileObject?> GetForUpdateAsync(Guid tenantId, Guid fileId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Locked file reads require an open transaction.");
+
+        return db
+            .Files.FromSql(
+                $"SELECT * FROM [Files] WITH (UPDLOCK, ROWLOCK) WHERE [TenantId] = {tenantId} AND [Id] = {fileId}"
+            )
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        FolderType? folderType,
         int skip,
         int take,
         CancellationToken ct
@@ -45,6 +60,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Where(file =>
                 file.TenantId == tenantId
                 && file.Status != FileStatus.SoftDeleted
+                // Sin filtro explícito, las fotos de perfil (Avatars) quedan fuera de los listados.
+                && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
                 && (
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -338,7 +355,11 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Files.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(file =>
-                file.TenantId == tenantId && file.Status == FileStatus.SoftDeleted && file.DeletedBatchId == null
+                file.TenantId == tenantId
+                && file.Status == FileStatus.SoftDeleted
+                && file.DeletedBatchId == null
+                // Las fotos de perfil borradas no se listan (ni se restauran); la purga sí las alcanza.
+                && file.FolderType != FolderType.Avatars
             )
             .OrderByDescending(file => file.SoftDeletedAtUtc)
             .Skip(skip)

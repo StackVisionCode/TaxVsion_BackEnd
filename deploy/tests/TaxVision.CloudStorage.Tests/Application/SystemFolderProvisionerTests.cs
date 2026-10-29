@@ -121,4 +121,36 @@ public sealed class SystemFolderProvisionerTests
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task ClientForms_creates_the_customer_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var folders = new FakeFolderRepository();
+        var provisioner = new SystemFolderProvisioner(folders);
+
+        var folderId = await provisioner.ResolveFolderIdAsync(
+            tenantId,
+            OwnerType.Customer,
+            customerId,
+            FolderType.ClientForms,
+            Guid.NewGuid(),
+            Now,
+            CancellationToken.None
+        );
+
+        var folder = await folders.GetByOwnerAndCategoryAsync(
+            tenantId,
+            OwnerType.Customer,
+            customerId,
+            "sys.clientforms",
+            CancellationToken.None
+        );
+
+        Assert.NotNull(folderId);
+        Assert.NotNull(folder);
+        Assert.Equal(folderId, folder!.Id);
+        Assert.Equal("Client Forms", folder.Name);
+    }
 }

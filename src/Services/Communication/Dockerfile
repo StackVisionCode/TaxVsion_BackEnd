@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # ---------- Stage 1: build ----------
-FROM node:20.11-bookworm-slim AS build
+# Node 24 LTS fijado al patch: mediasoup 3.21 exige >=22. Misma versión que el CI (deploy.yml).
+FROM node:24.22.2-bookworm-slim AS build
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -16,7 +17,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ---------- Stage 2: runtime ----------
-FROM node:20.11-bookworm-slim AS runtime
+FROM node:24.22.2-bookworm-slim AS runtime
 WORKDIR /app
 
 # Herramientas para OpenSSL de Prisma + healthcheck.

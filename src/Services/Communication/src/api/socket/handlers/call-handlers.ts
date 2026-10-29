@@ -41,6 +41,7 @@ import {
   type IncomingCallDto,
 } from '../../../contracts/socket/call-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
+import { resolveAvatars } from '../../../application/use-cases/resolve-avatars.js';
 import type { RecordingConsentEntryStatus } from '../../../domain/recording/recording-consent.js';
 
 /**
@@ -190,10 +191,12 @@ function wireCallSocket(
       })
       .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (call initiate) failed'));
     ack?.({ ok: true, value: result.value });
+    const avatars = await resolveAvatars(container.avatars, [userId]);
     const incoming: IncomingCallDto = {
       callId: result.value.callId,
       callerUserId: userId,
       callerDisplayName,
+      ...(avatars ? { callerAvatarFileId: avatars.of(userId) } : {}),
       calleeUserId: parsed.data.calleeUserId,
       kind: parsed.data.kind,
       conversationId: parsed.data.conversationId ?? null,

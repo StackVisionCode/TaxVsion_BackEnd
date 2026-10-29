@@ -26,7 +26,9 @@ public sealed record UserSummaryResponse(
     // Null para quien no está en el projection (CustomerPortal, usuarios inactivos). El CRM lo usa
     // para pintar la columna "Slot #" y el badge "Gated" en la pantalla Team members.
     int? SlotIndex,
-    bool IsGated
+    bool IsGated,
+    // Foto confirmada del usuario (null = iniciales). Se sirve en /storage/avatars/{id}.
+    Guid? AvatarFileId = null
 );
 
 public sealed record GetUsersQuery(
@@ -95,7 +97,8 @@ public static class GetUsersHandler
                     roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                     user.CustomerId,
                     slot?.SlotIndex,
-                    slot?.IsGated ?? false
+                    slot?.IsGated ?? false,
+                    user.AvatarFileId
                 )
             );
         }
@@ -144,7 +147,8 @@ public static class GetUserByIdHandler
                 roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                 user.CustomerId,
                 slot?.SlotIndex,
-                slot?.IsGated ?? false
+                slot?.IsGated ?? false,
+                user.AvatarFileId
             )
         );
     }

@@ -14,6 +14,7 @@ public sealed class NotificationLogConfiguration : IEntityTypeConfiguration<Noti
         builder.Property(log => log.Channel).HasConversion<string>().HasMaxLength(10).IsRequired();
         builder.Property(log => log.Recipient).HasMaxLength(320).IsRequired();
         builder.Property(log => log.Subject).HasMaxLength(200).IsRequired();
+        builder.Property(log => log.Kind).HasMaxLength(64).HasDefaultValue(string.Empty).IsRequired();
         builder.Property(log => log.TemplateKey).HasMaxLength(64).IsRequired();
         builder.Property(log => log.Status).HasConversion<string>().HasMaxLength(10).IsRequired();
         builder.Property(log => log.Error).HasMaxLength(512);
@@ -23,5 +24,13 @@ public sealed class NotificationLogConfiguration : IEntityTypeConfiguration<Noti
         builder.HasIndex(log => new { log.TenantId, log.CreatedAtUtc });
         builder.HasIndex(log => new { log.TenantId, log.Status });
         builder.HasIndex(log => log.RelatedEventId);
+        builder.HasIndex(log => new
+        {
+            log.TenantId,
+            log.RelatedEventId,
+            log.Kind,
+            log.Channel,
+            log.Recipient,
+        });
     }
 }

@@ -48,7 +48,10 @@ public sealed class DropboxFileMirror(
             throw new InvalidOperationException("The selected cloud provider is not connected for this tenant.");
         var files = await db
             .Files.IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && x.Status == FileStatus.Available)
+            // Sin fotos de perfil: el borrado de la vieja nunca llegaría al proveedor externo.
+            .Where(x =>
+                x.TenantId == tenantId && x.Status == FileStatus.Available && x.FolderType != FolderType.Avatars
+            )
             .OrderBy(x => x.CreatedAtUtc)
             .ToListAsync(ct);
         foreach (var file in files)

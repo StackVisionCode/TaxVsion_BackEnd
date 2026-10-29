@@ -16,6 +16,9 @@ public sealed class CustomerFiscalProfileConfiguration : IEntityTypeConfiguratio
         b.Property(fp => fp.TaxIdentifierCipher).HasColumnType("varbinary(512)").IsRequired();
         b.Property(fp => fp.TaxIdentifierBlindIndex).HasMaxLength(64).IsRequired();
         b.Property(fp => fp.TaxIdentifierLast4).HasMaxLength(4).IsRequired();
+        // B-9/X-9: versión de clave del cipher. Default 1 en BD = las filas existentes quedan en la clave/formato
+        // de hoy, consistente con los blobs legacy; el sweep las mueve a la actual tras una rotación.
+        b.Property(fp => fp.TaxIdentifierKeyVersion).HasDefaultValue((short)1).IsRequired();
         b.Property(fp => fp.FilingStatus).HasConversion<string>().HasMaxLength(30);
         b.Property(fp => fp.PriorYearAgi).HasColumnType("decimal(18,2)");
         b.Property(fp => fp.IsReturningCustomer).IsRequired();

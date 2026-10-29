@@ -5,6 +5,7 @@ using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.DataModel.ILM;
+using Minio.DataModel.Tags;
 using Minio.Exceptions;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -142,6 +143,46 @@ public sealed class MinioObjectStorage(IMinioClient client, [FromKeyedServices("
 
     public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct) =>
         client.RemoveObjectAsync(new RemoveObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
+
+    public Task SetObjectTagsAsync(
+        string bucket,
+        string objectKey,
+        IReadOnlyDictionary<string, string> tags,
+        CancellationToken ct
+    ) =>
+        client.SetObjectTagsAsync(
+            new SetObjectTagsArgs()
+                .WithBucket(bucket)
+                .WithObject(objectKey)
+                .WithTagging(new Tagging(tags.ToDictionary(t => t.Key, t => t.Value), isObjects: true)),
+            ct
+        );
+
+    public async Task DeleteAllVersionsAsync(string bucket, string objectKey, CancellationToken ct)
+    {
+        // El listado por prefijo trae también claves que empiezan igual: solo se borra la clave exacta.
+        var versions = new List<string>();
+        await foreach (
+            var item in client.ListObjectsEnumAsync(
+                new ListObjectsArgs().WithBucket(bucket).WithPrefix(objectKey).WithRecursive(true).WithVersions(true),
+                ct
+            )
+        )
+        {
+            if (string.Equals(item.Key, objectKey, StringComparison.Ordinal) && !string.IsNullOrEmpty(item.VersionId))
+                versions.Add(item.VersionId);
+        }
+
+        foreach (var versionId in versions)
+            await client.RemoveObjectAsync(
+                new RemoveObjectArgs().WithBucket(bucket).WithObject(objectKey).WithVersionId(versionId),
+                ct
+            );
+
+        // Sin versiones listadas (bucket sin versionado): borrado normal, idempotente.
+        if (versions.Count == 0)
+            await DeleteAsync(bucket, objectKey, ct);
+    }
 }
 
 public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudStorageOptions> storageOptions)
@@ -199,7 +240,99 @@ public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudS
             new SetBucketLifecycleArgs().WithBucket(options.TempBucket).WithLifecycleConfiguration(lifecycle),
             cancellationToken
         );
+
+        await EnsureMainBucketAvatarRuleAsync(options.MainBucket, cancellationToken);
+    }
+
+    // Se mezcla con las reglas que ya tenga el bucket principal (un Set reemplaza la config entera).
+    private async Task EnsureMainBucketAvatarRuleAsync(string mainBucket, CancellationToken cancellationToken)
+    {
+        LifecycleConfiguration? current;
+        try
+        {
+            current = await client.GetBucketLifecycleAsync(
+                new GetBucketLifecycleArgs().WithBucket(mainBucket),
+                cancellationToken
+            );
+        }
+        catch (MinioException ex) when (MainBucketLifecycle.IsMissingConfiguration(ex))
+        {
+            current = null;
+        }
+
+        var merged = MainBucketLifecycle.MergeAvatarRule(current);
+        if (merged is null)
+            return;
+        await client.SetBucketLifecycleAsync(
+            new SetBucketLifecycleArgs().WithBucket(mainBucket).WithLifecycleConfiguration(merged),
+            cancellationToken
+        );
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>
+/// Regla de lifecycle del bucket principal (versionado): las versiones NO actuales de objetos con la
+/// etiqueta kind=avatar expiran al día. Así una foto de perfil borrada o reemplazada no queda para
+/// siempre como versión vieja. Los demás documentos conservan su historial de versiones intacto.
+/// </summary>
+public static class MainBucketLifecycle
+{
+    public const string AvatarRuleId = "taxvision-avatars-noncurrent-1d";
+
+    public static LifecycleRule AvatarRule() =>
+        new(
+            abortIncompleteMultipartUpload: null,
+            id: AvatarRuleId,
+            expiration: null,
+            transition: null,
+            filter: new RuleFilter
+            {
+                // And(prefijo + etiqueta): forma XML estándar de S3 para filtrar por etiqueta.
+                TheAndOperator = new AndOperator(
+                    "tenants/",
+                    new Dictionary<string, string> { [StorageObjectTags.KindKey] = StorageObjectTags.AvatarKind }
+                ),
+            },
+            noncurrentVersionExpiration: new NoncurrentVersionExpiration(1, null),
+            noncurrentVersionTransition: null,
+            status: LifecycleRule.LifecycleRuleStatusEnabled
+        );
+
+    /// <summary>Null si la regla ya está tal cual (no hace falta escribir); si no, la config con la regla agregada o reemplazada.</summary>
+    public static LifecycleConfiguration? MergeAvatarRule(LifecycleConfiguration? current)
+    {
+        var rules = current?.Rules?.ToList() ?? [];
+        var existing = rules.FirstOrDefault(r => r.ID == AvatarRuleId);
+        if (existing is not null && IsUpToDate(existing))
+            return null;
+
+        rules.RemoveAll(r => r.ID == AvatarRuleId);
+        rules.Add(AvatarRule());
+        return new LifecycleConfiguration(rules);
+    }
+
+    /// <summary>
+    /// Bucket sin lifecycle. El SDK 7.0.0 no lo reporta como ErrorResponseException sino como
+    /// UnexpectedMinioException con este texto (medido contra MinIO local); se aceptan las dos formas.
+    /// Cualquier otro error se propaga: tratarlo como "vacío" pisaría las reglas existentes.
+    /// </summary>
+    public static bool IsMissingConfiguration(MinioException ex) =>
+        IsMissingConfiguration((ex as ErrorResponseException)?.Response?.Code)
+        || ex.Message.Contains("lifecycle configuration does not exist", StringComparison.OrdinalIgnoreCase)
+        || (
+            ex.ServerMessage?.Contains("lifecycle configuration does not exist", StringComparison.OrdinalIgnoreCase)
+            ?? false
+        );
+
+    public static bool IsMissingConfiguration(string? errorCode) =>
+        string.Equals(errorCode, "NoSuchLifecycleConfiguration", StringComparison.Ordinal);
+
+    private static bool IsUpToDate(LifecycleRule rule) =>
+        rule.Status == LifecycleRule.LifecycleRuleStatusEnabled
+        && rule.NoncurrentVersionExpirationObject?.NoncurrentDays == 1
+        && rule.Filter?.TheAndOperator?.Tags?.Any(t =>
+            t.Key == StorageObjectTags.KindKey && t.Value == StorageObjectTags.AvatarKind
+        ) == true;
 }

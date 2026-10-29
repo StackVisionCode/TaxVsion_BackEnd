@@ -10,6 +10,7 @@ public sealed record SignatureRequestCanceledIntegrationEvent : IntegrationEvent
     public required Guid SignatureRequestId { get; init; }
     public required Guid CreatedByUserId { get; init; }
     public required Guid CanceledByUserId { get; init; }
+
     /// <summary>
     /// Snapshot del nombre del usuario que canceló, tomado del claim del access
     /// token al momento del request. Permite al consumer de Communication rellenar
@@ -20,4 +21,7 @@ public sealed record SignatureRequestCanceledIntegrationEvent : IntegrationEvent
     public required DateTime CanceledAtUtc { get; init; }
     public string? Reason { get; init; }
     public required IReadOnlyList<Guid> PendingSignerIds { get; init; }
+
+    /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
+    public SignatureExternalReference? ExternalReference { get; init; }
 }

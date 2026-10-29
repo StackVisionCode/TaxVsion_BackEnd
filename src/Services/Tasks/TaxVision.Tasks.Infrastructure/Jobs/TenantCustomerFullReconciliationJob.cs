@@ -132,7 +132,7 @@ public sealed class TenantCustomerFullReconciliationJob(
         var existing = await repository.GetByCustomerIdAsync(customer.TenantId, customer.CustomerId, ct);
         if (existing is not null)
         {
-            existing.ApplyIfNewer(customer.DisplayName, customer.Status, observedAtUtc);
+            existing.ApplyIfNewer(customer.DisplayName, customer.Status, observedAtUtc, customer.PrimaryEmail);
             return false;
         }
 
@@ -141,7 +141,8 @@ public sealed class TenantCustomerFullReconciliationJob(
             customer.CustomerId,
             customer.DisplayName,
             customer.Status,
-            observedAtUtc
+            observedAtUtc,
+            customer.PrimaryEmail
         );
         await repository.AddAsync(entry, ct);
         return true;

@@ -85,7 +85,10 @@ internal sealed class NotificationCustomerClient(
                     x.CustomerId,
                     x.DisplayName,
                     x.PrimaryEmail,
-                    string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                    string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase),
+                    x.Language,
+                    x.EmailEnabled,
+                    x.SmsEnabled
                 ))
                 .ToList();
 
@@ -105,6 +108,9 @@ internal sealed class NotificationCustomerClient(
         Guid CustomerId,
         string DisplayName,
         string PrimaryEmail,
-        string Status
+        string Status,
+        string? Language = null,
+        bool? EmailEnabled = null,
+        bool? SmsEnabled = null
     );
 }

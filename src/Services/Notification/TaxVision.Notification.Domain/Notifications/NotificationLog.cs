@@ -22,6 +22,9 @@ public enum NotificationStatus
 
     /// <summary>Rebotó después de salir (dirección inexistente, buzón lleno…).</summary>
     Bounced,
+
+    /// <summary>No había a dónde entregar (p. ej. push sin dispositivo registrado); no es un fallo.</summary>
+    Skipped,
 }
 
 /// <summary>
@@ -37,6 +40,7 @@ public sealed class NotificationLog : TenantEntity
     public NotificationChannel Channel { get; private set; }
     public string Recipient { get; private set; } = default!;
     public string Subject { get; private set; } = default!;
+    public string Kind { get; private set; } = default!;
     public string TemplateKey { get; private set; } = default!;
     public NotificationStatus Status { get; private set; }
     public string? Error { get; private set; }
@@ -60,7 +64,8 @@ public sealed class NotificationLog : TenantEntity
         string subject,
         string templateKey,
         Guid? relatedEventId,
-        string? correlationId
+        string? correlationId,
+        string? kind = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -75,6 +80,7 @@ public sealed class NotificationLog : TenantEntity
             Channel = channel,
             Recipient = recipient.Trim(),
             Subject = Truncate(subject, 200),
+            Kind = Truncate(kind ?? templateKey, 64),
             TemplateKey = Truncate(templateKey, 64),
             Status = NotificationStatus.Pending,
             RelatedEventId = relatedEventId,
@@ -96,6 +102,13 @@ public sealed class NotificationLog : TenantEntity
     {
         Status = NotificationStatus.Failed;
         Error = Truncate(error, 512);
+    }
+
+    // La razón va en Error para que el historial diga por qué no salió.
+    public void MarkSkipped(string reason)
+    {
+        Status = NotificationStatus.Skipped;
+        Error = Truncate(reason, 512);
     }
 
     /// <summary>Solo desde Sent: un fallo no se "arregla" con un aviso tardío del proveedor.</summary>

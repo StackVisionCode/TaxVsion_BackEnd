@@ -14,5 +14,10 @@ public sealed record CustomerReconciliationResponse(
     Guid CustomerId,
     string DisplayName,
     string PrimaryEmail,
-    CustomerStatus Status
+    CustomerStatus Status,
+    string Language,
+    bool EmailEnabled,
+    bool SmsEnabled,
+    // Foto vigente; aditivo para que las proyecciones con avatar (Communication) se reparen.
+    Guid? AvatarFileId = null
 );

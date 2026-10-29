@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Folders;
@@ -32,6 +33,10 @@ public static class RestoreFileHandler
             return Result.Failure<FileResponse>(loaded.Error);
 
         var file = loaded.Value;
+        // Una foto de perfil no se restaura: se reemplaza subiendo otra (Auth/Customer ya apuntan a la nueva).
+        if (UploadRegistration.IsReservedForServices(file.FolderType))
+            return Result.Failure<FileResponse>(FileErrors.FolderReserved);
+
         var restored = file.Restore();
         if (restored.IsFailure)
             return Result.Failure<FileResponse>(restored.Error);

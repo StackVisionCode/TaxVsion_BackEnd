@@ -13,6 +13,11 @@ public sealed class EmailTemplateConfiguration : IEntityTypeConfiguration<EmailT
         builder.HasKey(t => t.Id);
 
         builder.Property(t => t.Scope).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder
+            .Property(t => t.Channel)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasDefaultValue(TemplateChannel.Email);
 
         builder
             .Property(t => t.TemplateKey)

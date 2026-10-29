@@ -2,14 +2,21 @@ using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Avatars;
 using TaxVision.Customer.Application.Customers.Catalogs;
 using TaxVision.Customer.Application.Customers.FiscalProfiles;
 using TaxVision.Customer.Domain.Customers;
 
 namespace TaxVision.Customer.Infrastructure.Persistence;
 
-public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProtector protector) : ICustomerReadService
+public sealed class CustomerReadService(
+    CustomerDbContext db,
+    ISensitiveDataProtector protector,
+    TimeProvider? time = null
+) : ICustomerReadService
 {
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+
     /// <summary>Tope de `size` de la búsqueda pública (guardrail anti-barrido del directorio).</summary>
     private const int MaxPageSize = 100;
 
@@ -90,6 +97,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 Email = c.PrimaryEmail.Value,
                 Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.CreatedAtUtc,
+                c.ProfilePictureFileId,
             })
             .ToListAsync(ct);
 
@@ -108,7 +116,8 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 r.Email,
                 r.Phone,
                 r.CreatedAtUtc,
-                assigneesByCustomer.GetValueOrDefault(r.Id, [])
+                assigneesByCustomer.GetValueOrDefault(r.Id, []),
+                r.ProfilePictureFileId
             ))
             .ToList();
 
@@ -174,6 +183,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 Email = c.PrimaryEmail.Value,
                 Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.CreatedAtUtc,
+                c.ProfilePictureFileId,
             })
             .ToListAsync(ct);
 
@@ -187,7 +197,8 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.Email,
                 c.Phone,
                 c.CreatedAtUtc,
-                []
+                [],
+                c.ProfilePictureFileId
             ))
             .ToList();
 
@@ -234,7 +245,11 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.Id,
                 c.DisplayName,
                 c.PrimaryEmail.Value,
-                c.Status
+                c.Status,
+                c.Language.ToString(),
+                c.ContactPolicy.EmailEnabled,
+                c.ContactPolicy.SmsEnabled,
+                c.ProfilePictureFileId
             ))
             .ToListAsync(ct);
 
@@ -351,6 +366,9 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.AssignedPreparerUserId,
                 EmailEnabled = c.ContactPolicy.EmailEnabled,
                 SmsEnabled = c.ContactPolicy.SmsEnabled,
+                c.ProfilePictureFileId,
+                c.PendingProfilePictureFileId,
+                c.PendingProfilePictureRequestedAtUtc,
             }
         ).FirstOrDefaultAsync(ct);
 
@@ -492,6 +510,12 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 .ToListAsync(ct)
             : new List<CustomerAssigneeResponse>();
 
+        var avatarUpload = CustomerAvatarStatus.Of(
+            data.PendingProfilePictureFileId,
+            data.PendingProfilePictureRequestedAtUtc,
+            _time.GetUtcNow().UtcDateTime
+        );
+
         return new CustomerDetailResponse(
             data.Id,
             data.TenantId,
@@ -518,7 +542,10 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             fiscalProfile,
             assignees,
             data.EmailEnabled,
-            data.SmsEnabled
+            data.SmsEnabled,
+            data.ProfilePictureFileId,
+            avatarUpload.PendingAvatarFileId,
+            avatarUpload.UploadStatus
         );
     }
 
@@ -613,11 +640,12 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             var normalizedDigits = new string(taxIdentifier.Where(char.IsDigit).ToArray());
             if (normalizedDigits.Length == 9)
             {
-                var blindIndex = protector.ComputeBlindIndex(normalizedDigits, tenantId);
+                // Lookup dual (B-9/X-9): casa contra la clave actual ∪ anterior durante la ventana de rotación.
+                var blindIndexes = protector.ComputeBlindIndexCandidates(normalizedDigits, tenantId);
                 var hit = await db
                     .CustomerFiscalProfiles.AsNoTracking()
                     .IgnoreQueryFilters()
-                    .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex)
+                    .Where(fp => fp.TenantId == tenantId && blindIndexes.Contains(fp.TaxIdentifierBlindIndex))
                     .Select(fp => (Guid?)fp.CustomerId)
                     .FirstOrDefaultAsync(ct);
                 taxIdExists = hit.HasValue;

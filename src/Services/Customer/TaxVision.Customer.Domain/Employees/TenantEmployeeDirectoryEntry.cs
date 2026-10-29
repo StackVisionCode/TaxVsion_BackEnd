@@ -42,6 +42,49 @@ public sealed class TenantEmployeeDirectoryEntry
         };
     }
 
+    /// <summary>
+    /// Alta desde la reconciliación con Auth de un usuario que nunca llegó por evento. Copia su estado tal
+    /// cual, incluido el retiro: un retirado entra ya retirado y nunca se vuelve elegible.
+    /// </summary>
+    public static TenantEmployeeDirectoryEntry CreateReconciled(
+        Guid userId,
+        Guid tenantId,
+        string actorType,
+        bool isActive,
+        bool isOffboarded
+    )
+    {
+        var entry = Create(userId, tenantId, actorType, isActive && !isOffboarded);
+        if (isOffboarded)
+            entry.MarkOffboarded();
+        return entry;
+    }
+
+    /// <summary>
+    /// Alinea tipo y actividad con Auth; true si cambió algo. No retira: el retiro también traspasa clientes
+    /// y revoca accesos, y eso solo lo hace el evento de offboarding.
+    /// </summary>
+    public bool ReconcileWith(string actorType, bool isActive)
+    {
+        var changed = false;
+        if (ActorType != actorType)
+        {
+            UpdateActorType(actorType);
+            changed = true;
+        }
+        if (isActive && !IsActive && !IsOffboarded)
+        {
+            MarkActive();
+            changed = true;
+        }
+        else if (!isActive && IsActive)
+        {
+            MarkInactive();
+            changed = true;
+        }
+        return changed;
+    }
+
     public void UpdateActorType(string actorType)
     {
         ActorType = actorType;

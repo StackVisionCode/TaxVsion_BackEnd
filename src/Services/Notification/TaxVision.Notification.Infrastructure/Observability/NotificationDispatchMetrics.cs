@@ -15,6 +15,7 @@ public sealed class NotificationDispatchMetrics : INotificationDispatchMetrics, 
 
     private readonly Meter _meter;
     private readonly Counter<long> _dispatchedTotal;
+    private readonly Counter<long> _clientFormPushFailures;
 
     public NotificationDispatchMetrics()
     {
@@ -23,6 +24,11 @@ public sealed class NotificationDispatchMetrics : INotificationDispatchMetrics, 
             "notification.dispatched_total",
             unit: "{notification}",
             description: "Notificaciones por kind × channel × outcome del pipeline del dispatcher."
+        );
+        _clientFormPushFailures = _meter.CreateCounter<long>(
+            "client_forms_push_send_failures_total",
+            unit: "{failure}",
+            description: "Fallos de push de Client Forms por codigo estable."
         );
     }
 
@@ -34,6 +40,9 @@ public sealed class NotificationDispatchMetrics : INotificationDispatchMetrics, 
     public void RecordFailed(string kind, string channel) => Record(kind, channel, "failed");
 
     public void RecordNoRecipient(string kind, string channel) => Record(kind, channel, "no_recipient");
+
+    public void RecordClientFormPushFailure(string code) =>
+        _clientFormPushFailures.Add(1, new KeyValuePair<string, object?>("code", code));
 
     private void Record(string kind, string channel, string outcome) =>
         _dispatchedTotal.Add(

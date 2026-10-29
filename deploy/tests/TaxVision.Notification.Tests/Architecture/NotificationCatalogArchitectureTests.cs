@@ -88,12 +88,72 @@ public sealed class NotificationCatalogArchitectureTests
         // Si el catálogo marca IsMandatory=true pero no incluye InApp en AllowedChannels,
         // el gate del dispatcher no reconocerá que el canal in-app es obligatorio y la
         // preferencia del usuario podrá apagarlo igual.
+        var mandatoryEmailOnly = new HashSet<string>(StringComparer.Ordinal)
+        {
+            NotificationKinds.TasksFormAccessLink,
+            NotificationKinds.TasksFormAccessCode,
+            NotificationKinds.TasksFormParticipantReturned,
+            NotificationKinds.TasksFormParticipantReminder,
+            NotificationKinds.TasksFormParticipantCompleted,
+            NotificationKinds.TasksFormParticipantCancelled,
+            NotificationKinds.TasksFormParticipantAttachmentRejected,
+        };
         var mismatched = NotificationCatalog
-            .All.Where(entry => entry.IsMandatory && !entry.AllowedChannels.Contains(NotificationChannel.InApp))
+            .All.Where(entry =>
+                entry.IsMandatory
+                && !entry.AllowedChannels.Contains(NotificationChannel.InApp)
+                && !mandatoryEmailOnly.Contains(entry.Kind)
+            )
             .Select(entry => entry.Kind)
             .ToArray();
 
         Assert.True(mismatched.Length == 0, $"Mandatory kinds que no habilitan InApp: {string.Join(", ", mismatched)}");
+
+        var invalidEmailOnly = NotificationCatalog
+            .All.Where(entry => mandatoryEmailOnly.Contains(entry.Kind))
+            .Where(entry => !entry.IsMandatory || !entry.AllowedChannels.SetEquals([NotificationChannel.Email]))
+            .Select(entry => entry.Kind)
+            .ToArray();
+        Assert.True(
+            invalidEmailOnly.Length == 0,
+            $"Kinds externos con canales invalidos: {string.Join(", ", invalidEmailOnly)}"
+        );
+    }
+
+    [Fact]
+    public void Client_form_kinds_have_the_exact_channel_matrix()
+    {
+        var inApp = NotificationChannel.InApp;
+        var email = NotificationChannel.Email;
+        var push = NotificationChannel.Push;
+        var expected = new Dictionary<string, (NotificationChannel[] Allowed, NotificationChannel[] Mandatory)>
+        {
+            [NotificationKinds.TasksFormRequestAssigned] = ([inApp, email, push], [inApp, email]),
+            [NotificationKinds.TasksFormRequestSubmitted] = ([inApp, email, push], []),
+            [NotificationKinds.TasksFormRequestReturned] = ([inApp, email, push], [inApp, email]),
+            [NotificationKinds.TasksFormRequestReminder] = ([inApp, email, push], []),
+            [NotificationKinds.TasksFormAttachmentRejected] = ([inApp, email, push], [inApp, email]),
+            [NotificationKinds.TasksFormRequestCompleted] = ([inApp, email, push], []),
+            [NotificationKinds.TasksFormRequestCancelled] = ([inApp], []),
+            [NotificationKinds.TasksFormAccessLink] = ([email], [email]),
+            [NotificationKinds.TasksFormAccessCode] = ([email], [email]),
+            [NotificationKinds.TasksFormActionFailed] = ([inApp, email, push], []),
+            [NotificationKinds.TasksFormAttachmentRejectedStaff] = ([inApp], []),
+            [NotificationKinds.TasksFormParticipantReturned] = ([email], [email]),
+            [NotificationKinds.TasksFormParticipantReminder] = ([email], [email]),
+            [NotificationKinds.TasksFormParticipantCompleted] = ([email], [email]),
+            [NotificationKinds.TasksFormParticipantCancelled] = ([email], [email]),
+            [NotificationKinds.TasksFormParticipantAttachmentRejected] = ([email], [email]),
+        };
+
+        foreach (var (kind, channels) in expected)
+        {
+            var entry = NotificationCatalog.GetRequired(kind);
+            Assert.True(entry.AllowedChannels.SetEquals(channels.Allowed), $"AllowedChannels incorrectos para {kind}");
+            var mandatory = Enum.GetValues<NotificationChannel>().Where(entry.IsMandatoryFor).ToHashSet();
+            Assert.True(mandatory.SetEquals(channels.Mandatory), $"MandatoryChannels incorrectos para {kind}");
+            Assert.DoesNotContain(NotificationChannel.Push, mandatory);
+        }
     }
 
     private static IReadOnlyList<string> ConsumerFiles()

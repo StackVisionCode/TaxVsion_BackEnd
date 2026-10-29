@@ -34,13 +34,15 @@ public sealed record NotificationTemplateSeed(
     // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
     // v18 (por plantilla): subscription.recurring_charge_failed reescrito — un correo por cada cobro
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
-    int ContentVersion = 18,
+    int ContentVersion = 20,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
     /// <c>tenant-base</c> para lo que manda la OFICINA (su cáscara y su logo), como la factura.
     /// El scope sigue siendo System: una sola plantilla para todas, no una copia por oficina.
     /// </summary>
-    string LayoutKey = "system-base"
+    string LayoutKey = "system-base",
+    TemplateChannel Channel = TemplateChannel.Email,
+    string? Text = null
 );
 
 /// <summary>
@@ -96,15 +98,130 @@ public static class NotificationTemplateSeedSource
             AppointmentCancelled,
             ClientRequestCreated,
             ClientRequestDocumentRejected,
+            FormAccessLink,
+            FormAccessCode,
+            FormRequestAssigned,
+            FormRequestReturned,
+            FormRequestCompleted,
+            FormAttachmentRejected,
+            FormRequestReminder,
+            FormParticipantReturned,
+            FormParticipantReminder,
+            FormParticipantCompleted,
+            FormParticipantCancelled,
+            FormParticipantAttachmentRejected,
+            FormRequestSubmitted,
+            FormActionFailed,
+            FormRequestAssignedPush,
+            FormRequestReturnedPush,
+            FormRequestReminderPush,
+            FormAttachmentRejectedPush,
+            FormRequestCompletedPush,
+            FormRequestSubmittedPush,
+            FormActionFailedPush,
             SharedFileInvited,
             MeetingInvitation,
         ];
 
+    // v2: tildes en el español de los push.
+    private const int PushVersion = 2;
+
+    // v21: los emails de Client Forms a clientes y externos responden a language (P-21.5).
+    // v22: el preheader también tiene rama en español.
+    private const int ClientFormsBilingualVersion = 22;
+
+    private static (string, VariableType, bool, string?, string?) Language =>
+        ("language", VariableType.String, false, "En", "Recipient language: Es or En.");
+
+    // Notification manda el texto fijo del código de rechazo en los dos idiomas, nunca el código.
+    private const string RejectionMessage =
+        "{% if language == 'Es' and client_message_es %}{{ client_message_es }}{% else %}{{ client_message }}{% endif %}";
+
+    private static IReadOnlyList<(string, VariableType, bool, string?, string?)> PushVariables =>
+        [("language", VariableType.String, true, "En", "Recipient language: Es or En.")];
+
+    private static NotificationTemplateSeed FormRequestAssignedPush { get; } =
+        Push(
+            "task.form_request_assigned.push.v1",
+            "Client Forms - Assigned push",
+            "{% if language == 'Es' %}Nuevo formulario por completar{% else %}New form to complete{% endif %}",
+            "{% if language == 'Es' %}Tu oficina de impuestos te envió un formulario.{% else %}Your tax office sent you a form.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormRequestReturnedPush { get; } =
+        Push(
+            "task.form_request_returned.push.v1",
+            "Client Forms - Returned push",
+            "{% if language == 'Es' %}Cambios solicitados{% else %}Changes requested{% endif %}",
+            "{% if language == 'Es' %}Tu oficina solicitó cambios en un formulario.{% else %}Your office asked for changes on a form.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormRequestReminderPush { get; } =
+        new(
+            EventKey: "task.form_request_reminder.push.v1",
+            TemplateKey: "task.form_request_reminder.push.v1",
+            Name: "Client Forms - Reminder push",
+            Subject: "{% if language == 'Es' %}{% if is_overdue %}Formulario vencido{% else %}Formulario por vencer{% endif %}{% else %}{% if is_overdue %}Form overdue{% else %}Form due soon{% endif %}{% endif %}",
+            Html: string.Empty,
+            Variables:
+            [
+                ("language", VariableType.String, true, "En", "Recipient language: Es or En."),
+                ("is_overdue", VariableType.Bool, true, "false", "Whether the form is overdue."),
+            ],
+            ContentVersion: PushVersion,
+            Channel: TemplateChannel.Push,
+            Text: "{% if language == 'Es' %}Inicia sesión para terminar tu formulario.{% else %}Sign in to finish your form.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormAttachmentRejectedPush { get; } =
+        Push(
+            "task.form_attachment_rejected.push.v1",
+            "Client Forms - File rejected push",
+            "{% if language == 'Es' %}Archivo no aceptado{% else %}File not accepted{% endif %}",
+            "{% if language == 'Es' %}Carga el archivo nuevamente.{% else %}Please upload the file again.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormRequestCompletedPush { get; } =
+        Push(
+            "task.form_request_completed.push.v1",
+            "Client Forms - Completed push",
+            "{% if language == 'Es' %}Formulario recibido{% else %}Form received{% endif %}",
+            "{% if language == 'Es' %}Tu oficina marcó el formulario como completado.{% else %}Your office marked your form as complete.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormRequestSubmittedPush { get; } =
+        Push(
+            "task.form_request_submitted.push.v1",
+            "Client Forms - Submitted push",
+            "{% if language == 'Es' %}Nuevo formulario enviado{% else %}New form submission{% endif %}",
+            "{% if language == 'Es' %}Un cliente envió un formulario para revisión.{% else %}A client submitted a form for review.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed FormActionFailedPush { get; } =
+        Push(
+            "task.form_action_failed.push.v1",
+            "Client Forms - Action failed push",
+            "{% if language == 'Es' %}Una acción requiere atención{% else %}Action needs attention{% endif %}",
+            "{% if language == 'Es' %}Una acción de formulario requiere revisión.{% else %}A form action needs your review.{% endif %}"
+        );
+
+    private static NotificationTemplateSeed Push(string key, string name, string subject, string text) =>
+        new(
+            EventKey: key,
+            TemplateKey: key,
+            Name: name,
+            Subject: subject,
+            Html: string.Empty,
+            Variables: PushVariables,
+            ContentVersion: PushVersion,
+            Channel: TemplateChannel.Push,
+            Text: text
+        );
+
     // Preheader (línea de vista previa que muestran el inbox y la notificación) por template, en inglés
     // (idioma por defecto). Se inyecta como variable 'preheader' con default vía VariablesWithPreheader; el
-    // layout la imprime en su div oculto. Los templates de Signature son bilingües en el cuerpo, pero el
-    // preheader va en inglés (es un default estático, no se re-renderiza como Liquid). Sin entrada acá, el
-    // renderer cae al subject.
+    // layout la imprime en su div oculto. Un default con Liquid (Bilingual) lo renderiza el renderer con las
+    // variables del envío; así los de Client Forms respetan language. Sin entrada acá, cae al subject.
     private static readonly IReadOnlyDictionary<string, string> Preheaders = new Dictionary<string, string>(
         StringComparer.OrdinalIgnoreCase
     )
@@ -148,9 +265,61 @@ public static class NotificationTemplateSeedSource
         ["calendar.appointment_cancelled.v1"] = "Your appointment was cancelled. Here's what happened.",
         ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
         ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
+        ["task.form_access_link.v1"] = Bilingual(
+            "Abre el enlace seguro para verificar tu identidad y completar el formulario.",
+            "Open the secure link inside to verify your identity and complete the form."
+        ),
+        ["task.form_access_code.v1"] = Bilingual(
+            "Usa este código de un solo uso para continuar de forma segura. Vence pronto.",
+            "Use this one-time code to continue securely. It expires soon."
+        ),
+        ["task.form_request_assigned.v1"] = Bilingual(
+            "Tu oficina de impuestos necesita información tuya.",
+            "Your tax office needs information from you."
+        ),
+        ["task.form_request_returned.v1"] = Bilingual(
+            "Tu oficina de impuestos te pidió actualizar un formulario enviado.",
+            "Your tax office asked you to update a submitted form."
+        ),
+        ["task.form_request_completed.v1"] = Bilingual(
+            "Tu oficina de impuestos recibió y completó tu formulario.",
+            "Your tax office received and completed your form."
+        ),
+        ["task.form_attachment_rejected.v1"] = Bilingual(
+            "Hace falta volver a subir un archivo.",
+            "A file needs to be uploaded again."
+        ),
+        ["task.form_request_reminder.v1"] = Bilingual(
+            "Un formulario que pidió tu oficina de impuestos sigue pendiente.",
+            "A form requested by your tax office is still waiting."
+        ),
+        ["task.form_participant_returned.v1"] = Bilingual(
+            "Tu oficina de impuestos te pidió actualizar un formulario que enviaste.",
+            "Your tax office asked you to update a form you sent."
+        ),
+        ["task.form_participant_completed.v1"] = Bilingual(
+            "Tu oficina de impuestos recibió tu formulario.",
+            "Your tax office received your form."
+        ),
+        ["task.form_participant_cancelled.v1"] = Bilingual(
+            "Se canceló una solicitud de formulario de tu oficina de impuestos.",
+            "A form request from your tax office was cancelled."
+        ),
+        ["task.form_participant_reminder.v1"] = Bilingual(
+            "Un formulario de tu oficina de impuestos sigue pendiente.",
+            "A form from your tax office is still waiting."
+        ),
+        ["task.form_participant_attachment_rejected.v1"] = Bilingual(
+            "Hace falta volver a enviar un archivo que subiste.",
+            "A file you uploaded needs to be sent again."
+        ),
         ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
         ["communication.meeting.invitation"] = "You've been invited to a meeting — join with the link inside.",
     };
+
+    // Preheader con rama por idioma: el renderer lo evalúa con las variables del envío.
+    private static string Bilingual(string spanish, string english) =>
+        $"{{% if language == 'Es' %}}{spanish}{{% else %}}{english}{{% endif %}}";
 
     /// <summary>
     /// Variables del template + la variable <c>preheader</c> (default = su línea de vista previa del
@@ -1971,6 +2140,352 @@ public static class NotificationTemplateSeedSource
                 ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
             ]
+        );
+
+    private static NotificationTemplateSeed FormAccessLink { get; } =
+        new(
+            EventKey: "task.form_access_link.v1",
+            TemplateKey: "task.form_access_link.v1",
+            Name: "Client Forms - External access link",
+            Subject: "{% if language == 'Es' %}Formulario seguro: {{ form_title }}{% else %}Secure form: {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Tu formulario seguro está listo{% else %}A secure form is ready{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos te pidió completar <strong>{{ form_title }}</strong>. Antes de mostrarte cualquier información, verificaremos tu identidad por correo.{% else %}Your tax office asked you to complete <strong>{{ form_title }}</strong>. You will verify your identity by email before any information is shown.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Este enlace vence el {{ expires_at }} UTC.{% else %}This link expires on {{ expires_at }} UTC.{% endif %}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ access_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario seguro{% else %}Open secure form{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("access_link", VariableType.Url, true, null, "Public form access URL."),
+                ("expires_at", VariableType.String, true, null, "Access link expiry in UTC."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormAccessCode { get; } =
+        new(
+            EventKey: "task.form_access_code.v1",
+            TemplateKey: "task.form_access_code.v1",
+            Name: "Client Forms - Verification code",
+            Subject: "{% if language == 'Es' %}Tu código de verificación para {{ form_title }}{% else %}Your verification code for {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Verifica tu identidad{% else %}Verify your identity{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Usa este código de un solo uso para continuar con{% else %}Use this one-time code to continue with{% endif %} <strong>{{ form_title }}</strong>.</td></tr>
+              <tr><td style="padding:18px 0;font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:38px;font-weight:bold;letter-spacing:6px;color:#1E466B;">{{ code }}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}El código vence el {{ expires_at }} UTC. Si no lo pediste, puedes ignorar este correo.{% else %}The code expires on {{ expires_at }} UTC. If you did not request it, you can ignore this email.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("code", VariableType.String, true, null, "Six-digit verification code."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("expires_at", VariableType.String, true, null, "Code expiry in UTC."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormRequestAssigned { get; } =
+        new(
+            EventKey: "task.form_request_assigned.v1",
+            TemplateKey: "task.form_request_assigned.v1",
+            Name: "Client Forms - Form assigned",
+            Subject: "{% if language == 'Es' %}Acción requerida: {{ request_title }}{% else %}Action needed: {{ request_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Tienes un formulario por completar{% else %}A form is ready for you{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola <strong>{{ customer_name }}</strong>, tu oficina de impuestos te pidió completar <strong>{{ request_title }}</strong>.{% else %}Hi <strong>{{ customer_name }}</strong>, your tax office asked you to complete <strong>{{ request_title }}</strong>.{% endif %}</td></tr>
+              {% if has_message %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Tu oficina te dejó una nota. Inicia sesión para leerla.{% else %}Your office left you a note. Sign in to read it.{% endif %}</td></tr>{% endif %}
+              {% if due_date %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Fecha límite:{% else %}Due:{% endif %} <strong>{{ due_date }}</strong></td></tr>{% endif %}
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario{% else %}Open form{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("has_message", VariableType.Bool, false, null, "Whether the office left a note."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormRequestReturned { get; } =
+        new(
+            EventKey: "task.form_request_returned.v1",
+            TemplateKey: "task.form_request_returned.v1",
+            Name: "Client Forms - Changes requested",
+            Subject: "{% if language == 'Es' %}Cambios solicitados: {{ request_title }}{% else %}Changes requested: {{ request_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Hace falta hacer cambios{% else %}Changes are needed{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola <strong>{{ customer_name }}</strong>, tu oficina pidió cambios en {{ comment_count }} punto(s) de <strong>{{ request_title }}</strong>. Inicia sesión para ver sus notas.{% else %}Hi <strong>{{ customer_name }}</strong>, your office asked for changes on {{ comment_count }} item(s) in <strong>{{ request_title }}</strong>. Sign in to see their notes.{% endif %}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario{% else %}Open form{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("comment_count", VariableType.Number, true, null, "Number of field comments."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormRequestCompleted { get; } =
+        new(
+            EventKey: "task.form_request_completed.v1",
+            TemplateKey: "task.form_request_completed.v1",
+            Name: "Client Forms - Form completed",
+            Subject: "{% if language == 'Es' %}Recibido: {{ request_title }}{% else %}Received: {{ request_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Recibimos tu formulario{% else %}Your form was received{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola <strong>{{ customer_name }}</strong>, tu oficina marcó <strong>{{ request_title }}</strong> como completado. Gracias.{% else %}Hi <strong>{{ customer_name }}</strong>, your office marked <strong>{{ request_title }}</strong> as complete. Thank you.{% endif %}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario{% else %}Open form{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormAttachmentRejected { get; } =
+        new(
+            EventKey: "task.form_attachment_rejected.v1",
+            TemplateKey: "task.form_attachment_rejected.v1",
+            Name: "Client Forms - File rejected",
+            Subject: "{% if language == 'Es' %}No pudimos aceptar un archivo que subiste{% else %}A file you uploaded couldn't be accepted{% endif %}",
+            Html: $$$"""
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Vuelve a subir un archivo{% else %}Please upload a file again{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola <strong>{{ customer_name }}</strong>, no pudimos aceptar uno de tus archivos (.{{ file_extension }}) de <strong>{{ request_title }}</strong>.{% else %}Hi <strong>{{ customer_name }}</strong>, one of your files (.{{ file_extension }}) for <strong>{{ request_title }}</strong> couldn't be accepted.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{{{RejectionMessage}}}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Volver a subir{% else %}Upload again{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("file_extension", VariableType.String, true, null, "Safe file extension only."),
+                ("client_message", VariableType.String, true, null, "Fixed message selected from the rejection code."),
+                ("client_message_es", VariableType.String, false, null, "The same fixed message in Spanish."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormRequestReminder { get; } =
+        new(
+            EventKey: "task.form_request_reminder.v1",
+            TemplateKey: "task.form_request_reminder.v1",
+            Name: "Client Forms - Form reminder",
+            Subject: "{% if language == 'Es' %}Recordatorio: {{ request_title }}{% else %}Reminder: {{ request_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}{% if is_overdue %}Este formulario está vencido{% else %}Un formulario te espera{% endif %}{% else %}{% if is_overdue %}This form is overdue{% else %}A form is waiting for you{% endif %}{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola <strong>{{ customer_name }}</strong>, completa <strong>{{ request_title }}</strong>, por favor.{% else %}Hi <strong>{{ customer_name }}</strong>, please complete <strong>{{ request_title }}</strong>.{% endif %}</td></tr>
+              {% if due_date %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Fecha límite:{% else %}Due:{% endif %} <strong>{{ due_date }}</strong></td></tr>{% endif %}
+              <tr><td style="padding-top:16px;"><a href="{{ portal_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario{% else %}Open form{% endif %}</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("due_date", VariableType.Date, false, null, "Optional due date."),
+                ("is_overdue", VariableType.Bool, true, null, "Whether the form is overdue."),
+                ("portal_link", VariableType.Url, true, null, "Client form URL."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    // Avisos a un participante externo sin vincular (P-14.7). No hay portal ni enlace: el token se guarda
+    // hasheado, así que se le remite al enlace del correo de acceso o a pedirle a la oficina que lo reenvíe.
+    private static NotificationTemplateSeed FormParticipantReturned { get; } =
+        new(
+            EventKey: "task.form_participant_returned.v1",
+            TemplateKey: "task.form_participant_returned.v1",
+            Name: "Client Forms - Changes requested (external)",
+            Subject: "{% if language == 'Es' %}Cambios solicitados: {{ form_title }}{% else %}Changes requested: {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Hace falta hacer cambios{% else %}Changes are needed{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos pidió cambios en {{ comment_count }} punto(s) de <strong>{{ form_title }}</strong>.{% else %}Your tax office asked for changes on {{ comment_count }} item(s) in <strong>{{ form_title }}</strong>.{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo que te enviamos antes para leer sus notas. Si el enlace venció, pide a tu oficina que te envíe uno nuevo.{% else %}Open the secure link from the email we sent you earlier to read their notes. If the link expired, ask your office to send you a new one.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("comment_count", VariableType.Number, true, null, "Number of field comments."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormParticipantCompleted { get; } =
+        new(
+            EventKey: "task.form_participant_completed.v1",
+            TemplateKey: "task.form_participant_completed.v1",
+            Name: "Client Forms - Form completed (external)",
+            Subject: "{% if language == 'Es' %}Recibido: {{ form_title }}{% else %}Received: {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Recibimos tu formulario{% else %}Your form was received{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos marcó <strong>{{ form_title }}</strong> como completado. Gracias. No necesitas hacer nada más.{% else %}Your tax office marked <strong>{{ form_title }}</strong> as complete. Thank you. You don't need to do anything else.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormParticipantReminder { get; } =
+        new(
+            EventKey: "task.form_participant_reminder.v1",
+            TemplateKey: "task.form_participant_reminder.v1",
+            Name: "Client Forms - Form reminder (external)",
+            Subject: "{% if language == 'Es' %}Recordatorio: {{ form_title }}{% else %}Reminder: {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}{% if is_overdue %}Este formulario está vencido{% else %}Un formulario te espera{% endif %}{% else %}{% if is_overdue %}This form is overdue{% else %}A form is waiting for you{% endif %}{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo anterior para completar{% else %}Open the secure link from the earlier email to complete{% endif %} <strong>{{ form_title }}</strong>.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("is_overdue", VariableType.Bool, true, null, "Whether the form is overdue."),
+                ("language", VariableType.String, true, "En", "Recipient language: Es or En."),
+            ],
+            // v2: tildes en el español. v3: preheader bilingüe.
+            ContentVersion: 3
+        );
+
+    private static NotificationTemplateSeed FormRequestSubmitted { get; } =
+        new(
+            EventKey: "task.form_request_submitted.v1",
+            TemplateKey: "task.form_request_submitted.v1",
+            Name: "Client Forms - Form submitted",
+            Subject: "Form ready for review",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">A form is ready for review</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;"><strong>{{ customer_name }}</strong> submitted <strong>{{ request_title }}</strong>.</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ staff_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Review form</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Customer or participant display name."),
+                ("request_title", VariableType.String, true, null, "Form request title."),
+                ("revision_number", VariableType.Number, true, null, "Submission revision number."),
+                ("staff_link", VariableType.Url, true, null, "Staff form inbox URL."),
+                ("language", VariableType.String, true, "En", "Recipient language: Es or En."),
+            ],
+            ContentVersion: 1
+        );
+
+    private static NotificationTemplateSeed FormActionFailed { get; } =
+        new(
+            EventKey: "task.form_action_failed.v1",
+            TemplateKey: "task.form_action_failed.v1",
+            Name: "Client Forms - Action failed",
+            Subject: "A form action needs attention",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">A form action needs attention</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">The action <strong>{{ action_type }}</strong> could not finish. Error: {{ error_code }}.</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ staff_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">Review action</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("action_type", VariableType.String, true, null, "Action type."),
+                ("error_code", VariableType.String, true, null, "Safe error code."),
+                ("staff_link", VariableType.Url, true, null, "Staff form inbox URL."),
+                ("language", VariableType.String, true, "En", "Recipient language: Es or En."),
+            ],
+            ContentVersion: 1
+        );
+
+    private static NotificationTemplateSeed FormParticipantCancelled { get; } =
+        new(
+            EventKey: "task.form_participant_cancelled.v1",
+            TemplateKey: "task.form_participant_cancelled.v1",
+            Name: "Client Forms - Form cancelled (external)",
+            Subject: "{% if language == 'Es' %}Cancelado: {{ form_title }}{% else %}Cancelled: {{ form_title }}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Se canceló esta solicitud{% else %}This form request was cancelled{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos canceló <strong>{{ form_title }}</strong>. El enlace que recibiste ya no funciona y no necesitas hacer nada más. Si crees que es un error, comunícate con tu oficina.{% else %}Your tax office cancelled <strong>{{ form_title }}</strong>. The link you received no longer works, and you don't need to do anything else. If you think this is a mistake, contact your office.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
+        );
+
+    private static NotificationTemplateSeed FormParticipantAttachmentRejected { get; } =
+        new(
+            EventKey: "task.form_participant_attachment_rejected.v1",
+            TemplateKey: "task.form_participant_attachment_rejected.v1",
+            Name: "Client Forms - File rejected (external)",
+            Subject: "{% if language == 'Es' %}No pudimos aceptar un archivo que subiste{% else %}A file you uploaded couldn't be accepted{% endif %}",
+            Html: $$$"""
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Vuelve a subir un archivo{% else %}Please upload a file again{% endif %}</td></tr>
+              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}No pudimos aceptar uno de tus archivos (.{{ file_extension }}) de <strong>{{ form_title }}</strong>.{% else %}One of your files (.{{ file_extension }}) for <strong>{{ form_title }}</strong> couldn't be accepted.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{{{RejectionMessage}}}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo que te enviamos antes para volver a subirlo. Si el enlace venció, pide a tu oficina que te envíe uno nuevo.{% else %}Open the secure link from the email we sent you earlier to upload it again. If the link expired, ask your office to send you a new one.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("participant_name", VariableType.String, false, null, "Optional participant name."),
+                ("form_title", VariableType.String, true, null, "Form request title."),
+                ("file_extension", VariableType.String, true, null, "Safe file extension only."),
+                ("client_message", VariableType.String, true, null, "Fixed message selected from the rejection code."),
+                ("client_message_es", VariableType.String, false, null, "The same fixed message in Spanish."),
+                Language,
+            ],
+            ContentVersion: ClientFormsBilingualVersion
         );
 
     /// <summary>

@@ -30,6 +30,8 @@ public sealed class CustomerApiFactory : WebApplicationFactory<Program>
                         ["Jwt:PublicKeyPath"] = string.Empty,
                         ["Jwt:PublicKeyPem"] = string.Empty,
                         ["Jwt:Secret"] = JwtSecret,
+                        // Corre contra la base real: que el test no reconcilie el directorio de empleados.
+                        ["EmployeeDirectoryReconciliation:Enabled"] = "false",
                     }
                 )
         );

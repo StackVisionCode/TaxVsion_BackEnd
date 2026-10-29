@@ -79,6 +79,7 @@ public static class RejectSignatureHandler
                             SignerChannelResolver.PreferredChannelFor(s)
                         ))
                         .ToList(),
+                    ExternalReference = request.ExternalReference.ToMessaging(),
                 }
             )
             .AsTask();

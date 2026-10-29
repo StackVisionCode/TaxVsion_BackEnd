@@ -124,4 +124,79 @@ public sealed class ReassignFileOwnerHandlerTests
             CancellationToken.None
         );
     }
+
+    [Fact]
+    public async Task ClientForms_file_is_never_reassigned_by_message()
+    {
+        var tenantId = Guid.NewGuid();
+        var participantId = Guid.NewGuid();
+        var file = FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Signature,
+                participantId,
+                FolderType.ClientForms,
+                null,
+                ObjectKey
+                    .Create($"tenants/{tenantId:N}/task/{participantId:N}/client-forms/{Guid.NewGuid():N}.pdf")
+                    .Value,
+                "form.pdf",
+                "application/pdf",
+                1024,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(1)
+            )
+            .Value;
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var unitOfWork = new FakeUnitOfWork();
+
+        await ReassignFileOwnerHandler.Handle(
+            Evt(tenantId, file.Id, Guid.NewGuid()),
+            files,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            Options.Create(new CloudStorageOptions()),
+            new FakeSystemClock(DateTime.UtcNow),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<ReassignFileOwnerRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(OwnerType.Signature, file.OwnerType);
+        Assert.Equal(participantId, file.OwnerId);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task FormParticipant_is_never_accepted_as_destination_owner_by_message()
+    {
+        var tenantId = Guid.NewGuid();
+        var signatureId = Guid.NewGuid();
+        var file = SignatureOwned(tenantId, signatureId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var unitOfWork = new FakeUnitOfWork();
+
+        await ReassignFileOwnerHandler.Handle(
+            Evt(tenantId, file.Id, Guid.NewGuid()) with
+            {
+                NewOwnerType = "FormParticipant",
+            },
+            files,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            Options.Create(new CloudStorageOptions()),
+            new FakeSystemClock(DateTime.UtcNow),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<ReassignFileOwnerRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(OwnerType.Signature, file.OwnerType);
+        Assert.Equal(signatureId, file.OwnerId);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
 }

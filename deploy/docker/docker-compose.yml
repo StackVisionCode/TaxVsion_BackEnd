@@ -529,6 +529,8 @@ services:
       ServiceAuth__Clients__16__Secret: ${CONNECTORS_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__17__ClientId: ${DOCUMENTS_SERVICE_CLIENT_ID:-documents-worker}
       ServiceAuth__Clients__17__Secret: ${DOCUMENTS_SERVICE_CLIENT_SECRET:-}
+      # Documents baja el logo de la oficina (o el del sistema) para los PDF; sin esto CloudStorage da 403.
+      ServiceAuth__Clients__17__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__18__ClientId: ${GROWTH_SERVICE_CLIENT_ID:-growth-worker}
       ServiceAuth__Clients__18__Secret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__19__ClientId: ${PAYMENTCLIENT_SERVICE_CLIENT_ID:-paymentclient-worker}
@@ -549,14 +551,12 @@ services:
       # actor_type=Service via la policy ServiceOnly.
       ServiceAuth__Clients__22__ClientId: ${REMINDER_SERVICE_CLIENT_ID:-reminder-worker}
       ServiceAuth__Clients__22__Secret: ${REMINDER_SERVICE_CLIENT_SECRET:-}
-      # Tasks — mismo caso que reminder-worker: sin Permissions ni Scopes porque los dos destinos
-      # (internal/plan-rate-limits de Subscription y permissions-snapshot de Auth) solo exigen
-      # actor_type=Service via la policy ServiceOnly.
+      # Tasks usa permisos de CloudStorage para reconciliar y gestionar adjuntos externos.
       ServiceAuth__Clients__23__ClientId: ${TASKS_SERVICE_CLIENT_ID:-tasks-worker}
       ServiceAuth__Clients__23__Secret: ${TASKS_SERVICE_CLIENT_SECRET:-}
-      # Leer en que acabo el escaneo de un archivo ya adjunto: el veredicto se publica una sola vez
-      # y un adjunto creado despues de esa publicacion no vuelve a recibirlo.
       ServiceAuth__Clients__23__Permissions__0: cloudstorage.file.view
+      ServiceAuth__Clients__23__Permissions__1: cloudstorage.file.upload
+      ServiceAuth__Clients__23__Permissions__2: cloudstorage.file.reassign_form_participant
       # Calendar — mismo caso que reminder-worker: sin Permissions ni Scopes, porque los dos destinos
       # (internal/plan-rate-limits de Subscription y permissions-snapshot de Auth) solo exigen
       # actor_type=Service via la policy ServiceOnly.
@@ -676,6 +676,7 @@ services:
       # Signature/PaymentClient — nunca generar uno nuevo, o los tax identifiers ya cifrados
       # en la base con la clave vieja quedan indescifrables.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
       # Microservicio CloudStorage donde vive el archivo de import mientras se procesa.
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       # Credenciales de servicio (M2M) — solo para DownloadAsync/DeleteAsync del archivo de
@@ -847,6 +848,7 @@ services:
       # Clave de cifrado de secretos del módulo email (config SMTP/API).
       # Base64 de 32 bytes; requerida para los endpoints de configuración de correo.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
       # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts
       # (contexto de request, JWT del usuario/M2M).
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
@@ -1696,6 +1698,8 @@ services:
       ConnectionStrings__Default: ${TASKS_DB_CONNECTION:?Set TASKS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:?Set ENCRYPTION_MASTER_KEY}
+      Encryption__MasterKeyVersion: "1"
       # M2M: catalogo de plan-rate-limits (Subscription) + recuperacion pull de permisos (Auth).
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${TASKS_SERVICE_CLIENT_ID:-tasks-worker}
@@ -1709,6 +1713,9 @@ services:
       # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
       Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       Tasks__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Turnstile protege los enlaces publicos de captacion. Sin ambas claves, el flujo queda cerrado.
+      ClientForms__External__BotProtection__SiteKey: ${TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY:-}
+      ClientForms__External__BotProtection__SecretKey: ${TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY:-}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
@@ -2229,6 +2236,10 @@ services:
       # escalón completo en silencio. Así el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${DOCUMENTS_MODULE_GATE_ENFORCE:-false}
       Authorization__ModuleGate__EnforcedModules__0: documents
+      # P-11 — descifrado del ProtectedPayload del Submission Summary (misma clave de plataforma que ya
+      # comparten Tasks/Customer/Notification). No es un GitHub Secret nuevo.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

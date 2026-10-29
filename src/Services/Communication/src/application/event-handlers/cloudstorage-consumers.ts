@@ -104,8 +104,11 @@ async function flagAttachment(
 ): Promise<void> {
   const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
   if (!fileId) return;
+  // Igual que en available: borrar un avatar u otro archivo no-adjunto no debe
+  // disparar el update fallido de Prisma (log de error ruidoso).
+  if (!(await deps.attachmentTracking.findByFileId(fileId))) return;
   const updated = await deps.attachmentTracking.markStatus({ fileId, status });
-  if (!updated) return; // no registrado como adjunto de chat — nada que notificar.
+  if (!updated) return;
 
   const dto: AttachmentFlaggedDto = {
     messageId: updated.messageId,

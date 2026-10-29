@@ -341,13 +341,6 @@ public static class RunCustomerImportHandler
         int FailedCount
     );
 
-    private sealed record DedupTrackers(
-        HashSet<string> BlindIndexes,
-        HashSet<string> Emails,
-        HashSet<string> Phones,
-        HashSet<(string Name, DateOnly Dob)> NameDob
-    );
-
     private static async Task<ChunkResult> ProcessChunkAsync(
         IServiceScopeFactory sf,
         Guid attemptId,
@@ -372,7 +365,7 @@ public static class RunCustomerImportHandler
             return new ChunkResult([], [], 0, 0);
 
         var matchByRow = await BuildDuplicateMapAsync(detector, info.TenantId, chunk, ct);
-        var trackers = CreateDedupTrackers();
+        var trackers = new ImportChunkDuplicateTracker();
 
         var successIds = new List<Guid>();
         var updatedIds = new List<Guid>();
@@ -452,15 +445,12 @@ public static class RunCustomerImportHandler
         return matches.ToDictionary(m => m.RowNumber);
     }
 
-    private static DedupTrackers CreateDedupTrackers() =>
-        new(BlindIndexes: [], Emails: new HashSet<string>(StringComparer.OrdinalIgnoreCase), Phones: [], NameDob: []);
-
     private static async Task<RowOutcome> ProcessRowAsync(
         ImportCustomerRow raw,
         CustomerImportAttempt attempt,
         StartInfo info,
         IReadOnlyDictionary<int, DuplicateMatch> matchByRow,
-        DedupTrackers trackers,
+        ImportChunkDuplicateTracker trackers,
         ICustomerRepository customerRepo,
         ISensitiveDataProtector protector,
         ICatalogResolver catalogs,
@@ -600,26 +590,11 @@ public static class RunCustomerImportHandler
     private static (string Code, string Message)? CheckIntraChunkDuplicates(
         ParsedRow pr,
         string? blindIndex,
-        DedupTrackers trackers
+        ImportChunkDuplicateTracker trackers
     )
     {
-        if (blindIndex is not null && !trackers.BlindIndexes.Add(blindIndex))
-            return ("Import.DuplicateInChunk", "Another row in the same chunk has the same tax identifier.");
-
-        if (!trackers.Emails.Add(pr.Email.NormalizedValue))
-            return ("Import.DuplicateInChunk", "Another row in the same chunk has the same email.");
-
-        if (pr.Phone is not null && !trackers.Phones.Add(pr.Phone.E164Value))
-            return ("Import.DuplicateInChunk", "Another row in the same chunk has the same phone.");
-
-        if (pr.Kind == CustomerKind.Individual && pr.PersonalName is not null && pr.DateOfBirth.HasValue)
-        {
-            var normalizedName = pr.PersonalName.DisplayName.ToLowerInvariant();
-            if (!trackers.NameDob.Add((normalizedName, pr.DateOfBirth.Value)))
-                return ("Import.DuplicateInChunk", "Another row in the same chunk has the same name + date of birth.");
-        }
-
-        return null;
+        var reason = trackers.TryAdd(ImportDuplicateKeys.From(pr), blindIndex);
+        return reason is null ? null : ("Import.DuplicateInChunk", reason);
     }
 
     private static async Task<RowOutcome> HandleMatchedRowAsync(
@@ -764,7 +739,8 @@ public static class RunCustomerImportHandler
             isReturningCustomer: pr.IsReturningCustomer,
             refundBankAccountCipher: null,
             refundBankRoutingCipher: null,
-            byUserId: byUserId
+            byUserId: byUserId,
+            taxIdentifierKeyVersion: protector.CurrentKeyVersion
         );
     }
 
@@ -804,7 +780,8 @@ public static class RunCustomerImportHandler
             taxYear: DateTime.UtcNow.Year,
             qualifiesAsDependent: false,
             livedWithTaxpayer: true,
-            byUserId: byUserId
+            byUserId: byUserId,
+            taxIdentifierKeyVersion: protector.CurrentKeyVersion
         );
 
         if (spouseFp.IsFailure)
@@ -919,7 +896,8 @@ public static class RunCustomerImportHandler
                 isReturningCustomer: pr.IsReturningCustomer,
                 refundBankAccountCipher: null,
                 refundBankRoutingCipher: null,
-                byUserId: byUserId
+                byUserId: byUserId,
+                taxIdentifierKeyVersion: protector.CurrentKeyVersion
             );
         }
     }

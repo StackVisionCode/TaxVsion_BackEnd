@@ -51,4 +51,25 @@ public sealed class NotificationLogRepository(NotificationDbContext db) : INotif
             )
             .OrderByDescending(log => log.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    public Task<NotificationLog?> GetByRelatedEventAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string kind,
+        NotificationChannel channel,
+        string recipient,
+        CancellationToken ct = default
+    ) =>
+        db
+            .NotificationLogs.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(log =>
+                log.TenantId == tenantId
+                && log.RelatedEventId == relatedEventId
+                && log.Kind == kind
+                && log.Channel == channel
+                && log.Recipient == recipient
+            )
+            .OrderByDescending(log => log.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
 }

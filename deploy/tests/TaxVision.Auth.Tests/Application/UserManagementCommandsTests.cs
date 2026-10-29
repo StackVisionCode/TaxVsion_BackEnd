@@ -502,4 +502,102 @@ public sealed class UserManagementCommandsTests
         Assert.True(result.IsFailure);
         Assert.Equal("User.SelfAction", result.Error.Code);
     }
+
+    /// <summary>La foto de quien se retira no se queda: se quita y se pide su borrado después de guardar.</summary>
+    [Fact]
+    public async Task OffboardUserHandler_removes_the_avatar_and_requests_its_deletion_after_saving()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+        var avatar = AvatarDoubles.GiveConfirmedAvatar(target);
+        var bus = new FakeMessageBus();
+        var unitOfWork = new OrderedUnitOfWork(bus);
+
+        var result = await OffboardUserHandler.Handle(
+            new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
+            new SingleUserRepository(target),
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            unitOfWork,
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Null(target.AvatarFileId);
+        var savedAt = Assert.Single(unitOfWork.PublishedAtSave);
+        var afterSave = bus.Published.Skip(savedAt).ToList();
+        var deletion = Assert.Single(
+            afterSave.OfType<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilesDeletionRequestedIntegrationEvent>()
+        );
+        Assert.Equal(avatar, Assert.Single(deletion.Files).FileId);
+        Assert.Equal("user_offboarded", deletion.Reason);
+        var profile = Assert.Single(
+            afterSave.OfType<BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent>()
+        );
+        Assert.Null(profile.AvatarFileId);
+    }
+
+    [Fact]
+    public async Task OffboardUserHandler_without_avatar_publishes_no_avatar_messages()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = Employee(tenantId);
+        var bus = new FakeMessageBus();
+
+        await OffboardUserHandler.Handle(
+            new OffboardUserCommand(tenantId, target.Id, Guid.NewGuid(), SuccessorUserId: null),
+            new SingleUserRepository(target),
+            new QuietSessionRepository(),
+            new QuietDenylist(),
+            new RecordingSessionRevocationPublisher(),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.DoesNotContain(
+            bus.Published,
+            message =>
+                message is BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilesDeletionRequestedIntegrationEvent
+        );
+        Assert.DoesNotContain(
+            bus.Published,
+            message => message is BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent
+        );
+    }
+
+    /// <summary>El evento de perfil es el perfil completo: un cambio de nombre lleva también la foto actual.</summary>
+    [Fact]
+    public async Task UpdateMyProfileHandler_name_change_event_carries_the_current_avatar()
+    {
+        var user = Employee(Guid.NewGuid());
+        var avatar = AvatarDoubles.GiveConfirmedAvatar(user);
+        var bus = new FakeMessageBus();
+
+        var result = await UpdateMyProfileHandler.Handle(
+            new UpdateMyProfileCommand(user.Id, "Eliot", "Paz", null),
+            new SingleUserRepository(user),
+            new QuietAuthAuditWriter(),
+            new QuietRequestContext(),
+            new QuietCorrelationContext(),
+            new QuietUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var profile = Assert.IsType<BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent>(
+            Assert.Single(bus.Published)
+        );
+        Assert.Equal("Eliot", profile.Name);
+        Assert.Equal(avatar, profile.AvatarFileId);
+    }
 }

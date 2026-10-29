@@ -154,6 +154,11 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 | Evento | Dirección | Payload |
 |---|---|---|
 | `session.revoked` | S→C | `{ reason: string }` — logout inmediato |
+| `user.profile.changed` | S→C | `{ userId, displayName, avatarFileId }` — cambió el nombre o la foto (staff por `auth.user.profile_updated.v1`; cliente del portal cuando cambia la foto de su ficha). Va a `t:{tenant}:staff` y a `t:{tenant}:u:{userId}`, nunca al tenant entero. Imagen: `/storage/avatars/{avatarFileId}`; null = iniciales |
+
+> **Fotos (F5 avatares).** Los DTOs que muestran personas traen `avatarFileId` resuelto al leer (staff → `UserDirectoryEntry`, cliente del portal → `CustomerPortalAccount` → `CustomerDirectoryEntry`): participantes de `GET /conversations`, `senderAvatarFileId` del historial, directorio de empleados/clientes, snapshot de meetings (join/rejoin/admit), `callerAvatarFileId` de `call.incoming` y `avatarFileId` del peer al aceptar. **Campo ausente = no resuelto, conservar lo que se tenga; `null` = sin foto.** Las notificaciones no llevan foto del actor.
+
+> **Reconciliaciones contra Auth** (Redis lock, al arrancar + cada 12 h, M2M con `COMMUNICATION_AUTH_BASE_URL`): `UserDirectoryEntry` desde `internal/users/directory/reconciliation` (`COMMUNICATION_USER_RECONCILE_*`) y `CustomerPortalAccount` desde `internal/users/portal-accounts/reconciliation` (`COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_*`; activa → upsert, inactiva → baja solo la fila de ese usuario, nunca borra).
 
 ### Chat
 

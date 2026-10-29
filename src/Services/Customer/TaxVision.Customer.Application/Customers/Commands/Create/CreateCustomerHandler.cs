@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
+using TaxVision.Customer.Domain.Employees;
 using Wolverine;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -78,7 +79,9 @@ public static class CreateCustomerHandler
         var creator = await employeeDirectory.GetByUserIdAsync(cmd.CreatedByUserId, ct);
         var creatorIsAdmin = creator?.ActorType is "TenantAdmin" or "PlatformAdmin";
         var autoAssigned =
-            !creatorIsAdmin && customer.AssignPreparer(cmd.CreatedByUserId, cmd.CreatedByUserId).IsSuccess;
+            !creatorIsAdmin
+            && CanBeAutoAssigned(creator, cmd.TenantId)
+            && customer.AssignPreparer(cmd.CreatedByUserId, cmd.CreatedByUserId).IsSuccess;
 
         await PersistCustomerAsync(customer, repository, unitOfWork, ct);
         await PublishCreatedEventAsync(customer, correlation, bus);
@@ -121,22 +124,7 @@ public static class CreateCustomerHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(
-            new CustomerUpdatedIntegrationEvent
-            {
-                TenantId = existing.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                CustomerId = existing.Id,
-                DisplayName = existing.DisplayName,
-                PrimaryEmail = existing.PrimaryEmail.Value,
-                PrimaryPhone = existing.PrimaryPhone?.E164Value,
-                Language = existing.Language.ToString(),
-                EmailEnabled = existing.ContactPolicy.EmailEnabled,
-                SmsEnabled = existing.ContactPolicy.SmsEnabled,
-                OccupationId = existing.OccupationId,
-                ModifiedByUserId = cmd.CreatedByUserId,
-            }
-        );
+        await bus.PublishAsync(CustomerUpdatedEvents.From(existing, cmd.CreatedByUserId, correlation.CorrelationId));
 
         return Result.Success(MapToResponse(existing));
     }
@@ -167,6 +155,10 @@ public static class CreateCustomerHandler
 
         return Result.Success();
     }
+
+    // B-13: un creador conocido y no elegible (retirado, inactivo, portal u otro tenant) no queda como preparador.
+    private static bool CanBeAutoAssigned(TenantEmployeeDirectoryEntry? creator, Guid tenantId) =>
+        creator is null || (creator.TenantId == tenantId && creator.IsEligiblePreparer);
 
     /// <summary>Lo que se compara contra el nombre guardado: el aggregate lo arma igual al registrar.</summary>
     private static string? DisplayNameOf(CreateCustomerCommand cmd, CustomerValueObjects vo) =>
@@ -305,6 +297,7 @@ public static class CreateCustomerHandler
                     EmailEnabled = customer.ContactPolicy.EmailEnabled,
                     SmsEnabled = customer.ContactPolicy.SmsEnabled,
                     OccupationId = customer.OccupationId,
+                    AvatarFileId = customer.ProfilePictureFileId,
                     CreatedByUserId = customer.CreatedByUserId,
                 }
             )
@@ -346,6 +339,7 @@ public static class CreateCustomerHandler
             OccupationName: null,
             c.BusinessIdentity?.PrincipalBusinessActivityId,
             PrincipalBusinessActivityName: null,
-            c.CreatedAtUtc
+            c.CreatedAtUtc,
+            AvatarFileId: c.ProfilePictureFileId
         );
 }

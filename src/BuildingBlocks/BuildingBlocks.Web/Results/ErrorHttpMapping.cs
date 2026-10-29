@@ -80,6 +80,17 @@ public static class ErrorHttpMapping
             or "Task.Label.NotFound"
             or "Task.Attachment.NotFound"
             or "Task.Template.NotFound"
+            or "FormTemplate.NotFound"
+            or "FormTemplateVersion.NotFound"
+            or "FormRequest.NotFound"
+            or "FormAttachment.NotFound"
+            or "FormRequest.AttachmentNotFound"
+            or "FormSensitiveAnswer.NotFound"
+            or "FormLibrary.NotFound"
+            or "FormActionRun.NotFound"
+            or "FormParticipant.NotFound"
+            or "ConsentNotice.NotFound"
+            or "ConsentNotice.VersionNotFound"
             or "Calendar.Appointment.NotFound"
             or "Calendar.Type.NotFound"
             or "Calendar.Availability.NotFound"
@@ -132,7 +143,11 @@ public static class ErrorHttpMapping
             // 8.1 — validación de los guardrails del link-only share al crearlo (falta password que la
             // oficina exige / expiración por encima del máximo permitido): 400, no autorización.
             or "ShareLink.PasswordRequiredForLinkShare"
-            or "ShareLink.ShareLifetimeExceedsMax" => StatusCodes.Status400BadRequest,
+            or "ShareLink.ShareLifetimeExceedsMax"
+            // Client Forms: texto del staff con un identificador fiscal o de tarjeta, y prellenado aún no disponible.
+            or "FormRequest.TextContainsSensitiveData"
+            or "FormRequest.PrefillNotAvailable"
+            or "FormCatalogUsage.InvalidTargetKey" => StatusCodes.Status400BadRequest,
             "TenantDomain.ReservationConsumed"
             or "TenantDomain.ReservationExpired"
             or "TenantDomain.HostTaken"
@@ -159,6 +174,41 @@ public static class ErrorHttpMapping
             // El plan ya trae ese add-on, o el tenant ya lo tiene activo.
             or "AddOn.AlreadyIncludedInPlan"
             or "AddOn.AlreadyActive" => StatusCodes.Status409Conflict,
+            "FormTemplate.Archived"
+            or "FormTemplate.NotArchived"
+            or "FormTemplate.NothingToPublish"
+            or "FormTemplate.HasPublishedVersions"
+            or "FormTemplate.ConcurrencyConflict"
+            or "FormRequest.InvalidTransition"
+            or "FormRequest.NotEditable"
+            or "FormRequest.AlreadyOpenForTemplate"
+            or "FormRequest.AttachmentsNotReady"
+            or "FormRequest.ReminderLimitReached"
+            or "FormRequest.ConcurrencyConflict"
+            or "FormRequest.ProfileUpdateAlreadyApproved"
+            or "FormRequest.CustomerUnavailable"
+            or "FormRequest.TemplateNotPublished"
+            or "FormRequest.AttachmentAlreadyRegistered"
+            or "FormRequest.NoAccessLink"
+            or "FormRequest.ResendNotAllowed"
+            // Acciones posteriores al envío: reintento no admitido o vínculo todavía en conflicto.
+            or "FormActionRun.NotRetryable"
+            or "FormActionRun.NotAvailable"
+            or "FormRequest.CustomerHasOpenRequest"
+            or "FormRequest.LinkNotBlocked"
+            // Externos: el email ya es de un cliente, el prospecto ya es cliente, o la misma persona ya envió el enlace.
+            or "FormParticipant.EmailBelongsToCustomer"
+            or "FormParticipant.AlreadyConverted"
+            or "PublicForm.AlreadySubmitted"
+            // Biblioteca TaxVision: revisar una versión que no es la última publicada, o listar/revisar una
+            // plantilla sin versión publicada — conflicto de estado, no de forma.
+            or "FormLibrary.ReviewVersionMismatch"
+            or "FormLibrary.NotPublished" => StatusCodes.Status409Conflict,
+            "ConsentNotice.Archived"
+            or "ConsentNotice.KeyTaken"
+            or "ConsentNotice.ConcurrencyConflict"
+            or "FormConsentRecord.AlreadyAccepted"
+            or "answer.consent_required_before_collection" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"
@@ -211,8 +261,12 @@ public static class ErrorHttpMapping
             or "PostmasterClient.RequestFailed"
             or "PaymentAppClient.RequestFailed"
             or "Tenant.Logo.Storage.Auth"
+            // Auth no pudo subir la foto de perfil al bucket temporal: transitorio, se reintenta.
+            or "User.AvatarStorageUnavailable"
             // Customer no pudo pedirle a Auth la invitación al portal: transitorio, se reintenta.
-            or "Customer.PortalAccessUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            or "Customer.PortalAccessUnavailable"
+            // MinIO no aceptó la foto del cliente: transitorio, se reintenta.
+            or "Customer.Avatar.StorageUnavailable" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
             "GetMessageBodyHandler.RateLimited"
@@ -262,6 +316,10 @@ public static class ErrorHttpMapping
             or "File.NotAvailable"
             or "IncomingEmailAttachment.Blocked"
             or "File.Forbidden"
+            // Carpeta reservada a servicios (Avatars): un usuario no sube ahí directo.
+            or "File.FolderReserved"
+            // Foto de perfil: el cliente del portal la maneja en su ficha de Customer, no en Auth.
+            or "User.AvatarNotAllowed"
             or "Folder.Forbidden"
             // Carpetas de sistema (prefijo sys.*): el aggregate y los handlers rechazan fail-closed
             // Rename/Move/Delete sobre ellas. 403, no 400: es denegacion por regla de dominio.
@@ -284,6 +342,10 @@ public static class ErrorHttpMapping
             or "ShareLink.ElevatedPermissionRequiresManage"
             or "Note.Forbidden"
             or "Task.Forbidden"
+            // Sin configure_actions se edita el formulario pero no su mapeo de datos ni sus acciones.
+            or "FormTemplate.ConfigureActionsRequired"
+            // Aplicar datos fiscales al perfil (filing status, SSN) exige actor admin.
+            or "FormRequest.ProfileUpdateForbidden"
             or "Task.Timer.NotOwner"
             or "Auth.UserInactive"
             or "Onboarding.SessionEmailMismatch"
@@ -299,7 +361,9 @@ public static class ErrorHttpMapping
             or "Signature.Profile.OwnSignatureDisabled"
             or "Signature.Document.VerificationRequired"
             // Portal del cliente: regla deny per-item (Fase 4). El code es estable para que el UI lo mapee.
-            or "cloudstorage.customer_access.denied" => StatusCodes.Status403Forbidden,
+            or "cloudstorage.customer_access.denied"
+            // Solo el tenant de plataforma administra la biblioteca de formularios.
+            or "FormLibrary.PlatformOnly" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -361,9 +425,14 @@ public static class ErrorHttpMapping
             or "PaymentApp.AdminActionThrottled"
             or "PaymentApp.WebhookThrottled"
             or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
-            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
-                StatusCodes.Status413PayloadTooLarge,
+            "File.TooManyItems"
+            or "File.ZipTooLarge"
+            or "File.TooManyFolders"
+            or "File.TooLarge"
+            or "Avatar.TooLarge" => StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed"
+            or "File.ExclusiveToClientForms"
+            or "File.ClientFormsDestinationNotAllowed"
             or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
             or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
             var code
@@ -408,9 +477,13 @@ public static class ErrorHttpMapping
             var code when code.StartsWith("Codes.PaymentOutcomeVerifier.", StringComparison.Ordinal) =>
                 StatusCodes.Status503ServiceUnavailable,
             "PaymentMethod.Disabled"
+            or "answer.consent_required"
+            or "intake.entry_notice_required"
             or "PaymentMethod.UnsupportedForCheckout"
             or "PaymentMethod.UnsupportedByProvider"
-            or "PayPal.CheckoutSession.MethodUnsupported" => StatusCodes.Status422UnprocessableEntity,
+            or "PayPal.CheckoutSession.MethodUnsupported"
+            // El responsable elegido no podría ejecutar las acciones de la plantilla.
+            or "FormRequest.ResponsibleNotAuthorized" => StatusCodes.Status422UnprocessableEntity,
             "PaymentProvider.NotConfigured" => StatusCodes.Status502BadGateway,
             // PEP del Wallet (Campaigns F4): saldo insuficiente para enviar la campaña → 402 Payment
             // Required (el front lo detecta por el code y muestra "faltan $X" + recarga). Si el Wallet no

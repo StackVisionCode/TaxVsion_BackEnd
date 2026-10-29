@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Customers.Avatars;
 using Wolverine;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -38,6 +39,8 @@ public static class BulkChangeStatusHandler
 
         var succeededIds = new List<Guid>(uniqueIds.Count);
         var failures = new List<BulkFailedItem>();
+        // Archivar retira la foto (Archive() la limpia): se juntan las que hay que borrar en CloudStorage.
+        var archivedPhotos = new List<(Guid CustomerId, Guid FileId)>();
 
         foreach (var id in uniqueIds)
         {
@@ -47,6 +50,7 @@ public static class BulkChangeStatusHandler
                 continue;
             }
 
+            var photoFileId = customer.ProfilePictureFileId;
             var result = applyAction(customer, cmd.ModifiedByUserId);
             if (result.IsFailure)
             {
@@ -55,12 +59,25 @@ public static class BulkChangeStatusHandler
             }
 
             succeededIds.Add(id);
+            if (cmd.Action == BulkStatusAction.Archive && photoFileId is { } fileId)
+                archivedPhotos.Add((id, fileId));
         }
 
         await unitOfWork.SaveChangesAsync(ct);
 
         foreach (var id in succeededIds)
             await bus.PublishAsync(makeEvent(id));
+
+        foreach (var (customerId, fileId) in archivedPhotos)
+            await bus.PublishAsync(
+                CustomerAvatarMessages.Deletion(
+                    cmd.TenantId,
+                    customerId,
+                    fileId,
+                    CustomerAvatarMessages.Reasons.CustomerArchived,
+                    correlation.CorrelationId
+                )
+            );
 
         return Result.Success(
             new BulkStatusActionResponse(uniqueIds.Count, succeededIds.Count, failures.Count, failures)

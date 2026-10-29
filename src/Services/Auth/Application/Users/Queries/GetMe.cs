@@ -31,7 +31,10 @@ public sealed record MeResponse(
     bool EmailVerified,
     bool PhoneVerified,
     string? PhoneNumber,
-    MePlanResponse? Plan
+    MePlanResponse? Plan,
+    // Foto confirmada (se sirve en /storage/avatars/{id}); AvatarPending = hay otra pasando el antivirus.
+    Guid? AvatarFileId = null,
+    bool AvatarPending = false
 );
 
 public sealed record GetMeQuery(Guid UserId);
@@ -91,7 +94,9 @@ public static class GetMeHandler
                 user.EmailVerified,
                 user.PhoneVerified,
                 user.PhoneNumber,
-                plan
+                plan,
+                user.AvatarFileId,
+                user.HasLivePendingAvatar(DateTime.UtcNow)
             )
         );
     }

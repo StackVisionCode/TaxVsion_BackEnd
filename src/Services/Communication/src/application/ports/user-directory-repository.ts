@@ -18,6 +18,8 @@ export interface UserDirectoryEntrySnapshot {
    * EmployeeDirectory separada (decision explicita: NO crearla).
    */
   readonly actorType: string;
+  /** Foto vigente del staff (`/storage/avatars/{id}` lo arma el front); null = sin foto. */
+  readonly avatarFileId: string | null;
   readonly updatedAtUtc: Date;
 }
 
@@ -35,6 +37,8 @@ export interface UserDirectoryRepository {
     email: string;
     isActive: boolean;
     actorType?: string;
+    /** undefined = no tocar la foto guardada; null = quitarla. */
+    avatarFileId?: string | null;
   }): Promise<void>;
 
   findByUserId(userId: string): Promise<UserDirectoryEntrySnapshot | null>;

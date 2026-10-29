@@ -13,6 +13,8 @@ import { PrismaRolePermissionsProjectionRepository } from './persistence/prisma-
 import { PrismaCustomerPortalAccountRepository } from './persistence/prisma-customer-portal-account-repository.js';
 import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
 import { PrismaCustomerDirectoryRepository } from './persistence/prisma-customer-directory-repository.js';
+import { PrismaAvatarLookupRepository } from './persistence/prisma-avatar-lookup-repository.js';
+import { DirectoryAvatarResolver, type AvatarResolver } from '../application/use-cases/resolve-avatars.js';
 import { PrismaCustomerPreparerAssignmentRepository } from './persistence/prisma-customer-preparer-assignment-repository.js';
 import { PrismaPresenceAudienceRepository } from './persistence/prisma-presence-audience-repository.js';
 import { PrismaCustomerAssignmentProjectionRepository } from './persistence/prisma-customer-assignment-projection-repository.js';
@@ -43,6 +45,8 @@ import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage
 import { HttpCloudStorageDownloadClient } from './cloudstorage/http-cloudstorage-download-client.js';
 import { HttpCloudStorageUploadClient } from './cloudstorage/http-cloudstorage-upload-client.js';
 import { HttpCustomerReconciliationClient } from './customer/http-customer-reconciliation-client.js';
+import { HttpUserDirectoryReconciliationClient } from './auth/http-user-directory-reconciliation-client.js';
+import { HttpPortalAccountsReconciliationClient } from './auth/http-portal-accounts-reconciliation-client.js';
 import { HttpCustomerAssignmentsReconciliationClient } from './customer/http-customer-assignments-reconciliation-client.js';
 import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
 import { CachedTenantModulesReader } from './rate-limit/cached-tenant-modules-reader.js';
@@ -64,7 +68,10 @@ import type { InAppNotificationRepository } from '../application/ports/in-app-no
 import type { ProcessedEventStore } from '../application/ports/processed-event-store.js';
 import type { UserPermissionsProjectionRepository } from '../application/ports/user-permissions-projection-repository.js';
 import type { RolePermissionsProjectionRepository } from '../application/ports/role-permissions-projection-repository.js';
-import type { CustomerPortalAccountRepository } from '../application/ports/customer-portal-account-repository.js';
+import type {
+  CustomerPortalAccountReconcileWriter,
+  CustomerPortalAccountRepository,
+} from '../application/ports/customer-portal-account-repository.js';
 import type { UserDirectoryRepository } from '../application/ports/user-directory-repository.js';
 import type { CustomerDirectoryRepository } from '../application/ports/customer-directory-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../application/ports/customer-preparer-assignment-repository.js';
@@ -116,8 +123,12 @@ export interface AppContainer {
   readonly userPermissions: UserPermissionsProjectionRepository;
   readonly rolePermissions: RolePermissionsProjectionRepository;
   readonly customerPortalAccounts: CustomerPortalAccountRepository;
+  /** La misma instancia que customerPortalAccounts, vista como escritor de la reconciliacion. */
+  readonly customerPortalAccountsReconcile: CustomerPortalAccountReconcileWriter;
   readonly userDirectory: UserDirectoryRepository;
   readonly customerDirectory: CustomerDirectoryRepository;
+  /** F5 avatares: foto por lote al armar participantes/remitentes (staff → Auth, portal → ficha). */
+  readonly avatars: AvatarResolver;
   readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
   readonly presenceAudiences: PresenceAudienceRepository;
   readonly customerAssignments: CustomerAssignmentProjectionRepository;
@@ -137,6 +148,8 @@ export interface AppContainer {
   readonly cloudStorageDownload: CloudStorageDownloadClient;
   readonly cloudStorageUpload: CloudStorageUploadClient;
   readonly customerReconciliation: HttpCustomerReconciliationClient;
+  readonly userDirectoryReconciliation: HttpUserDirectoryReconciliationClient;
+  readonly portalAccountsReconciliation: HttpPortalAccountsReconciliationClient;
   readonly customerAssignmentsReconciliation: HttpCustomerAssignmentsReconciliationClient;
   readonly tenantHostResolver: TenantHostResolver;
   /** La misma instancia que tenantHostResolver: los consumers invalidan lo que el resolver cachea. */
@@ -162,6 +175,7 @@ export function buildContainer(): AppContainer {
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   const tenantHost = new HttpTenantHostResolver(serviceTokens);
   const notifications = new PrismaNotificationRepository(prisma);
+  const customerPortalAccounts = new PrismaCustomerPortalAccountRepository(prisma);
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
@@ -189,9 +203,11 @@ export function buildContainer(): AppContainer {
     processedEvents: new PrismaProcessedEventStore(prisma),
     userPermissions: new PrismaUserPermissionsProjectionRepository(prisma),
     rolePermissions: new PrismaRolePermissionsProjectionRepository(prisma),
-    customerPortalAccounts: new PrismaCustomerPortalAccountRepository(prisma),
+    customerPortalAccounts,
+    customerPortalAccountsReconcile: customerPortalAccounts,
     userDirectory: new PrismaUserDirectoryRepository(prisma),
     customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
+    avatars: new DirectoryAvatarResolver(new PrismaAvatarLookupRepository(prisma)),
     customerPreparerAssignments: new PrismaCustomerPreparerAssignmentRepository(prisma),
     presenceAudiences: new PrismaPresenceAudienceRepository(prisma),
     customerAssignments: new PrismaCustomerAssignmentProjectionRepository(prisma),
@@ -209,6 +225,8 @@ export function buildContainer(): AppContainer {
     cloudStorageDownload: new HttpCloudStorageDownloadClient(serviceTokens),
     cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
     customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
+    userDirectoryReconciliation: new HttpUserDirectoryReconciliationClient(serviceTokens),
+    portalAccountsReconciliation: new HttpPortalAccountsReconciliationClient(serviceTokens),
     customerAssignmentsReconciliation: new HttpCustomerAssignmentsReconciliationClient(serviceTokens),
     tenantHostResolver: tenantHost,
     tenantHostCache: tenantHost,

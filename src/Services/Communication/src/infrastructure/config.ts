@@ -160,6 +160,20 @@ const rawEnv = z
       .default('true')
       .transform((value) => value === 'true'),
     COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
+    // F5 avatares — reconciliacion de UserDirectoryEntry contra Auth (internal/users/directory/reconciliation,
+    // M2M con COMMUNICATION_AUTH_BASE_URL + la misma credencial de servicio). Defaults = no hace falta tocar compose.
+    COMMUNICATION_USER_RECONCILE_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_USER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
+    // Reconciliacion de CustomerPortalAccount (userId de portal ↔ customerId) contra Auth
+    // (internal/users/portal-accounts/reconciliation). Mismo M2M y base URL; defaults, sin tocar compose.
+    COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
 
     COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
@@ -426,6 +440,14 @@ export const config = {
   customerReconcile: {
     enabled: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_ENABLED,
     intervalHours: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS,
+  },
+  userReconcile: {
+    enabled: rawEnv.COMMUNICATION_USER_RECONCILE_ENABLED,
+    intervalHours: rawEnv.COMMUNICATION_USER_RECONCILE_INTERVAL_HOURS,
+  },
+  portalAccountReconcile: {
+    enabled: rawEnv.COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_ENABLED,
+    intervalHours: rawEnv.COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_INTERVAL_HOURS,
   },
   assignmentVisibility: {
     enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,

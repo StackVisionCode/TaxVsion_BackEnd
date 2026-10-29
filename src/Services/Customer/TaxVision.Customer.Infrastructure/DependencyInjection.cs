@@ -1,3 +1,4 @@
+using BuildingBlocks.Imaging;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -6,11 +7,14 @@ using BuildingBlocks.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.RateLimiting.Abstractions;
+using TaxVision.Customer.Infrastructure.Avatars;
+using TaxVision.Customer.Infrastructure.Employees;
 using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Permissions;
 using TaxVision.Customer.Infrastructure.Persistence;
@@ -44,6 +48,24 @@ public static class InfrastructureRegistration
 
         services.AddSingleton<ISensitiveDataProtector, AesGcmSensitiveDataProtector>();
 
+        // B-9/X-9 — gestión y rotación de clave fiscal: primitiva de re-cifrado, store, job de arranque que
+        // re-cifra los perfiles fiscales fuera de la versión actual, censo periódico, gauge y health check.
+        services.AddScoped<TaxVision.Customer.Application.Customers.FiscalProfiles.SensitiveDataReEncryptor>();
+        services.AddScoped<
+            TaxVision.Customer.Application.Customers.FiscalProfiles.ICustomerFiscalCiphertextStore,
+            CustomerFiscalReEncryptionStore
+        >();
+        services.AddSingleton<TaxVision.Customer.Infrastructure.Observability.CustomerFiscalMetrics>();
+        services.AddHostedService<CustomerFiscalReEncryptionJob>();
+        services.AddHostedService<CustomerFiscalKeyVersionJob>();
+        // El health check se expone en Program.cs (AddHealthChecks vive en el ensamblado Api); aquí solo
+        // se registra la instancia que ese check resuelve.
+        services.AddSingleton<CustomerFiscalKeyVersionsHealthCheck>();
+
+        // Comandos de formularios de cliente: payload cifrado con la clave compartida y lock de alta por email.
+        services.AddProtectedPayloadProtection(config);
+        services.AddScoped<ICustomerCreationLock, SqlCustomerCreationLock>();
+
         // ---- Imports (bulk) ----
         services.AddScoped<ICustomerImportRepository, CustomerImportRepository>();
         services.AddScoped<ICustomerImportReadService, CustomerImportReadService>();
@@ -56,6 +78,9 @@ public static class InfrastructureRegistration
         // Archivo de import en CloudStorage (reemplaza CustomerImportFiles/IImportFileStore) —
         // sube directo a MinIO con credenciales propias; descarga/borrado via HTTP+M2M.
         services.AddOptions<ServiceAuthClientOptions>().Bind(config.GetSection(ServiceAuthClientOptions.SectionName));
+        services
+            .AddOptions<EmployeeDirectoryReconciliationOptions>()
+            .Bind(config.GetSection(EmployeeDirectoryReconciliationOptions.SectionName));
         services.AddOptions<CloudStorageClientOptions>().Bind(config.GetSection(CloudStorageClientOptions.SectionName));
         services.AddOptions<CustomerMinioOptions>().Bind(config.GetSection(CustomerMinioOptions.SectionName));
 
@@ -83,6 +108,14 @@ public static class InfrastructureRegistration
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
             }
         );
+
+        // ---- Foto de perfil del cliente (F3) ----
+        // Normalizador con los límites por defecto (5 MB, 512 px WebP); misma cuenta MinIO que el import.
+        services.AddAvatarImageNormalizer();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<ICustomerAvatarStorage, MinioCustomerAvatarStorage>();
+        services.AddScoped<CustomerAvatarPendingSweeper>();
+        services.AddHostedService<CustomerAvatarPendingSweepJob>();
 
         // Cleanup diario (jobs > N dias). Runs como BackgroundService.
         // TODO: cuando exista RealTime Service, agregar SignalR push para notificar completado.
@@ -151,6 +184,19 @@ public static class InfrastructureRegistration
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
+
+        // Directorio de empleados: reconciliación periódica con el staff de Auth (usuarios anteriores a la
+        // proyección y eventos perdidos). Solo token de servicio de PlatformTenant.
+        services.AddScoped<ITenantEmployeeDirectoryReconciliationRepository, TenantEmployeeDirectoryRepository>();
+        services.AddHttpClient<IAuthStaffDirectoryClient, AuthStaffDirectoryClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<EmployeeDirectoryReconciliationJob>();
 
         // Acceso al portal de un cliente: Auth crea/reenvía la invitación y devuelve el desenlace.
         services.AddHttpClient<ICustomerPortalAccessClient, CustomerPortalAccessClient>(

@@ -115,8 +115,17 @@ public static class DependencyInjection
         // con la recuperación pull contra Auth, que se registra en Program.cs por ser un HttpClient.
         services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();
         services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
-        services.AddScoped<ICustomerContactPolicyRepository, CustomerContactPolicyRepository>();
+        services.AddScoped<CustomerContactPolicyRepository>();
+        services.AddScoped<ICustomerContactPolicyRepository>(sp =>
+            sp.GetRequiredService<CustomerContactPolicyRepository>()
+        );
+        services.AddScoped<ICustomerContactPolicySnapshotWriter>(sp =>
+            sp.GetRequiredService<CustomerContactPolicyRepository>()
+        );
+        services.AddScoped<IClientFormNotificationSettingsRepository, ClientFormNotificationSettingsRepository>();
         services.AddScoped<UserEmailResolver>();
+        services.AddScoped<IUserEmailResolver>(sp => sp.GetRequiredService<UserEmailResolver>());
+        services.AddScoped<IClientFormPushRetryScheduler, Messaging.ClientFormPushRetryScheduler>();
 
         // SMS: por defecto se usa el puente real al microservicio Sms (Infobip resuelve proveedor,
         // opt-out, idempotencia). `Notification:UseSmsBridge=false` cae al stub que solo loguea —
@@ -153,6 +162,7 @@ public static class DependencyInjection
         }
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
+        services.AddScoped<ClientFormNotificationSender>();
 
         // Postmaster es el ÚNICO transporte de salida. Hasta 2026-10-02 esto colgaba del flag
         // Notification:UsePostmasterDispatch, cuya rama `false` resolvía contra
@@ -167,6 +177,7 @@ public static class DependencyInjection
 
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.
         services.AddSecretProtection();
+        services.AddProtectedPayloadProtection(configuration);
 
         // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage). Se conserva
         // por su superficie HTTP de gestión de plantillas (GET/POST /notifications/email/templates),

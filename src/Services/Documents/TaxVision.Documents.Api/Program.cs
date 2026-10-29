@@ -132,7 +132,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConnection, DocumentsSchemas.Integration);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, DocumentsDbContext>();
@@ -141,6 +141,9 @@ builder.Host.UseWolverine(options =>
     options
         .ListenToRabbitQueue("documents-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();
+
+    // P-11 — comando punto a punto de Tasks: el Submission Summary de un formulario completado.
+    options.ListenToRabbitQueue("documents-client-form-summary").UseDurableInbox();
 
     // Eventos que Documents publica al bus compartido (guardrail #13: routing explícito por tipo).
     options.PublishMessage<DocumentGenerationStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");

@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Domain.Tasks;
@@ -11,11 +12,7 @@ namespace TaxVision.Tasks.Tests.Persistence;
 /// test pasaría con <c>IsRowVersion()</c> borrado del config. Construye el <c>DbContext</c> con
 /// <c>UseSqlServer</c> directo, sin levantar el host, para no arrastrar RabbitMQ ni Redis.
 ///
-/// <para>
-/// La excepción esperada es <see cref="DbUpdateConcurrencyException"/>, no <c>ConflictException</c>:
-/// el <c>DbContext</c> sólo traduce <c>SqlException</c> 2601/2627, y un choque de <c>rowversion</c>
-/// ni siquiera llega a SQL Server — EF ve 0 filas afectadas y lanza la suya.
-/// </para>
+/// <para>El contexto traduce el choque de <c>rowversion</c> a un conflicto estable para la API.</para>
 /// </summary>
 public sealed class TaskConcurrencyTests
 {
@@ -65,7 +62,8 @@ public sealed class TaskConcurrencyTests
         fromSecond.Complete(userId, nowUtc.AddSeconds(1));
         var loser = await Record.ExceptionAsync(() => second.SaveChangesAsync());
 
-        Assert.IsType<DbUpdateConcurrencyException>(loser);
+        var conflict = Assert.IsType<ConflictException>(loser);
+        Assert.Equal("Persistence.ConcurrencyConflict", conflict.Code);
 
         await using var verify = CreateContext();
         var persisted = await LoadAsync(verify, tenantId, task.Id);

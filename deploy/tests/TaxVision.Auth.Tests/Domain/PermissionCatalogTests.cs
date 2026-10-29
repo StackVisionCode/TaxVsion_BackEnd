@@ -702,10 +702,11 @@ public sealed class PermissionCatalogTests
             )
             .ToArray();
 
-        // Uno solo tiene al cliente como destinatario; el resto es trabajo interno de la firma.
+        // Solo las superficies explicitas del portal tienen al cliente como destinatario.
         var portal = Array.FindAll(seeded, permission => permission.IsCustomerPortal);
-        Assert.Single(portal);
-        Assert.Equal(TasksPermissions.PortalClientRequests, portal[0].Code);
+        Assert.Equal(2, portal.Length);
+        Assert.Contains(portal, permission => permission.Code == TasksPermissions.PortalClientRequests);
+        Assert.Contains(portal, permission => permission.Code == TasksPermissions.PortalForms);
 
         foreach (var permission in seeded)
         {
@@ -715,12 +716,12 @@ public sealed class PermissionCatalogTests
             Assert.DoesNotContain(UserActorType.CustomerPortal, permission.AllowedActorTypes);
         }
 
-        // Y el rol de portal no recibe por defecto ningun permiso de tareas que no sea el suyo.
-        foreach (var code in PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal))
-        {
-            if (code.StartsWith("tasks.", StringComparison.Ordinal))
-                Assert.Equal(TasksPermissions.PortalClientRequests, code);
-        }
+        var portalTaskDefaults = PermissionCatalog
+            .SystemRoleDefaults(Role.SystemCustomerPortal)
+            .Where(code => code.StartsWith("tasks.", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal([TasksPermissions.PortalClientRequests, TasksPermissions.PortalForms], portalTaskDefaults);
     }
 
     /// <summary>
@@ -799,5 +800,146 @@ public sealed class PermissionCatalogTests
         // PermissionModuleMap). Si el prefijo cambia por error, el gate pararía de aplicarles el techo.
         Assert.Equal("documents", PermissionModuleMap.ModuleFor(code));
         Assert.True(PermissionModuleMap.IsModuleGated(code));
+    }
+
+    [Fact]
+    public void Client_form_permissions_have_stable_unique_metadata()
+    {
+        string[] codes =
+        [
+            TasksPermissions.FormTemplatesRead,
+            TasksPermissions.FormTemplatesManage,
+            TasksPermissions.FormTemplatesPublish,
+            TasksPermissions.FormRequestsRead,
+            TasksPermissions.FormRequestsManage,
+            TasksPermissions.FormRequestsReview,
+            TasksPermissions.FormRequestsExport,
+            TasksPermissions.FormRequestsApplyProfile,
+            TasksPermissions.FormSubmissionsReveal,
+            TasksPermissions.FormsLibraryManage,
+            TasksPermissions.FormsPlatformManage,
+            TasksPermissions.PortalForms,
+            TasksPermissions.FormTemplatesConfigureActions,
+            TasksPermissions.FormRequestsSendExternal,
+            TasksPermissions.FormIntakeLinksManage,
+            TasksPermissions.FormConsentsManage,
+        ];
+
+        var definitions = PermissionCatalog.All.Where(definition => codes.Contains(definition.Code)).ToArray();
+
+        Assert.Equal(16, definitions.Length);
+        Assert.Equal(16, definitions.Select(definition => definition.Id).Distinct().Count());
+        Assert.All(
+            definitions,
+            definition =>
+            {
+                Assert.Equal("tasks", definition.Module);
+                Assert.Equal("planner", definition.GatedModule);
+                Assert.False(string.IsNullOrWhiteSpace(definition.Description));
+                Assert.EndsWith(".", definition.Description);
+                Assert.False(definition.IsDangerous);
+            }
+        );
+
+        string[] activeCodes =
+        [
+            TasksPermissions.FormTemplatesRead,
+            TasksPermissions.FormTemplatesManage,
+            TasksPermissions.FormTemplatesPublish,
+            TasksPermissions.FormRequestsManage,
+            TasksPermissions.FormsPlatformManage,
+            TasksPermissions.PortalForms,
+            TasksPermissions.FormRequestsRead,
+            TasksPermissions.FormRequestsReview,
+            TasksPermissions.FormSubmissionsReveal,
+            TasksPermissions.FormRequestsSendExternal,
+            TasksPermissions.FormIntakeLinksManage,
+            TasksPermissions.FormConsentsManage,
+            TasksPermissions.FormTemplatesConfigureActions,
+            TasksPermissions.FormRequestsExport,
+            TasksPermissions.FormRequestsApplyProfile,
+        ];
+        Assert.Equal(
+            activeCodes.Order(),
+            definitions.Where(item => !item.IsReserved).Select(item => item.Code).Order()
+        );
+        Assert.Equal(1, definitions.Count(item => item.IsReserved));
+    }
+
+    [Fact]
+    public void Client_form_employee_bundle_only_contains_enforced_operational_permissions()
+    {
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        string[] operational =
+        [
+            TasksPermissions.FormTemplatesRead,
+            TasksPermissions.FormTemplatesManage,
+            TasksPermissions.FormTemplatesPublish,
+            TasksPermissions.FormRequestsManage,
+        ];
+
+        Assert.All(operational, code => Assert.Contains(code, employee));
+        Assert.DoesNotContain(TasksPermissions.FormRequestsExport, employee);
+        Assert.DoesNotContain(TasksPermissions.FormRequestsApplyProfile, employee);
+        Assert.DoesNotContain(TasksPermissions.FormSubmissionsReveal, employee);
+        Assert.DoesNotContain(TasksPermissions.FormTemplatesConfigureActions, employee);
+        Assert.DoesNotContain(TasksPermissions.FormIntakeLinksManage, employee);
+        Assert.DoesNotContain(TasksPermissions.FormConsentsManage, employee);
+    }
+
+    [Fact]
+    public void Client_form_platform_permissions_never_reach_tenant_bundles()
+    {
+        string[] platformCodes = [TasksPermissions.FormsLibraryManage, TasksPermissions.FormsPlatformManage];
+        string[] tenantRoles = [Role.SystemTenantAdmin, Role.SystemEmployee, Role.SystemCustomerPortal];
+
+        foreach (var code in platformCodes)
+        {
+            var definition = PermissionCatalog.All.Single(item => item.Code == code);
+            Assert.True(definition.PlatformOnly);
+            Assert.False(definition.IsAssignableByTenant);
+            Assert.All(tenantRoles, role => Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(role)));
+            Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+        }
+    }
+
+    [Fact]
+    public void Client_form_portal_permission_only_reaches_customer_portal()
+    {
+        var portal = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        var tenantAdmin = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.Contains(TasksPermissions.PortalForms, portal);
+        Assert.DoesNotContain(TasksPermissions.PortalForms, employee);
+        Assert.DoesNotContain(TasksPermissions.PortalForms, tenantAdmin);
+    }
+
+    [Fact]
+    public void Tenant_admin_receives_active_staff_permissions_but_not_reserved_ones()
+    {
+        var tenantAdmin = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+        var staffDefinitions = PermissionCatalog.All.Where(definition =>
+            definition.Code.StartsWith("tasks.form_", StringComparison.Ordinal)
+            && !definition.PlatformOnly
+            && !definition.IsCustomerPortal
+        );
+
+        Assert.Equal(13, staffDefinitions.Count());
+        Assert.Equal(13, staffDefinitions.Count(definition => !definition.IsReserved));
+        Assert.Equal(0, staffDefinitions.Count(definition => definition.IsReserved));
+        // El preparador revisa y envía a externos; revelar, enlaces públicos y avisos son del admin.
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        Assert.Contains(TasksPermissions.FormRequestsRead, employee);
+        Assert.Contains(TasksPermissions.FormRequestsReview, employee);
+        Assert.Contains(TasksPermissions.FormRequestsSendExternal, employee);
+        Assert.DoesNotContain(TasksPermissions.FormSubmissionsReveal, employee);
+        Assert.DoesNotContain(TasksPermissions.FormIntakeLinksManage, employee);
+        Assert.DoesNotContain(TasksPermissions.FormConsentsManage, employee);
+        Assert.DoesNotContain(TasksPermissions.FormTemplatesConfigureActions, employee);
+        Assert.All(
+            staffDefinitions,
+            definition => Assert.Equal(!definition.IsReserved, tenantAdmin.Contains(definition.Code))
+        );
     }
 }

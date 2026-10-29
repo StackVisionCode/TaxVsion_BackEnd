@@ -82,8 +82,13 @@ public static class DependencyInjection
 
         services.AddScoped<IDocumentTemplateRenderer, TemplateDocumentRenderer>();
         services.AddSingleton<IHtmlToPdfConverter, PlaywrightHtmlToPdfConverter>();
+        services.AddSingleton<IPdfPageCounter, PdfSharpPageCounter>();
         services.AddSingleton<IQrCodeGenerator, QrCoderQrGenerator>();
         services.AddScoped<IDocumentStorageClient, DocumentStorageClient>();
+
+        // P-11 — Submission Summary: Documents descifra el ProtectedPayload del snapshot (clave de
+        // plataforma compartida; IRotatingSecretProtector soporta la clave anterior para rotar).
+        services.AddProtectedPayloadProtection(configuration);
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<DocumentsMetrics>();
 

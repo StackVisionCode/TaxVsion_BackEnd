@@ -139,6 +139,9 @@ model UserDirectoryEntry {
   // separada; ver docblock de CustomerDirectoryEntry para el contraste con
   // customers (proyeccion propia, source distinto).
   ActorType    String   @default("TenantEmployee") @db.NVarChar(32)
+  // Foto vigente del staff (Auth User.AvatarFileId; se sirve en /storage/avatars/{id}). Null = sin foto.
+  // Los portal users la leen de CustomerDirectoryEntry via CustomerPortalAccount.
+  AvatarFileId String?  @db.UniqueIdentifier
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
@@ -160,6 +163,8 @@ model CustomerDirectoryEntry {
   DisplayName  String   @db.NVarChar(200)
   Email        String   @db.NVarChar(320)
   IsActive     Boolean  @default(true)
+  // Foto vigente de la ficha del cliente (Customer.ProfilePictureFileId). Null = sin foto o archivado.
+  AvatarFileId String?  @db.UniqueIdentifier
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])

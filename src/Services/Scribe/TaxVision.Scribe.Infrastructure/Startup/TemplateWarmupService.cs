@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Application.Templates;
+using TaxVision.Scribe.Domain.Templates;
 
 namespace TaxVision.Scribe.Infrastructure.Startup;
 
@@ -44,7 +45,10 @@ public sealed class TemplateWarmupService(
 
         foreach (var (template, version) in published)
         {
-            var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId, cancellationToken);
+            if (template.Channel == TemplateChannel.Push)
+                continue;
+
+            var layoutResult = await layoutRepository.GetByIdAsync(version.LayoutId!.Value, cancellationToken);
             if (layoutResult.IsFailure)
             {
                 logger.LogWarning(

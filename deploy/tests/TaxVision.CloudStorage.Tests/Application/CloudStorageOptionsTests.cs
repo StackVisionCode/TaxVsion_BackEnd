@@ -13,11 +13,12 @@ public sealed class CloudStorageOptionsTests
     {
         var options = Options();
 
-        // .pdf esta en el default global del plan, pero Avatars solo acepta imagenes.
-        var policy = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Avatars);
+        // .pdf esta en el default global del plan, pero Imports solo acepta csv/xlsx/zip. (Antes usaba
+        // Avatars; Avatars ya no se intersecta con el plan — ver los tests de Avatars abajo.)
+        var policy = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Imports);
 
         Assert.DoesNotContain(".pdf", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(".jpg", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(".csv", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -39,14 +40,67 @@ public sealed class CloudStorageOptionsTests
         options.PlanPolicies["starter"] = new StoragePlanPolicy
         {
             MaxFileSizeBytes = 10L * 1024 * 1024,
-            AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"],
-            AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"],
+            AllowedExtensions = [".pdf", ".jpg", ".png"],
+            AllowedContentTypes = ["application/pdf", "image/jpeg", "image/png"],
         };
 
-        // Avatars por si solo permite 5 MB — mas chico que el plan starter (10 MB).
+        // Tasks por si solo permite 25 MB — mas grande que el plan starter (10 MB): gana el plan.
+        // (Antes usaba Avatars, que ya no se intersecta con el plan.)
+        var policy = options.ResolveUploadPolicy("starter", FolderType.Tasks);
+
+        Assert.Equal(10L * 1024 * 1024, policy.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_Avatars_bypasses_the_plan_by_design_so_webp_passes_on_a_plan_without_it()
+    {
+        // Cambio de comportamiento intencional (fotos de perfil F0): Avatars solo lo suben Auth/Customer
+        // con la imagen normalizada a WebP. Con la interseccion, el plan starter (sin webp) rechazaba toda foto.
+        var options = Options();
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"],
+            AllowedContentTypes = ["application/pdf", "image/jpeg", "image/png"],
+        };
+
         var policy = options.ResolveUploadPolicy("starter", FolderType.Avatars);
 
+        Assert.Contains(".webp", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("image/webp", policy.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_Avatars_keeps_the_folder_policy_5MB_and_image_only_whitelist()
+    {
+        // El bypass no abre nada: un plan mas permisivo (50 MB, pdf/svg/gif) no amplia la carpeta Avatars.
+        var options = Options();
+        options.PlanPolicies["enterprise"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 50L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".svg", ".gif", ".jpg", ".png", ".webp"],
+            AllowedContentTypes =
+            [
+                "application/pdf",
+                "image/svg+xml",
+                "image/gif",
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+            ],
+        };
+
+        var policy = options.ResolveUploadPolicy("enterprise", FolderType.Avatars);
+
         Assert.Equal(5L * 1024 * 1024, policy.MaxFileSizeBytes);
+        Assert.Equal(
+            [".jpeg", ".jpg", ".png", ".webp"],
+            policy.AllowedExtensions.Order(StringComparer.OrdinalIgnoreCase).ToArray()
+        );
+        Assert.Equal(
+            ["image/jpeg", "image/png", "image/webp"],
+            policy.AllowedContentTypes.Order(StringComparer.OrdinalIgnoreCase).ToArray()
+        );
     }
 
     [Fact]
@@ -193,6 +247,33 @@ public sealed class CloudStorageOptionsTests
         );
         Assert.Equal("Voice Notes", spec.Name);
         Assert.Equal("sys.voicenotes", spec.Category);
+    }
+
+    [Fact]
+    public void ClientForms_uses_its_restricted_policy_and_plan_limit()
+    {
+        var options = Options();
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".docx", ".zip"],
+            AllowedContentTypes =
+            [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/zip",
+            ],
+        };
+
+        var policy = options.ResolveUploadPolicy("starter", FolderType.ClientForms);
+
+        Assert.Equal(10L * 1024 * 1024, policy.MaxFileSizeBytes);
+        Assert.Contains(".pdf", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(".docx", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".zip", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".exe", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.False(FolderType.ClientForms.RequiresYear());
+        Assert.Equal("client-forms", FolderType.ClientForms.ToSegment());
     }
 
     [Fact]

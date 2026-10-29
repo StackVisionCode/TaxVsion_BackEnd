@@ -99,6 +99,37 @@ describe('bindCloudStorageConsumers — cloudstorage.file.available.v1', () => {
       status: 'Available',
     });
   });
+
+  // Al reemplazar un avatar se borra el anterior y llega file.deleted de un archivo no-adjunto.
+  it('does not call markStatus nor emit when a non-attachment file is deleted', async () => {
+    const { handlers, attachmentTracking, emitter } = setup();
+    vi.mocked(attachmentTracking.findByFileId).mockResolvedValue(null);
+
+    await handlers.get('cloudstorage.file.deleted.v1')?.(envelope('old-avatar-file-id'));
+
+    expect(attachmentTracking.findByFileId).toHaveBeenCalledWith('old-avatar-file-id');
+    expect(attachmentTracking.markStatus).not.toHaveBeenCalled();
+    expect(emitter.emitToConversation).not.toHaveBeenCalled();
+  });
+
+  it('flags a tracked chat attachment as Deleted and notifies the conversation', async () => {
+    const { handlers, attachmentTracking, emitter } = setup();
+    const snapshot: AttachmentTrackingSnapshot = {
+      fileId: 'attachment-file-id',
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      tenantId: 'tenant-1',
+      status: 'Available',
+      updatedAtUtc: new Date(),
+    };
+    vi.mocked(attachmentTracking.findByFileId).mockResolvedValue(snapshot);
+    vi.mocked(attachmentTracking.markStatus).mockResolvedValue({ ...snapshot, status: 'Deleted' });
+
+    await handlers.get('cloudstorage.file.deleted.v1')?.(envelope('attachment-file-id'));
+
+    expect(attachmentTracking.markStatus).toHaveBeenCalledWith({ fileId: 'attachment-file-id', status: 'Deleted' });
+    expect(emitter.emitToConversation).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('bindCloudStorageConsumers — notificacion al uploader', () => {

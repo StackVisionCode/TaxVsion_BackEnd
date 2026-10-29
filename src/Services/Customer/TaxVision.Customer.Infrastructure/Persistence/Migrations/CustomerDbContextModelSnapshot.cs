@@ -7651,6 +7651,12 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OccupationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("PendingProfilePictureFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PendingProfilePictureRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("ProfilePictureFileId")
                         .HasColumnType("uniqueidentifier");
 
@@ -7665,13 +7671,31 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("_originSourceReferenceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("OriginSourceReferenceId");
+
+                    b.Property<string>("_originSourceService")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("OriginSourceService");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("PendingProfilePictureRequestedAtUtc")
+                        .HasDatabaseName("IX_Customers_PendingProfilePictureRequestedAtUtc")
+                        .HasFilter("[PendingProfilePictureRequestedAtUtc] IS NOT NULL");
 
                     b.HasIndex("TenantId", "AssignedPreparerUserId");
 
                     b.HasIndex("TenantId", "OccupationId");
 
                     b.HasIndex("TenantId", "Status", "DisplayName");
+
+                    b.HasIndex("TenantId", "_originSourceService", "_originSourceReferenceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Customers_Tenant_Origin")
+                        .HasFilter("[OriginSourceReferenceId] IS NOT NULL");
 
                     b.ToTable("Customers", (string)null);
                 });
@@ -7746,6 +7770,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("TaxIdentifierCipher")
                         .IsRequired()
                         .HasColumnType("varbinary(512)");
+
+                    b.Property<short>("TaxIdentifierKeyVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
 
                     b.Property<string>("TaxIdentifierLast4")
                         .IsRequired()
@@ -8088,6 +8117,11 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<byte[]>("TaxIdentifierCipher")
                         .IsRequired()
                         .HasColumnType("varbinary(512)");
+
+                    b.Property<short>("TaxIdentifierKeyVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
 
                     b.Property<string>("TaxIdentifierLast4")
                         .IsRequired()

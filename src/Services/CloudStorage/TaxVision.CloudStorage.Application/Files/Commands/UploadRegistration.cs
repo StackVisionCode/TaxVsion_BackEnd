@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
@@ -32,12 +33,18 @@ internal static class UploadRegistration
         string correlationId,
         IStorageLimitRepository limits,
         IObjectKeyBuilder keyBuilder,
+        ISystemFolderProvisioner systemFolders,
         CloudStorageOptions config,
         ISystemClock clock,
         IMessageBus bus,
         CancellationToken ct
     )
     {
+        // Avatars no admite subida directa del navegador: la identidad la toma Auth/Customer del token
+        // y normaliza la imagen antes de guardarla (SaveFileRequested). Cierra "staff sube el User de otro".
+        if (IsReservedForServices(folderType) && !scope.IsService)
+            return Result.Failure<FileObject>(FileErrors.FolderReserved);
+
         if (!scope.CanCreate(ownerType, ownerId))
             return Result.Failure<FileObject>(FileErrors.Forbidden);
 
@@ -109,8 +116,28 @@ internal static class UploadRegistration
             clock.UtcNow.AddHours(Math.Clamp(config.UploadReservationHours, 1, 168))
         );
         if (registered.IsFailure)
+        {
             limit.Release(sizeBytes);
+            return registered;
+        }
+
+        if (folderType == FolderType.ClientForms && ownerType is OwnerType.Customer or OwnerType.FormParticipant)
+        {
+            var folderId = await systemFolders.ResolveFolderIdAsync(
+                tenantId,
+                ownerType,
+                ownerId,
+                folderType,
+                actorId,
+                clock.UtcNow,
+                ct
+            );
+            registered.Value.MoveToFolder(folderId, clock.UtcNow);
+        }
 
         return registered;
     }
+
+    /// <summary>Carpetas que solo aceptan archivos guardados por un servicio, nunca por un usuario.</summary>
+    public static bool IsReservedForServices(FolderType folderType) => folderType is FolderType.Avatars;
 }

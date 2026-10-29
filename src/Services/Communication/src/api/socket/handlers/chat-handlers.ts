@@ -32,6 +32,7 @@ import { removeMessageReaction } from '../../../application/use-cases/remove-mes
 import { pinMessage } from '../../../application/use-cases/pin-message.js';
 import { unpinMessage } from '../../../application/use-cases/unpin-message.js';
 import { forwardMessage } from '../../../application/use-cases/forward-message.js';
+import { resolveAvatars } from '../../../application/use-cases/resolve-avatars.js';
 import {
   ChatSocketEvents,
   AddGroupParticipantPayloadSchema,
@@ -415,11 +416,13 @@ async function wireSocket(
       return;
     }
     ack?.({ ok: true, value: result.value });
+    const avatars = await resolveAvatars(container.avatars, [result.value.newParticipantUserId]);
     const addedDto: ConversationParticipantAddedDto = {
       conversationId: result.value.conversationId,
       addedByUserId: userId,
       newParticipantUserId: result.value.newParticipantUserId,
       newParticipantDisplayName: newMemberDisplayName,
+      ...(avatars ? { newParticipantAvatarFileId: avatars.of(result.value.newParticipantUserId) } : {}),
       addedAtUtc: new Date().toISOString(),
     };
     emitter.emitToConversation({

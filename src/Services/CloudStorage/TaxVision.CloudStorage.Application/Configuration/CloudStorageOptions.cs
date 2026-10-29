@@ -174,6 +174,7 @@ public sealed class CloudStorageOptions
             [FolderType.Branding] = BrandingPolicy(),
             [FolderType.VoiceNotes] = VoiceNotesPolicy(),
             [FolderType.SaaSReceipts] = SaaSReceiptsPolicy(),
+            [FolderType.ClientForms] = ClientFormsPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -226,7 +227,9 @@ public sealed class CloudStorageOptions
         // El recibo de la suscripción lo genera Documents, nunca lo sube un usuario: mismo criterio
         // que Branding y VoiceNotes — el set de tipos lo fija la folder policy, sin intersectar con el
         // plan, porque el tier del tenant no tiene por qué decidir si puede recibir su propio recibo.
-        if (folderType is FolderType.Branding or FolderType.VoiceNotes or FolderType.SaaSReceipts)
+        // Avatars: solo lo suben Auth/Customer (subida directa bloqueada) con la imagen ya normalizada a
+        // WebP; el plan starter no lista webp y la intersección rechazaría toda foto de perfil.
+        if (folderType is FolderType.Branding or FolderType.VoiceNotes or FolderType.SaaSReceipts or FolderType.Avatars)
         {
             return new EffectiveUploadPolicy(
                 folderPolicy.MaxSizeBytes,
@@ -429,6 +432,23 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 5L * 1024 * 1024,
             AllowedExtensions = [".pdf"],
             AllowedContentTypes = ["application/pdf"],
+        };
+
+    private static StorageFolderTypePolicy ClientFormsPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 25L * 1024 * 1024,
+            AllowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".csv", ".txt"],
+            AllowedContentTypes =
+            [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "text/csv",
+                "text/plain",
+            ],
         };
 
     private static StorageFolderTypePolicy BackupsPolicy() =>

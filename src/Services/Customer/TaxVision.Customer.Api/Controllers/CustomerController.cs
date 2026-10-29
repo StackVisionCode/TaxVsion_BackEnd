@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Avatars;
 using TaxVision.Customer.Application.Customers.Catalogs;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
 using TaxVision.Customer.Application.Customers.Commands.AddAddress;
@@ -96,6 +97,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     }
 
     // ---------- GET /customers ----------
+    // Listado/filtros. `term` se acepta solo por compatibilidad (pestañas con un bundle viejo): el
+    // CRM busca por POST /customers/search para que el término no quede en los logs de URL.
     [HttpGet]
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
@@ -115,9 +118,10 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(tenantId, term, status, page, size, userId, canViewAll, kind, sort, dir),
+        var result = await RunSearchAsync(
+            tenantId,
+            userId,
+            new SearchCustomersRequest(term, status, page, size, kind, sort, dir),
             ct
         );
 
@@ -131,6 +135,53 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             return StatusCode(StatusCodes.Status304NotModified);
 
         return Ok(result);
+    }
+
+    // ---------- POST /customers/search ----------
+    // Misma búsqueda que GET /customers con el término en el cuerpo. Sin ETag (un POST no se
+    // revalida) y `no-store`: el resultado lleva PII y no debe quedar en caches intermedios.
+    [HttpPost("search")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.h.search")]
+    [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResult<CustomerSummaryResponse>>> SearchByBody(
+        [FromBody] SearchCustomersRequest body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await RunSearchAsync(tenantId, userId, body, ct);
+        Response.Headers.CacheControl = "no-store";
+        return Ok(result);
+    }
+
+    private async Task<PagedResult<CustomerSummaryResponse>> RunSearchAsync(
+        Guid tenantId,
+        Guid userId,
+        SearchCustomersRequest search,
+        CancellationToken ct
+    )
+    {
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        return await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
+            new SearchCustomersQuery(
+                tenantId,
+                search.Term,
+                search.Status,
+                search.Page,
+                search.Size,
+                userId,
+                canViewAll,
+                search.Kind,
+                search.Sort,
+                search.Dir
+            ),
+            ct
+        );
     }
 
     /// <summary>Weak ETag estable del contenido de una respuesta (SHA-256 del JSON canónico).</summary>
@@ -278,7 +329,6 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
             userId,
             body.Language,
             body.OccupationId,
-            body.ProfilePictureFileId,
             body.PrimaryEmail,
             body.PrimaryPhone,
             body.FirstName,
@@ -301,6 +351,74 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
 
         if (result.IsSuccess)
             return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ============== Foto de perfil ==============
+
+    // El preparador pone o cambia la foto del cliente (decisión del dueño). 202 "processing": se ve
+    // cuando el antivirus la aprueba. Misma visibilidad por asignación que el resto de escrituras.
+    [HttpPut("{id:guid}/avatar")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(AvatarUpload.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = AvatarUpload.MaxRequestBytes)]
+    [ProducesResponseType<UploadCustomerAvatarResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status413PayloadTooLarge)]
+    public async Task<IActionResult> UploadAvatar(Guid id, IFormFile? file, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var content = await AvatarUpload.ReadAsync(file, ct);
+        if (content.IsFailure)
+            return StatusCode(content.Error.ToHttpStatusCode(), content.Error);
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<UploadCustomerAvatarResponse>>(
+            new UploadCustomerAvatarCommand(
+                tenantId,
+                id,
+                userId,
+                CustomerAvatarCaller.Staff,
+                canViewAll,
+                content.Value
+            ),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return Accepted(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpDelete("{id:guid}/avatar")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveAvatar(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RemoveCustomerAvatarCommand(tenantId, id, userId, CustomerAvatarCaller.Staff, canViewAll),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return NoContent();
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);

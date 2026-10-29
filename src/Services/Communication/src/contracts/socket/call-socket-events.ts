@@ -100,6 +100,8 @@ export interface IncomingCallDto {
   callId: string;
   callerUserId: string;
   callerDisplayName: string;
+  /** F5 avatares — foto de quien llama; ausente si no se pudo resolver, null = sin foto. */
+  callerAvatarFileId?: string | null;
   calleeUserId: string;
   kind: 'Audio' | 'Video';
   conversationId: string | null;
@@ -118,6 +120,8 @@ export interface CallPeerDto {
   callId: string;
   peerUserId: string;
   displayName: string;
+  /** F5 avatares — foto del peer; ausente si no se pudo resolver, null = sin foto. */
+  avatarFileId?: string | null;
   role: 'Caller' | 'Callee';
   joinOrder: number;
   isPolite: boolean;

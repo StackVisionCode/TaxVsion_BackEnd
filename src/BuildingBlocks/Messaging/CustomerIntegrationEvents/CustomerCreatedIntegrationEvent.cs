@@ -17,5 +17,8 @@ public sealed record CustomerCreatedIntegrationEvent : IntegrationEvent
     public bool EmailEnabled { get; init; } = true;
     public bool SmsEnabled { get; init; } = true;
     public Guid? OccupationId { get; init; }
+
+    /// <summary>Foto de perfil vigente (null = sin foto). Aditivo; un alta normalmente nace sin foto.</summary>
+    public Guid? AvatarFileId { get; init; }
     public required Guid CreatedByUserId { get; init; }
 }

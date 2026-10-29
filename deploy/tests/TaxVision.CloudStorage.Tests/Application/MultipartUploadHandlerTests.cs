@@ -4,6 +4,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files;
 using TaxVision.CloudStorage.Application.Files.Commands;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Infrastructure.Storage;
@@ -48,6 +49,7 @@ public sealed class MultipartUploadHandlerTests
             limits,
             audit,
             new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             multipart,
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -79,6 +81,53 @@ public sealed class MultipartUploadHandlerTests
     }
 
     [Fact]
+    public async Task Avatars_multipart_from_a_user_is_rejected_as_a_folder_reserved_for_services()
+    {
+        var tenantId = Guid.NewGuid();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(
+            TenantStorageLimit.Create(tenantId, "starter", maxBytes: 100_000_000, maxFileSizeBytes: 100_000_000)
+        );
+        var files = new FakeFileObjectRepository();
+        var multipart = new FakeMultipartUploadStorage();
+
+        var result = await InitiateMultipartUploadHandler.Handle(
+            new InitiateMultipartUploadCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                new InitiateMultipartUploadRequest(
+                    "me.webp",
+                    "image/webp",
+                    1024,
+                    OwnerType.User,
+                    Guid.NewGuid(),
+                    FolderType.Avatars,
+                    null
+                ),
+                Audit()
+            ),
+            files,
+            new FakeFolderRepository(),
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
+            multipart,
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FileErrors.FolderReserved, result.Error);
+        Assert.Empty(multipart.Initiated);
+        Assert.Empty(files.All());
+    }
+
+    [Fact]
     public async Task Missing_quota_provisioning_fails_without_calling_storage()
     {
         var multipart = new FakeMultipartUploadStorage();
@@ -96,6 +145,7 @@ public sealed class MultipartUploadHandlerTests
             new FakeStorageLimitRepository(), // sin seed
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             multipart,
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -140,6 +190,7 @@ public sealed class MultipartUploadHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             multipart,
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -175,6 +226,7 @@ public sealed class MultipartUploadHandlerTests
             limits,
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             multipart,
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -187,6 +239,110 @@ public sealed class MultipartUploadHandlerTests
         Assert.Equal(QuotaErrors.Exceeded, result.Error);
         Assert.Single(bus.Published.OfType<StorageLimitExceededIntegrationEvent>());
         Assert.Empty(multipart.Initiated);
+    }
+
+    [Theory]
+    [InlineData(OwnerType.Customer)]
+    [InlineData(OwnerType.FormParticipant)]
+    public async Task ClientForms_upload_is_archived_in_the_owner_system_folder(OwnerType ownerType)
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var folders = new FakeFolderRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", 100_000_000, 100_000_000));
+
+        var result = await InitiateMultipartUploadHandler.Handle(
+            new InitiateMultipartUploadCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                new InitiateMultipartUploadRequest(
+                    "intake.pdf",
+                    "application/pdf",
+                    1024,
+                    ownerType,
+                    customerId,
+                    FolderType.ClientForms,
+                    null
+                ),
+                Audit()
+            ),
+            files,
+            folders,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(folders),
+            new FakeMultipartUploadStorage(),
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        var file = await files.GetAsync(tenantId, result.Value.FileId, CancellationToken.None);
+        var folder = await folders.GetByOwnerAndCategoryAsync(
+            tenantId,
+            ownerType,
+            customerId,
+            "sys.clientforms",
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(file);
+        Assert.NotNull(folder);
+        Assert.Equal(folder!.Id, file!.FolderId);
+    }
+
+    [Fact]
+    public async Task Documents_upload_keeps_the_existing_root_behavior()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var folders = new FakeFolderRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", 100_000_000, 100_000_000));
+
+        var result = await InitiateMultipartUploadHandler.Handle(
+            new InitiateMultipartUploadCommand(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                new InitiateMultipartUploadRequest(
+                    "document.pdf",
+                    "application/pdf",
+                    1024,
+                    OwnerType.Customer,
+                    customerId,
+                    FolderType.Documents,
+                    2026
+                ),
+                Audit()
+            ),
+            files,
+            folders,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new SystemFolderProvisioner(folders),
+            new FakeMultipartUploadStorage(),
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            CancellationToken.None
+        );
+
+        var file = await files.GetAsync(tenantId, result.Value.FileId, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(file);
+        Assert.Null(file!.FolderId);
     }
 
     private static FileObject PendingUploadFile(Guid tenantId, long sizeBytes, Guid? customerId = null)

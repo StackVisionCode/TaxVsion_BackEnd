@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
@@ -210,7 +211,7 @@ builder.Host.UseWolverine(options =>
         builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-    options.UseRabbitMq(rabbitUri).AutoProvision();
+    options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, NotificationDbContext>();
@@ -239,6 +240,11 @@ builder.Host.UseWolverine(options =>
     // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
     options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<InAppNotificationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    options.ListenToRabbitQueue("notification-client-form-commands").UseDurableInbox();
+
+    // Reintento programado del push de Client Forms: cola local durable, sobrevive a un reinicio (P-21.3.1).
+    options.LocalQueueFor<TaxVision.Notification.Application.Common.RetryClientFormPushRequested>().UseDurableInbox();
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options

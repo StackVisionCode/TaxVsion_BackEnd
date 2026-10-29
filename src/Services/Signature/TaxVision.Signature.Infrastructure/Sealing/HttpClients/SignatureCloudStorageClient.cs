@@ -202,7 +202,9 @@ internal sealed class SignatureCloudStorageClient(
                         payload.ChecksumSha256,
                         payload.DetectedContentType ?? payload.DeclaredContentType,
                         payload.SizeBytes,
-                        null
+                        null,
+                        payload.OwnerType,
+                        payload.FolderType
                     )
                 );
         }
@@ -283,6 +285,9 @@ internal sealed class SignatureCloudStorageClient(
         string? ChecksumSha256,
         string? DeclaredContentType,
         string? DetectedContentType,
-        long SizeBytes
+        long SizeBytes,
+        // P-18: owner/carpeta (enums serializados como string por el API de CloudStorage).
+        string? OwnerType = null,
+        string? FolderType = null
     );
 }

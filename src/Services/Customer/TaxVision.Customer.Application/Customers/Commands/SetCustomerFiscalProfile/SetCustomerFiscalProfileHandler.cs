@@ -3,7 +3,6 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.FiscalProfiles;
-using TaxVision.Customer.Domain.FiscalProfiles;
 using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Application.Customers.Commands.SetCustomerFiscalProfile;
@@ -25,8 +24,7 @@ public static class SetCustomerFiscalProfileHandler
 
         // Editar sin re-enviar el identificador: cuando el tax id viene vacío y YA existe un perfil,
         // se actualizan solo los campos no-sensibles (filing/AGI/returning) y el banco si se envió —
-        // el cifrado/blind-index/last4 quedan intactos. Así el CRM puede cambiar el filing status sin
-        // obligar a re-teclear el SSN. Crear un perfil SÍ exige identificador.
+        // el cifrado/blind-index/last4 quedan intactos. Crear un perfil SÍ exige identificador.
         if (string.IsNullOrWhiteSpace(cmd.TaxIdentifier))
         {
             if (customer.FiscalProfile is null)
@@ -59,16 +57,21 @@ public static class SetCustomerFiscalProfileHandler
             return Result.Success(MapResponse(customer, cmd.CustomerId));
         }
 
-        var taxIdValidation = ValidateAndNormalizeTaxIdentifier(cmd.TaxIdentifier, cmd.SubjectKind);
+        var taxIdValidation = FiscalTaxIdentifierService.ValidateAndNormalize(cmd.TaxIdentifier, cmd.SubjectKind);
         if (taxIdValidation.IsFailure)
             return Result.Failure<CustomerFiscalProfileResponse>(taxIdValidation.Error);
 
-        var encryption = EncryptSensitiveFields(taxIdValidation.Value, cmd, protector);
+        var encrypted = FiscalTaxIdentifierService.Encrypt(taxIdValidation.Value, cmd.TenantId, protector);
+        var (bankAccountCipher, bankRoutingCipher) = EncryptBankingIfPresent(
+            cmd.RefundBankAccount,
+            cmd.RefundBankRouting,
+            protector
+        );
 
-        var uniquenessCheck = await EnsureNoBlindIndexConflictAsync(
+        var uniquenessCheck = await FiscalTaxIdentifierService.EnsureUniqueAsync(
             repository,
             cmd.TenantId,
-            encryption.TaxIdBlindIndex,
+            encrypted.BlindIndexCandidates,
             cmd.CustomerId,
             ct
         );
@@ -77,15 +80,16 @@ public static class SetCustomerFiscalProfileHandler
 
         var setResult = customer.SetFiscalProfile(
             subjectKind: cmd.SubjectKind,
-            taxIdentifierCipher: encryption.TaxIdCipher,
-            taxIdentifierBlindIndex: encryption.TaxIdBlindIndex,
-            taxIdentifierLast4: encryption.TaxIdLast4,
+            taxIdentifierCipher: encrypted.Cipher,
+            taxIdentifierBlindIndex: encrypted.BlindIndex,
+            taxIdentifierLast4: encrypted.Last4,
             filingStatus: cmd.FilingStatus,
             priorYearAgi: cmd.PriorYearAgi,
             isReturningCustomer: cmd.IsReturningCustomer,
-            refundBankAccountCipher: encryption.BankAccountCipher,
-            refundBankRoutingCipher: encryption.BankRoutingCipher,
-            byUserId: cmd.ModifiedByUserId
+            refundBankAccountCipher: bankAccountCipher,
+            refundBankRoutingCipher: bankRoutingCipher,
+            byUserId: cmd.ModifiedByUserId,
+            taxIdentifierKeyVersion: encrypted.KeyVersion
         );
 
         if (setResult.IsFailure)
@@ -97,8 +101,6 @@ public static class SetCustomerFiscalProfileHandler
         return Result.Success(MapResponse(customer, cmd.CustomerId));
     }
 
-    // ============== Fase 1: cargar customer con validacion de tenant ==============
-
     private static async Task<CustomerEntity?> LoadCustomerScopedAsync(
         SetCustomerFiscalProfileCommand cmd,
         ICustomerRepository repository,
@@ -107,66 +109,6 @@ public static class SetCustomerFiscalProfileHandler
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
         return customer is null || customer.TenantId != cmd.TenantId ? null : customer;
-    }
-
-    // ============== Fase 2: validar y normalizar el tax identifier ==============
-
-    private static Result<string> ValidateAndNormalizeTaxIdentifier(string raw, FiscalSubjectKind kind)
-    {
-        var normalized = NormalizeTaxIdentifier(raw);
-        if (!IsValidTaxIdentifier(normalized, kind))
-            return Result.Failure<string>(
-                new Error("FiscalProfile.TaxId", "Tax identifier format is invalid for the subject kind.")
-            );
-        return Result.Success(normalized);
-    }
-
-    private static string NormalizeTaxIdentifier(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return string.Empty;
-        return new string(raw.Where(char.IsDigit).ToArray());
-    }
-
-    private static bool IsValidTaxIdentifier(string normalized, FiscalSubjectKind kind) =>
-        kind switch
-        {
-            // SSN/ITIN: 9 digitos, no empieza con 000 ni 666
-            FiscalSubjectKind.Individual => normalized.Length == 9
-                && !normalized.StartsWith("000")
-                && !normalized.StartsWith("666"),
-            // EIN: 9 digitos
-            FiscalSubjectKind.Business => normalized.Length == 9,
-            _ => false,
-        };
-
-    // ============== Fase 3: cifrar SSN/EIN + banking (opcional) ==============
-
-    private sealed record EncryptedFields(
-        byte[] TaxIdCipher,
-        string TaxIdBlindIndex,
-        string TaxIdLast4,
-        byte[]? BankAccountCipher,
-        byte[]? BankRoutingCipher
-    );
-
-    private static EncryptedFields EncryptSensitiveFields(
-        string normalizedTaxId,
-        SetCustomerFiscalProfileCommand cmd,
-        ISensitiveDataProtector protector
-    )
-    {
-        var cipher = protector.Protect(normalizedTaxId);
-        var blindIndex = protector.ComputeBlindIndex(normalizedTaxId, cmd.TenantId);
-        var last4 = normalizedTaxId[^4..];
-
-        var (bankAccountCipher, bankRoutingCipher) = EncryptBankingIfPresent(
-            cmd.RefundBankAccount,
-            cmd.RefundBankRouting,
-            protector
-        );
-
-        return new EncryptedFields(cipher, blindIndex, last4, bankAccountCipher, bankRoutingCipher);
     }
 
     private static (byte[]? account, byte[]? routing) EncryptBankingIfPresent(
@@ -181,36 +123,6 @@ public static class SetCustomerFiscalProfileHandler
         return (protector.Protect(account.Trim()), protector.Protect(routing.Trim()));
     }
 
-    // ============== Fase 4: verificar unicidad del blind index en el tenant ==============
-
-    private static async Task<Result> EnsureNoBlindIndexConflictAsync(
-        ICustomerRepository repository,
-        Guid tenantId,
-        string blindIndex,
-        Guid currentCustomerId,
-        CancellationToken ct
-    )
-    {
-        var conflictingCustomerId = await repository.FindCustomerIdByFiscalBlindIndexAsync(
-            tenantId,
-            blindIndex,
-            excludeCustomerId: currentCustomerId,
-            ct
-        );
-
-        if (conflictingCustomerId is not null)
-            return Result.Failure(
-                new Error(
-                    "FiscalProfile.TaxIdentifierAlreadyExists",
-                    "Another customer in this tenant already has this tax identifier."
-                )
-            );
-
-        return Result.Success();
-    }
-
-    // ============== Fase 5: audit log (sin PII) ==============
-
     private static void LogAudit(ILogger logger, SetCustomerFiscalProfileCommand cmd) =>
         logger.LogInformation(
             "Fiscal profile updated for customer {CustomerId} in tenant {TenantId} by user {UserId}",
@@ -218,8 +130,6 @@ public static class SetCustomerFiscalProfileHandler
             cmd.TenantId,
             cmd.ModifiedByUserId
         );
-
-    // ============== Mapeo aggregate -> response ==============
 
     private static CustomerFiscalProfileResponse MapResponse(CustomerEntity customer, Guid customerId)
     {
