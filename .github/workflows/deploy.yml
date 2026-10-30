@@ -416,6 +416,14 @@ jobs:
           COMMUNICATION_TURN_TTL_SECONDS=${{ secrets.COMMUNICATION_TURN_TTL_SECONDS }}
           COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
+          # SFU (F1/D-05): un puerto fijo por worker (UDP y TCP, mismo numero) via WebRtcServer.
+          # El compose publica PORT_BASE..PORT_END y el router los reenvia (UDP ya; TCP pendiente,
+          # P-034). PORT_END = PORT_BASE + NUM_WORKERS - 1. Valores fijos, no secretos.
+          COMMUNICATION_MEDIASOUP_NUM_WORKERS=4
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED=true
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE=40000
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END=40003
+          COMMUNICATION_MEDIASOUP_ENABLE_TCP=true
           # Faltaban desde la propia Fase Backend 5/8 — sin esto communication-api no
           # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET y
           # COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET son z.string().min() requeridos).

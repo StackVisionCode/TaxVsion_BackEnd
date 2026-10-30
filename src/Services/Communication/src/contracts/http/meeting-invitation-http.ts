@@ -42,6 +42,10 @@ export interface MeetingInvitationListItemDto {
   readonly expiresAt: string;
   readonly usedAt: string | null;
   readonly revokedAt: string | null;
+  readonly firstUsedAt: string | null;
+  readonly lastUsedAt: string | null;
+  readonly useCount: number;
+  readonly closedAt: string | null;
   readonly createdAt: string;
 }
 
@@ -53,6 +57,21 @@ export interface ListMeetingInvitationsResponseDto {
 export interface JoinMeetingByTokenRequestDto {
   readonly token: string;
   readonly displayName?: string;
+}
+
+/** F6 (T-63): GET /communication/meetings/guest/:token/context — publico, rate-limited por token, 404 uniforme. */
+export interface GuestMeetingContextResponseDto {
+  readonly meetingTitle: string;
+  readonly hostDisplayName: string;
+  readonly scheduledForUtc: string | null;
+  readonly durationMinutes: number | null;
+  readonly status: 'Scheduled' | 'Live' | 'Ended';
+  readonly shortCode: string;
+  readonly inviteeName: string | null;
+  readonly guestsAllowed: boolean;
+  readonly waitingRoom: boolean;
+  /** Mismo DTO que GET /communication/media-policy, sin preferencias de usuario. */
+  readonly mediaPolicy: unknown;
 }
 
 /** shortLivedJoinTicket se pasa luego como `auth.ticket` al conectar el socket. */

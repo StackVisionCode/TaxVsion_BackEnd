@@ -323,6 +323,41 @@ Namespace: `/communication/socket.io`. Autenticación vía `handshake.auth.token
 | Customer | `customer.created.v1` | Seed de settings de comunicación para el tenant |
 | Planner (futuro) | `planner.appointment.meeting_requested.v1` | Crear meeting automáticamente |
 
+## Política de media (F4)
+
+Todo lo que un cliente necesita para capturar, medir y adaptar media sale de la BD por la capa de F2, nunca de constantes en los fronts:
+
+- `GET /communication/media-policy` (cualquier principal autenticado): calidad (umbrales Excellent/Good/Unstable por RTT/pérdida/jitter, muestreo, histéresis, Poor sostenido → solo audio D-40), perfiles de video (cámara, cámara en mesh, pantalla T-52), audio (Opus FEC/DTX, `maxaveragebitrate`, AEC/NS/AGC efectivos D-46, mute que libera hardware), pantalla (D-42), sonidos (T-70), eco (D-51/D-52) y preferencias del usuario. `version` = versión global: el front refresca al recibir `settings.changed`.
+- Plataforma: campos `quality*`, `camera*`, `meshCamera*`, `screen*`, `audio*`, `opus*`, `muteReleasesHardwareMinutes`, `clientsCanShareScreen`, `screenAudioAllowed`, `sounds*`, `echo*`, `sfuMaxIncomingBitrateKbps`, `sfuStatsSampleSeconds` en `PUT /communication/admin/platform-settings` (rango técnico + orden de umbrales). Oficina (null = hereda): `clientsCanShareScreen`, `screenAudioAllowed`, `audio*Default`, `echoMuteOnDetect`. Usuario: `echoCancellation`/`noiseSuppression`/`autoGainControl` (null = oficina), `joinMuted`, `joinCameraOff`, `preferAudioOnly`.
+- Servicios por `Scope` (ADD-11 T-76) en `application/services/`: `connection-quality.service.ts` (persiste el nivel, `quality.changed` con cifras en el `MeetingEventLog`, difunde `meeting.participant.quality_changed` / `call.peer_quality_changed`), `media-status.service.ts` (meetings publican `screen_share_started/stopped.v1`), `recording-application.service.ts` (entrada única de grabación por scope).
+- SFU: `producer/consumer.on('score')` y `layerschange` → observador (`sfu.score` en el log al cruzar el umbral 5/7, agregado para `communication.meeting.quality_summary.v1` al terminar), `consumer.setPriority` (audio 255 > pantalla 200 > tile grande 150 > thumbnails 100), `setMaxIncomingBitrate` y muestreo de `transport.getStats()` por política; el producer de audio acepta `source: 'screen'` (D-41).
+- Calls (INV-12 H-3): `Calls.Disabled`, `Calls.VideoDisabled`, `Call.LimitReached` ('concurrent' | 'monthly') en `call.initiate`; `maxCallMinutes` se fija al aceptar y `call-lifecycle-scheduler` avisa (`call.duration.warning`) y corta (`MaxDurationReached`); `TenantCallUsage` acumula segundos por mes; `CallParticipant.CustomerId` (D-58).
+
+## Manos, reacciones y hablantes (F5)
+
+- **Manos (D-49):** `MeetingParticipant.HandRaisedAtUtc` ordena la cola del host; `meeting.raise_hand { meetingId, raised }` responde con ack `{ handRaised, handRaisedAtUtc }` (la UI hace rollback si falla) y difunde `meeting.participant.changed`. Host/cohost (permiso `communication.meeting.host` + rol en el agregado): `meeting.host.lower_hand { meetingId, targetUserId }` → ack `{ participant }`; `meeting.host.lower_all_hands { meetingId }` → ack `{ lowered }`. El afectado recibe `meeting.hand.lowered_by_host { meetingId, byUserId, all }` en su room de usuario. El re-join completo (`meeting.join` con `rejoined: true`) baja la mano y el ack lo dice (`handLoweredOnRejoin`); la reconexión transparente (`meeting.rejoin`) la conserva; salir/expulsar la limpia. `MeetingEventLog`: `hand.raised`, `hand.lowered` (`{ reason: 'rejoin' }` cuando aplica), `hand.lowered_by_host` (actor + target), `hand.lowered_all` (`{ count }`).
+- **Reacciones (D-50):** política en BD — plataforma `reactionsEnabled`, `reactionDurationSeconds` (1..15), `reactionsPerUserPer10s` (1..60), `reactionsPerMeetingPerMinute` (10..2000), `meetingReactionCatalog` (JSON array de emojis, 1..30 distintos) en `PUT /communication/admin/platform-settings`; oficina (null = hereda) `reactionsEnabled` (solo puede apagar) y `meetingReactionCatalog` (sustituye) en `PUT /communication/settings`. `GET /communication/media-policy` expone `reactions: { enabled, catalog, durationSeconds, perUserPer10s }` y `speaking: { maxPerSecond }`. Socket `meeting.reaction { meetingId, emoji }` → ack `{ ok: true, value: null }` o `Meeting.ReactionsDisabled | Meeting.ReactionNotInCatalog | Meeting.ReactionRateLimited | Meeting.NotParticipant`; cupos por usuario (10 s) y por sala (60 s) en Redis (`comm:react:*`, ventana fija que no consume al rechazar); difusión **volátil** `meeting.reaction.received { meetingId, userId, displayName, emoji, at }`. Nada se persiste por reacción: `MeetingReactionAggregator` suma por minuto y escribe `reaction.summary { minuteUtc, counts }` al cerrar cada minuto y al terminar la reunión (`finalizeEndedMeeting`).
+- **Hablantes (T-69):** `meeting.speaking { meetingId, speaking }` (sin ack; solo al cambiar el estado propio, tope `speaking.maxPerSecond` = `DominantSpeakerMaxPerSecond`, `SpeakingThrottle` en Redis) → `speaker.started` / `speaker.stopped` en el `MeetingEventLog` para la línea de tiempo. No se difunde: la UI detecta al hablante en local. `meeting.dominant_speaker` y `meeting.dominant_speaker.changed` quedaron retirados.
+- Migración `20261030030000_add_reactions_policy_and_hand_raised_at` (sube `Version` de la fila global para invalidar las cachés por oficina).
+
+## Invitaciones, guests y ciclo de notificaciones (F6)
+
+- **Token (D-48):** un invitado **con cuenta** (Employee/Customer) reutiliza su token hasta `ExpiresAtUtc` (fin previsto + gracia, mínimo global), revocación o cierre de la reunión; cada uso deja `FirstUsedAtUtc/LastUsedAtUtc/UseCount` y `invitation.used` + `communication.meeting.invitation_used.v1`. Un **guest** (External) es de un solo uso (`UsedAtUtc`), salvo el re-join mientras su participante sigue dentro (gracia) o en la sala de espera. Al terminar/cancelar/expirar la reunión las invitaciones abiertas pasan a `ClosedAtUtc` (`invitation.expired` + `invitation_expired.v1`). Invitar a una reunión terminada → 400 `Meeting.NotJoinable`.
+- **Enlaces:** External → página pública de guest del **CRM** `https://{host}/meet/{token}` (D-47); Employee → `https://{host}/meetings`; Customer → portal `accept/:id?token=`.
+- **Guest (T-63):** `GET /communication/meetings/guest/:token/context` (público, rate limit por token, 404 uniforme) → título, host, hora, estado (`Scheduled|Live|Ended`), código, nombre sugerido, `guestsAllowed`, `waitingRoom` y la `mediaPolicy` de la oficina (el guest no tiene JWT). `POST join-by-token` responde 403 `Meeting.GuestsNotAllowed` cuando la oficina no admite externos. Política de oficina `guestsWaitingRoom` (null = `guestsWaitingRoomDefault` global): el guest pasa por la sala de espera aunque la reunión no la exija. Revocar con el guest dentro → salida forzada `Revoked` + cierre de sus sockets (`SocketSessionTerminator`) + `invitation_revoked.v1 { ejected }`.
+- **Eventos para Notification (T-64):** `invitation_created.v1` ampliado (`meetingTitle`, `meetingStatus`, `shortCode`, `scheduledForUtc`, `durationMinutes`, `hostUserId`, `hostDisplayName`, `timeZone`, `invitedByUserId`, `invitedByDisplayName`); `cancelled.v1` / `rescheduled.v1` ampliados (mismos datos + `inviteeUserIds`; `invitedEmails` = solo externos sin cuenta); `communication.meeting.reminder.v1` T−N minutos antes (`meetingReminderMinutesBefore` global, override de oficina, 0 = apagado; barrido en `meeting-lifecycle-scheduler`, una sola vez por reunión, `Meeting.ReminderSentAtUtc`) + socket `meeting.reminder`. `timeZone` sale de Auth (`internal/tenants/{id}/primary-host` → `timeZoneId`).
+- **Socket:** `meeting.invited` ahora trae `{ meetingId, title, status, invitedByUserId, invitedByDisplayName }` (toast "X invited you to a meeting in progress").
+- Migración `20261030040000_add_invitation_reuse_reminder_and_guest_policy`.
+
+## Jobs one-shot (`src/jobs/`)
+
+Corren con `node dist/jobs/<job>.js` (producción, paso de backfills del despliegue) o `npm run job:<nombre>` (local, tsx). Son idempotentes y aceptan `--dry-run` (solo informan).
+
+| Job | Qué hace |
+|---|---|
+| `job:expire-stale-meetings` | D-60: pasa por el dominio las reuniones eternas — `Scheduled` vencidas (plazo de la oficina, `scheduledMeetingExpiryHours`) → `Expired` con `meeting.expired.v1`; `Live` sin nadie dentro → `Ended` (`reason: Backfill`) con el cierre ordenado. Mismo código que el scheduler de ciclo de vida. |
+| `job:backfill-participant-customer-id` | D-58: rellena `MeetingParticipant.CustomerId` de las filas anteriores desde `CustomerPortalAccount`. F4: también `CallParticipant.CustomerId`. |
+
 ## Reglas de oro (no repetir el legacy)
 
 1. Redis adapter Socket.IO obligatorio — nunca in-memory `Map`.
@@ -362,6 +397,13 @@ TURN_URL=turn:turn.example.com:3478
 TURN_USERNAME=taxvision
 TURN_CREDENTIAL=<secret>
 TURN_TTL_SECONDS=86400
+
+# SFU (mediasoup) — un puerto fijo por worker (UDP y TCP) via WebRtcServer; worker i = PORT_BASE + i.
+# Publicar esos puertos en Docker y reenviarlos en el router. TURN no releva hacia el SFU.
+COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=<ip publica>
+COMMUNICATION_MEDIASOUP_NUM_WORKERS=4
+COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE=40000
+COMMUNICATION_MEDIASOUP_ENABLE_TCP=true
 
 # Argon2 / Passcodes
 PASSCODE_PEPPER=<32-byte hex>

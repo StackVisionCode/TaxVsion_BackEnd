@@ -26,6 +26,8 @@ export const CallEventTypes = {
   UpgradedToVideo:    'communication.call.upgraded_to_video.v1',
   ScreenShareStarted: 'communication.call.screen_share_started.v1',
   ScreenShareStopped: 'communication.call.screen_share_stopped.v1',
+  // F4 (INV-12 H-3): aviso previo al corte por minutos maximos.
+  DurationWarning: 'communication.call.duration_warning.v1',
   RecordingValidationFailed: 'communication.call.recording_validation_failed.v1',
   RecordingFailed:    'communication.call.recording_failed.v1',
 } as const;
@@ -57,10 +59,17 @@ export interface CallEndedEvent extends IntegrationEvent {
   readonly callerUserId: string;
   readonly calleeUserId: string;
   readonly kind: 'Audio' | 'Video';
-  readonly endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed';
+  readonly endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached';
   readonly durationSeconds: number;
   readonly endedAtUtc: string;
   readonly recordingFileId: string | null;
+}
+
+export interface CallDurationWarningEvent extends IntegrationEvent {
+  readonly eventType: 'communication.call.duration_warning.v1';
+  readonly callId: string;
+  readonly remainingSeconds: number;
+  readonly endsAtUtc: string;
 }
 
 export interface CallMissedEvent extends IntegrationEvent {

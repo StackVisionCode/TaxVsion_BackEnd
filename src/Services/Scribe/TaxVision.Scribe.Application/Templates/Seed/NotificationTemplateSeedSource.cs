@@ -34,6 +34,8 @@ public sealed record NotificationTemplateSeed(
     // v17: avisos de bloqueo y restauración de acceso por cupo de usuarios.
     // v18 (por plantilla): subscription.recurring_charge_failed reescrito — un correo por cada cobro
     //      automático fallido, con intento, próximo reintento, tarjeta real y lo suspendido al final.
+    // v21 (por plantilla): communication.meeting.invitation con título, fecha local, host, código,
+    //      rama "in progress" y adjunto .ics (F6).
     int ContentVersion = 20,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -121,6 +123,9 @@ public static class NotificationTemplateSeedSource
             FormActionFailedPush,
             SharedFileInvited,
             MeetingInvitation,
+            MeetingCancelled,
+            MeetingRescheduled,
+            MeetingReminder,
         ];
 
     // v2: tildes en el español de los push.
@@ -315,6 +320,9 @@ public static class NotificationTemplateSeedSource
         ),
         ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
         ["communication.meeting.invitation"] = "You've been invited to a meeting — join with the link inside.",
+        ["communication.meeting.cancelled.v1"] = "A meeting you were invited to was cancelled.",
+        ["communication.meeting.rescheduled.v1"] = "A meeting you were invited to has a new time.",
+        ["communication.meeting.reminder.v1"] = "Your meeting is about to start.",
     };
 
     // Preheader con rama por idioma: el renderer lo evalúa con las variables del envío.
@@ -455,33 +463,72 @@ public static class NotificationTemplateSeedSource
             ContentVersion: 10
         );
 
+    // Bloque de datos de la reunión compartido por las cuatro plantillas de meeting (F6): fecha local con
+    // la zona de la oficina, duración, host y código. Cada fila se pinta solo si la variable viene.
+    private const string MeetingDetailsRows = """
+                  {% if start_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">When:</strong> {{ start_local }} ({{ time_zone }}){% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% endif %}
+                  {% if host_name != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Host:</strong> {{ host_name }}</td></tr>{% endif %}
+                  {% if meeting_code != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Meeting code:</strong> {{ meeting_code }}</td></tr>{% endif %}
+        """;
+
+    private static (string, VariableType, bool, string?, string?) ProductName =>
+        (
+            "product_name",
+            VariableType.String,
+            false,
+            "TaxOffix",
+            "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+        );
+
+    private static IReadOnlyList<(string, VariableType, bool, string?, string?)> MeetingDetailsVariables =>
+        [
+            ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
+            (
+                "start_local",
+                VariableType.String,
+                false,
+                null,
+                "Hora de inicio ya formateada en la zona de la oficina (vacía si no hay fecha)."
+            ),
+            ("time_zone", VariableType.String, false, "UTC", "Zona IANA en la que está escrita start_local."),
+            ("duration_minutes", VariableType.Number, false, null, "Duración en minutos, si la reunión la declaró."),
+            ("host_name", VariableType.String, false, null, "Nombre del host de la reunión."),
+            ("meeting_code", VariableType.String, false, null, "Código corto para entrar por código."),
+        ];
+
+    // v21 (F6): título, fecha local, duración, host, código, rama "in progress" y adjunto .ics.
     private static NotificationTemplateSeed MeetingInvitation { get; } =
         new(
             EventKey: "communication.meeting.invitation_created.v1",
             TemplateKey: "communication.meeting.invitation",
             Name: "Communication — Invitación a meeting",
-            Subject: "You've been invited to a meeting on {{ product_name }}",
+            Subject: "{% if in_progress %}Join now: {{ meeting_title }}{% else %}Invitation: {{ meeting_title }}{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting invitation</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
-              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You've been invited to a meeting</td></tr>
-              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ invitee_name }}</strong>, you've been invited to a meeting on {{ product_name }}.</td></tr>
-              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Use the button below to join when it's time.</td></tr>
-              <tr>
-                <td align="left" style="padding:26px 0 22px 0;">
-                  <!--[if mso]>
-                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ join_link }}" style="height:46px;v-text-anchor:middle;width:200px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Join the meeting</center></v:roundrect>
-                  <![endif]-->
-                  <!--[if !mso]><!-- -->
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ join_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Join the meeting</a></td></tr></table>
-                  <!--<![endif]-->
-                </td>
-              </tr>
-              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ join_link }}</span></td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
-            </table>
-            """,
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">{% if in_progress %}A meeting is in progress{% else %}You've been invited to a meeting{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ invitee_name }}</strong>, {% if in_progress %}you've been invited to join <strong style="color:#23384B;">{{ meeting_title }}</strong>, which is happening right now.{% else %}you've been invited to <strong style="color:#23384B;">{{ meeting_title }}</strong>.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:12px 18px;border-left:3px solid #67BAF4;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            """
+                + MeetingDetailsRows
+                + """
+                  </table></td></tr></table></td></tr>
+                  <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if in_progress %}Use the button below to join now.{% else %}Use the button below to join when it's time.{% if start_local != blank %} A calendar invitation is attached so you can add it to your calendar.{% endif %}{% endif %}</td></tr>
+                  <tr>
+                    <td align="left" style="padding:26px 0 22px 0;">
+                      <!--[if mso]>
+                      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ join_link }}" style="height:46px;v-text-anchor:middle;width:200px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">{% if in_progress %}Join now{% else %}Join the meeting{% endif %}</center></v:roundrect>
+                      <![endif]-->
+                      <!--[if !mso]><!-- -->
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ join_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if in_progress %}Join now{% else %}Join the meeting{% endif %}</a></td></tr></table>
+                      <!--<![endif]-->
+                    </td>
+                  </tr>
+                  <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ join_link }}</span></td></tr></table></td></tr>
+                  <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
+                </table>
+                """,
             Variables:
             [
                 (
@@ -505,14 +552,126 @@ public static class NotificationTemplateSeedSource
                     null,
                     "Fecha de expiración de la invitación ya formateada (UTC)."
                 ),
+                .. MeetingDetailsVariables,
                 (
-                    "product_name",
+                    "in_progress",
+                    VariableType.Bool,
+                    false,
+                    "false",
+                    "La reunión ya está en curso: el correo invita a entrar ahora."
+                ),
+                ProductName,
+            ],
+            ContentVersion: 21
+        );
+
+    private static NotificationTemplateSeed MeetingCancelled { get; } =
+        new(
+            EventKey: "communication.meeting.cancelled.v1",
+            TemplateKey: "communication.meeting.cancelled.v1",
+            Name: "Communication — Reunión cancelada",
+            Subject: "Cancelled: {{ meeting_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">The meeting was cancelled</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong>{% if start_local != blank %}, scheduled for {{ start_local }} ({{ time_zone }}),{% endif %} was cancelled{% if host_name != blank %} by {{ host_name }}{% endif %}.</td></tr>
+              {% if reason != blank %}<tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">{{ reason }}</td></tr></table></td></tr>{% endif %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">No action is needed.{% if start_local != blank %} The attached calendar update removes it from your calendar.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
+                (
+                    "start_local",
                     VariableType.String,
                     false,
-                    "TaxOffix",
-                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                    null,
+                    "Hora que tenía la reunión, en la zona de la oficina."
                 ),
-            ]
+                ("time_zone", VariableType.String, false, "UTC", "Zona IANA de start_local."),
+                ("host_name", VariableType.String, false, null, "Nombre del host de la reunión."),
+                ("reason", VariableType.String, false, null, "Motivo, si el host lo escribió."),
+                ProductName,
+            ],
+            ContentVersion: 1
+        );
+
+    private static NotificationTemplateSeed MeetingRescheduled { get; } =
+        new(
+            EventKey: "communication.meeting.rescheduled.v1",
+            TemplateKey: "communication.meeting.rescheduled.v1",
+            Name: "Communication — Reunión reprogramada",
+            Subject: "Rescheduled: {{ meeting_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">The meeting was rescheduled</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong> has a new time{% if host_name != blank %}, set by {{ host_name }}{% endif %}.</td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:12px 18px;border-left:3px solid #67BAF4;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {% if previous_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;"><strong>Previously:</strong> <span style="text-decoration:line-through;">{{ previous_local }}</span> ({{ time_zone }})</td></tr>{% endif %}
+              {% if new_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">New time:</strong> {{ new_local }} ({{ time_zone }}){% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% else %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">The new time has not been set yet.</td></tr>{% endif %}
+              {% if meeting_code != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Meeting code:</strong> {{ meeting_code }}</td></tr>{% endif %}
+              </table></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Your invitation link still works.{% if new_local != blank %} The attached calendar update moves it in your calendar.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
+                ("previous_local", VariableType.String, false, null, "Hora anterior, en la zona de la oficina."),
+                (
+                    "new_local",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Hora nueva, en la zona de la oficina (vacía si aún no hay)."
+                ),
+                ("time_zone", VariableType.String, false, "UTC", "Zona IANA de las horas."),
+                (
+                    "duration_minutes",
+                    VariableType.Number,
+                    false,
+                    null,
+                    "Duración en minutos, si la reunión la declaró."
+                ),
+                ("host_name", VariableType.String, false, null, "Nombre del host de la reunión."),
+                ("meeting_code", VariableType.String, false, null, "Código corto para entrar por código."),
+                ProductName,
+            ],
+            ContentVersion: 1
+        );
+
+    private static NotificationTemplateSeed MeetingReminder { get; } =
+        new(
+            EventKey: "communication.meeting.reminder.v1",
+            TemplateKey: "communication.meeting.reminder.v1",
+            Name: "Communication — Recordatorio de reunión",
+            Subject: "Starting in {{ minutes_before }} min: {{ meeting_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting reminder</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your meeting starts in {{ minutes_before }} minutes</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong> is about to start.</td></tr>
+              <tr><td style="padding-bottom:14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:12px 18px;border-left:3px solid #67BAF4;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            """
+                + MeetingDetailsRows
+                + """
+                  </table></td></tr></table></td></tr>
+                  <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Use the link from your invitation email to join{% if meeting_code != blank %}, or enter the meeting code{% endif %}.</td></tr>
+                </table>
+                """,
+            Variables:
+            [
+                .. MeetingDetailsVariables,
+                ("minutes_before", VariableType.Number, true, null, "Minutos que faltan para la reunión."),
+                ProductName,
+            ],
+            ContentVersion: 1
         );
 
     private static NotificationTemplateSeed PasswordReset { get; } =

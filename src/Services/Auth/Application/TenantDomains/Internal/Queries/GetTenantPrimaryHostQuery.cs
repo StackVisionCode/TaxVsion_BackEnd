@@ -7,7 +7,8 @@ namespace TaxVision.Auth.Application.TenantDomains.Internal.Queries;
 
 public sealed record GetTenantPrimaryHostQuery(Guid TenantId);
 
-public sealed record TenantPrimaryHostResponse(string Host);
+/// <param name="TimeZoneId">F6 (Communication): zona IANA de la oficina para los correos de reuniones; null si el registro no la tiene.</param>
+public sealed record TenantPrimaryHostResponse(string Host, string? TimeZoneId = null);
 
 /// <summary>
 /// Host primario (subdominio de plataforma) de un tenant, ej. "manfer.taxoffix.io" — pull M2M
@@ -31,10 +32,13 @@ public static class GetTenantPrimaryHostHandler
         GetTenantPrimaryHostQuery query,
         ITenantDomainRepository domains,
         IPlatformSettings platform,
+        ITenantRegistry tenants,
         CancellationToken ct
     )
     {
         var all = await domains.GetByTenantAsync(query.TenantId, ct);
+        // F6: la zona horaria viaja junto al host (misma consulta M2M) para que Communication la ponga en sus eventos.
+        var timeZoneId = (await tenants.GetByIdAsync(query.TenantId, ct))?.DefaultTimeZoneId;
 
         var primary =
             all.FirstOrDefault(d =>
@@ -48,6 +52,6 @@ public static class GetTenantPrimaryHostHandler
             ? Result.Failure<TenantPrimaryHostResponse>(
                 new Error("TenantDomain.NoPrimaryHost", "The tenant has no active platform subdomain.")
             )
-            : Result.Success(new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug)));
+            : Result.Success(new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug), timeZoneId));
     }
 }

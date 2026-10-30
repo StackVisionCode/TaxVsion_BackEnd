@@ -9,7 +9,8 @@ import {
 } from '../../contracts/events/meeting-events.js';
 import { MeetingSocketEvents, type MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
-import { logHostAction } from './host-audit.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
 export interface ChangeParticipantRoleCommand {
   readonly tenantId: string;
@@ -19,7 +20,7 @@ export interface ChangeParticipantRoleCommand {
   readonly targetUserId: string;
 }
 
-export interface ChangeParticipantRoleDeps {
+export interface ChangeParticipantRoleDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
@@ -75,14 +76,15 @@ async function changeRole(
     },
   });
 
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: direction === 'promote' ? 'meeting.promote_cohost' : 'meeting.demote_cohost',
+    type: direction === 'promote' ? MeetingEventType.CohostPromoted : MeetingEventType.CohostDemoted,
     actorUserId: cmd.hostUserId,
     targetUserId: cmd.targetUserId,
+    payload: { previousRole: previous.role, newRole: after.role },
     correlationId: cmd.correlationId,
-    metadata: { previousRole: previous.role, newRole: after.role },
+    at: now,
   });
 
   return Result.ok({ participant: dto });

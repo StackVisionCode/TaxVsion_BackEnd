@@ -5,6 +5,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import { type CallUsageRepository, yearMonthUtc } from '../ports/call-usage-repository.js';
 import { CallEventTypes, type CallEndedEvent } from '../../contracts/events/call-events.js';
 import type { CallStateDto } from '../../contracts/socket/call-socket-events.js';
 import type { CallEndReason } from '../../domain/calls/call.js';
@@ -34,6 +35,8 @@ export interface EndCallDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
+  /** F4: minutos consumidos por oficina y mes (maxMonthlyMinutes). */
+  readonly callUsage?: CallUsageRepository | undefined;
 }
 
 export async function endCall(
@@ -95,6 +98,9 @@ export async function endCall(
     recordingFileId: snapshot.recordingFileId,
   };
   await deps.publisher.enqueue(endedEvent);
+  await deps.callUsage
+    ?.addSeconds({ tenantId: command.tenantId, yearMonth: yearMonthUtc(now), seconds: snapshot.durationSeconds ?? 0 })
+    .catch(() => undefined);
 
   // Registrar en el historial del chat (estilo WhatsApp): "Call · 2:34" / "Video call · 2:34". Solo llega
   // acá si la llamada fue contestada (el guard del dominio exige Accepted/Active para end) → siempre es una

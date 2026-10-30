@@ -22,6 +22,9 @@ function u(): string {
 }
 
 class FakeMeetingRepository implements MeetingRepository {
+  async listScheduledForReminder(): Promise<Meeting[]> {
+    return [];
+  }
   async listActiveHostedBy(): Promise<Meeting[]> {
     return [];
   }
@@ -50,6 +53,12 @@ class FakeMeetingRepository implements MeetingRepository {
     return null;
   }
   async listInvitationsByMeeting(): Promise<MeetingInvitation[]> {
+    return [];
+  }
+  async listLive(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledBefore(): Promise<Meeting[]> {
     return [];
   }
   async listUpcomingForUser(): Promise<MeetingSnapshot[]> {

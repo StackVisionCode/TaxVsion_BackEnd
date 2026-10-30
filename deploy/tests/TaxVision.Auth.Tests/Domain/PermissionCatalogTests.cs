@@ -82,8 +82,10 @@ public sealed class PermissionCatalogTests
     public void Communication_permissions_are_reconciled_into_the_catalog_with_the_original_guids()
     {
         // Los mismos 18 GUID que sembró la migración AddCommunicationPermissions por SQL
-        // directo (2026-07-10) — deben resolver a los mismos Ids, nunca duplicarse.
-        var expectedIds = Enumerable.Range(45, 18).Select(n => new Guid($"a1000000-0000-0000-0000-{n:D12}")).ToList();
+        // directo (2026-07-10) — deben resolver a los mismos Ids, nunca duplicarse. La capa de
+        // plataforma (213–215) llegó después con sus propios GUID y se siembra por HasData.
+        var originalIds = Enumerable.Range(45, 18).Select(n => new Guid($"a1000000-0000-0000-0000-{n:D12}")).ToList();
+        var platformIds = Enumerable.Range(213, 3).Select(n => new Guid($"a1000000-0000-0000-0000-{n:D12}")).ToList();
 
         var actualIds = PermissionCatalog
             .All.Where(definition => definition.Module == "communication")
@@ -91,7 +93,7 @@ public sealed class PermissionCatalogTests
             .OrderBy(id => id)
             .ToList();
 
-        Assert.Equal(expectedIds.OrderBy(id => id), actualIds);
+        Assert.Equal(originalIds.Concat(platformIds).OrderBy(id => id), actualIds);
     }
 
     /// <summary>
@@ -941,5 +943,28 @@ public sealed class PermissionCatalogTests
             staffDefinitions,
             definition => Assert.Equal(!definition.IsReserved, tenantAdmin.Contains(definition.Code))
         );
+    }
+
+    /// <summary>
+    /// La capa de configuración de plataforma de Communication y los topes de subida de CloudStorage
+    /// son PlatformOnly: sin caso de uso tenant-propio, ningún rol de tenant los recibe por defecto ni
+    /// un rol custom puede incluirlos (mismo criterio que signature.constraints.manage).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCatalog.CommunicationPlatformManage)]
+    [InlineData(PermissionCatalog.CommunicationConstraintsManage)]
+    [InlineData(PermissionCatalog.CommunicationPlatformAnalyticsRead)]
+    [InlineData(PermissionCatalog.CloudStorageUploadPolicyManage)]
+    public void Platform_configuration_permissions_are_platform_only_and_never_reach_a_tenant_role(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal(new[] { UserActorType.PlatformAdmin }, definition.EffectiveAllowedActorTypes);
+        Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal));
     }
 }

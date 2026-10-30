@@ -15,8 +15,9 @@ import {
 import type { MeetingParticipantDto, MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { buildMeetingSnapshotDto, participantSnapshotToDto } from './meeting-mappers.js';
 import { ensureMeetingConversation, removeFromMeetingConversation } from './ensure-meeting-conversation.js';
-import { logHostAction } from './host-audit.js';
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
 export interface AdmitCommand {
   readonly tenantId: string;
@@ -34,7 +35,7 @@ export interface AdmitResult {
 
 export async function admitParticipant(
   cmd: AdmitCommand,
-  deps: {
+  deps: MeetingEventLogDeps & {
     meetings: MeetingRepository;
     publisher: IntegrationEventPublisher;
     conversations: ConversationRepository;
@@ -62,13 +63,14 @@ export async function admitParticipant(
     admittedAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.admit',
+    type: MeetingEventType.ParticipantAdmitted,
     actorUserId: cmd.hostUserId,
     targetUserId: cmd.targetUserId,
     correlationId: cmd.correlationId,
+    at: now,
   });
 
   const snapshot = meeting.toSnapshot();
@@ -121,7 +123,11 @@ export interface RemoveParticipantResult {
 
 export async function removeParticipant(
   cmd: HostSingleTargetCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
+  deps: MeetingEventLogDeps & {
+    meetings: MeetingRepository;
+    publisher: IntegrationEventPublisher;
+    conversations: ConversationRepository;
+  },
 ): Promise<Result<RemoveParticipantResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -145,13 +151,14 @@ export async function removeParticipant(
     removedAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.remove',
+    type: MeetingEventType.ParticipantRemoved,
     actorUserId: cmd.hostUserId,
     targetUserId: cmd.targetUserId,
     correlationId: cmd.correlationId,
+    at: now,
   });
 
   const target = meeting.toSnapshot().participants.find((p) => p.userId === cmd.targetUserId);
@@ -180,7 +187,7 @@ export interface LockCommand {
 
 export async function setMeetingLocked(
   cmd: LockCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
+  deps: MeetingEventLogDeps & { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
 ): Promise<Result<{ isLocked: boolean }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -215,12 +222,13 @@ export async function setMeetingLocked(
     await deps.publisher.enqueue(event);
   }
 
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: cmd.locked ? 'meeting.lock' : 'meeting.unlock',
+    type: cmd.locked ? MeetingEventType.Locked : MeetingEventType.Unlocked,
     actorUserId: cmd.hostUserId,
     correlationId: cmd.correlationId,
+    at: now,
   });
 
   return Result.ok({ isLocked: cmd.locked });
@@ -230,11 +238,12 @@ export interface MuteAllCommand {
   readonly tenantId: string;
   readonly meetingId: string;
   readonly hostUserId: string;
+  readonly correlationId?: string;
 }
 
 export async function muteAllInMeeting(
   cmd: MuteAllCommand,
-  deps: { meetings: MeetingRepository },
+  deps: MeetingEventLogDeps & { meetings: MeetingRepository },
 ): Promise<Result<{ affected: number }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -242,12 +251,13 @@ export async function muteAllInMeeting(
   if (!result.isSuccess) return Result.fail(result.error);
   await deps.meetings.save(meeting);
   const affected = meeting.getJoinedParticipants().length - 1;
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.mute_all',
+    type: MeetingEventType.MutedAll,
     actorUserId: cmd.hostUserId,
-    metadata: { affected },
+    payload: { affected },
+    correlationId: cmd.correlationId ?? null,
   });
   return Result.ok({ affected });
 }
@@ -260,10 +270,18 @@ export interface TransferHostCommand {
   readonly newHostUserId: string;
 }
 
+export interface TransferHostResult {
+  readonly hostUserId: string;
+  readonly previousHostUserId: string;
+  readonly isLocked: boolean;
+  /** Los dos afectados ya con su rol nuevo (saliente → Cohost, entrante → Host), en ese orden. */
+  readonly changed: readonly MeetingParticipantDto[];
+}
+
 export async function transferMeetingHost(
   cmd: TransferHostCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
-): Promise<Result<{ hostUserId: string }>> {
+  deps: MeetingEventLogDeps & { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
+): Promise<Result<TransferHostResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
   const result = meeting.transferHost({
@@ -284,16 +302,28 @@ export async function transferMeetingHost(
     previousHostUserId: cmd.currentHostUserId,
     newHostUserId: cmd.newHostUserId,
     transferredAtUtc: now.toISOString(),
+    reason: 'Transfer',
   };
   await deps.publisher.enqueue(event);
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.transfer_host',
+    type: MeetingEventType.HostTransferred,
     actorUserId: cmd.currentHostUserId,
     targetUserId: cmd.newHostUserId,
     correlationId: cmd.correlationId,
+    at: now,
   });
 
-  return Result.ok({ hostUserId: cmd.newHostUserId });
+  const snapshot = meeting.toSnapshot();
+  const changed = [cmd.currentHostUserId, cmd.newHostUserId]
+    .map((userId) => snapshot.participants.find((p) => p.userId === userId))
+    .filter((p): p is NonNullable<typeof p> => p !== undefined)
+    .map((p) => participantSnapshotToDto(p));
+  return Result.ok({
+    hostUserId: cmd.newHostUserId,
+    previousHostUserId: cmd.currentHostUserId,
+    isLocked: snapshot.isLocked,
+    changed,
+  });
 }

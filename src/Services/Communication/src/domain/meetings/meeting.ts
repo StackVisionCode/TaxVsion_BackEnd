@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../shared/result.js';
 import {
+  MeetingEndReason,
   MeetingRole,
   MeetingStatus,
   MeetingStrategy,
   ParticipantStatus,
   isMeetingStrategy,
+  isTerminalMeetingStatus,
 } from './meeting-enums.js';
 import { MeetingParticipant, type MeetingParticipantSnapshot } from './meeting-participant.js';
 import { generateShortCode } from './short-code.js';
@@ -14,6 +16,7 @@ import { RecordingSession } from '../recording/recording-session.js';
 import { RecordingScope } from '../recording/recording-session-state.js';
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
 import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
+import { TECHNICAL_LIMITS } from '../settings/technical-limits.js';
 
 export interface MeetingSnapshot {
   readonly id: string;
@@ -32,6 +35,16 @@ export interface MeetingSnapshot {
   readonly transcriptFileId: string | null;
   readonly hostUserId: string;
   readonly scheduledForUtc: Date | null;
+  /** Informativa (invitación/calendario); nunca corta la reunión (D-35). */
+  readonly scheduledDurationMinutes: number | null;
+  /** Fijado al Start con el valor efectivo de la oficina; es el que corta (D-34). */
+  readonly maxDurationMinutes: number | null;
+  readonly endsAtUtc: Date | null;
+  readonly endReason: MeetingEndReason | null;
+  readonly lastDurationWarningSeconds: number | null;
+  /** F6 (T-64): recordatorio T-N enviado (una sola vez). */
+  readonly reminderSentAtUtc: Date | null;
+  readonly continuationOfMeetingId: string | null;
   readonly startedAtUtc: Date | null;
   readonly endedAtUtc: Date | null;
   readonly durationSeconds: number | null;
@@ -40,6 +53,34 @@ export interface MeetingSnapshot {
   readonly updatedAtUtc: Date;
   readonly participants: readonly MeetingParticipantSnapshot[];
 }
+
+/**
+ * Politica de media con la que se decide la estrategia (mesh vs SFU) y el cupo por defecto.
+ * La trae la aplicacion (resolver de settings); el dominio solo la aplica.
+ * `DEFAULT_MEETING_MEDIA_POLICY` es el respaldo tecnico cuando nadie la pasa.
+ */
+export interface MeetingMediaPolicy {
+  /** Hasta cuantos participantes (cupo) se usa mesh; por encima, SFU. */
+  readonly meshMaxParticipants: number;
+  /** Cupo cuando quien agenda no indica uno. */
+  readonly defaultMaxParticipants: number;
+}
+
+export const DEFAULT_MEETING_MEDIA_POLICY: MeetingMediaPolicy = {
+  meshMaxParticipants: TECHNICAL_LIMITS.meshMaxParticipants.fallback,
+  defaultMaxParticipants: TECHNICAL_LIMITS.maxParticipants.fallback,
+};
+
+/** Duración por defecto y máxima de la oficina (resolver). El máximo es el único que corta. */
+export interface MeetingDurationPolicy {
+  readonly defaultDurationMinutes: number;
+  readonly maxDurationMinutes: number;
+}
+
+export const DEFAULT_MEETING_DURATION_POLICY: MeetingDurationPolicy = {
+  defaultDurationMinutes: TECHNICAL_LIMITS.defaultMeetingDurationMinutes.fallback,
+  maxDurationMinutes: TECHNICAL_LIMITS.maxMeetingDurationMinutes.fallback,
+};
 
 export interface ScheduleMeetingInput {
   readonly tenantId: string;
@@ -50,9 +91,15 @@ export interface ScheduleMeetingInput {
   readonly requireWaitingRoom?: boolean;
   readonly passcodeHash?: string | null;
   readonly scheduledForUtc?: Date | null;
+  readonly scheduledDurationMinutes?: number;
   readonly recordingRequested?: boolean;
+  readonly mediaPolicy?: MeetingMediaPolicy;
+  readonly durationPolicy?: MeetingDurationPolicy;
+  readonly continuationOfMeetingId?: string | null;
   readonly now?: Date;
 }
+
+export type HostSuccession = { readonly outcome: 'succeeded'; readonly newHostUserId: string } | { readonly outcome: 'ended' };
 
 export class Meeting {
   private state: MeetingSnapshot;
@@ -72,9 +119,21 @@ export class Meeting {
       return Result.fail(makeError('Meeting.MissingTitle', 'Title is required.'));
     }
     const now = input.now ?? new Date();
-    const maxParticipants = input.maxParticipants ?? 4;
+    const policy = input.mediaPolicy ?? DEFAULT_MEETING_MEDIA_POLICY;
+    const durations = input.durationPolicy ?? DEFAULT_MEETING_DURATION_POLICY;
+    const maxParticipants = input.maxParticipants ?? policy.defaultMaxParticipants;
     if (maxParticipants < 2 || maxParticipants > 100) {
       return Result.fail(makeError('Meeting.InvalidMax', 'maxParticipants must be between 2 and 100.'));
+    }
+    const scheduledDurationMinutes = input.scheduledDurationMinutes ?? durations.defaultDurationMinutes;
+    if (
+      !Number.isInteger(scheduledDurationMinutes) ||
+      scheduledDurationMinutes < 1 ||
+      scheduledDurationMinutes > durations.maxDurationMinutes
+    ) {
+      return Result.fail(
+        makeError('Meeting.InvalidDuration', `Duration must be between 1 and ${durations.maxDurationMinutes} minutes.`),
+      );
     }
     const id = randomUUID();
     const hostParticipant = MeetingParticipant.create({
@@ -100,12 +159,19 @@ export class Meeting {
       requireWaitingRoom: input.requireWaitingRoom ?? true,
       isLocked: false,
       maxParticipants,
-      strategy: maxParticipants <= 4 ? MeetingStrategy.Mesh : MeetingStrategy.Sfu,
+      strategy: maxParticipants <= policy.meshMaxParticipants ? MeetingStrategy.Mesh : MeetingStrategy.Sfu,
       recordingRequested: input.recordingRequested ?? false,
       recordingFileId: null,
       transcriptFileId: null,
       hostUserId: input.host.userId,
       scheduledForUtc: input.scheduledForUtc ?? null,
+      scheduledDurationMinutes,
+      maxDurationMinutes: null,
+      endsAtUtc: null,
+      endReason: null,
+      lastDurationWarningSeconds: null,
+      reminderSentAtUtc: null,
+      continuationOfMeetingId: input.continuationOfMeetingId ?? null,
       startedAtUtc: null,
       endedAtUtc: null,
       durationSeconds: null,
@@ -121,14 +187,22 @@ export class Meeting {
     userId: string;
     displayName: string;
     actorType?: string;
+    customerId?: string | null;
     hasValidInvitation: boolean;
     passcodeMatch: boolean | null;
     audioDefault?: boolean;
     videoDefault?: boolean;
+    /** F6 (D-47): la politica de la oficina manda a los guests a la sala de espera aunque la reunion no la exija. */
+    forceWaitingRoom?: boolean;
     now?: Date;
-  }): Result<{ requiresAdmission: boolean; role: MeetingRole }> {
-    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+  }): Result<{ requiresAdmission: boolean; role: MeetingRole; rejoined: boolean; handLoweredOnRejoin: boolean }> {
+    const now = input.now ?? new Date();
+    if (isTerminalMeetingStatus(this.state.status)) {
       return Result.fail(makeError('Meeting.NotJoinable', `Meeting is ${this.state.status}.`));
+    }
+    // El tope ya venció aunque el scheduler no haya cortado todavía: nadie entra (INV-11 §13.6).
+    if (this.state.status === MeetingStatus.Live && this.state.endsAtUtc && now.getTime() >= this.state.endsAtUtc.getTime()) {
+      return Result.fail(makeError('Meeting.Ended', 'Meeting reached its time limit.'));
     }
     if (this.state.isLocked && !input.hasValidInvitation && input.userId !== this.state.hostUserId) {
       return Result.fail(makeError('Meeting.Locked', 'Meeting is locked. Invitation required.'));
@@ -138,20 +212,27 @@ export class Meeting {
     }
     const existing = this.participants.find((p) => p.userId === input.userId);
     if (existing && existing.status === 'Joined') {
-      return Result.ok({ requiresAdmission: false, role: existing.role });
+      // Sigue dentro pero vuelve a hacer join (recarga/otra pestaña): media nueva, joinOrder nuevo.
+      // El host admitido por start() todavia no tenia media: su primera entrada por socket no es re-join.
+      const firstSession = existing.isHostPlaceholderSession;
+      // D-49: la mano levantada se baja con la sesion nueva y el cliente lo avisa.
+      const handLoweredOnRejoin = existing.handRaised;
+      const renewed = existing.startNewSession(this.nextJoinOrder());
+      if (!renewed.isSuccess) return Result.fail(renewed.error);
+      this.commit(now);
+      return Result.ok({ requiresAdmission: false, role: existing.role, rejoined: !firstSession, handLoweredOnRejoin });
     }
     if (existing && existing.status === 'Waiting') {
-      return Result.ok({ requiresAdmission: true, role: existing.role });
+      return Result.ok({ requiresAdmission: true, role: existing.role, rejoined: false, handLoweredOnRejoin: false });
     }
 
-    const now = input.now ?? new Date();
     const isHost = input.userId === this.state.hostUserId;
     const activeJoined = this.participants.filter((p) => p.isJoined).length;
     if (!isHost && activeJoined >= this.state.maxParticipants) {
       return Result.fail(makeError('Meeting.Full', 'Meeting is full.'));
     }
 
-    const requiresAdmission = !isHost && this.state.requireWaitingRoom;
+    const requiresAdmission = !isHost && (this.state.requireWaitingRoom || input.forceWaitingRoom === true);
     const role: MeetingRole = isHost ? MeetingRole.Host : MeetingRole.Attendee;
     const joinOrder = this.nextJoinOrder();
 
@@ -161,6 +242,7 @@ export class Meeting {
       userId: input.userId,
       displayName: input.displayName,
       ...(input.actorType !== undefined ? { actorType: input.actorType } : {}),
+      customerId: input.customerId ?? existing?.toSnapshot().customerId ?? null,
       role,
       status: requiresAdmission ? ParticipantStatus.Waiting : ParticipantStatus.Joined,
       joinOrder,
@@ -174,7 +256,7 @@ export class Meeting {
     }
     this.participants.push(participant);
     this.commit(now);
-    return Result.ok({ requiresAdmission, role });
+    return Result.ok({ requiresAdmission, role, rejoined: false, handLoweredOnRejoin: false });
   }
 
   admit(input: { hostUserId: string; targetUserId: string; now?: Date }): Result<void> {
@@ -197,13 +279,15 @@ export class Meeting {
     // "Leave" SOLO saca al participante: no cede el host ni termina el meeting. El host queda como
     // hostUserId (aunque Left) para poder volver y retomar/terminar; SOLO "End meeting" (end()) finaliza
     // para todos. Así salir y volver no mata la sala, y que todos hagan Leave tampoco la finaliza sola.
-    // (Un cohost conserva sus poderes de host vía ensureCanHostAct, así que puede admitir/terminar igual.)
+    // La sucesión del host la decide `succeedHost` cuando vence su gracia (D-08), no este método.
     this.commit(now);
     return Result.okVoid();
   }
 
   start(input: {
     hostUserId: string;
+    /** Máximo efectivo de la oficina al arrancar (resolver). Las reuniones ya Live conservan el suyo. */
+    maxDurationMinutes?: number;
     audioDefault?: boolean;
     videoDefault?: boolean;
     now?: Date;
@@ -215,6 +299,7 @@ export class Meeting {
       return Result.fail(makeError('Meeting.HostOnly', 'Only the host can start the meeting.'));
     }
     const now = input.now ?? new Date();
+    const maxDurationMinutes = input.maxDurationMinutes ?? DEFAULT_MEETING_DURATION_POLICY.maxDurationMinutes;
     // El host se re-crea como Joined — el placeholder Scheduled deja al host en
     // Left para no contarlo en `activeJoined`. Al iniciar, el host cuenta como
     // primer joined y ocupa un slot del maxParticipants.
@@ -237,6 +322,11 @@ export class Meeting {
       ...this.state,
       status: MeetingStatus.Live,
       startedAtUtc: now,
+      maxDurationMinutes,
+      // D-35: el corte es siempre el máximo; la duración programada solo informa.
+      endsAtUtc: new Date(now.getTime() + maxDurationMinutes * 60_000),
+      lastDurationWarningSeconds: null,
+      reminderSentAtUtc: null,
       updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),
     };
@@ -244,13 +334,13 @@ export class Meeting {
   }
 
   end(input: { byUserId: string; now?: Date }): Result<void> {
-    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+    if (isTerminalMeetingStatus(this.state.status)) {
       return Result.fail(makeError('Meeting.AlreadyEnded', `Meeting already ${this.state.status}.`));
     }
     if (input.byUserId !== this.state.hostUserId && !this.isCohost(input.byUserId)) {
       return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can end the meeting.'));
     }
-    this.applyEnded(input.now ?? new Date());
+    this.applyEnded(input.now ?? new Date(), MeetingEndReason.Host);
     return Result.okVoid();
   }
 
@@ -356,12 +446,43 @@ export class Meeting {
     const next = this.participants.find((p) => p.userId === input.newHostUserId && p.isJoined);
     if (!next)
       return Result.fail(makeError('Meeting.TargetNotJoined', 'Target must be a joined participant.'));
+    // D-09: un cliente o un guest nunca lleva la sala.
+    if (!next.isStaff) return Result.fail(makeError('Meeting.Role.NotEligible', 'Only office staff can host.'));
     if (current) current.demoteHostToCohost();
     next.transferHost();
     const now = input.now ?? new Date();
     this.state = { ...this.state, hostUserId: input.newHostUserId, updatedAtUtc: now };
     this.commit(now);
     return Result.okVoid();
+  }
+
+  /**
+   * Sucesión automática (D-08, T-06): el host venció su gracia sin reconectar. Gana el cohost Joined
+   * más antiguo; si no hay, el staff Joined más antiguo. Sin staff dentro, la reunión termina por
+   * sistema (NoParticipants). El host saliente queda como cohost: si vuelve, conserva sus controles.
+   */
+  succeedHost(input: { now?: Date } = {}): Result<HostSuccession> {
+    if (this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot succeed host from ${this.state.status}.`));
+    }
+    const host = this.participants.find((p) => p.userId === this.state.hostUserId);
+    if (host?.isJoined) {
+      return Result.fail(makeError('Meeting.HostPresent', 'The host is still in the meeting.'));
+    }
+    const now = input.now ?? new Date();
+    const candidates = this.participants
+      .filter((p) => p.isJoined && p.isStaff && p.userId !== this.state.hostUserId)
+      .sort((a, b) => a.joinOrder - b.joinOrder);
+    const successor = candidates.find((p) => p.role === MeetingRole.Cohost) ?? candidates[0];
+    if (!successor) {
+      this.applyEnded(now, MeetingEndReason.NoParticipants);
+      return Result.ok({ outcome: 'ended' });
+    }
+    if (host) host.demoteHostToCohost();
+    successor.transferHost();
+    this.state = { ...this.state, hostUserId: successor.userId, updatedAtUtc: now };
+    this.commit(now);
+    return Result.ok({ outcome: 'succeeded', newHostUserId: successor.userId });
   }
 
   // ------------------------------------------------------------------
@@ -383,7 +504,7 @@ export class Meeting {
     newHostDisplayName?: string;
     now?: Date;
   }): Result<void> {
-    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+    if (isTerminalMeetingStatus(this.state.status)) {
       return Result.fail(
         makeError('Meeting.InvalidTransition', `Cannot reassign host from ${this.state.status}.`),
       );
@@ -432,13 +553,73 @@ export class Meeting {
     return Result.okVoid();
   }
 
-  /** Termina por sistema una reunion Live cuyo host se retiro y no hay sucesor. */
-  endBySystem(input: { now?: Date } = {}): Result<void> {
-    if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
+  /** Termina por sistema una reunion Live con el motivo explícito (tope, sala vacía, offboarding, backfill). */
+  endBySystem(input: { reason: Exclude<MeetingEndReason, 'Host'>; now?: Date }): Result<void> {
+    if (isTerminalMeetingStatus(this.state.status)) {
       return Result.fail(makeError('Meeting.AlreadyEnded', `Meeting already ${this.state.status}.`));
     }
-    this.applyEnded(input.now ?? new Date());
+    this.applyEnded(input.now ?? new Date(), input.reason);
     return Result.okVoid();
+  }
+
+  /** Agendada que nunca empezó y venció (D-35): pasa a Expired, terminal. */
+  expire(input: { now?: Date } = {}): Result<void> {
+    if (this.state.status !== MeetingStatus.Scheduled) {
+      return Result.fail(makeError('Meeting.InvalidTransition', `Cannot expire from ${this.state.status}.`));
+    }
+    const now = input.now ?? new Date();
+    this.state = { ...this.state, status: MeetingStatus.Expired, endedAtUtc: now, updatedAtUtc: now };
+    return Result.okVoid();
+  }
+
+  /**
+   * Registra que se emitió el aviso de un umbral (10/5/1 min). Idempotente: cada umbral se avisa una
+   * sola vez y solo en orden descendente, aunque el scheduler pase varias veces.
+   */
+  /** F6 (T-64): el recordatorio se manda una sola vez por reunion agendada. */
+  markReminderSent(input: { now?: Date } = {}): Result<void> {
+    if (this.state.status !== MeetingStatus.Scheduled) {
+      return Result.fail(makeError('Meeting.InvalidTransition', 'Only a scheduled meeting gets a reminder.'));
+    }
+    if (this.state.reminderSentAtUtc !== null) {
+      return Result.fail(makeError('Meeting.NoOp', 'Reminder was already sent.'));
+    }
+    const now = input.now ?? new Date();
+    this.state = { ...this.state, reminderSentAtUtc: now, updatedAtUtc: now };
+    return Result.okVoid();
+  }
+
+  markDurationWarning(input: { thresholdSeconds: number; now?: Date }): Result<void> {
+    if (this.state.status !== MeetingStatus.Live) {
+      return Result.fail(makeError('Meeting.InvalidTransition', 'Only a live meeting gets duration warnings.'));
+    }
+    const last = this.state.lastDurationWarningSeconds;
+    if (last !== null && input.thresholdSeconds >= last) {
+      return Result.fail(makeError('Meeting.NoOp', 'This warning was already sent.'));
+    }
+    this.state = {
+      ...this.state,
+      lastDurationWarningSeconds: input.thresholdSeconds,
+      updatedAtUtc: input.now ?? new Date(),
+    };
+    return Result.okVoid();
+  }
+
+  /** Segundos que faltan para el corte; null si no está Live o no tiene tope fijado. */
+  remainingSeconds(now: Date = new Date()): number | null {
+    if (this.state.status !== MeetingStatus.Live || !this.state.endsAtUtc) return null;
+    return Math.max(0, Math.floor((this.state.endsAtUtc.getTime() - now.getTime()) / 1000));
+  }
+
+  /** Desde cuándo no queda nadie Joined en una reunión Live; null si hay alguien dentro. */
+  emptySinceUtc(): Date | null {
+    if (this.state.status !== MeetingStatus.Live) return null;
+    if (this.participants.some((p) => p.isJoined)) return null;
+    let since = this.state.startedAtUtc ?? this.state.createdAtUtc;
+    for (const p of this.participants) {
+      if (p.leftAtUtc && p.leftAtUtc.getTime() > since.getTime()) since = p.leftAtUtc;
+    }
+    return since;
   }
 
   promoteToCohost(input: { hostUserId: string; targetUserId: string }): Result<void> {
@@ -471,12 +652,41 @@ export class Meeting {
     return Result.okVoid();
   }
 
-  raiseHand(input: { byUserId: string; raised: boolean }): Result<void> {
+  raiseHand(input: { byUserId: string; raised: boolean; now?: Date }): Result<void> {
     const participant = this.participants.find((p) => p.userId === input.byUserId && p.isJoined);
     if (!participant) return Result.fail(makeError('Meeting.NotParticipant', 'Not a joined participant.'));
-    participant.setHandRaised(input.raised);
-    this.commit(new Date());
+    const now = input.now ?? new Date();
+    participant.setHandRaised(input.raised, now);
+    this.commit(now);
     return Result.okVoid();
+  }
+
+  /** F5 (D-49): host/cohost baja la mano de un participante. Idempotente: dice si cambio algo. */
+  lowerHand(input: { hostUserId: string; targetUserId: string; now?: Date }): Result<{ changed: boolean }> {
+    const guard = this.ensureCanHostAct(input.hostUserId);
+    if (!guard.isSuccess) return Result.fail(guard.error);
+    const target = this.participants.find((p) => p.userId === input.targetUserId && p.isJoined);
+    if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target participant not found.'));
+    if (!target.handRaised) return Result.ok({ changed: false });
+    const now = input.now ?? new Date();
+    target.setHandRaised(false, now);
+    this.commit(now);
+    return Result.ok({ changed: true });
+  }
+
+  /** F5 (D-49): baja todas las manos levantadas; devuelve los userIds afectados. */
+  lowerAllHands(input: { hostUserId: string; now?: Date }): Result<{ lowered: readonly string[] }> {
+    const guard = this.ensureCanHostAct(input.hostUserId);
+    if (!guard.isSuccess) return Result.fail(guard.error);
+    const now = input.now ?? new Date();
+    const lowered: string[] = [];
+    for (const p of this.participants) {
+      if (!p.isJoined || !p.handRaised) continue;
+      p.setHandRaised(false, now);
+      lowered.push(p.userId);
+    }
+    if (lowered.length > 0) this.commit(now);
+    return Result.ok({ lowered });
   }
 
   reportConnectionQuality(input: { byUserId: string; quality: ConnectionQuality }): Result<void> {
@@ -694,6 +904,9 @@ export class Meeting {
   get passcodeHash(): string | null {
     return this.state.passcodeHash;
   }
+  get endsAtUtc(): Date | null {
+    return this.state.endsAtUtc;
+  }
 
   getJoinedParticipants(): readonly MeetingParticipantSnapshot[] {
     return this.participants.filter((p) => p.isJoined).map((p) => p.toSnapshot());
@@ -701,6 +914,11 @@ export class Meeting {
 
   isJoinedParticipant(userId: string): boolean {
     return this.participants.some((p) => p.userId === userId && p.isJoined);
+  }
+
+  /** Participó alguna vez (cualquier estado) o es el host: quién puede leer la ficha/eventos. */
+  isKnownParticipant(userId: string): boolean {
+    return userId === this.state.hostUserId || this.participants.some((p) => p.userId === userId);
   }
 
   isCohost(userId: string): boolean {
@@ -722,8 +940,8 @@ export class Meeting {
     return this.participants.reduce((max, p) => Math.max(max, p.joinOrder), 0) + 1;
   }
 
-  /** Transicion a Ended compartida por end() (host/cohost) y endBySystem() (offboarding). */
-  private applyEnded(now: Date): void {
+  /** Transicion a Ended compartida por end() (host/cohost), endBySystem() y la sucesión sin staff. */
+  private applyEnded(now: Date, reason: MeetingEndReason): void {
     this.participants.forEach((p) => {
       if (p.status === 'Joined' || p.status === 'Waiting') p.markLeft(now);
     });
@@ -732,6 +950,7 @@ export class Meeting {
       ...this.state,
       status: MeetingStatus.Ended,
       endedAtUtc: now,
+      endReason: reason,
       durationSeconds: startedAt ? Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 1000)) : 0,
       updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),

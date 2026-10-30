@@ -58,10 +58,25 @@ const rawEnv = z
     // ya la IP publica (deploy con IP directa, sin NAT).
     COMMUNICATION_MEDIASOUP_LISTEN_IP: z.string().default('0.0.0.0'),
     COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
+    // Rango SOLO para el modo de respaldo (sin WebRtcServer): un puerto por transport.
     COMMUNICATION_MEDIASOUP_RTC_MIN_PORT: z.coerce.number().int().positive().default(40000),
     COMMUNICATION_MEDIASOUP_RTC_MAX_PORT: z.coerce.number().int().positive().default(49999),
     // 0 = auto (un worker por core disponible, tope 4 en dev para no saturar).
     COMMUNICATION_MEDIASOUP_NUM_WORKERS: z.coerce.number().int().min(0).default(0),
+    // WebRtcServer: todos los transports de un worker comparten UN puerto fijo (UDP y TCP con el
+    // mismo numero): worker i escucha en PORT_BASE + i. Son los unicos puertos que el compose publica.
+    // Mismo patron de parseo que COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED (z.coerce.boolean no sirve).
+    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: z.coerce.number().int().min(1024).max(65000).default(40000),
+    // ICE-TCP ademas de UDP (D-57): respaldo para redes que bloquean UDP. Exige reenviar los mismos
+    // puertos en TCP en el router.
+    COMMUNICATION_MEDIASOUP_ENABLE_TCP: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
 
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
     OTEL_EXPORTER_OTLP_PROTOCOL: z.enum(['grpc', 'http/protobuf']).default('http/protobuf'),
@@ -324,10 +339,14 @@ export const config = {
 
   mediasoup: {
     listenIp: rawEnv.COMMUNICATION_MEDIASOUP_LISTEN_IP,
-    announcedIp: rawEnv.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP,
+    // La env conserva el nombre historico (secret de deploy); mediasoup 3.21 lo llama announcedAddress.
+    announcedAddress: rawEnv.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP,
     rtcMinPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MIN_PORT,
     rtcMaxPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MAX_PORT,
     numWorkers: rawEnv.COMMUNICATION_MEDIASOUP_NUM_WORKERS,
+    webRtcServerEnabled: rawEnv.COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED,
+    webRtcServerPortBase: rawEnv.COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE,
+    enableTcp: rawEnv.COMMUNICATION_MEDIASOUP_ENABLE_TCP,
   },
 
   otel: {

@@ -28,6 +28,10 @@ export async function rejoinMeeting(
 ): Promise<Result<RejoinMeetingResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
+  // Tras el corte por tiempo (o cualquier fin) no hay re-suscripción: la sala ya no existe (INV-11 §13.6).
+  if (meeting.status !== 'Live') {
+    return Result.fail(makeError('Meeting.Ended', `Meeting is ${meeting.status}.`));
+  }
   if (!meeting.isJoinedParticipant(cmd.userId)) {
     return Result.fail(makeError('Meeting.NotJoined', 'You are not an admitted participant of this meeting.'));
   }

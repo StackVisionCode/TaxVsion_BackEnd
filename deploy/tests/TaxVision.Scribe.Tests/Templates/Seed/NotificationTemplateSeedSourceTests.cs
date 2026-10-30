@@ -305,6 +305,135 @@ public sealed class NotificationTemplateSeedSourceTests
             ("product_name", "TaxOffix"),
         ];
 
+    // ---------- Reuniones (F6): invitación v2, cancelación, reprogramación y recordatorio ----------
+
+    [Theory]
+    [InlineData("communication.meeting.invitation_created.v1", "communication.meeting.invitation", 21)]
+    [InlineData("communication.meeting.cancelled.v1", "communication.meeting.cancelled.v1", 1)]
+    [InlineData("communication.meeting.rescheduled.v1", "communication.meeting.rescheduled.v1", 1)]
+    [InlineData("communication.meeting.reminder.v1", "communication.meeting.reminder.v1", 1)]
+    public void Meeting_templates_declare_every_variable_they_use_and_carry_their_version(
+        string eventKey,
+        string templateKey,
+        int minVersion
+    )
+    {
+        var seed = Assert.Single(NotificationTemplateSeedSource.All, s => s.EventKey == eventKey);
+        Assert.Equal(templateKey, seed.TemplateKey);
+
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+        Assert.Empty(used.Except(declared));
+        Assert.Contains("meeting_title", declared);
+        Assert.True(
+            seed.ContentVersion >= minVersion,
+            $"{templateKey}: ContentVersion {seed.ContentVersion} < {minVersion}"
+        );
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+        Assert.Equal("system-base", seed.LayoutKey);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Meeting_invitation_renders_the_scheduled_and_the_in_progress_branches(bool inProgress)
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.invitation_created.v1"
+        );
+        var context = new TemplateContext();
+        context.SetValue("invitee_name", "Cliente");
+        context.SetValue("join_link", "https://manfer.taxoffix.io/meet/abc");
+        context.SetValue("expires_at", "2026-11-06 12:00");
+        context.SetValue("meeting_title", "Revisión de la 1040");
+        // Notification manda null y el renderer lo convierte en "" (FluidTemplateRenderer): se prueba lo que llega.
+        context.SetValue("start_local", inProgress ? string.Empty : "2026-11-05 14:00");
+        context.SetValue("time_zone", "America/Santo_Domingo");
+        context.SetValue("duration_minutes", 45);
+        context.SetValue("host_name", "María Pérez");
+        context.SetValue("meeting_code", "ABC-123");
+        context.SetValue("in_progress", inProgress);
+        context.SetValue("product_name", "TaxOffix");
+
+        var subject = Parser.Parse(seed.Subject).Render(context);
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("Revisión de la 1040", html);
+        Assert.Contains("ABC-123", html);
+        Assert.Contains("María Pérez", html);
+        if (inProgress)
+        {
+            Assert.StartsWith("Join now:", subject);
+            Assert.Contains("happening right now", html);
+            Assert.DoesNotContain("When:", html);
+            Assert.DoesNotContain("calendar invitation is attached", html);
+        }
+        else
+        {
+            Assert.StartsWith("Invitation:", subject);
+            Assert.Contains("2026-11-05 14:00 (America/Santo_Domingo)", html);
+            Assert.Contains("45 min", html);
+            Assert.Contains("calendar invitation is attached", html);
+            Assert.DoesNotContain("happening right now", html);
+        }
+    }
+
+    /// <summary>
+    /// Fluid trata "" (y es lo que el renderer manda por un null) como verdadero: un <c>{% if x %}</c> a
+    /// secas pintaría "When:" vacío. Las filas opcionales comparan con <c>blank</c>, que cubre "" y nil.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Meeting_optional_rows_are_hidden_for_null_and_empty_values(string? missing)
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.reminder.v1"
+        );
+        var context = new TemplateContext();
+        context.SetValue("meeting_title", "Revisión de la 1040");
+        context.SetValue("minutes_before", 15);
+        context.SetValue("start_local", missing);
+        context.SetValue("host_name", missing);
+        context.SetValue("meeting_code", missing);
+        context.SetValue("duration_minutes", missing);
+        context.SetValue("product_name", "TaxOffix");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.DoesNotContain("When:", html);
+        Assert.DoesNotContain("Host:", html);
+        Assert.DoesNotContain("Meeting code:", html);
+        Assert.DoesNotContain("enter the meeting code", html);
+    }
+
+    [Fact]
+    public void Meeting_rescheduled_template_shows_the_previous_and_the_new_time()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.rescheduled.v1"
+        );
+        var context = new TemplateContext();
+        context.SetValue("meeting_title", "Revisión de la 1040");
+        context.SetValue("previous_local", "2026-11-05 14:00");
+        context.SetValue("new_local", "2026-11-05 16:00");
+        context.SetValue("time_zone", "America/Santo_Domingo");
+        context.SetValue("product_name", "TaxOffix");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("Previously:", html);
+        Assert.Contains("2026-11-05 14:00", html);
+        Assert.Contains("New time:", html);
+        Assert.Contains("2026-11-05 16:00", html);
+    }
+
     [Fact]
     public void Certificate_template_can_identify_a_per_document_certificate()
     {

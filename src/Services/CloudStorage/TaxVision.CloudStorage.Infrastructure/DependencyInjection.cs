@@ -14,6 +14,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Avatars;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
@@ -61,6 +62,12 @@ public static class DependencyInjection
             TaxVision.CloudStorage.Application.CustomerAccess.ICustomerAccessRuleAuditRepository,
             CustomerAccessRuleAuditRepository
         >();
+
+        // Topes de tamaño en BD (D-33): caché singleton por réplica, resolver scoped sobre el DbContext.
+        services.AddScoped<IUploadSizePolicyRepository, UploadSizePolicyRepository>();
+        services.AddScoped<IUploadSizePolicyAuditRepository, UploadSizePolicyAuditRepository>();
+        services.AddSingleton<UploadPolicyCache>();
+        services.AddScoped<IUploadPolicyResolver, UploadPolicyResolver>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));

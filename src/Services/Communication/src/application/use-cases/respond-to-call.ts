@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { CallRepository } from '../ports/call-repository.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import { CallEventTypes, type CallAcceptedEvent, type CallEndedEvent } from '../../contracts/events/call-events.js';
@@ -20,6 +22,8 @@ export interface RespondCommand {
   readonly callId: string;
   readonly actorUserId: string;
   readonly actorDisplayName: string;
+  /** D-58: para resolver el CustomerId del callee cuando es un cliente del portal. */
+  readonly actorType?: string | undefined;
   readonly action: 'accept' | 'reject' | 'cancel';
 }
 
@@ -36,8 +40,16 @@ export interface RespondCallDeps {
   readonly calls: CallRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
+  readonly customerPortalAccounts?: Pick<CustomerPortalAccountRepository, 'findActiveByUserId'> | undefined;
+  /** F4: `maxCallMinutes` del plan se fija al aceptar. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   /** F5: foto del peer al aceptar. Opcional (sin el, el peer sale sin `avatarFileId`). */
   readonly avatars?: AvatarResolver;
+}
+
+async function resolveCalleeCustomerId(command: RespondCommand, deps: RespondCallDeps): Promise<string | null> {
+  if (command.actorType !== 'CustomerPortal' || !deps.customerPortalAccounts) return null;
+  return (await deps.customerPortalAccounts.findActiveByUserId(command.actorUserId).catch(() => null))?.customerId ?? null;
 }
 
 export async function respondToCall(
@@ -69,7 +81,13 @@ export async function respondToCall(
   const now = new Date();
   const mutation =
     command.action === 'accept'
-      ? call.accept({ byUserId: command.actorUserId, calleeDisplayName: command.actorDisplayName, now })
+      ? call.accept({
+          byUserId: command.actorUserId,
+          calleeDisplayName: command.actorDisplayName,
+          calleeCustomerId: await resolveCalleeCustomerId(command, deps),
+          maxDurationMinutes: deps.effectiveSettings ? (await deps.effectiveSettings.resolve(command.tenantId)).calls.maxCallMinutes : null,
+          now,
+        })
       : command.action === 'reject'
         ? call.reject({ byUserId: command.actorUserId, now })
         : call.cancel({ byUserId: command.actorUserId, now });

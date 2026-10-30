@@ -459,12 +459,58 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "[Doc] Límites de calls aplicados en el servidor (F4)",
+					"request": {
+						"method": "GET",
+						"description": "INV-12 H-3 / ADD-11 H-4. `call.initiate` responde ack `{ok:false, code}`: `Calls.Disabled` (callsEnabled=false en plan u oficina), `Calls.VideoDisabled` (kind Video con videoCallsEnabled=false), `Call.LimitReached` con `message` 'concurrent' (llamadas abiertas ≥ maxConcurrentCalls del plan) o 'monthly' (segundos del mes en `TenantCallUsage` ≥ maxMonthlyMinutes×60). Al aceptar, la llamada fija `maxDurationMinutes`/`endsAtUtc` con `calls.maxCallMinutes` del resolver; el scheduler `call-lifecycle` (15 s, lock Redis) emite `call.duration.warning` a 10/5/1 min y corta con `call.state_changed{status:'Ended', endReason:'MaxDurationReached'}` + `communication.call.ended.v1{endReason:'MaxDurationReached'}` + busy liberado. `GET /communication/customers/{id}/calls` filtra por la columna `CallParticipant.CustomerId` (D-58; backfill `job:backfill-participant-customer-id`).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
 				}
 			]
 		},
 		{
 			"name": "03 · Meetings",
 			"item": [
+				{
+					"name": "Limites efectivos para agendar",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/limits",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"limits"
+							]
+						},
+						"description": "F3. Limites efectivos de la oficina (plataforma > plan > oficina) para el panel de agendar: {maxDurationMinutes, defaultDurationMinutes, maxParticipants, guestsAllowed}. Cualquier miembro con communication.meeting.join. El selector de duracion del CRM arma sus opciones con esto (pasos que caben en el maximo + el maximo + el default)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — meeting limits\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
 				{
 					"name": "Crear meeting",
 					"event": [
@@ -488,7 +534,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false\n}"
+							"raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false,\n  \"scheduledDurationMinutes\": 45\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/meetings",
@@ -499,7 +545,8 @@
 								"communication",
 								"meetings"
 							]
-						}
+						},
+						"description": "\n\nF3: `scheduledDurationMinutes` (entero) es la duración programada, informativa (D-35) y acotada por el máximo de la oficina (400 Meeting.InvalidDuration si lo supera; default = duración por defecto de la oficina). El corte real lo fija el Start con el máximo vigente (`endsAtUtc`); no existe prórroga (D-34). `maxParticipants` no puede superar el cupo efectivo (400 Plan.MeetingSizeExceeded)."
 					}
 				},
 				{
@@ -525,7 +572,8 @@
 									"value": "20"
 								}
 							]
-						}
+						},
+						"description": "\n\nF3: cada ítem trae además scheduledDurationMinutes, maxDurationMinutes, endsAtUtc, endReason (Host|MaxDurationReached|NoParticipants|Offboarding|Backfill|null), durationSeconds y continuationOfMeetingId; `status` puede ser Expired (agendada vencida, D-35) y aparece en scope=past. `customerId` filtra por la columna CustomerId del participante (D-58): el historial del cliente se conserva aunque su cuenta de portal se desactive."
 					}
 				},
 				{
@@ -561,7 +609,8 @@
 								"{{meetingId}}",
 								"start"
 							]
-						}
+						},
+						"description": "\n\nF3: fija maxDurationMinutes con el valor efectivo de la oficina y devuelve también endsAtUtc y maxDurationMinutes. A partir de ahí el scheduler avisa a 10/5/1 min (socket meeting.duration.warning) y corta al llegar (meeting.ended.v1 con reason MaxDurationReached)."
 					}
 				},
 				{
@@ -579,8 +628,89 @@
 								"{{meetingId}}",
 								"end"
 							]
-						}
+						},
+						"description": "\n\nF3: cierre ordenado único (detiene la grabación si seguía activa, libera el SFU y el busy de todos, avisa a la sala con meeting.state.changed{endReason:'Host'} y a las listas con meeting.ended{reason}, publica meeting.ended.v1{reason:'Host'} y deja la fila en el MeetingEventLog)."
 					}
+				},
+				{
+					"name": "Eventos del meeting (ficha, MeetingEventLog)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/events?after=0&take=200",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"events"
+							],
+							"query": [
+								{
+									"key": "after",
+									"value": "0",
+									"description": "opcional"
+								},
+								{
+									"key": "take",
+									"value": "200",
+									"description": "1-500"
+								}
+							]
+						},
+						"description": "F3 (T-32). Solo quien participó o el host (403 Meeting.NotParticipant; 404 si no existe). Devuelve {items:[{seq, at, type, actorUserId, targetUserId, payload}], nextAfterSeq}; `after` = último seq ya leído, `take` 1-500 (default 200). Tipos: meeting.started/ended/cancelled/rescheduled/expired/locked/unlocked/muted_all/duration_warning, participant.waiting/joined/rejoined/admitted/denied/left/forced_leave/removed, media.changed, hand.raised/lowered, screen.started/stopped, host.transferred/succeeded, cohost.promoted/demoted, transport.failed."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — meeting events\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Continuar meeting — Start a new meeting (host/cohost)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/continue",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"{{meetingId}}",
+								"continue"
+							]
+						},
+						"description": "F3 (D-34): sin prórroga. Sobre una reunión terminada o vencida, el host (o quien fue cohost) crea una reunión nueva \"<título> (cont.)\" enlazada por continuationOfMeetingId, con el mismo cupo y sala de espera, e invita de nuevo a los participantes (empleados, clientes por CustomerId) y a los invitados que no llegaron a entrar; cada uno recibe meeting.invited. Después se inicia con POST /start como cualquier reunión. Permiso communication.meeting.create. Errores: 404 Meeting.NotFound, 400 Meeting.StillActive, 400 Meeting.HostOnly. Respuesta 201 {meetingId, shortCode, requiresPasscode, invitationsCreated}."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"201 — continuation created\", () => {",
+									"    pm.response.to.have.status(201);",
+									"});"
+								]
+							}
+						}
+					]
 				},
 				{
 					"name": "Cancelar meeting",
@@ -903,7 +1033,7 @@
 					"name": "[Socket] Host — Transferir host",
 					"request": {
 						"method": "GET",
-						"description": "Socket.IO C→S (solo host)\n\nsocket.emit('meeting.host.transfer', { meetingId: '{{meetingId}}', newHostUserId: '<uuid>' })\n\nPublica integration event: communication.meeting.host_transferred.v1",
+						"description": "Socket.IO C→S (solo host)\n\nsocket.emit('meeting.host.transfer', { meetingId: '{{meetingId}}', newHostUserId: '<uuid>' })\n\nPublica integration event: communication.meeting.host_transferred.v1\n\nF3: responde ack {ok:true, value:{hostUserId}} o {ok:false, code, message} (Meeting.HostOnly, Meeting.TargetNotJoined, Meeting.Role.NotEligible si el objetivo es cliente/guest, Auth.Forbidden sin communication.meeting.host). Emite dos meeting.participant.changed (saliente → Cohost, entrante → Host), luego meeting.host.changed{reason:'Transfer'} y por último meeting.state.changed con isLocked real. Lo mismo para meeting.host.lock (ack {isLocked}) y meeting.host.mute_all (ack {affected}). Todas las acciones de host exigen además el permiso communication.meeting.host.",
 						"url": {
 							"raw": "{{UrlBase}}/communication/socket.io",
 							"host": [
@@ -921,6 +1051,23 @@
 					"request": {
 						"method": "GET",
 						"description": "Socket.IO C→S\n\nLa grabación es 100% client-side (MediaRecorder en el browser capturando los <video>/<audio> tags) — NO existe un 'meeting.host.recording_start' que orquesta grabación server-side. El cliente graba localmente, sube el blob resultante a CloudStorage por su cuenta, y luego:\n\nsocket.emit('meeting.recording.attach', {\n  clientKey: nanoid(12),\n  meetingId: '{{meetingId}}',\n  fileId: '<fileId ya subido a CloudStorage>'\n}, (ack) => { ... })\n\nPublica communication.meeting.recording_ready.v1 → dispara CommunicationTranscriptWorker (whisper.cpp) → communication.meeting.transcript_ready.v1 (ver carpeta 09).",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Socket] SFU — ICE restart — meeting.sfu.restart_ice",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO C→S (F1 del MASTER de Communication). Solo participantes Joined.\n\nCuando el transport del SFU pasa a `failed` (o `disconnected` sostenido) el cliente pide un ICE restart:\n\nsocket.emit('meeting.sfu.restart_ice', {\n  meetingId: '{{meetingId}}',\n  transportId: '<id del send/recv transport>'\n}, (ack) => {\n  // ack.ok === true → ack.value.iceParameters (usernameFragment, password, iceLite)\n  // el cliente lo aplica con transport.restartIce({ iceParameters })\n})\n\nErrores: Meeting.NotFound, Meeting.Sfu.NotJoined, Meeting.Sfu.TransportNotFound, Meeting.Sfu.RestartIceFailed.\n\nRelacionado (F1):\n- `meeting.sfu.create_transport` ahora devuelve `replacedProducerIds` y el server emite `meeting.sfu.producer_closed` por cada producer del transport reemplazado (re-join).\n- Un `meeting.join` de un participante que sigue Joined renueva su `joinOrder` (los peers rearman el PeerConnection) y cierra sus producers viejos del SFU.\n- Las señales mesh (`meeting.signal.from`) se entregan al socket que está en la reunión, no a todas las pestañas del usuario.",
 						"url": {
 							"raw": "{{UrlBase}}/communication/socket.io",
 							"host": [
@@ -1000,6 +1147,144 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "[Socket] Mano — meeting.raise_hand (F5)",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO C→S con ack (F5, D-49)\n\nsocket.emit('meeting.raise_hand', { meetingId: '{{meetingId}}', raised: true }, (ack) => ...)\n\nack ok: { ok: true, value: { handRaised: true, handRaisedAtUtc: '2026-10-30T10:00:00.000Z' } }\nack error: { ok: false, code: 'Meeting.NotParticipant' | 'Meeting.BadPayload' }\n\nLa sala recibe 'meeting.participant.changed' con `handRaisedAtUtc` (ordena la cola del host). Repetir raised:true no mueve el turno. El re-join completo (meeting.join con rejoined:true) baja la mano y el ack de join trae `handLoweredOnRejoin: true`; la reconexión transparente (meeting.rejoin) la conserva. MeetingEventLog: hand.raised / hand.lowered.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Socket] Host — Bajar mano / todas — meeting.host.lower_hand · lower_all_hands (F5)",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO C→S (host o cohost + permiso communication.meeting.host) con ack (F5, D-49)\n\nsocket.emit('meeting.host.lower_hand', { meetingId: '{{meetingId}}', targetUserId: '<userId>' }, (ack) => ...)\n→ { ok: true, value: { participant: MeetingParticipantDto } } | { ok: false, code: 'Meeting.HostOnly' | 'Auth.Forbidden' | 'Meeting.NotFound' }\n\nsocket.emit('meeting.host.lower_all_hands', { meetingId: '{{meetingId}}' }, (ack) => ...)\n→ { ok: true, value: { lowered: <n> } }\n\nEfectos: 'meeting.participant.changed' por cada mano bajada a la sala y 'meeting.hand.lowered_by_host' { meetingId, byUserId, all } a la room de usuario de cada afectado. MeetingEventLog: hand.lowered_by_host (actor + target) / hand.lowered_all ({ count }).",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Socket] Reacción efímera — meeting.reaction (F5)",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO C→S con ack (F5, D-50)\n\nsocket.emit('meeting.reaction', { meetingId: '{{meetingId}}', emoji: '👍' }, (ack) => ...)\n\nack ok: { ok: true, value: null }\nack error: { ok: false, code: 'Meeting.ReactionsDisabled' | 'Meeting.ReactionNotInCatalog' | 'Meeting.ReactionRateLimited' | 'Meeting.NotParticipant' | 'Meeting.NotFound' }\n\nOrden: política (GET /communication/media-policy → reactions) → cupos Redis por usuario (reactionsPerUserPer10s / 10 s) y por sala (reactionsPerMeetingPerMinute / 60 s; un rechazo no consume) → participante Joined. Difusión VOLÁTIL 'meeting.reaction.received' { meetingId, userId, displayName, emoji, at } a toda la sala (incluido quien reaccionó). No se persiste por reacción: 'reaction.summary' { minuteUtc, counts } en el MeetingEventLog al cerrar cada minuto y al terminar la reunión.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Socket] Estado de habla — meeting.speaking (F5)",
+					"request": {
+						"method": "GET",
+						"description": "Socket.IO C→S sin ack (F5, T-69)\n\nsocket.emit('meeting.speaking', { meetingId: '{{meetingId}}', speaking: true })\n\nSolo al cambiar el estado propio (RMS local), tope `speaking.maxPerSecond` de la política (columna DominantSpeakerMaxPerSecond). El servidor NO difunde nada (la UI detecta al hablante en local): registra 'speaker.started' / 'speaker.stopped' en el MeetingEventLog para la línea de tiempo. Sustituye a 'meeting.dominant_speaker' (retirado).",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "Contexto público de guest (F6) — GET guest/:token/context",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/guest/{{invitationToken}}/context",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"guest",
+								"{{invitationToken}}",
+								"context"
+							]
+						},
+						"description": "F6 (T-63, D-47). Público, sin JWT, rate limit por token (misma política que join-by-token), 404 uniforme si el token no existe/está revocado/vencido/consumido. Con token válido: { meetingTitle, hostDisplayName, scheduledForUtc, durationMinutes, status: 'Scheduled'|'Live'|'Ended', shortCode, inviteeName, guestsAllowed, waitingRoom, mediaPolicy } (mediaPolicy = mismo DTO que GET /communication/media-policy, sin preferencias de usuario). `status:'Ended'` también con la invitación cerrada por la reunión; `guestsAllowed:false` cuando la oficina no admite externos (join-by-token devolverá 403 Meeting.GuestsNotAllowed)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — guest context\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Contexto de guest — token inválido (404 uniforme)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/guest/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/context",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"meetings",
+								"guest",
+								"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+								"context"
+							]
+						},
+						"description": "F6. Anti-enumeración: cualquier motivo colapsa a 404 Meeting.Invitation.NotFound."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"404 — guest context not found\", () => {",
+									"    pm.response.to.have.status(404);",
+									"});"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -1373,14 +1658,15 @@
 								"communication",
 								"settings"
 							]
-						}
+						},
+						"description": "Requiere communication.settings.manage. Devuelve cuatro bloques: settings (ajustes de la oficina; los numéricos nuevos son null = hereda), limits (proyección del plan: null = el plan no define la clave), constraints (techos fijados por PlatformAdmin, null si no hay) y effective (valores vigentes resueltos: global → plan → techo → oficina, con el bloque ceilings = lo máximo que la oficina puede fijar). Tras un cambio llega el socket settings.changed al room de miembros."
 					},
 					"response": [
 						{
-							"name": "200 — Settings",
+							"name": "200 — Settings + limits + constraints + effective",
 							"status": "OK",
 							"code": 200,
-							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": false,\n    \"screenshotsEnabled\": true,\n    \"internalGroupsEnabled\": false,\n    \"employeeToEmployeeChatEnabled\": true,\n    \"defaultCameraOff\": false,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": true,\n    \"messageRetentionDays\": 365,\n    \"recordingRetentionDays\": 90,\n    \"purgeEnabled\": false\n  },\n  \"limits\": {\n    \"maxMeetingParticipants\": 25,\n    \"maxGroupConversationMembers\": 50\n  }\n}"
+							"body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": true,\n    \"screenshotsEnabled\": true,\n    \"employeeToEmployeeChatEnabled\": false,\n    \"restrictCustomerChatToAssignedPreparer\": false,\n    \"defaultCameraOff\": true,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": false,\n    \"messageRetentionDays\": 365,\n    \"recordingRetentionDays\": 90,\n    \"purgeEnabled\": false,\n    \"recordingConsentPolicy\": \"NoRejections\",\n    \"defaultMeetingDurationMinutes\": null,\n    \"maxMeetingDurationMinutes\": null,\n    \"maxMeetingParticipants\": null,\n    \"maxRecordingMinutesMeeting\": null,\n    \"maxRecordingMinutesAudioCall\": null,\n    \"maxRecordingMinutesVideoCall\": null,\n    \"ringingTimeoutSeconds\": null,\n    \"meetingChatAttachmentsPerMinute\": null,\n    \"meetingChatAttachmentsPerMeeting\": null,\n    \"meetingSoundsPolicy\": null,\n    \"transcriptLanguage\": null,\n    \"recordingVisibleInPortal\": true,\n    \"guestsAllowed\": true\n  },\n  \"limits\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"planCode\": \"pro\",\n    \"maxMeetingParticipants\": 10,\n    \"maxMeetingMinutes\": 60,\n    \"maxConcurrentCalls\": 2,\n    \"maxMonthlyMinutes\": 600,\n    \"recordingEnabled\": true,\n    \"supportEnabled\": true,\n    \"isSuspended\": false,\n    \"enabledModules\": [\n      \"meetings\"\n    ],\n    \"maxRecordingMinutesMeeting\": 60,\n    \"maxRecordingMinutesAudioCall\": 60,\n    \"maxRecordingMinutesVideoCall\": 60,\n    \"recordingVideoEnabled\": true,\n    \"transcriptEnabled\": true,\n    \"callsEnabled\": true,\n    \"maxCallMinutes\": 60\n  },\n  \"constraints\": null,\n  \"effective\": {\n    \"tenantId\": \"{{tenantId}}\",\n    \"platformVersion\": 1,\n    \"planCode\": \"pro\",\n    \"isSuspended\": false,\n    \"ceilings\": {\n      \"maxParticipants\": 10,\n      \"maxMeetingDurationMinutes\": 60,\n      \"maxRecordingMinutesMeeting\": 60,\n      \"maxRecordingMinutesAudioCall\": 60,\n      \"maxRecordingMinutesVideoCall\": 60,\n      \"meetingChatAttachmentsPerMinute\": 5,\n      \"meetingChatAttachmentsPerMeeting\": 20,\n      \"recordingAllowed\": true,\n      \"recordingVideoAllowed\": true,\n      \"transcriptAllowed\": true,\n      \"callsAllowed\": true,\n      \"supportAllowed\": true,\n      \"guestsAllowed\": true\n    },\n    \"meeting\": {\n      \"enabled\": true,\n      \"maxDurationMinutes\": 60,\n      \"defaultDurationMinutes\": 60,\n      \"maxParticipants\": 10,\n      \"meshMaxParticipants\": 4,\n      \"disconnectGraceSeconds\": 30,\n      \"scheduledExpiryHours\": 24,\n      \"emptyEndMinutes\": 10,\n      \"dominantSpeakerMaxPerSecond\": 5,\n      \"guestsAllowed\": true,\n      \"soundsPolicy\": \"all\",\n      \"chatAttachmentsPerMinute\": 5,\n      \"chatAttachmentsPerMeeting\": 20\n    },\n    \"calls\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"ringingTimeoutSeconds\": 60,\n      \"maxCallMinutes\": 60,\n      \"maxConcurrentCalls\": 2,\n      \"maxMonthlyMinutes\": 600\n    },\n    \"recording\": {\n      \"enabled\": true,\n      \"videoEnabled\": true,\n      \"transcriptEnabled\": true,\n      \"maxMinutesMeeting\": 60,\n      \"maxMinutesAudioCall\": 60,\n      \"maxMinutesVideoCall\": 60,\n      \"consentTimeoutMeetingSeconds\": 30,\n      \"consentTimeoutCallSeconds\": 15,\n      \"visibleInPortal\": true,\n      \"transcriptLanguage\": \"auto\"\n    },\n    \"chat\": {\n      \"enabled\": true,\n      \"internalGroupsEnabled\": true,\n      \"employeeToEmployeeChatEnabled\": false,\n      \"maxReactionsPerMessage\": 3\n    },\n    \"support\": {\n      \"enabled\": true\n    },\n    \"invitations\": {\n      \"minTtlHours\": 168,\n      \"expiryGraceHours\": 24\n    },\n    \"user\": null\n  }\n}"
 						}
 					]
 				},
@@ -1396,7 +1682,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false,\n  \"restrictCustomerChatToAssignedPreparer\": true\n}"
+							"raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"maxMeetingParticipants\": 6,\n  \"defaultMeetingDurationMinutes\": 30,\n  \"meetingSoundsPolicy\": \"hostOnly\",\n  \"guestsAllowed\": true,\n  \"restrictCustomerChatToAssignedPreparer\": true\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/settings",
@@ -1408,8 +1694,754 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Todos los campos del body son opcionales (patch parcial): chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, internalGroupsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer (Fase B — si true, un chat directo con un CustomerPortal solo se permite si el otro lado es su preparador asignado via Customer.AssignedPreparerUserId), defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled."
-					}
+						"description": "Requiere communication.settings.manage. Patch parcial; devuelve el mismo overview que el GET. Campos: chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled, recordingConsentPolicy (AllAcceptedRequired|NoRejections|HostOverride), y los nuevos de la capa de configuración (null = hereda): defaultMeetingDurationMinutes, maxMeetingDurationMinutes, maxMeetingParticipants, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, ringingTimeoutSeconds, meetingChatAttachmentsPerMinute, meetingChatAttachmentsPerMeeting, meetingSoundsPolicy (all|hostOnly|off), transcriptLanguage (auto|código), recordingVisibleInPortal, guestsAllowed. internalGroupsEnabled ya no es de oficina (D-16, interruptor global). Errores 400: Settings.AboveCeiling (supera el techo efectivo: plan, techo de PlatformAdmin o global), Settings.OutOfTechnicalRange, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage, Settings.InvalidRetention. Efectos: fila por clave en ConfigurationAudit, evento communication.tenant_settings_changed.v1, invalidación inmediata de caché y socket settings.changed a los miembros."
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — settings updated within the effective ceiling\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar settings — supera el techo (400 Settings.AboveCeiling)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "Caso negativo T-46: maxMeetingParticipants por encima del techo efectivo (10 por defecto) → 400 con code Settings.AboveCeiling.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxMeetingParticipants\": 500\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"400 — Settings.AboveCeiling\", () => {",
+									"    pm.response.to.have.status(400);",
+									"    pm.expect(pm.response.json().code).to.eql(\"Settings.AboveCeiling\");",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Mis preferencias de Communication",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"preferences"
+							]
+						},
+						"description": "Autoservicio (T-47): cualquier usuario autenticado (staff o portal). Devuelve preferences (meetingSoundsMuted, transcriptLanguage, preferAudioOnly), effective (lo que rige para este usuario) y soundsPolicy de la oficina."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — preferences\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar mis preferencias",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"preferences"
+							]
+						},
+						"description": "Autoservicio; patch parcial: meetingSoundsMuted (D-02), transcriptLanguage (null|auto|código), preferAudioOnly (INV-03 §13.6). Audita en ConfigurationAudit (UserPreferences) y publica communication.user_preferences_changed.v1.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"meetingSoundsMuted\": true,\n  \"preferAudioOnly\": false\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — preferences updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Leer settings globales de plataforma",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "PlatformOnly: actorType PlatformAdmin + permiso communication.platform.manage. Devuelve settings (fila única global, con version) y technicalLimits (rango min/max/fallback por clave: techos técnicos del código).",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform settings\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Actualizar settings globales de plataforma",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "PlatformOnly (communication.platform.manage). Patch parcial validado contra los techos técnicos (400 Settings.OutOfTechnicalRange, Settings.DefaultAboveMax, Settings.InvalidSoundsPolicy, Settings.InvalidLanguage). Claves: maxMeetingDurationMinutes, defaultMeetingDurationMinutes, defaultMaxParticipants, meshMaxParticipants, disconnectGraceSeconds, scheduledMeetingExpiryHours, emptyMeetingEndMinutes, dominantSpeakerMaxPerSecond, guestsAllowed, ringingTimeoutSeconds, recordingConsentTimeoutMeetingSeconds, recordingConsentTimeoutCallSeconds, maxRecordingMinutesMeeting/AudioCall/VideoCall, invitationMinTtlHours, invitationExpiryGraceHours, internalGroupsEnabled (D-16), meetingChatAttachmentsPerMinute/PerMeeting, maxReactionsPerMessage, meetingSoundsPolicy, transcriptDefaultLanguage, outboxRetentionDays, processedEventRetentionDays, idempotencyRetentionDays. Efectos: version+1, ConfigurationAudit (TenantId null), evento communication.platform_settings_changed.v1, invalidación de la caché global y socket settings.changed (broadcast). Se aplica sin reinicio: GET /communication/settings de cualquier oficina lo refleja al instante.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"disconnectGraceSeconds\": 45,\n  \"defaultMaxParticipants\": 10\n}"
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform settings updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Leer techos de una oficina",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/tenants/{{tenantId}}/constraints",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"tenants",
+								"{{tenantId}}",
+								"constraints"
+							]
+						},
+						"description": "PlatformOnly (communication.constraints.manage). Devuelve constraints (null por clave = sin techo propio) y ceilings (resultado de combinar global, plan y estos techos).",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — tenant constraints\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Fijar techos de una oficina",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/tenants/{{tenantId}}/constraints",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"tenants",
+								"{{tenantId}}",
+								"constraints"
+							]
+						},
+						"description": "PlatformOnly (communication.constraints.manage), patrón Signature. Claves (null = quitar el techo): maxMeetingParticipants, maxMeetingDurationMinutes, maxRecordingMinutesMeeting, maxRecordingMinutesAudioCall, maxRecordingMinutesVideoCall, recordingAllowed, guestsAllowed, notes (máx. 512). Si la oficina tenía un ajuste por encima del techo nuevo se auto-corrige (ADD-09 H-4): la respuesta trae autoCorrected[] y la auditoría lo registra con reason AutoCorrect; además se publica communication.tenant_constraints_changed.v1 (+ tenant_settings_changed.v1 si hubo corrección) y el socket settings.changed a los miembros de la oficina.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxMeetingParticipants\": 6,\n  \"recordingAllowed\": true,\n  \"notes\": \"Pilot office\"\n}"
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — tenant constraints updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Auditoría de configuración",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/audit?scope=TenantSettings&tenantId={{tenantId}}&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"audit"
+							],
+							"query": [
+								{
+									"key": "scope",
+									"value": "TenantSettings",
+									"description": "opcional"
+								},
+								{
+									"key": "tenantId",
+									"value": "{{tenantId}}",
+									"description": "opcional"
+								},
+								{
+									"key": "take",
+									"value": "50",
+									"description": "1-200"
+								}
+							]
+						},
+						"description": "PlatformOnly (communication.platform.manage). Lista ConfigurationAudit (más reciente primero). Filtros opcionales: tenantId, scope (Platform|TenantConstraints|TenantSettings|UserPreferences), skip (0), take (1-200, default 50).",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{platformAdminToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — audit page\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Mi política de media (F4)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/media-policy",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"media-policy"
+							]
+						},
+						"description": "F4. Cualquier principal autenticado (staff, portal). Devuelve la política de media efectiva para él: `quality` (intervalo de muestreo, umbrales Excellent/Good/Unstable por RTT/pérdida/jitter, histéresis, Poor sostenido, recuperación), `video` (cámara, cámara en mesh, pantalla con fps/bitrate), `audio` (Opus FEC/DTX, maxaveragebitrate, AEC/NS/AGC efectivos = preferencia del usuario sobre el default de la oficina, mute que libera hardware), `screenShare` (clientsCanShare, audioAllowed), `sounds` (política + volumen + gap + muted del usuario), `echo`, `preferences` (joinMuted, joinCameraOff, preferAudioOnly, audioProcessing crudo). `version` = versión global: los fronts refrescan al recibir `settings.changed`. Ningún número de media vive en el código de los fronts. F5: además `reactions` { enabled, catalog, durationSeconds, perUserPer10s } (D-50) y `speaking` { maxPerSecond } (T-69)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — media policy\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar mis preferencias de media (F4)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"preferences"
+							]
+						},
+						"description": "F4 (D-46): `echoCancellation`/`noiseSuppression`/`autoGainControl` (bool o null = default de la oficina), `joinMuted`, `joinCameraOff`, `preferAudioOnly` (modo solo audio en Poor). Los deviceId preferidos NO se guardan en el servidor (son por navegador).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"noiseSuppression\": true,\n  \"joinMuted\": false,\n  \"joinCameraOff\": true,\n  \"preferAudioOnly\": false\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — preferences updated\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar settings de media de la oficina (F4)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "F4: overrides de oficina (null = hereda la plataforma): `clientsCanShareScreen`, `screenAudioAllowed` (D-42; la oficina solo puede restringir), `audioEchoCancellationDefault`, `audioNoiseSuppressionDefault`, `audioAutoGainControlDefault` (D-46), `echoMuteOnDetect` (D-52).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"clientsCanShareScreen\": false,\n  \"screenAudioAllowed\": null,\n  \"audioNoiseSuppressionDefault\": true,\n  \"echoMuteOnDetect\": false\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — office media settings\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Política de media global (F4)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "F4 (PlatformAdmin, PlatformOnly). Campos nuevos de la fila global, todos con rango técnico (400 Settings.OutOfTechnicalRange) y orden Excellent < Good < Unstable (400 Settings.QualityThresholdsOrder): qualitySampleIntervalSeconds, quality{Excellent,Good,Unstable}{RttMs,LossPct,JitterMs}, qualityUpgradeSamples, qualityPoorSustainedSamples, qualityRecoverySamples, camera/meshCamera/screen Max{Width,Height,Fps}, screenVideoMaxFps, screenBitrateKbps, screenHighBitrateKbps, audioMaxAverageBitrateKbps, opusFecEnabled, opusDtxEnabled, audio{EchoCancellation,NoiseSuppression,AutoGainControl}Default, muteReleasesHardwareMinutes, clientsCanShareScreen, screenAudioAllowed, soundsVolumePct, soundsRepeatGapMs, echoDetectionEnabled, echoMuteOnDetect, sfuMaxIncomingBitrateKbps, sfuStatsSampleSeconds (0 = sin muestreo). Cada cambio sube `version` y las oficinas lo ven sin reinicio (resolver).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"qualityGoodRttMs\": 250,\n  \"screenMaxFps\": 20,\n  \"sfuStatsSampleSeconds\": 10\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform media policy\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Reacciones del meeting (F5)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "F5 (PlatformAdmin, PlatformOnly; D-50). Campos de la fila global: reactionsEnabled, reactionDurationSeconds (1..15), reactionsPerUserPer10s (1..60), reactionsPerMeetingPerMinute (10..2000), meetingReactionCatalog (array de 1..30 emojis distintos, ≤16 chars, sin espacios; 400 Settings.InvalidReactionCatalog). Cada cambio sube `version`; la oficina lo ve en GET /communication/media-policy → reactions. También `speaking.maxPerSecond` sale de dominantSpeakerMaxPerSecond.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reactionsEnabled\": true,\n  \"reactionDurationSeconds\": 4,\n  \"reactionsPerUserPer10s\": 5,\n  \"reactionsPerMeetingPerMinute\": 300,\n  \"meetingReactionCatalog\": [\n    \"👍\",\n    \"👏\",\n    \"❤️\",\n    \"😂\",\n    \"😮\",\n    \"🎉\",\n    \"🙏\",\n    \"🤔\",\n    \"✅\",\n    \"🔥\"\n  ]\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform reactions\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Catálogo de reacciones inválido (400 Settings.InvalidReactionCatalog)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "F5. Un catálogo vacío, con repetidos, con espacios o con más de 30 entradas se rechaza en el dominio.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"meetingReactionCatalog\": [\n    \"👍\",\n    \"👍\"\n  ]\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"400 — invalid reaction catalog\", () => {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar reacciones de la oficina (F5)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "F5 (Tenant Admin, communication.settings.manage; D-50). null = hereda la plataforma. `reactionsEnabled` solo puede apagar (plataforma apagada manda); `meetingReactionCatalog` sustituye al global para esta oficina (misma validación: 400 Settings.InvalidReactionCatalog).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reactionsEnabled\": true,\n  \"meetingReactionCatalog\": [\n    \"👍\",\n    \"👏\",\n    \"❤️\",\n    \"✅\"\n  ]\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — office reactions\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Admin — Recordatorio y sala de espera de guests (F6)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "F6 (PlatformAdmin). meetingReminderMinutesBefore (0..1440; 0 = sin recordatorio; T−N minutos antes de una reunión agendada se publica communication.meeting.reminder.v1 + socket meeting.reminder, una sola vez) y guestsWaitingRoomDefault (los externos pasan por la sala de espera aunque la reunión no la exija).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"meetingReminderMinutesBefore\": 15,\n  \"guestsWaitingRoomDefault\": true\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — platform reminder/guests\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Actualizar recordatorio y guests de la oficina (F6)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"settings"
+							]
+						},
+						"description": "F6 (Tenant Admin). null = hereda la plataforma: meetingReminderMinutesBefore, guestsWaitingRoom. `guestsAllowed` (ya existente) sigue mandando sobre si entran externos.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"meetingReminderMinutesBefore\": 30,\n  \"guestsWaitingRoom\": true\n}"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 — office reminder/guests\", () => {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -1629,6 +2661,174 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "[Doc] settings.changed — Refrescar settings/bootstrap",
+					"request": {
+						"method": "GET",
+						"description": "Servidor → cliente, room de miembros del tenant (t:{tenantId}:members) o broadcast cuando el cambio es global.\n\nPayload:\n{ scope: 'platform' | 'tenant', changedKeys: string[] }\n\nNo lleva valores: el CRM/portal vuelve a pedir GET /communication/settings (o su bootstrap) igual que con access.changed.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.duration.warning — Aviso 10/5/1 min",
+					"request": {
+						"method": "GET",
+						"description": "Servidor → room del meeting, una vez por umbral (600/300/60 s).\n\nPayload: { meetingId, remainingSeconds, endsAtUtc }\n\nEl cliente calcula el reloj desde endsAtUtc del servidor (corrección de desfase), muestra el banner y un sonido discreto (D-02).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.host.changed — Cambió el host",
+					"request": {
+						"method": "GET",
+						"description": "Servidor → room del meeting, tras dos meeting.participant.changed (saliente Cohost, entrante Host) y antes de meeting.state.changed.\n\nPayload: { meetingId, previousHostUserId, newHostUserId, reason: 'Transfer' | 'Succession' | 'Offboarding' }\n\n'Succession' (D-08): el host venció su gracia de 30 s sin reconectar; gana el cohost Joined más antiguo o el staff más antiguo; sin staff, la reunión termina (NoParticipants).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.you.removed — Salida forzada dirigida",
+					"request": {
+						"method": "GET",
+						"description": "Servidor → socket concreto (o room del usuario al expulsarlo el host).\n\nPayload: { meetingId, reason: 'Grace' | 'Revoked' | 'Expired' | 'Offboarding' | 'MeetingEnded' | 'RemovedByHost' }\n\nEl cliente sale localmente (apaga media, limpia estado) sin mandar meeting.leave.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.ended — ahora con motivo",
+					"request": {
+						"method": "GET",
+						"description": "Servidor → room de usuario (listas): { meetingId, reason: 'Host' | 'MaxDurationReached' | 'NoParticipants' | 'Offboarding' | 'Backfill' | 'Expired' }. La sala recibe meeting.state.changed{status:'Ended', endReason}.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] auth.refresh / session.expiring — Sesión del socket",
+					"request": {
+						"method": "GET",
+						"description": "Cada socket se cierra ~5 s después del exp de su JWT (INV-09). 60 s antes el servidor emite session.expiring { expiresAtUtc, secondsLeft }; el cliente renueva su access token y manda auth.refresh { token } → ack { ok:true, value:{ expiresAtUtc } } (mismo usuario y oficina; Auth.Forbidden si no). Una sesión revocada por Auth (auth:session-revoked) expulsa al socket exacto de sus reuniones (salida forzada, reason 'Revoked') y lo desconecta; un token de servicio (M2M) recibe Auth.Forbidden en el handshake.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.connection_quality / meeting.participant.quality_changed (F4)",
+					"request": {
+						"method": "GET",
+						"description": "C→S `meeting.connection_quality { meetingId, quality: 'Excellent'|'Good'|'Fair'|'Poor'|'Disconnected', metrics?: { rttMs, lossPct, jitterMs, viaRelay, inKbps, outKbps, fps, layer } }` — solo al cambiar de nivel; el servidor ignora reportes más frecuentes que la mitad de `qualitySampleIntervalSeconds`. Persiste en el participante, deja `quality.changed` (con cifras) en el MeetingEventLog y, si cambió, difunde S→C `meeting.participant.quality_changed { meetingId, userId, quality }` a la sala (D-39: cada tile muestra el nivel del otro; 'Fair' se etiqueta Unstable). `MeetingParticipantDto` trae `connectionQuality` en snapshot y participant.changed.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] call.peer_quality_changed / call.duration.warning (F4)",
+					"request": {
+						"method": "GET",
+						"description": "`call.connection_quality` acepta `metrics?` y, si el nivel cambió, el servidor emite al room `call.peer_quality_changed { callId, peerUserId, quality }`. `call.duration.warning { callId, remainingSeconds, endsAtUtc }` a 10/5/1 min del tope del plan; `call.state_changed` puede traer `endReason: 'MaxDurationReached'`.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.sfu.produce con audio de pantalla (F4, D-41)",
+					"request": {
+						"method": "GET",
+						"description": "`meeting.sfu.produce { kind:'audio', source:'screen' }` crea un producer de audio dedicado para el audio de la pestaña/ventana compartida (Opus estéreo + DTX en el cliente). `sfu.new_producer` ya trae `source`. Prioridades que fija el servidor bajo congestión: audio 255 > pantalla 200 > tile grande (capa ≥1) 150 > thumbnails 100 (`consumer.setPriority`); `setMaxIncomingBitrate` por participante y muestreo de `transport.getStats()` según la política global (`sfuMaxIncomingBitrateKbps`, `sfuStatsSampleSeconds`).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.reaction.received — Reacción volátil (F5)",
+					"request": {
+						"method": "GET",
+						"description": "S→C (room del meeting, emisión VOLÁTIL: si el socket está reconectando se pierde; nunca llega al historial del chat)\n\nsocket.on('meeting.reaction.received', ({ payload }) => {\n  // { meetingId, userId, displayName, emoji, at }\n  // burbuja sobre el tile de userId durante media-policy.reactions.durationSeconds\n})",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.hand.lowered_by_host — Mano bajada por el host (F5)",
+					"request": {
+						"method": "GET",
+						"description": "S→C (room de usuario del afectado)\n\nsocket.on('meeting.hand.lowered_by_host', ({ payload }) => {\n  // { meetingId, byUserId, all }  → toast \"The host lowered your hand\" / \"The host lowered all hands\"\n})\n\nAdemás la sala recibe 'meeting.participant.changed' con handRaised:false, handRaisedAtUtc:null.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] meeting.invited (F6) y meeting.reminder — avisos a la room de usuario",
+					"request": {
+						"method": "GET",
+						"description": "S→C (room de usuario)\n\nsocket.on('meeting.invited', ({ payload }) => {\n  // { meetingId, title, status: 'Scheduled'|'Live', invitedByUserId, invitedByDisplayName }\n  // status === 'Live' → toast \"X invited you to a meeting in progress\" con acción Join\n})\n\nsocket.on('meeting.reminder', ({ payload }) => {\n  // { meetingId, title, scheduledForUtc, minutesBefore } → toast \"Starts in N min\"\n})",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
 				}
 			]
 		},
@@ -1765,6 +2965,209 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "[Doc] communication.meeting.participant_rejoined.v1",
+					"request": {
+						"method": "GET",
+						"description": "F1 — publicado por join-meeting.ts cuando un participante que sigue Joined vuelve a hacer join (recarga de página, otra pestaña): su media anterior murió y recibe un joinOrder nuevo.\n\nPayload:\n{\n  eventId: string,\n  eventType: 'communication.meeting.participant_rejoined.v1',\n  tenantId: string,\n  correlationId: string,\n  occurredOnUtc: string,\n  meetingId: string,\n  participantUserId: string,\n  joinOrder: number,        // nuevo, monótono creciente\n  rejoinedAtUtc: string\n}\n\nConsumidores: MeetingEventLog (F3), analytics (F10). Sustituye a participant_joined en el re-join (no se publican los dos).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.transport_failed.v1",
+					"request": {
+						"method": "GET",
+						"description": "F1 — publicado por report-sfu-transport-state.ts cuando un WebRtcTransport del SFU llega a DTLS `failed` o ICE `disconnected` (mediasoup es ICE-lite: no hay ICE `failed`). Solo fallos; las transiciones sanas van al log y a las métricas `communication_sfu_transport_*`.\n\nPayload:\n{\n  eventId: string,\n  eventType: 'communication.meeting.transport_failed.v1',\n  tenantId: string,\n  correlationId: string,     // transportId\n  occurredOnUtc: string,\n  meetingId: string,\n  participantUserId: string,\n  direction: 'send' | 'recv',\n  transportId: string,\n  layer: 'ice' | 'dtls',\n  failedAtUtc: string\n}\n\nConsumidores: MeetingEventLog (F3), analytics (F10).",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.platform_settings_changed.v1",
+					"request": {
+						"method": "GET",
+						"description": "PlatformAdmin cambió valores globales (PUT /communication/admin/platform-settings).\n\nPayload:\n{\n  eventId, eventType: 'communication.platform_settings_changed.v1', tenantId: <PlatformTenant>, correlationId, occurredOnUtc,\n  version: number,            // versión nueva de la fila global\n  actorUserId: string,\n  changes: [{ key, oldValue, newValue }]   // valores serializados a texto\n}\n\nConsumidores: Communication (invalidación entre instancias), Analytics/Compliance.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.tenant_constraints_changed.v1",
+					"request": {
+						"method": "GET",
+						"description": "PlatformAdmin fijó techos para una oficina (PUT /communication/admin/tenants/{id}/constraints).\n\nPayload:\n{\n  eventId, eventType: 'communication.tenant_constraints_changed.v1', tenantId, correlationId, occurredOnUtc,\n  actorUserId: string,\n  changes: [{ key, oldValue, newValue }]\n}\n\nConsumidores: Notification (aviso al Tenant Admin), Analytics.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.tenant_settings_changed.v1",
+					"request": {
+						"method": "GET",
+						"description": "Cambiaron los ajustes de una oficina: por su Tenant Admin (reason 'Update') o por auto-corrección al bajar un techo (reason 'AutoCorrect', actorUserId null).\n\nPayload:\n{\n  eventId, eventType: 'communication.tenant_settings_changed.v1', tenantId, correlationId, occurredOnUtc,\n  actorUserId: string | null,\n  reason: 'Update' | 'AutoCorrect',\n  changes: [{ key, oldValue, newValue }]\n}\n\nConsumidores: Communication (caché), Analytics.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.user_preferences_changed.v1",
+					"request": {
+						"method": "GET",
+						"description": "Un usuario cambió sus preferencias (PUT /communication/preferences).\n\nPayload:\n{\n  eventId, eventType: 'communication.user_preferences_changed.v1', tenantId, correlationId, occurredOnUtc,\n  userId: string,\n  changes: [{ key, oldValue, newValue }]\n}",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.duration_warning.v1",
+					"request": {
+						"method": "GET",
+						"description": "Una vez por umbral (600/300/60 s) para reuniones Live.\n\nPayload:\n{ eventId, eventType, tenantId, correlationId, occurredOnUtc, meetingId, remainingSeconds, endsAtUtc }",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.expired.v1",
+					"request": {
+						"method": "GET",
+						"description": "Agendada que nunca empezó y venció (D-35), por el scheduler o el job expire-stale-meetings.\n\nPayload:\n{ eventId, eventType, tenantId, correlationId, occurredOnUtc, meetingId, hostUserId, scheduledForUtc, expiredAtUtc }",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.participant_forced_leave.v1",
+					"request": {
+						"method": "GET",
+						"description": "Un participante salió sin pedirlo (además del participant_left normal).\n\nPayload:\n{ eventId, eventType, tenantId, correlationId, occurredOnUtc, meetingId, participantUserId, reason: 'Grace' | 'Revoked' | 'Expired' | 'Offboarding' | 'MeetingEnded', leftAtUtc }",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.ended.v1 — campo reason (F3)",
+					"request": {
+						"method": "GET",
+						"description": "Añade `reason: 'Host' | 'MaxDurationReached' | 'NoParticipants' | 'Offboarding' | 'Backfill'` al payload existente. communication.meeting.host_transferred.v1 añade `reason?: 'Transfer' | 'Succession' | 'Offboarding'`.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.screen_share_started.v1 / stopped.v1 (F4)",
+					"request": {
+						"method": "GET",
+						"description": "Simétricos a los de calls (INV-04 §13.4). Se publican desde el media-status del participante al cambiar `screenSharing`.\n\nPayload: { eventId, eventType, tenantId, correlationId, occurredOnUtc, meetingId, sharingUserId, startedAtUtc | stoppedAtUtc }",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.quality_summary.v1 (F4 → ADD-08)",
+					"request": {
+						"method": "GET",
+						"description": "Al terminar la reunión (cierre ordenado único), si hubo reportes.\n\nPayload: { eventId, eventType, tenantId, correlationId, occurredOnUtc, meetingId, participants, levels: {Excellent?, Good?, Fair?, Poor?, Disconnected?}, relayReports, sfuScoreSamples, sfuScoreAvg, transportFailures, endedAtUtc }",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.call.duration_warning.v1 y call.ended.v1 MaxDurationReached (F4)",
+					"request": {
+						"method": "GET",
+						"description": "`communication.call.duration_warning.v1 { callId, remainingSeconds, endsAtUtc }` a 10/5/1 min del tope. `communication.call.ended.v1` añade `endReason: 'MaxDurationReached'` cuando corta el scheduler.",
+						"url": {
+							"raw": "{{UrlBase}}",
+							"host": [
+								"{{UrlBase}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.invitation_created.v1 ampliado + invitation_used/revoked/expired.v1 (F6)",
+					"request": {
+						"method": "GET",
+						"description": "invitation_created.v1 (F6) suma: meetingTitle, meetingStatus ('Scheduled'|'Live'), shortCode, scheduledForUtc, durationMinutes, hostUserId, hostDisplayName, timeZone (IANA|null, de Auth), invitedByUserId, invitedByDisplayName. Notification arma el email completo + .ics METHOD:REQUEST.\n\ninvitation_used.v1 { invitationId, meetingId, inviteeKind, inviteeUserId, usedByUserId, usedAtUtc, useCount } — cada uso (usuarios con cuenta reutilizan; guest una vez).\ninvitation_revoked.v1 { invitationId, meetingId, meetingTitle, inviteeKind, inviteeUserId, inviteeEmail, revokedByUserId, revokedAtUtc, ejected } — in-app al invitado con cuenta.\ninvitation_expired.v1 { invitationId, meetingId, inviteeKind, inviteeUserId, inviteeEmail, reason: 'Ended'|'Cancelled'|'Expired', closedAtUtc } — al cerrar la reunión con la invitación abierta.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
+				},
+				{
+					"name": "[Doc] communication.meeting.reminder.v1 y cancelled/rescheduled.v1 ampliados (F6)",
+					"request": {
+						"method": "GET",
+						"description": "reminder.v1 { meetingId, meetingTitle, shortCode, scheduledForUtc, durationMinutes, minutesBefore, hostUserId, hostDisplayName, timeZone, participantUserIds[], inviteeUserIds[], invitedEmails[] (externos sin cuenta), staffJoinUrl, portalJoinUrl } — T−N (meetingReminderMinutesBefore), una vez por reunión.\n\ncancelled.v1 / rescheduled.v1 suman: meetingTitle, shortCode, scheduledForUtc (cancel), durationMinutes, hostUserId, hostDisplayName, timeZone, inviteeUserIds[]; invitedEmails[] pasa a ser SOLO externos sin cuenta (los de cuenta reciben in-app). Notification: email con .ics METHOD:CANCEL / REQUEST actualizado.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/socket.io",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"socket.io"
+							]
+						}
+					}
 				}
 			]
 		},
@@ -1819,6 +3222,50 @@
 								"exec": [
 									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
 									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Office token rejected — Admin platform-settings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/admin/platform-settings",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"admin",
+								"platform-settings"
+							]
+						},
+						"description": "PlatformOnly: con {{accessToken}} de una oficina (Tenant Admin o empleado) debe responder 403 Auth.PlatformOnly aunque el usuario tenga communication.settings.manage.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 — office actor blocked from a PlatformOnly endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"    pm.expect(pm.response.json().code).to.eql(\"Auth.PlatformOnly\");",
 									"});"
 								]
 							}

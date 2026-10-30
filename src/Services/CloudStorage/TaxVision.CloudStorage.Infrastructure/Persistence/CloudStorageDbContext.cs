@@ -44,6 +44,10 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
+    // Topes de tamaño administrados por PlatformAdmin (D-33). No tenant-owned: fuera del filtro fail-closed.
+    public DbSet<UploadSizePolicy> UploadSizePolicies => Set<UploadSizePolicy>();
+    public DbSet<UploadSizePolicyAudit> UploadSizePolicyAudits => Set<UploadSizePolicyAudit>();
+
     // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida por
     // TenantPlanCodeProjectionConsumer.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();

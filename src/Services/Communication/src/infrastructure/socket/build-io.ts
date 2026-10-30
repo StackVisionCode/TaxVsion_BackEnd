@@ -135,6 +135,11 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
 
     try {
       const principal = await verifyAccessToken(token);
+      // INV-09 §13.6: un token de servicio (M2M) no es una persona; no abre sockets.
+      if (principal.actorType === 'Service') {
+        next(new Error('Auth.Forbidden'));
+        return;
+      }
       socket.data.principal = principal;
       // Room de tenant + de usuario para broadcasts dirigidos.
       await socket.join(`t:${principal.tenantId}`);

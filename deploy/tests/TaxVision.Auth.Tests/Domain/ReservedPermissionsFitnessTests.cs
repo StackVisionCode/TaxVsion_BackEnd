@@ -12,7 +12,8 @@ public sealed class ReservedPermissionsFitnessTests
     public void Only_client_form_permissions_without_an_endpoint_are_reserved()
     {
         // export (P-12) y apply_profile (P-13) ya tienen endpoint y quedaron liberados; library sigue sin uno.
-        string[] approved = [TasksPermissions.FormsLibraryManage];
+        // communication.platform.analytics.read espera su endpoint (F10 del MASTER de Communication).
+        string[] approved = [TasksPermissions.FormsLibraryManage, CommunicationPermissions.PlatformAnalyticsRead];
         var reserved = PermissionCatalog
             .All.Where(definition => definition.IsReserved)
             .Select(definition => definition.Code)

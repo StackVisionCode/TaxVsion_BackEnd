@@ -34,11 +34,17 @@ import { ConfigPlatformTenantProvider } from './config-platform-tenant-provider.
 import { RedisPresenceService } from './redis/redis-presence-service.js';
 import { HmacTurnCredentialFactory } from './turn/hmac-turn-credential-factory.js';
 import { Argon2PasscodeHasher } from './security/argon2-passcode-hasher.js';
-import { DominantSpeakerThrottle } from './redis/dominant-speaker-throttle.js';
+import { SpeakingThrottle } from './redis/speaking-throttle.js';
+import { RedisMeetingReactionLimiter } from './redis/meeting-reaction-throttle.js';
+import type { MeetingReactionLimiter } from '../application/ports/meeting-reaction-limiter.js';
+import { MeetingReactionAggregator } from '../application/services/meeting-reaction-aggregator.js';
 import { SocketRateLimiter } from './redis/socket-rate-limiter.js';
 import { HttpRateLimiter } from './redis/http-rate-limiter.js';
 import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
+import { PrismaCallUsageRepository } from './persistence/prisma-call-usage-repository.js';
+import type { CallUsageRepository } from '../application/ports/call-usage-repository.js';
+import { MeetingQualityAggregator } from '../application/services/meeting-quality-aggregator.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
 import { HttpTenantHostResolver } from './auth/tenant-host-resolver.js';
 import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
@@ -87,7 +93,23 @@ import type {
   RecordingConsentRepository,
 } from '../application/ports/recording-repository.js';
 import type { SfuService } from '../application/ports/sfu-service.js';
+import type { MeetingMediaPolicyProvider } from '../application/ports/meeting-media-policy-provider.js';
+import { ResolverMeetingMediaPolicyProvider } from './resolver-meeting-media-policy-provider.js';
+import type { PlatformCommunicationSettingsRepository } from '../application/ports/platform-communication-settings-repository.js';
+import type { TenantCommunicationConstraintsRepository } from '../application/ports/tenant-communication-constraints-repository.js';
+import type { UserCommunicationPreferencesRepository } from '../application/ports/user-communication-preferences-repository.js';
+import type { ConfigurationAuditRepository } from '../application/ports/configuration-audit-repository.js';
+import type { EffectiveSettingsResolver } from '../application/ports/effective-settings-resolver.js';
+import type { TenantSettingsCacheInvalidator } from '../application/ports/tenant-settings-provider.js';
+import { PrismaPlatformCommunicationSettingsRepository } from './persistence/prisma-platform-communication-settings-repository.js';
+import { PrismaTenantCommunicationConstraintsRepository } from './persistence/prisma-tenant-communication-constraints-repository.js';
+import { PrismaUserCommunicationPreferencesRepository } from './persistence/prisma-user-communication-preferences-repository.js';
+import { PrismaConfigurationAuditRepository } from './persistence/prisma-configuration-audit-repository.js';
+import { RedisEffectiveSettingsResolver } from './persistence/redis-effective-settings-resolver.js';
+import type { MeetingEventLogRepository } from '../application/ports/meeting-event-log-repository.js';
+import { PrismaMeetingEventLogRepository } from './persistence/prisma-meeting-event-log-repository.js';
 import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
+import type { SocketSessionTerminator } from '../application/ports/socket-session-terminator.js';
 import type { TenantHostResolver } from '../application/ports/tenant-host-resolver.js';
 import type { TenantHostCache } from '../application/ports/tenant-host-cache.js';
 import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
@@ -103,14 +125,24 @@ export interface AppContainer {
   readonly conversations: ConversationRepository;
   readonly messages: MessageRepository;
   readonly calls: CallRepository;
+  /** F4: minutos de llamada por oficina y mes. */
+  readonly callUsage: CallUsageRepository;
+  /** F4: agregado de calidad por reunion para `quality_summary.v1`. */
+  readonly qualityAggregator: MeetingQualityAggregator;
   readonly meetings: MeetingRepository;
+  /** F3: MeetingEventLog, todo lo que pasa dentro de una reunión (C.3). */
+  readonly meetingEvents: MeetingEventLogRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly idempotency: IdempotencyStore;
   readonly settings: TenantSettingsProvider;
   readonly presence: PresenceService;
   readonly turn: TurnCredentialFactory;
   readonly passcodes: PasscodeHasher;
-  readonly dominantSpeakerThrottle: DominantSpeakerThrottle;
+  /** F5 (T-69): tope de `meeting.speaking` por segundo. */
+  readonly speakingThrottle: SpeakingThrottle;
+  /** F5 (D-50): cupos (Redis) y agregado por minuto de reacciones. */
+  readonly reactionLimiter: MeetingReactionLimiter;
+  readonly reactionAggregator: MeetingReactionAggregator;
   readonly rateLimiter: SocketRateLimiter;
   readonly httpRateLimiter: HttpRateLimiter;
   readonly tierAwareQuota: TierAwareQuotaResolver;
@@ -142,6 +174,16 @@ export interface AppContainer {
   readonly limits: LimitsRepository;
   readonly analytics: AnalyticsRepository;
   readonly sfu: SfuService;
+  /** Umbral mesh/SFU y cupo por oficina, resueltos desde la capa de configuración. */
+  readonly meetingMediaPolicy: MeetingMediaPolicyProvider;
+  // Capa de configuración (F2): global → plan → techo de oficina → oficina → usuario.
+  readonly platformSettings: PlatformCommunicationSettingsRepository;
+  readonly tenantConstraints: TenantCommunicationConstraintsRepository;
+  readonly userPreferences: UserCommunicationPreferencesRepository;
+  readonly configurationAudit: ConfigurationAuditRepository;
+  readonly effectiveSettings: EffectiveSettingsResolver;
+  /** La misma instancia que `settings`, vista como invalidador (T-13). */
+  readonly settingsCache: TenantSettingsCacheInvalidator;
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
@@ -165,6 +207,8 @@ export interface AppContainer {
    * pasada de registro — nunca durante un request real.
    */
   emitter?: RealtimeEmitter;
+  /** F6: desconecta los sockets de un usuario (guest revocado). Se cablea tarde como `emitter`. */
+  sessionTerminator?: SocketSessionTerminator;
 }
 
 export function buildContainer(): AppContainer {
@@ -176,18 +220,41 @@ export function buildContainer(): AppContainer {
   const tenantHost = new HttpTenantHostResolver(serviceTokens);
   const notifications = new PrismaNotificationRepository(prisma);
   const customerPortalAccounts = new PrismaCustomerPortalAccountRepository(prisma);
+  const tenantSettingsRepository = new PrismaSettingsRepository(prisma);
+  const settingsProvider = new RedisCachedTenantSettingsProvider(prisma, redis);
+  const platformSettings = new PrismaPlatformCommunicationSettingsRepository(prisma);
+  const tenantConstraints = new PrismaTenantCommunicationConstraintsRepository(prisma);
+  const userPreferences = new PrismaUserCommunicationPreferencesRepository(prisma);
+  const effectiveSettings = new RedisEffectiveSettingsResolver(redis, {
+    platform: platformSettings,
+    limits: limitsRepository,
+    constraints: tenantConstraints,
+    tenantSettings: tenantSettingsRepository,
+    preferences: userPreferences,
+  });
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
     calls: new PrismaCallRepository(prisma),
+    callUsage: new PrismaCallUsageRepository(prisma),
+    qualityAggregator: new MeetingQualityAggregator(),
     meetings: new PrismaMeetingRepository(prisma),
+    meetingEvents: new PrismaMeetingEventLogRepository(prisma),
     publisher: new PrismaOutboxPublisher(prisma),
     idempotency: new PrismaIdempotencyStore(prisma, redis),
-    settings: new RedisCachedTenantSettingsProvider(prisma, redis),
+    settings: settingsProvider,
+    settingsCache: settingsProvider,
+    platformSettings,
+    tenantConstraints,
+    userPreferences,
+    configurationAudit: new PrismaConfigurationAuditRepository(prisma),
+    effectiveSettings,
     presence: new RedisPresenceService(redis),
     turn: new HmacTurnCredentialFactory(),
     passcodes: new Argon2PasscodeHasher(),
-    dominantSpeakerThrottle: new DominantSpeakerThrottle(redis),
+    speakingThrottle: new SpeakingThrottle(redis),
+    reactionLimiter: new RedisMeetingReactionLimiter(redis),
+    reactionAggregator: new MeetingReactionAggregator(),
     rateLimiter: new SocketRateLimiter(redis),
     httpRateLimiter: new HttpRateLimiter(redis),
     tierAwareQuota: new TierAwareQuotaResolver(
@@ -215,10 +282,11 @@ export function buildContainer(): AppContainer {
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
-    tenantSettings: new PrismaSettingsRepository(prisma),
+    tenantSettings: tenantSettingsRepository,
     limits: limitsRepository,
     analytics: new PrismaAnalyticsRepository(prisma),
     sfu: new MediasoupSfuService(),
+    meetingMediaPolicy: new ResolverMeetingMediaPolicyProvider(effectiveSettings),
     recordingSessions: new PrismaRecordingSessionRepository(prisma),
     recordingConsents: new PrismaRecordingConsentRepository(prisma),
     cloudStorageMetadata: new HttpCloudStorageMetadataClient(serviceTokens),

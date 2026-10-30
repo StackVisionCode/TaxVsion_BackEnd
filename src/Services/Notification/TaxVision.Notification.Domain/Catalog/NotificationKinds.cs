@@ -62,6 +62,10 @@ public static class NotificationKinds
     public const string CalendarAppointmentStartingSoon = "calendar.appointment_starting_soon";
 
     public const string CommunicationMeetingInvitationCreated = "communication.meeting.invitation_created";
+    public const string CommunicationMeetingInvitationRevoked = "communication.meeting.invitation_revoked";
+    public const string CommunicationMeetingCancelled = "communication.meeting.cancelled";
+    public const string CommunicationMeetingRescheduled = "communication.meeting.rescheduled";
+    public const string CommunicationMeetingReminder = "communication.meeting.reminder";
     public const string CommunicationCallMissed = "communication.call.missed";
     public const string CommunicationCallRecordingReady = "communication.call.recording_ready";
     public const string CommunicationCallRecordingFailed = "communication.call.recording_failed";

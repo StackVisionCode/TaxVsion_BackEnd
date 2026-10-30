@@ -22,4 +22,10 @@ export interface CallRepository {
     skip: number;
   }): Promise<CallSnapshot[]>;
   countRecentForUser(tenantId: string, userId: string): Promise<number>;
+  /** D-58: por la columna CallParticipant.CustomerId. */
+  listRecentForCustomer(input: { tenantId: string; customerId: string; take: number; skip: number }): Promise<CallSnapshot[]>;
+  /** F4: llamadas en curso cuyo tope vence antes del corte (scheduler, cross-tenant). */
+  listEndingBefore(cutoffUtc: Date): Promise<Call[]>;
+  /** F4: abiertas (Ringing/Accepted/Active) de la oficina, para `maxConcurrentCalls`. */
+  countOpenForTenant(tenantId: string): Promise<number>;
 }

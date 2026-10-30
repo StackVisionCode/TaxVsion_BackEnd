@@ -318,6 +318,107 @@ public sealed class SubscriptionPlan : BaseEntity
         return PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
     }
 
+    /// <summary>
+    /// Publica una versión nueva idéntica a la actual más las claves de <paramref name="seeds"/> que
+    /// todavía no define, superando la anterior. Las claves ya presentes nunca se modifican (su valor
+    /// es contrato comercial vigente). Si no falta ninguna, no crea versión. Devuelve cuántas agregó.
+    /// </summary>
+    public Result<int> AddMissingEntitlements(
+        IReadOnlyCollection<EntitlementSeed> seeds,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var published = FindPublishedVersion();
+        if (published is null)
+            return Result.Failure<int>(
+                new Error("Plan.NoPublishedVersion", "Plan has no published version to revise.")
+            );
+
+        var present = published.Entitlements.Select(e => e.Key.Value).ToHashSet(StringComparer.Ordinal);
+        var missing = seeds.Where(seed => !present.Contains(seed.Key)).ToArray();
+        if (missing.Length == 0)
+            return Result.Success(0);
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            published.VersionNumber + 1,
+            published.TrialDaysDefault,
+            published.SupportedBillingCycles.ToArray()
+        );
+        if (draft.IsFailure)
+            return Result.Failure<int>(draft.Error);
+
+        var version = draft.Value;
+
+        foreach (var entitlement in published.Entitlements)
+        {
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure<int>(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        foreach (var seed in missing)
+        {
+            var key = EntitlementKey.Create(seed.Key);
+            if (key.IsFailure)
+                return Result.Failure<int>(key.Error);
+            var definition = PlanEntitlementDefinition.Create(
+                version.Id,
+                key.Value,
+                seed.ValueType,
+                seed.DefaultValue,
+                description: seed.Key
+            );
+            if (definition.IsFailure)
+                return Result.Failure<int>(definition.Error);
+            version.AddEntitlementDefinition(definition.Value);
+        }
+
+        foreach (var tier in published.PriceTiers)
+        {
+            // UnitAmount es owned type: hay que clonar el Money, no reusar la instancia del tier viejo.
+            var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
+            if (amount.IsFailure)
+                return Result.Failure<int>(amount.Error);
+            var clone = PlanPriceTier.Create(
+                version.Id,
+                tier.BillingCycle,
+                tier.MinQuantity,
+                tier.MaxQuantity,
+                amount.Value
+            );
+            if (clone.IsFailure)
+                return Result.Failure<int>(clone.Error);
+            version.AddPriceTier(clone.Value);
+        }
+
+        foreach (var feature in published.Features)
+        {
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure<int>(clone.Error);
+            version.AddFeature(clone.Value);
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return Result.Failure<int>(added.Error);
+
+        var publishResult = PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
+        if (publishResult.IsFailure)
+            return Result.Failure<int>(publishResult.Error);
+
+        return Result.Success(missing.Length);
+    }
+
     // Un tramo por ciclo soportado (cantidad 1+): anual con su propio precio, mensual con el suyo.
     private static Result<IReadOnlyList<PlanPriceTier>> BuildPriceTiers(
         SubscriptionPlanVersion version,

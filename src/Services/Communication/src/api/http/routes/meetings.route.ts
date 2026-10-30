@@ -11,6 +11,8 @@ import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
+import { continueMeeting } from '../../../application/use-cases/continue-meeting.js';
+import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 import { requirePermission } from '../plugins/require-permission.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
@@ -22,6 +24,8 @@ const CreateMeetingBody = z.object({
   passcode: z.string().min(4).max(120).optional(),
   requireWaitingRoom: z.boolean().optional(),
   scheduledForUtc: z.string().datetime().optional(),
+  // Informativa (D-35): el dominio la acota al máximo de la oficina.
+  scheduledDurationMinutes: z.number().int().min(1).max(480).optional(),
   recordingRequested: z.boolean().optional(),
 });
 
@@ -32,6 +36,10 @@ const StartMeetingBody = z.object({
 });
 const CancelMeetingBody = z.object({ reason: z.string().max(500).optional() });
 const RescheduleMeetingBody = z.object({ newScheduledForUtc: z.string().datetime().nullable() });
+const EventsQuery = z.object({
+  after: z.coerce.number().int().min(0).optional(),
+  take: z.coerce.number().int().min(1).max(500).default(200),
+});
 const HistoryQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
@@ -41,8 +49,9 @@ const HistoryQuery = z.object({
   // nunca aparecia en ningun listado. Default 'upcoming' preserva el
   // comportamiento previo para callers existentes.
   scope: z.enum(['upcoming', 'past']).default('upcoming'),
-  // Perfil del cliente: solo meetings donde ese cliente (su usuario del portal) participa o está
-  // invitado. Solo staff, y con la misma visibilidad por asignación que el historial de llamadas.
+  // Perfil del cliente: solo meetings donde ese cliente participa (columna CustomerId, D-58) o su
+  // usuario del portal está invitado. Solo staff, y con la misma visibilidad por asignación que el
+  // historial de llamadas.
   customerId: z.string().uuid().optional(),
 });
 
@@ -81,6 +90,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         passcodePlain: body.passcode ?? null,
         ...(body.requireWaitingRoom !== undefined ? { requireWaitingRoom: body.requireWaitingRoom } : {}),
         ...(body.scheduledForUtc !== undefined ? { scheduledForUtc: body.scheduledForUtc } : {}),
+        ...(body.scheduledDurationMinutes !== undefined ? { scheduledDurationMinutes: body.scheduledDurationMinutes } : {}),
         ...(body.recordingRequested !== undefined ? { recordingRequested: body.recordingRequested } : {}),
       },
       container,
@@ -100,10 +110,6 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
       const principal = request.principal!;
       const query = HistoryQuery.parse(request.query);
 
-      // Filtro por cliente (perfil del cliente → meetings). Mismo criterio que
-      // GET /communication/customers/:customerId/calls: solo staff y, con visibilidad por asignación
-      // activa, solo clientes asignados (salvo quien ve a todos). La Meeting no tiene CustomerId: se
-      // resuelve el UserId del PORTAL del cliente y se filtra por participante/invitado.
       let counterpartUserId: string | undefined;
       if (query.customerId) {
         if (!isStaffActor(principal.actorType)) return reply.code(403).send(CUSTOMER_MEETINGS_STAFF_ONLY);
@@ -120,31 +126,27 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           if (!isAssigned) return reply.code(403).send(CUSTOMER_MEETINGS_STAFF_ONLY);
         }
 
+        // D-58: la columna CustomerId del participante es la fuente; el usuario de portal activo solo
+        // suma invitaciones sin usar. Sin cuenta de portal el historial sigue existiendo (E-199).
         const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(query.customerId);
-        // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber
-        // meetings con él. Página vacía con la misma forma (no es un error).
-        if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
-          return reply.send({ items: [], page: query.page, size: query.size, totalCount: 0 });
+        if (portalAccount && portalAccount.tenantId === principal.tenantId) {
+          counterpartUserId = portalAccount.userId;
         }
-        counterpartUserId = portalAccount.userId;
       }
 
       const listInput = {
         tenantId: principal.tenantId,
         userId: principal.userId,
-        take: query.size,
-        skip: (query.page - 1) * query.size,
+        ...(query.customerId !== undefined ? { customerId: query.customerId } : {}),
         ...(counterpartUserId !== undefined ? { counterpartUserId } : {}),
       };
+      const pageInput = { ...listInput, take: query.size, skip: (query.page - 1) * query.size };
       const [items, totalCount] =
         query.scope === 'past'
-          ? await Promise.all([
-              container.meetings.listPastForUser(listInput),
-              container.meetings.countPastForUser(principal.tenantId, principal.userId, counterpartUserId),
-            ])
+          ? await Promise.all([container.meetings.listPastForUser(pageInput), container.meetings.countPastForUser(listInput)])
           : await Promise.all([
-              container.meetings.listUpcomingForUser(listInput),
-              container.meetings.countUpcomingForUser(principal.tenantId, principal.userId, counterpartUserId),
+              container.meetings.listUpcomingForUser(pageInput),
+              container.meetings.countUpcomingForUser(listInput),
             ]);
       return reply.send({
         items: items.map((snapshot) => ({
@@ -157,6 +159,13 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           scheduledForUtc: snapshot.scheduledForUtc?.toISOString() ?? null,
           startedAtUtc: snapshot.startedAtUtc?.toISOString() ?? null,
           endedAtUtc: snapshot.endedAtUtc?.toISOString() ?? null,
+          // F3 (T-40): duración programada (informativa), tope, corte y motivo del fin.
+          scheduledDurationMinutes: snapshot.scheduledDurationMinutes,
+          maxDurationMinutes: snapshot.maxDurationMinutes,
+          endsAtUtc: snapshot.endsAtUtc?.toISOString() ?? null,
+          endReason: snapshot.endReason,
+          durationSeconds: snapshot.durationSeconds,
+          continuationOfMeetingId: snapshot.continuationOfMeetingId,
           joinedParticipantsCount: snapshot.participants.filter((p) => p.status === 'Joined').length,
           // Fase Frontend 9 — el historial necesita saber si hay transcript
           // disponible sin abrir cada meeting; el campo ya vivia en el
@@ -206,6 +215,52 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
   );
 
+  // F3: limites efectivos de la oficina para agendar (duracion por defecto/maxima, cupo, invitados).
+  // Cualquier miembro con meeting.join los lee; los valores salen del resolver (plataforma > plan > oficina).
+  app.get(
+    '/communication/meetings/limits',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const effective = await container.effectiveSettings.resolve(request.principal!.tenantId);
+      return reply.send({
+        maxDurationMinutes: effective.meeting.maxDurationMinutes,
+        defaultDurationMinutes: effective.meeting.defaultDurationMinutes,
+        maxParticipants: effective.meeting.maxParticipants,
+        guestsAllowed: effective.meeting.guestsAllowed,
+      });
+    },
+  );
+
+  // F3 (T-32): ficha del meeting — quien participó lee su MeetingEventLog, paginado por `seq`.
+  app.get(
+    '/communication/meetings/:id/events',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const query = EventsQuery.parse(request.query);
+      const result = await listMeetingEvents(
+        {
+          tenantId: principal.tenantId,
+          meetingId: params.id,
+          userId: principal.userId,
+          ...(query.after !== undefined ? { afterSeq: query.after } : {}),
+          take: query.take,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Meeting.NotFound' ? 404 : 403;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
   app.post(
     '/communication/meetings/:id/start',
     {
@@ -224,7 +279,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           ...(body.audioDefault !== undefined ? { audioDefault: body.audioDefault } : {}),
           ...(body.videoDefault !== undefined ? { videoDefault: body.videoDefault } : {}),
         },
-        container,
+        { ...container, emitter: container.emitter },
       );
       if (!result.isSuccess) {
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
@@ -291,6 +346,8 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
   );
 
+  // End explícito de host/cohost (D-07): el cierre ordenado (grabación, SFU, "busy", avisos) es el
+  // mismo que usan el scheduler y la sucesión; el endpoint ya no lo repite a mano.
   app.post(
     '/communication/meetings/:id/end',
     {
@@ -306,32 +363,42 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
           meetingId: params.id,
           byUserId: principal.userId,
         },
-        container,
+        { ...container, emitter: container.emitter },
       );
       if (!result.isSuccess) {
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
       }
-      // Libera el router SFU (transports/producers/consumers de todos los
-      // participantes) si el meeting tenia strategy 'Sfu' — no-op si nunca se
-      // creo router (meetings Mesh, o Sfu que nadie llego a usar via socket).
-      await container.sfu.closeMeeting(params.id);
-      // Fase A3 — este endpoint termina el meeting para TODOS sin pasar por el
-      // Leave individual de cada socket (mismo caso que el host se va sin
-      // cohost en meeting-handlers.ts) — hay que limpiar el "busy" de cada
-      // participante que quedo Left, o quedarian marcados Busy hasta el TTL
-      // de respaldo.
-      const endedMeeting = await container.meetings.findById(principal.tenantId, params.id);
-      if (endedMeeting) {
-        const participantUserIds = endedMeeting.toSnapshot().participants.map((p) => p.userId);
-        await Promise.all(
-          participantUserIds.map((participantUserId) =>
-            container.presence
-              .clearBusy({ tenantId: principal.tenantId, userId: participantUserId, sourceId: params.id })
-              .catch(() => undefined),
-          ),
-        );
-      }
       return reply.send(result.value);
+    },
+  );
+
+  // "Start a new meeting" (D-34): sin prórroga, la continuación es una reunión nueva enlazada con
+  // los mismos invitados; cada uno recibe `meeting.invited` y entra con un clic.
+  app.post(
+    '/communication/meetings/:id/continue',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingCreate)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = IdParams.parse(request.params);
+      const hostEmail = typeof principal.raw['email'] === 'string' ? principal.raw['email'] : undefined;
+      const actorDisplayName = await resolveDisplayName(container.userDirectory, principal.userId, hostEmail);
+      const result = await continueMeeting(
+        {
+          tenantId: principal.tenantId,
+          correlationId: request.id,
+          meetingId: params.id,
+          actorUserId: principal.userId,
+          actorDisplayName,
+        },
+        { ...container, ...(container.emitter ? { emitter: container.emitter } : {}) },
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Meeting.NotFound' ? 404 : 400;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(201).send(result.value);
     },
   );
 }

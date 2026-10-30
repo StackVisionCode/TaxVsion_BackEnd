@@ -736,6 +736,96 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantStorageLimits", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Quotas.UploadSizePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FolderType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("MaxFileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PlanCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Scope", "FolderType", "PlanCode", "TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_UploadSizePolicies_Scope_FolderType_PlanCode_TenantId");
+
+                    b.ToTable("UploadSizePolicies", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Quotas.UploadSizePolicyAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FolderType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long?>("NewMaxFileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("OldMaxFileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PlanCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc")
+                        .HasDatabaseName("IX_UploadSizePolicyAudits_OccurredAt");
+
+                    b.ToTable("UploadSizePolicyAudits", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")

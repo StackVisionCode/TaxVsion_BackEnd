@@ -17,6 +17,11 @@ export interface MeetingInvitationListItem {
   readonly expiresAt: string;
   readonly usedAt: string | null;
   readonly revokedAt: string | null;
+  /** F6 (D-48): auditoria de usos y cierre por la reunion. */
+  readonly firstUsedAt: string | null;
+  readonly lastUsedAt: string | null;
+  readonly useCount: number;
+  readonly closedAt: string | null;
   readonly createdAt: string;
 }
 
@@ -51,6 +56,10 @@ export async function listMeetingInvitations(
       expiresAt: s.expiresAtUtc.toISOString(),
       usedAt: s.usedAtUtc ? s.usedAtUtc.toISOString() : null,
       revokedAt: s.revokedAtUtc ? s.revokedAtUtc.toISOString() : null,
+      firstUsedAt: s.firstUsedAtUtc ? s.firstUsedAtUtc.toISOString() : null,
+      lastUsedAt: s.lastUsedAtUtc ? s.lastUsedAtUtc.toISOString() : null,
+      useCount: s.useCount,
+      closedAt: s.closedAtUtc ? s.closedAtUtc.toISOString() : null,
       createdAt: s.createdAtUtc.toISOString(),
     };
   });

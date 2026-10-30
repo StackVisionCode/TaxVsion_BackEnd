@@ -580,6 +580,46 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.CommunicationMeetingInvitationRevoked,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "meeting",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingCancelled,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingRescheduled,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingReminder,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.CommunicationCallMissed,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,

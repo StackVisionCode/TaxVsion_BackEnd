@@ -31,4 +31,7 @@ public static class CloudStoragePermissions
 
     /// <summary>Admin: editar reglas de acceso a documentos sobre cualquier cliente del tenant, no solo los asignados.</summary>
     public const string CustomerAccessManageAny = "cloudstorage.customer_access.manage_any";
+
+    /// <summary>PlatformOnly: topes de tamaño por carpeta/plan/oficina (UploadSizePolicy); ningún tenant los edita.</summary>
+    public const string UploadPolicyManage = "cloudstorage.upload_policy.manage";
 }

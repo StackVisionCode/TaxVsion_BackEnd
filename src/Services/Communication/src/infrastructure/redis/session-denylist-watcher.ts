@@ -25,6 +25,8 @@ const CHANNEL = 'auth:session-revoked';
 export function startSessionDenylistWatcher(
   subscriber: Redis,
   emitter: RealtimeEmitter,
+  /** F3 (INV-09): expulsa del meeting/llamada al socket exacto y lo desconecta; el UX sigue por `session.revoked`. */
+  onRevoked?: (message: SessionRevokedMessage) => Promise<void>,
 ): { stop(): Promise<void> } {
   void subscriber.subscribe(CHANNEL).catch((err: unknown) => {
     logger.error({ err: (err as Error).message }, 'session denylist subscribe failed');
@@ -58,6 +60,11 @@ export function startSessionDenylistWatcher(
         payload: dto,
       },
     });
+    if (onRevoked) {
+      void onRevoked(parsed).catch((err: unknown) => {
+        logger.warn({ err, userId: parsed.userId }, 'session revoked: socket expulsion failed');
+      });
+    }
     // Denylist en Redis con TTL corto; el JWKS-verifier ya la consulta en cada
     // handshake nuevo. Solo confirmamos que existe la entrada.
     logger.info(

@@ -14,12 +14,13 @@ import { CallSocketEvents, type CallRecordingStateChangedDto } from '../../contr
 import { MeetingEventTypes, type MeetingRecordingFailedEvent } from '../../contracts/events/meeting-events.js';
 import { CallEventTypes, type CallRecordingFailedEvent } from '../../contracts/events/call-events.js';
 import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
+import type { EffectiveSettingsResolver } from '../../application/ports/effective-settings-resolver.js';
 
 /**
  * Cada `intervalSeconds` busca RecordingSession en 'Requesting' con mas de
- * `meetingTimeoutSeconds` (meetings, default 30s) / `callTimeoutSeconds`
- * (calls, Fase Backend 4: default 15s — mas estricto, un callee que no
- * responde se trata como rejection) de antiguedad y resuelve la policy —
+ * `recordingConsentTimeoutMeetingSeconds` (meetings) / `recordingConsentTimeoutCallSeconds`
+ * (calls, Fase Backend 4: mas estricto, un callee que no responde se trata como rejection) de
+ * antiguedad — ambos valores globales de PlatformCommunicationSettings — y resuelve la policy —
  * reusa startMeetingRecording/startCallRecording (misma evaluacion que los
  * respond-*-recording-consent.ts respectivos) para no duplicar logica. Si la
  * policy no da luz verde ni siquiera al timeout (tipicamente
@@ -36,11 +37,16 @@ const LOCK_KEY = 'comm:lock:recording-consent-timeout-scheduler';
 
 export interface RecordingConsentTimeoutSchedulerConfig {
   readonly intervalSeconds: number;
+}
+
+/** Timeouts vigentes (globales, PlatformCommunicationSettings) leídos en cada tick. */
+interface ConsentTimeouts {
   readonly meetingTimeoutSeconds: number;
   readonly callTimeoutSeconds: number;
 }
 
 export interface RecordingConsentTimeoutSchedulerDeps {
+  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'platform'>;
   readonly meetings: MeetingRepository;
   readonly calls: CallRepository;
   readonly recordingSessions: RecordingSessionRepository;
@@ -58,8 +64,13 @@ export function startRecordingConsentTimeoutScheduler(
   const handle = setInterval(async () => {
     try {
       await deps.lock.withLock(LOCK_KEY, Math.max(config.intervalSeconds * 3000, 5_000), async () => {
-        await runOnceForMeetings(config, deps);
-        await runOnceForCalls(config, deps);
+        const platform = await deps.effectiveSettings.platform();
+        const timeouts: ConsentTimeouts = {
+          meetingTimeoutSeconds: platform.recordingConsentTimeoutMeetingSeconds,
+          callTimeoutSeconds: platform.recordingConsentTimeoutCallSeconds,
+        };
+        await runOnceForMeetings(timeouts, deps);
+        await runOnceForCalls(timeouts, deps);
       });
     } catch (err) {
       logger.error({ err: (err as Error).message }, 'RecordingConsentTimeoutScheduler tick failed');
@@ -74,7 +85,7 @@ export function startRecordingConsentTimeoutScheduler(
 }
 
 async function runOnceForMeetings(
-  config: RecordingConsentTimeoutSchedulerConfig,
+  config: ConsentTimeouts,
   deps: RecordingConsentTimeoutSchedulerDeps,
 ): Promise<void> {
   const olderThanUtc = new Date(Date.now() - config.meetingTimeoutSeconds * 1000);
@@ -146,7 +157,7 @@ async function runOnceForMeetings(
 }
 
 async function runOnceForCalls(
-  config: RecordingConsentTimeoutSchedulerConfig,
+  config: ConsentTimeouts,
   deps: RecordingConsentTimeoutSchedulerDeps,
 ): Promise<void> {
   const olderThanUtc = new Date(Date.now() - config.callTimeoutSeconds * 1000);

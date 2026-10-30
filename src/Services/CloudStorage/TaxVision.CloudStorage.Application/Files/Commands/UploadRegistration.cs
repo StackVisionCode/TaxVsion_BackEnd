@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Files;
 using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
@@ -35,6 +36,7 @@ internal static class UploadRegistration
         IObjectKeyBuilder keyBuilder,
         ISystemFolderProvisioner systemFolders,
         CloudStorageOptions config,
+        IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IMessageBus bus,
         CancellationToken ct
@@ -54,7 +56,7 @@ internal static class UploadRegistration
         if (limit is null)
             return Result.Failure<FileObject>(QuotaErrors.NotProvisioned);
 
-        var policy = config.ResolveUploadPolicy(limit.PlanCode, folderType);
+        var policy = await uploadPolicies.ResolveAsync(tenantId, limit.PlanCode, folderType, ct);
         if (string.IsNullOrWhiteSpace(originalName) || originalName.Length > 255)
             return Result.Failure<FileObject>(FileErrors.UnsupportedType);
 

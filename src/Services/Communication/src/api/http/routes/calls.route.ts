@@ -128,20 +128,13 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
         if (!isAssigned) return reply.code(403).send(STAFF_ONLY);
       }
 
+      // D-58 (F4): el historial sale de la columna CallParticipant.CustomerId; la cuenta de portal solo
+      // informa `hasPortalAccount` (si se desactiva, las llamadas pasadas siguen en la ficha).
       const portalAccount = await container.customerPortalAccounts.findActiveByCustomerId(params.customerId);
-      // Sin cuenta de portal (o de otro tenant): el cliente no tiene identidad in-app → no puede haber llamadas.
-      if (!portalAccount || portalAccount.tenantId !== principal.tenantId) {
-        return reply.send({
-          items: [],
-          stats: { total: 0, completed: 0, missed: 0, avgDurationSeconds: null },
-          hasPortalAccount: false,
-        });
-      }
-
-      const clientUserId = portalAccount.userId;
-      const snapshots = await container.calls.listRecentForUser({
+      const hasPortalAccount = !!portalAccount && portalAccount.tenantId === principal.tenantId;
+      const snapshots = await container.calls.listRecentForCustomer({
         tenantId: principal.tenantId,
-        userId: clientUserId,
+        customerId: params.customerId,
         take: query.size,
         skip: 0,
       });
@@ -151,7 +144,7 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
         kind: s.kind,
         status: s.status,
         // Dirección relativa a la OFICINA: si el cliente inició, es entrante; si no, saliente.
-        direction: s.callerUserId === clientUserId ? 'incoming' : 'outgoing',
+        direction: s.participants.some((p) => p.customerId === params.customerId && p.role === 'Caller') ? 'incoming' : 'outgoing',
         conversationId: s.conversationId,
         ringingAtUtc: s.ringingAtUtc.toISOString(),
         endedAtUtc: s.endedAtUtc ? s.endedAtUtc.toISOString() : null,
@@ -178,9 +171,9 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
           missed: snapshots.filter((s) => s.status === 'MissedCall').length,
           avgDurationSeconds,
         },
-        hasPortalAccount: true,
+        hasPortalAccount,
         // UserId del portal del cliente — permite iniciar una llamada (audio/video) al cliente desde su perfil.
-        clientUserId,
+        clientUserId: hasPortalAccount ? portalAccount!.userId : null,
       });
     },
   );

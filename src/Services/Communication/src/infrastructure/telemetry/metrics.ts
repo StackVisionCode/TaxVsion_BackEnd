@@ -30,3 +30,24 @@ export const socketConnectionsActive = new Gauge({
   help: 'Conexiones Socket.IO activas en este proceso (no cluster-wide).',
   registers: [metricsRegistry],
 });
+
+// F1 — transporte del SFU observable: fallos ICE/DTLS por direccion y workers sin WebRtcServer.
+export const sfuTransportFailuresTotal = new Counter({
+  name: 'communication_sfu_transport_failures_total',
+  help: 'Transports WebRTC del SFU que llegaron a ICE/DTLS failed, por direccion y capa.',
+  labelNames: ['direction', 'layer'] as const,
+  registers: [metricsRegistry],
+});
+
+export const sfuTransportsConnectedTotal = new Counter({
+  name: 'communication_sfu_transports_connected_total',
+  help: 'Transports WebRTC del SFU que completaron ICE, por direccion y protocolo seleccionado.',
+  labelNames: ['direction', 'protocol'] as const,
+  registers: [metricsRegistry],
+});
+
+export const sfuWebRtcServerFallbackWorkers = new Gauge({
+  name: 'communication_sfu_webrtcserver_fallback_workers',
+  help: 'Workers de mediasoup que no pudieron enlazar su WebRtcServer y usan el rango de puertos.',
+  registers: [metricsRegistry],
+});

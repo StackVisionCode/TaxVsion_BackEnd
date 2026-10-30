@@ -40,8 +40,10 @@ export class SocketRealtimeEmitter implements RealtimeEmitter {
     meetingId: string;
     event: string;
     envelope: SocketEnvelope<T>;
+    volatile?: boolean;
   }): void {
-    this.io.to(`t:${input.tenantId}:m:${input.meetingId}`).emit(input.event, input.envelope);
+    const room = this.io.to(`t:${input.tenantId}:m:${input.meetingId}`);
+    (input.volatile ? room.volatile : room).emit(input.event, input.envelope);
   }
 
   emitToUser<T>(input: {
@@ -51,6 +53,16 @@ export class SocketRealtimeEmitter implements RealtimeEmitter {
     envelope: SocketEnvelope<T>;
   }): void {
     this.io.to(`t:${input.tenantId}:u:${input.userId}`).emit(input.event, input.envelope);
+  }
+
+  /**
+   * Emite a UN socket concreto (su id). Solo lo usa la capa API para la señalizacion mesh dirigida: con
+   * varias pestañas, solo la que esta en la reunion recibe ofertas/candidatos (INV-02 H-9). Queda fuera
+   * del puerto `RealtimeEmitter` porque los casos de uso no conocen sockets.
+   */
+  emitToSocket<T>(input: { socketId: string; event: string; envelope: SocketEnvelope<T> }): void {
+    // Socket.IO une cada socket a una room con su propio id, asi que `to(id)` llega solo a el.
+    this.io.to(input.socketId).emit(input.event, input.envelope);
   }
 
   emitToTenant<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void {

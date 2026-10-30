@@ -44,6 +44,11 @@ export const CommunicationPermissions = {
   SettingsManage: 'communication.settings.manage',
   AnalyticsRead: 'communication.analytics.read',
 
+  // PlatformOnly en el catálogo de Auth: además del código se exige actorType PlatformAdmin en la ruta.
+  PlatformManage: 'communication.platform.manage',
+  ConstraintsManage: 'communication.constraints.manage',
+  PlatformAnalyticsRead: 'communication.platform.analytics.read',
+
   /**
    * Palanca del portal: es la que el administrador reconoce en el cajon de accesos del cliente
    * ("quitarle las llamadas a este cliente"). Se exige SOLO al actor CustomerPortal — equivalente

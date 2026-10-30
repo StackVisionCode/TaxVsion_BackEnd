@@ -1,6 +1,7 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { signJoinTicket } from '../../infrastructure/jwks/join-ticket.js';
 
 export interface ResolveInvitationTokenCommand {
@@ -18,6 +19,8 @@ export interface ResolveInvitationTokenResult {
 
 export interface ResolveInvitationTokenDeps {
   readonly meetings: MeetingRepository;
+  /** F6 (D-47): la oficina puede no admitir externos; sin resolver (tests viejos) se asume permitido. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
 }
 
 const GENERIC_NOT_FOUND = makeError(
@@ -34,6 +37,8 @@ const GENERIC_NOT_FOUND = makeError(
  * Anti-enumeracion: cualquier motivo de invalidez (no existe, revocada, ya
  * usada, expirada, hash no matchea) colapsa al MISMO codigo de error — el
  * route la mapea siempre a 404, sin filtrar por que fallo especificamente.
+ * `Meeting.GuestsNotAllowed` es distinto a proposito: el token es valido, la
+ * politica de la oficina es la que no admite externos (403, sin enumerar nada).
  */
 export async function resolveInvitationToken(
   command: ResolveInvitationTokenCommand,
@@ -50,6 +55,13 @@ export async function resolveInvitationToken(
   const snap = invitation.toSnapshot();
   const meeting = await deps.meetings.findById(snap.tenantId, snap.meetingId);
   if (!meeting) return Result.fail(GENERIC_NOT_FOUND);
+
+  if (deps.effectiveSettings) {
+    const effective = await deps.effectiveSettings.resolve(snap.tenantId);
+    if (!effective.meeting.guestsAllowed) {
+      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+    }
+  }
 
   const displayName = (
     command.displayName?.trim() ||

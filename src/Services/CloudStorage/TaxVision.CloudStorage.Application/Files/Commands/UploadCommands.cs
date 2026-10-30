@@ -7,6 +7,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.CustomerAccess;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.CustomerAccess;
 using TaxVision.CloudStorage.Domain.Files;
@@ -69,6 +70,7 @@ public static class InitiateUploadHandler
         ISystemFolderProvisioner systemFolders,
         IObjectStorage storage,
         IOptions<CloudStorageOptions> options,
+        IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -106,6 +108,7 @@ public static class InitiateUploadHandler
             keyBuilder,
             systemFolders,
             config,
+            uploadPolicies,
             clock,
             bus,
             ct
@@ -275,6 +278,7 @@ public static class ScanFileHandler
         IContentScanner contentScanner,
         IFileContentInspector inspector,
         IOptions<CloudStorageOptions> options,
+        IUploadPolicyResolver uploadPolicies,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -343,7 +347,7 @@ public static class ScanFileHandler
             var limit =
                 await limits.GetAsync(command.TenantId, ct)
                 ?? throw new InvalidOperationException("Tenant quota projection is missing.");
-            var uploadPolicy = options.Value.ResolveUploadPolicy(limit.PlanCode, file.FolderType);
+            var uploadPolicy = await uploadPolicies.ResolveAsync(command.TenantId, limit.PlanCode, file.FolderType, ct);
             if (
                 !inspected.IsSafe
                 || !FileTypeCompatibility.Matches(file.OriginalName, inspected.ContentType)

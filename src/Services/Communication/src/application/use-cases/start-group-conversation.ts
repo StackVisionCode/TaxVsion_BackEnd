@@ -5,6 +5,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/events/chat-events.js';
 
 /**
@@ -31,6 +32,7 @@ export interface StartGroupConversationDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
+  readonly effectiveSettings: Pick<EffectiveSettingsResolver, 'resolve'>;
 }
 
 export async function startGroupConversation(
@@ -41,8 +43,10 @@ export async function startGroupConversation(
   if (!settings.chatEnabled) {
     return Result.fail(makeError('Chat.Disabled', 'Chat is disabled for this tenant.'));
   }
-  if (!settings.internalGroupsEnabled) {
-    return Result.fail(makeError('Chat.GroupsDisabled', 'Internal groups are disabled for this tenant.'));
+  // D-16: los grupos internos son un interruptor global de la plataforma, no de la oficina.
+  const effective = await deps.effectiveSettings.resolve(command.tenantId);
+  if (!effective.chat.internalGroupsEnabled) {
+    return Result.fail(makeError('Chat.GroupsDisabled', 'Internal groups are disabled on this platform.'));
   }
 
   const reservation = await deps.idempotency.tryReserve<StartGroupConversationResult>({

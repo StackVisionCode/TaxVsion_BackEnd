@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConnectionQualityMetricsSchema } from './meeting-socket-events.js';
 
 /**
  * Contratos socket para llamadas 1:1. Todos los payloads client->server pasan
@@ -46,7 +47,23 @@ export type MediaStatusPayload = z.infer<typeof MediaStatusPayloadSchema>;
 export const ConnectionQualityPayloadSchema = z.object({
   callId: z.string().uuid(),
   quality: z.enum(['Excellent', 'Good', 'Fair', 'Poor', 'Disconnected']),
+  // F4: cifras opcionales (se persisten/loguean, no se difunden al par).
+  metrics: ConnectionQualityMetricsSchema.optional(),
 });
+
+/** F4 (D-39): el par ve el nivel del otro. */
+export interface CallPeerQualityChangedDto {
+  callId: string;
+  peerUserId: string;
+  quality: 'Unknown' | 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Disconnected';
+}
+
+/** F4 (INV-12 H-3): aviso antes del corte por `maxCallMinutes`. */
+export interface CallDurationWarningDto {
+  callId: string;
+  remainingSeconds: number;
+  endsAtUtc: string;
+}
 export type ConnectionQualityPayload = z.infer<typeof ConnectionQualityPayloadSchema>;
 
 export const AttachCallRecordingPayloadSchema = z.object({
@@ -111,7 +128,7 @@ export interface IncomingCallDto {
 export interface CallStateDto {
   callId: string;
   status: 'Ringing' | 'Accepted' | 'Active' | 'Ended' | 'Rejected' | 'Cancelled' | 'MissedCall' | 'Failed';
-  endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | null;
+  endReason: 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached' | null;
   durationSeconds: number | null;
   updatedAtUtc: string;
 }
@@ -244,4 +261,7 @@ export const CallSocketEvents = {
   UpgradedToVideo: 'call.upgraded_to_video',
   ScreenShareStarted: 'call.screen_share.started',
   ScreenShareStopped: 'call.screen_share.stopped',
+  // F4
+  PeerQualityChanged: 'call.peer_quality_changed',
+  DurationWarning: 'call.duration.warning',
 } as const;

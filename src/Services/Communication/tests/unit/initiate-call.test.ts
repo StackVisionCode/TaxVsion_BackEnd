@@ -30,6 +30,15 @@ class FakeCallRepository implements CallRepository {
   async listRecentForUser(): Promise<CallSnapshot[]> {
     return [];
   }
+  async listRecentForCustomer(): Promise<CallSnapshot[]> {
+    return [];
+  }
+  async listEndingBefore(): Promise<Call[]> {
+    return [];
+  }
+  async countOpenForTenant(): Promise<number> {
+    return 0;
+  }
   async countRecentForUser(): Promise<number> {
     return 0;
   }
@@ -59,7 +68,6 @@ function fakeSettings(): TenantSettingsProvider {
         employeeToEmployeeChatEnabled: true,
         restrictCustomerChatToAssignedPreparer: false,
         screenshotsEnabled: true,
-        internalGroupsEnabled: true,
         messageRetentionDays: 365,
       };
     },

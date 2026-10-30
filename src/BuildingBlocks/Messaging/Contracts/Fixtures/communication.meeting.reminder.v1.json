@@ -1,0 +1,21 @@
+{
+  "eventId": "6f1c2a3b-1111-4a2b-9c3d-000000000041",
+  "eventType": "communication.meeting.reminder.v1",
+  "tenantId": "4c12d117-766d-479c-a7ce-dfb779a1829b",
+  "correlationId": "corr-123",
+  "occurredOnUtc": "2026-11-05T17:45:00.000Z",
+  "meetingId": "5c0a2d6e-9d7b-4c1f-8e2a-3b4c5d6e7f80",
+  "meetingTitle": "Revisión de la 1040",
+  "shortCode": "ABC-123",
+  "scheduledForUtc": "2026-11-05T18:00:00.000Z",
+  "durationMinutes": 45,
+  "minutesBefore": 15,
+  "hostUserId": "2b91f0c4-1111-4222-8333-444455556666",
+  "hostDisplayName": "María Pérez",
+  "timeZone": "America/Santo_Domingo",
+  "participantUserIds": ["2b91f0c4-1111-4222-8333-444455556666"],
+  "inviteeUserIds": ["1a2b3c4d-3333-4c4d-9e5f-000000000003"],
+  "invitedEmails": ["externo@example.com"],
+  "staffJoinUrl": "https://manfer.taxoffix.io/meetings",
+  "portalJoinUrl": "https://manfer.taxoffix.io/portal/client/meetings"
+}

@@ -46,11 +46,15 @@ public sealed class TenantStorageLimit : TenantEntity
         return limit;
     }
 
+    /// <summary>
+    /// Solo cuota del tenant. El tope por archivo ya no se chequea acá: lo resuelve IUploadPolicyResolver
+    /// (UploadSizePolicy en BD, D-33) antes de reservar; MaxFileSizeBytes queda como dato informativo del plan.
+    /// </summary>
     public Result Reserve(long bytes)
     {
         if (IsSuspended)
             return Result.Failure(QuotaErrors.Suspended);
-        if (bytes <= 0 || bytes > MaxFileSizeBytes)
+        if (bytes <= 0)
             return Result.Failure(QuotaErrors.FileTooLarge);
         if (UsedBytes + ReservedBytes + bytes > MaxBytes)
             return Result.Failure(QuotaErrors.Exceeded);

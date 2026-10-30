@@ -227,6 +227,7 @@ function wireCallSocket(
         callId: parsed.data.callId,
         actorUserId: userId,
         actorDisplayName,
+        actorType: principal.actorType,
         action,
       },
       container,
@@ -654,7 +655,8 @@ function wireCallSocket(
   // el socket seguia en algun room `t:{tenant}:call:{id}` (se joinea en
   // Initiate/Accept), terminamos esa call y avisamos al peer — sin esto, la
   // otra punta se queda "en llamada" indefinidamente con nadie del otro lado.
-  socket.on('disconnect', () => {
+  // `disconnecting`: las rooms siguen disponibles (en `disconnect` ya están vacías).
+  socket.on('disconnecting', () => {
     const callRoomPrefix = `t:${tenantId}:call:`;
     const activeCallIds = [...socket.rooms].filter((room) => room.startsWith(callRoomPrefix));
     for (const room of activeCallIds) {

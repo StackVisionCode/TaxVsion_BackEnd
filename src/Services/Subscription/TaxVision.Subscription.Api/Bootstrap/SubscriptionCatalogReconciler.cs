@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Catalog;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
 using TaxVision.Subscription.Application.Plans.Commands.SetPlanModules;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Catalog;
@@ -32,6 +33,7 @@ public sealed class SubscriptionCatalogReconciler(
 
         await SubscriptionModuleCatalogSeeder.SeedAsync(db, catalogOptions.Value, log, cancellationToken);
         await ReconcilePlanModulesAsync(services, log, cancellationToken);
+        await ReconcileCommunicationEntitlementsAsync(services, log, cancellationToken);
         await ReconcileQuotaAddOnsAsync(services, log, cancellationToken);
         await services.GetRequiredService<ICommercialModuleShadowReconciler>().ReconcileAllAsync(cancellationToken);
     }
@@ -89,6 +91,76 @@ public sealed class SubscriptionCatalogReconciler(
 
     public static bool NeedsRevision(IReadOnlySet<string> current, IEnumerable<string> desired) =>
         !current.SetEquals(desired);
+
+    // Solo los tres planes comerciales: un testlive* u otro plan ad hoc no recibe claves que no eligió.
+    private static readonly string[] CommunicationReconciledPlanCodes =
+    [
+        PlanCatalog.Starter,
+        PlanCatalog.Pro,
+        PlanCatalog.Enterprise,
+    ];
+
+    // Idempotente: solo versiona el plan cuya versión publicada no trae todas las claves communication.*;
+    // el recálculo por plan propaga la versión nueva a cada tenant vía entitlements_changed.
+    private static async Task ReconcileCommunicationEntitlementsAsync(
+        IServiceProvider services,
+        ILogger log,
+        CancellationToken ct
+    )
+    {
+        var plans = services.GetRequiredService<IPlanRepository>();
+        var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var bus = services.GetRequiredService<IMessageBus>();
+
+        foreach (var snapshot in await plans.GetAllAsync(ct))
+        {
+            if (!CommunicationReconciledPlanCodes.Contains(snapshot.Code.Value, StringComparer.Ordinal))
+                continue;
+
+            var published = snapshot.GetPublishedVersion();
+            if (published is null)
+            {
+                log.LogWarning(
+                    "Catalog reconciler skipped communication entitlements for plan {PlanCode}: no published version.",
+                    snapshot.Code.Value
+                );
+                continue;
+            }
+
+            if (CommunicationEntitlementCatalog.MissingFrom(published, snapshot.Tier).Count == 0)
+                continue;
+
+            var plan = await plans.GetByIdForUpdateAsync(snapshot.Id, ct);
+            if (plan is null)
+                continue;
+
+            var result = plan.AddMissingEntitlements(
+                CommunicationEntitlementCatalog.SeedsFor(plan.Tier),
+                Guid.Empty,
+                DateTime.UtcNow
+            );
+            if (result.IsFailure)
+            {
+                log.LogError(
+                    "Catalog reconciler could not add communication entitlements to plan {PlanCode}: {ErrorCode}.",
+                    plan.Code.Value,
+                    result.Error.Code
+                );
+                continue;
+            }
+
+            if (result.Value == 0)
+                continue;
+
+            await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(plan.Id));
+            log.LogInformation(
+                "Catalog reconciler added {Count} communication entitlements to plan {PlanCode}.",
+                result.Value,
+                plan.Code.Value
+            );
+        }
+    }
 
     private static async Task ReconcileQuotaAddOnsAsync(IServiceProvider services, ILogger log, CancellationToken ct)
     {

@@ -10,7 +10,8 @@ describe('TenantCommunicationSettings.defaults', () => {
   it('sets safe conservative defaults', () => {
     const s = TenantCommunicationSettings.defaults(randomUUID()).toSnapshot();
     expect(s.chatEnabled).toBe(true);
-    expect(s.internalGroupsEnabled).toBe(false);
+    expect(s.guestsAllowed).toBe(true);
+    expect(s.maxMeetingParticipants).toBeNull();
     expect(s.employeeToEmployeeChatEnabled).toBe(false);
     expect(s.defaultCameraOff).toBe(true);
     expect(s.messageRetentionDays).toBe(365);

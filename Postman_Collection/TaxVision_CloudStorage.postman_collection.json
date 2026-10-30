@@ -2002,6 +2002,428 @@
 			]
 		},
 		{
+			"name": "Upload Size Policies (PlatformAdmin)",
+			"item": [
+				{
+					"name": "ListUploadSizePolicies",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies"
+							]
+						},
+						"description": "Lista todas las filas administradas (Global/Plan/Tenant) más el techo técnico (technicalMaxBytes = 5368709120). Tras la migración AddUploadSizePolicies debe incluir la fila sembrada Global/Recordings de 2 GB."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"incluye techo tecnico y lista\", () => { const b = pm.response.json(); pm.expect(b.technicalMaxBytes).to.eql(5368709120); pm.expect(b.policies).to.be.an(\"array\"); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetGlobalUploadSizePolicy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/global/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"global",
+								"{{folderType}}"
+							]
+						},
+						"description": "Fija (upsert) el tope Global para una carpeta. Body: maxFileSizeBytes en bytes (1..5368709120). Responde la fila y created=true/false. Genera una fila de auditoría con old/new.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxFileSizeBytes\": 2147483648\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"devuelve la fila Global\", () => { const b = pm.response.json(); pm.expect(b.policy.scope).to.eql(\"Global\"); pm.expect(b.policy.maxFileSizeBytes).to.eql(2147483648); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetPlanUploadSizePolicy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/plans/{{planCode}}/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"plans",
+								"{{planCode}}",
+								"{{folderType}}"
+							]
+						},
+						"description": "Fija (upsert) el tope de una carpeta para un plan ({{planCode}}, p. ej. starter/professional/enterprise). Gana sobre la fila Global de la misma carpeta.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxFileSizeBytes\": 734003200\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"devuelve la fila Plan\", () => { const b = pm.response.json(); pm.expect(b.policy.scope).to.eql(\"Plan\"); pm.expect(b.policy.planCode).to.be.a(\"string\"); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetTenantUploadSizePolicy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/tenants/{{tenantId}}/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"tenants",
+								"{{tenantId}}",
+								"{{folderType}}"
+							]
+						},
+						"description": "Fija (upsert) el tope de una carpeta para una oficina concreta ({{tenantId}}). Es la fila más específica: gana sobre Plan y Global.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxFileSizeBytes\": 1073741824\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"devuelve la fila Tenant\", () => { const b = pm.response.json(); pm.expect(b.policy.scope).to.eql(\"Tenant\"); pm.expect(b.policy.tenantId).to.eql(pm.environment.get(\"tenantId\")); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetGlobalUploadSizePolicy_OverCeiling_400",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/global/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"global",
+								"{{folderType}}"
+							]
+						},
+						"description": "Caso negativo: 5 GB + 1 byte supera el techo técnico → 400 con code UploadSizePolicy.OutOfRange. No crea fila ni auditoría.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxFileSizeBytes\": 5368709121\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 400\", () => pm.response.code === 400 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"code UploadSizePolicy.OutOfRange\", () => pm.expect(pm.response.json().code).to.eql(\"UploadSizePolicy.OutOfRange\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetGlobalUploadSizePolicy_UnknownFolderType_400",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/global/NotAFolder",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"global",
+								"NotAFolder"
+							]
+						},
+						"description": "Caso negativo: el segmento folderType no es un nombre del enum FolderType → 400 con code UploadSizePolicy.InvalidFolderType.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxFileSizeBytes\": 1048576\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 400\", () => pm.response.code === 400 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"code UploadSizePolicy.InvalidFolderType\", () => pm.expect(pm.response.json().code).to.eql(\"UploadSizePolicy.InvalidFolderType\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "RemovePlanUploadSizePolicy",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/plans/{{planCode}}/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"plans",
+								"{{planCode}}",
+								"{{folderType}}"
+							]
+						},
+						"description": "Borra la fila Plan de esa carpeta; la resolución vuelve a Global o al fallback de código. Idempotente: removed=false si no existía (sin auditoría)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"removed es booleano\", () => pm.expect(pm.response.json().removed).to.be.a(\"boolean\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "RemoveTenantUploadSizePolicy",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/tenants/{{tenantId}}/{{folderType}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"tenants",
+								"{{tenantId}}",
+								"{{folderType}}"
+							]
+						},
+						"description": "Borra la fila Tenant de esa carpeta para {{tenantId}}. Idempotente: removed=false si no existía."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"removed es booleano\", () => pm.expect(pm.response.json().removed).to.be.a(\"boolean\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetUploadSizePolicyAudit",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies/audit?skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies",
+								"audit"
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Auditoría fila-por-mutación (más reciente primero): oldMaxFileSizeBytes null = creada, newMaxFileSizeBytes null = borrada. take se acota a 1..200."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "D-33 (MASTER Communication F2) — topes de tamaño por archivo administrados en BD por PlatformAdmin: cadena Global(folderType) → Plan(folderType, planCode) → Tenant(folderType, tenantId); gana la más específica. Sin filas aplica el fallback de código (CloudStorageOptions). El override puede superar el MaxSizeBytes de la folder policy (p. ej. los 500 MB de Recordings): el único techo es el técnico de 5 GB (technicalMaxBytes en el GET). La whitelist de tipos (extensiones/content-types) sigue en código y no se administra acá. Todos los endpoints exigen actor type PlatformAdmin + permiso cloudstorage.upload_policy.manage ({{platformAdminToken}}). Semilla inicial (D-37): fila Global/Recordings = 2 GB (2147483648). {{folderType}} es el nombre del enum FolderType (Recordings, Documents, Imports, ...); un valor que no parsea devuelve 400 UploadSizePolicy.InvalidFolderType; un tamaño fuera de [1, 5 GB] devuelve 400 UploadSizePolicy.OutOfRange. La caché del resolver (60 s por réplica) se invalida en cada PUT/DELETE."
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{
@@ -2045,6 +2467,45 @@
 								"type": "text/javascript",
 								"exec": [
 									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Office token rejected – ListUploadSizePolicies",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/admin/upload-policies",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"admin",
+								"upload-policies"
+							]
+						},
+						"description": "Caso negativo cross-actor (D-33): los topes de tamaño son de la plataforma. Mismo endpoint que \"ListUploadSizePolicies\" llamado con {{accessToken}} (TenantAdmin/TenantEmployee de oficina). Debe rechazar con 403 por Capa 2 (AllowActorTypes = solo PlatformAdmin) y, aunque pasara, por Capa 1 (HasPermission cloudstorage.upload_policy.manage, permiso PlatformOnly que ningún rol de oficina tiene)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden – office actor type blocked from the PlatformAdmin-only upload policy endpoint\", () => {",
 									"    pm.response.to.have.status(403);",
 									"});"
 								]

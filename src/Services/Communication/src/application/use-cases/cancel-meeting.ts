@@ -8,7 +8,12 @@ import {
   type MeetingCancelledEvent,
 } from '../../contracts/events/meeting-events.js';
 import { MeetingSocketEvents, type MeetingCancelledDto } from '../../contracts/socket/meeting-socket-events.js';
-import { logHostAction } from './host-audit.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
+import { closeMeetingInvitations } from './close-meeting-invitations.js';
+import { resolveUserDisplayName } from './resolve-user-display-name.js';
+import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
+import type { TenantHostResolver } from '../ports/tenant-host-resolver.js';
 
 export interface CancelMeetingCommand {
   readonly tenantId: string;
@@ -18,10 +23,13 @@ export interface CancelMeetingCommand {
   readonly reason?: string;
 }
 
-export interface CancelMeetingDeps {
+export interface CancelMeetingDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
+  /** F6: nombre del host y zona horaria para el email y el `.ics`. */
+  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId'> | undefined;
+  readonly tenantHostResolver?: Pick<TenantHostResolver, 'resolveTimeZone'> | undefined;
 }
 
 /**
@@ -44,10 +52,16 @@ export async function cancelMeeting(
   const snapshot = meeting.toSnapshot();
   const participantUserIds = snapshot.participants.map((p) => p.userId);
   const invitations = await deps.meetings.listInvitationsByMeeting(cmd.tenantId, cmd.meetingId);
-  const invitedEmails = invitations
-    .map((inv) => inv.toSnapshot())
-    .filter((s) => s.usedAtUtc === null && s.revokedAtUtc === null && s.inviteeEmail !== null)
-    .map((s) => s.inviteeEmail!);
+  const invitationSnapshots = invitations.map((inv) => inv.toSnapshot()).filter((s) => s.revokedAtUtc === null);
+  // F6: externos sin cuenta por email; los de cuenta reciben in-app (inviteeUserIds).
+  const invitedEmails = invitationSnapshots.filter((s) => s.inviteeUserId === null && s.inviteeEmail !== null).map((s) => s.inviteeEmail!);
+  const inviteeUserIds = [...new Set(invitationSnapshots.filter((s) => s.inviteeUserId !== null).map((s) => s.inviteeUserId!))];
+  const hostDisplayName = await resolveUserDisplayName(
+    deps.userDirectory,
+    snapshot.hostUserId,
+    snapshot.participants.find((p) => p.userId === snapshot.hostUserId)?.displayName,
+  );
+  const timeZone = (await deps.tenantHostResolver?.resolveTimeZone?.(cmd.tenantId)) ?? null;
 
   const now = new Date();
   const event: MeetingCancelledEvent = {
@@ -62,8 +76,18 @@ export async function cancelMeeting(
     participantUserIds,
     invitedEmails,
     reason: cmd.reason ?? null,
+    meetingTitle: snapshot.title,
+    shortCode: snapshot.shortCode,
+    scheduledForUtc: snapshot.scheduledForUtc ? snapshot.scheduledForUtc.toISOString() : null,
+    durationMinutes: snapshot.scheduledDurationMinutes ?? snapshot.maxDurationMinutes,
+    hostUserId: snapshot.hostUserId,
+    hostDisplayName,
+    timeZone,
+    inviteeUserIds,
   };
   await deps.publisher.enqueue(event);
+  // F6 (D-48): nadie entra con una invitacion de una reunion cancelada.
+  await closeMeetingInvitations({ tenantId: cmd.tenantId, meetingId: cmd.meetingId, reason: 'Cancelled', correlationId: cmd.correlationId, now }, deps);
 
   const dto: MeetingCancelledDto = {
     meetingId: cmd.meetingId,
@@ -83,17 +107,14 @@ export async function cancelMeeting(
     },
   });
 
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.cancel',
+    type: MeetingEventType.Cancelled,
     actorUserId: cmd.hostUserId,
+    payload: { reason: cmd.reason ?? null, participantCount: participantUserIds.length, invitedEmailCount: invitedEmails.length },
     correlationId: cmd.correlationId,
-    metadata: {
-      reason: cmd.reason ?? null,
-      participantCount: participantUserIds.length,
-      invitedEmailCount: invitedEmails.length,
-    },
+    at: now,
   });
 
   return Result.okVoid();

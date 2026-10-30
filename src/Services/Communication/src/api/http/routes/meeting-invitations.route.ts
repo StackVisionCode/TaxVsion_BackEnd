@@ -11,11 +11,13 @@ import { listMeetingInvitations } from '../../../application/use-cases/list-meet
 import { revokeMeetingInvitation } from '../../../application/use-cases/revoke-meeting-invitation.js';
 import { resolveInvitationToken } from '../../../application/use-cases/resolve-invitation-token.js';
 import { resolveMeetingByCode } from '../../../application/use-cases/resolve-meeting-by-code.js';
+import { getGuestMeetingContext } from '../../../application/use-cases/get-guest-meeting-context.js';
 import type { MeetingInviteeKind } from '../../../domain/meetings/meeting-invitation.js';
 
 const IdParams = z.object({ id: z.string().uuid() });
 const InvitationIdParams = z.object({ id: z.string().uuid(), invitationId: z.string().uuid() });
 const ShortCodeParams = z.object({ shortCode: z.string().min(1).max(16) });
+const GuestTokenParams = z.object({ token: z.string().length(64) });
 
 const MeetingInviteeInputSchema = z.object({
   kind: z.enum(['employee', 'customer', 'external']),
@@ -122,8 +124,10 @@ export async function registerMeetingInvitationRoutes(
           meetingId: params.id,
           invitationId: params.invitationId,
           actorUserId: principal.userId,
+          correlationId: request.id,
         },
-        container,
+        // F6: con el guest dentro, salida forzada + cierre de su socket (INV-09 H-5).
+        { ...container, ejection: { ...container, emitter: container.emitter, sessionTerminator: container.sessionTerminator } },
       );
       if (!result.isSuccess) {
         return reply.code(400).send({ code: result.error.code, message: result.error.message });
@@ -161,7 +165,40 @@ export async function registerMeetingInvitationRoutes(
         container,
       );
       if (!result.isSuccess) {
+        // F6 (D-47): token valido pero la oficina no admite externos: 403 explicito (no enumera nada).
+        if (result.error.code === 'Meeting.GuestsNotAllowed') {
+          return reply.code(403).send({ code: result.error.code, message: result.error.message });
+        }
         // Anti-enumeracion: siempre 404, sin distinguir revoked/used/expired/not-found.
+        return reply
+          .code(404)
+          .send({ code: 'Meeting.Invitation.NotFound', message: 'Invitation not found or no longer valid.' });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // F6 (T-63, D-47): contexto de la pagina publica de guest del CRM. Mismo gate por token que join-by-token.
+  app.get(
+    '/communication/meetings/guest/:token/context',
+    {
+      preHandler: async (request, reply) => {
+        const params = GuestTokenParams.parse(request.params);
+        const decision = await container.httpRateLimiter.allow({
+          key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:ctx:${params.token}`,
+          policy: CommunicationRateLimitPolicyNames.MeetingJoinByToken,
+          maxPerWindow: config.rateLimit.meetingJoinByToken.maxPerWindow,
+          windowSeconds: config.rateLimit.meetingJoinByToken.windowSeconds,
+        });
+        if (!decision.allowed) {
+          return sendRateLimited(reply, decision.retryAfterSeconds, CommunicationRateLimitPolicyNames.MeetingJoinByToken);
+        }
+      },
+    },
+    async (request, reply) => {
+      const params = GuestTokenParams.parse(request.params);
+      const result = await getGuestMeetingContext({ token: params.token }, container);
+      if (!result.isSuccess) {
         return reply
           .code(404)
           .send({ code: 'Meeting.Invitation.NotFound', message: 'Invitation not found or no longer valid.' });

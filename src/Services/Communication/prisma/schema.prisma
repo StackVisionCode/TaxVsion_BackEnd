@@ -56,6 +56,36 @@ model TenantCommunicationSettings {
   // RecordingConsentPolicy en domain/recording/recording-consent.ts.
   // "AllAcceptedRequired" | "NoRejections" | "HostOverride"
   RecordingConsentPolicy                 String   @default("NoRejections") @db.NVarChar(32)
+  // Ajustes de oficina dentro del techo efectivo (null = hereda el valor de la plataforma/plan).
+  // El dominio valida que nunca superen el techo (TenantCommunicationConstraints + plan + global).
+  DefaultMeetingDurationMinutes          Int?
+  MaxMeetingDurationMinutes              Int?
+  MaxMeetingParticipants                 Int?
+  MaxRecordingMinutesMeeting             Int?
+  MaxRecordingMinutesAudioCall           Int?
+  MaxRecordingMinutesVideoCall           Int?
+  RingingTimeoutSeconds                  Int?
+  MeetingChatAttachmentsPerMinute        Int?
+  MeetingChatAttachmentsPerMeeting       Int?
+  // "all" | "hostOnly" | "off"; null = política global.
+  MeetingSoundsPolicy                    String?  @db.NVarChar(16)
+  // Código BCP-47 corto o "auto"; null = idioma global.
+  TranscriptLanguage                     String?  @db.NVarChar(16)
+  RecordingVisibleInPortal               Boolean  @default(true)
+  GuestsAllowed                          Boolean  @default(true)
+  // F4 (null = hereda la plataforma): pantalla D-42, procesamiento de audio D-46, eco D-52.
+  ClientsCanShareScreen                  Boolean?
+  ScreenAudioAllowed                     Boolean?
+  AudioEchoCancellationDefault           Boolean?
+  AudioNoiseSuppressionDefault           Boolean?
+  AudioAutoGainControlDefault            Boolean?
+  EchoMuteOnDetect                       Boolean?
+  // F5 (D-50; null = hereda): reacciones apagadas por la oficina o catalogo acotado (JSON array).
+  ReactionsEnabled                       Boolean?
+  MeetingReactionCatalog                 String?  @db.NVarChar(1024)
+  // F6 (null = hereda): recordatorio T-N y sala de espera para guests.
+  MeetingReminderMinutesBefore           Int?
+  GuestsWaitingRoom                      Boolean?
   // Auditoría.
   CreatedAtUtc                           DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                           DateTime @default(now()) @updatedAt @db.DateTime2
@@ -63,20 +93,188 @@ model TenantCommunicationSettings {
 
 // -----------------------------------------------------------------------------
 // TenantCommunicationLimits — proyección desde Subscription events.
-// effectiveLimit = min(planLimit, tenantSetting) se calcula en Application (PlanGuard).
+// Las columnas de plan son nullable: null = el plan no define la clave y rige el
+// valor global de PlatformCommunicationSettings (los defaults salen del código).
 // -----------------------------------------------------------------------------
 model TenantCommunicationLimits {
-  TenantId               String   @id @db.UniqueIdentifier
-  PlanCode               String   @db.NVarChar(64)
-  MaxMeetingParticipants Int      @default(4)
-  MaxMeetingMinutes      Int      @default(60)
-  MaxConcurrentCalls     Int      @default(2)
-  MaxMonthlyMinutes      Int      @default(600)
-  RecordingEnabled       Boolean  @default(false)
-  SupportEnabled         Boolean  @default(true)
-  IsSuspended            Boolean  @default(false)
-  EnabledModulesJson     String   @default("[]") @db.NVarChar(Max)
-  UpdatedAtUtc           DateTime @default(now()) @updatedAt @db.DateTime2
+  TenantId                     String   @id @db.UniqueIdentifier
+  PlanCode                     String   @db.NVarChar(64)
+  MaxMeetingParticipants       Int?
+  MaxMeetingMinutes            Int?
+  MaxConcurrentCalls           Int?
+  MaxMonthlyMinutes            Int?
+  RecordingEnabled             Boolean?
+  SupportEnabled               Boolean  @default(true)
+  IsSuspended                  Boolean  @default(false)
+  EnabledModulesJson           String   @default("[]") @db.NVarChar(Max)
+  // Claves communication.* nuevas del catálogo (null = no definidas por el plan).
+  MaxRecordingMinutesMeeting   Int?
+  MaxRecordingMinutesAudioCall Int?
+  MaxRecordingMinutesVideoCall Int?
+  RecordingVideoEnabled        Boolean?
+  TranscriptEnabled            Boolean?
+  CallsEnabled                 Boolean?
+  MaxCallMinutes               Int?
+  UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
+}
+
+// -----------------------------------------------------------------------------
+// PlatformCommunicationSettings — fila única ("global") que administra PlatformAdmin.
+// Techos técnicos en domain/settings/technical-limits.ts; aquí solo valores vigentes.
+// -----------------------------------------------------------------------------
+model PlatformCommunicationSettings {
+  Id                                    String   @id @default("global") @db.NVarChar(16)
+  // Sube en cada cambio: las cachés por oficina lo comparan para recomputar.
+  Version                               Int      @default(1)
+  // Meetings (D-34/D-35, COMP-02, INV-02).
+  MaxMeetingDurationMinutes             Int      @default(60)
+  DefaultMeetingDurationMinutes         Int      @default(60)
+  DefaultMaxParticipants                Int      @default(10)
+  MeshMaxParticipants                   Int      @default(2)
+  DisconnectGraceSeconds                Int      @default(30)
+  ScheduledMeetingExpiryHours           Int      @default(24)
+  EmptyMeetingEndMinutes                Int      @default(10)
+  DominantSpeakerMaxPerSecond           Int      @default(5)
+  GuestsAllowed                         Boolean  @default(true)
+  // Llamadas.
+  RingingTimeoutSeconds                 Int      @default(60)
+  // Grabación (D-32 acotado por C-04) y consentimiento.
+  RecordingConsentTimeoutMeetingSeconds Int      @default(30)
+  RecordingConsentTimeoutCallSeconds    Int      @default(15)
+  MaxRecordingMinutesMeeting            Int      @default(60)
+  MaxRecordingMinutesAudioCall          Int      @default(60)
+  MaxRecordingMinutesVideoCall          Int      @default(60)
+  // Invitaciones (D-48): vence al fin de la reunión + gracia, nunca antes del mínimo.
+  InvitationMinTtlHours                 Int      @default(168)
+  InvitationExpiryGraceHours            Int      @default(24)
+  // Chat y grupos (D-16, D-15, D-24).
+  InternalGroupsEnabled                 Boolean  @default(true)
+  MeetingChatAttachmentsPerMinute       Int      @default(5)
+  MeetingChatAttachmentsPerMeeting      Int      @default(20)
+  MaxReactionsPerMessage                Int      @default(3)
+  // Sonidos (D-02) y transcript (D-26).
+  MeetingSoundsPolicy                   String   @default("all") @db.NVarChar(16)
+  TranscriptDefaultLanguage             String   @default("auto") @db.NVarChar(16)
+  // Retención operativa (ADD-08 T-73).
+  OutboxRetentionDays                   Int      @default(7)
+  ProcessedEventRetentionDays           Int      @default(14)
+  IdempotencyRetentionDays              Int      @default(30)
+  // F4: politica de media.
+  QualitySampleIntervalSeconds          Int      @default(3)
+  QualityExcellentRttMs                 Int      @default(150)
+  QualityGoodRttMs                      Int      @default(300)
+  QualityUnstableRttMs                  Int      @default(500)
+  QualityExcellentLossPct               Int      @default(2)
+  QualityGoodLossPct                    Int      @default(5)
+  QualityUnstableLossPct                Int      @default(10)
+  QualityExcellentJitterMs              Int      @default(30)
+  QualityGoodJitterMs                   Int      @default(50)
+  QualityUnstableJitterMs               Int      @default(100)
+  QualityUpgradeSamples                 Int      @default(2)
+  QualityPoorSustainedSamples           Int      @default(3)
+  QualityRecoverySamples                Int      @default(3)
+  CameraMaxWidth                        Int      @default(1280)
+  CameraMaxHeight                       Int      @default(720)
+  CameraMaxFps                          Int      @default(30)
+  MeshCameraMaxWidth                    Int      @default(640)
+  MeshCameraMaxHeight                   Int      @default(360)
+  MeshCameraMaxFps                      Int      @default(24)
+  ScreenMaxWidth                        Int      @default(1920)
+  ScreenMaxHeight                       Int      @default(1080)
+  ScreenMaxFps                          Int      @default(15)
+  ScreenVideoMaxFps                     Int      @default(30)
+  ScreenBitrateKbps                     Int      @default(1500)
+  ScreenHighBitrateKbps                 Int      @default(3000)
+  AudioMaxAverageBitrateKbps            Int      @default(40)
+  MuteReleasesHardwareMinutes           Int      @default(5)
+  SoundsVolumePct                       Int      @default(60)
+  SoundsRepeatGapMs                     Int      @default(400)
+  SfuMaxIncomingBitrateKbps             Int      @default(2500)
+  SfuStatsSampleSeconds                 Int      @default(10)
+  CameraMaxBitrateKbps                  Int      @default(1250)
+  ClientRecordingAudioKbps              Int      @default(56)
+  OpusFecEnabled                        Boolean  @default(true)
+  OpusDtxEnabled                        Boolean  @default(true)
+  AudioEchoCancellationDefault          Boolean  @default(true)
+  AudioNoiseSuppressionDefault          Boolean  @default(true)
+  AudioAutoGainControlDefault           Boolean  @default(true)
+  ClientsCanShareScreen                 Boolean  @default(true)
+  ScreenAudioAllowed                    Boolean  @default(true)
+  EchoDetectionEnabled                  Boolean  @default(true)
+  EchoMuteOnDetect                      Boolean  @default(false)
+  // F5 (D-50): reacciones efimeras del meeting; el catalogo es un JSON array de emojis.
+  ReactionsEnabled                      Boolean  @default(true)
+  ReactionDurationSeconds               Int      @default(4)
+  ReactionsPerUserPer10s                Int      @default(5)
+  ReactionsPerMeetingPerMinute          Int      @default(300)
+  MeetingReactionCatalog                String   @default("[\"👍\",\"👏\",\"❤️\",\"😂\",\"😮\",\"🎉\",\"🙏\",\"🤔\",\"✅\",\"🔥\"]") @db.NVarChar(1024)
+  // F6 (T-64, D-47): recordatorio T-N (0 = apagado) y sala de espera por defecto para guests.
+  MeetingReminderMinutesBefore          Int      @default(15)
+  GuestsWaitingRoomDefault              Boolean  @default(true)
+  UpdatedByUserId                       String?  @db.UniqueIdentifier
+  UpdatedAtUtc                          DateTime @default(now()) @updatedAt @db.DateTime2
+}
+
+// -----------------------------------------------------------------------------
+// TenantCommunicationConstraints — techos por oficina (PlatformAdmin, patrón Signature).
+// null = sin techo propio; rige el del plan/global.
+// -----------------------------------------------------------------------------
+model TenantCommunicationConstraints {
+  TenantId                     String   @id @db.UniqueIdentifier
+  Version                      Int      @default(1)
+  MaxMeetingParticipants       Int?
+  MaxMeetingDurationMinutes    Int?
+  MaxRecordingMinutesMeeting   Int?
+  MaxRecordingMinutesAudioCall Int?
+  MaxRecordingMinutesVideoCall Int?
+  RecordingAllowed             Boolean?
+  GuestsAllowed                Boolean?
+  Notes                        String?  @db.NVarChar(512)
+  UpdatedByUserId              String?  @db.UniqueIdentifier
+  CreatedAtUtc                 DateTime @default(now()) @db.DateTime2
+  UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
+}
+
+// -----------------------------------------------------------------------------
+// UserCommunicationPreferences — autoservicio por usuario (D-02, INV-03 §13.6).
+// -----------------------------------------------------------------------------
+model UserCommunicationPreferences {
+  TenantId           String   @db.UniqueIdentifier
+  UserId             String   @db.UniqueIdentifier
+  MeetingSoundsMuted Boolean  @default(false)
+  TranscriptLanguage String?  @db.NVarChar(16)
+  PreferAudioOnly    Boolean  @default(false)
+  // F4 (D-46): procesamiento de audio (null = default de la oficina) y como entrar.
+  EchoCancellation   Boolean?
+  NoiseSuppression   Boolean?
+  AutoGainControl    Boolean?
+  JoinMuted          Boolean  @default(false)
+  JoinCameraOff      Boolean  @default(false)
+  UpdatedAtUtc       DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@id([TenantId, UserId])
+}
+
+// -----------------------------------------------------------------------------
+// ConfigurationAudit — una fila por clave cambiada en cualquier capa de configuración.
+// TenantId null = cambio global de plataforma.
+// -----------------------------------------------------------------------------
+model ConfigurationAudit {
+  Id            String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId      String?  @db.UniqueIdentifier
+  // "Platform" | "TenantConstraints" | "TenantSettings" | "UserPreferences"
+  Scope         String   @db.NVarChar(32)
+  Key           String   @db.NVarChar(128)
+  OldValue      String?  @db.NVarChar(512)
+  NewValue      String?  @db.NVarChar(512)
+  ActorUserId   String?  @db.UniqueIdentifier
+  // "Update" | "AutoCorrect"
+  Reason        String   @db.NVarChar(32)
+  CorrelationId String?  @db.NVarChar(128)
+  CreatedAtUtc  DateTime @default(now()) @db.DateTime2
+
+  @@index([TenantId, CreatedAtUtc])
+  @@index([Scope, CreatedAtUtc])
 }
 
 // -----------------------------------------------------------------------------
@@ -481,6 +679,10 @@ model Call {
   // Transcript STT (Fase 6) — lo llena el worker de transcripts via evento
   // communication.call.transcript_ready.v1, nunca escrito por el socket.
   TranscriptFileId   String?   @db.UniqueIdentifier
+  // F4 (INV-12 H-3): tope de minutos del plan fijado al aceptar.
+  MaxDurationMinutes         Int?
+  EndsAtUtc                  DateTime? @db.DateTime2
+  LastDurationWarningSeconds Int?
   CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc       DateTime  @default(now()) @updatedAt @db.DateTime2
 
@@ -489,6 +691,17 @@ model Call {
   @@index([TenantId, Status, RingingAtUtc(sort: Desc)])
   @@index([TenantId, CallerUserId, RingingAtUtc(sort: Desc)])
   @@index([TenantId, CalleeUserId, RingingAtUtc(sort: Desc)])
+  @@index([Status, EndsAtUtc])
+}
+
+/// F4: minutos de llamada consumidos por oficina y mes (maxMonthlyMinutes del plan).
+model TenantCallUsage {
+  TenantId     String   @db.UniqueIdentifier
+  YearMonth    String   @db.NVarChar(7)
+  Seconds      Int      @default(0)
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@id([TenantId, YearMonth])
 }
 
 model CallParticipant {
@@ -514,11 +727,14 @@ model CallParticipant {
   // compartiendo.
   ScreenShareStartedAtUtc DateTime? @db.DateTime2
   ConnectionQuality       String    @default("Unknown") @db.NVarChar(16)
+  // D-58 (F4): cliente detras del usuario del portal.
+  CustomerId              String?   @db.UniqueIdentifier
 
   Call Call @relation(fields: [CallId], references: [Id], onDelete: Cascade)
 
   @@unique([CallId, UserId])
   @@index([TenantId, UserId, LeftAtUtc])
+  @@index([TenantId, CustomerId])
 }
 
 // =============================================================================
@@ -552,6 +768,18 @@ model Meeting {
   StartedAtUtc       DateTime? @db.DateTime2
   EndedAtUtc         DateTime? @db.DateTime2
   DurationSeconds    Int?
+  // Ciclo de vida (INV-11, D-34/D-35): la programada es informativa; el corte es MaxDuration
+  // fijado al Start con el resolver. EndReason: Host|MaxDurationReached|NoParticipants|Offboarding|Backfill.
+  ScheduledDurationMinutes   Int?
+  MaxDurationMinutes         Int?
+  EndsAtUtc                  DateTime? @db.DateTime2
+  EndReason                  String?   @db.NVarChar(32)
+  // Umbral (segundos) del último aviso 10/5/1 ya emitido: el scheduler no lo repite.
+  LastDurationWarningSeconds Int?
+  // "Start a new meeting" (D-34): enlaza la continuación con la reunión que se cortó.
+  ContinuationOfMeetingId    String?   @db.UniqueIdentifier
+  // F6 (T-64): recordatorio enviado una sola vez.
+  ReminderSentAtUtc          DateTime? @db.DateTime2
   CreatedByUserId    String    @db.UniqueIdentifier
   CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc       DateTime  @default(now()) @updatedAt @db.DateTime2
@@ -562,6 +790,7 @@ model Meeting {
   @@unique([TenantId, ShortCode])
   @@index([TenantId, Status, ScheduledForUtc])
   @@index([TenantId, HostUserId])
+  @@index([TenantId, Status, EndsAtUtc])
 }
 
 model MeetingParticipant {
@@ -574,6 +803,9 @@ model MeetingParticipant {
   // "Customer"|...). Fase Backend 5 agrega "Guest" para invitados sin cuenta
   // Auth que entran via join-by-token + shortLivedJoinTicket.
   ActorType         String    @default("TenantEmployee") @db.NVarChar(32)
+  // D-58: cliente detrás de un usuario del portal (null para staff/guests). El historial del cliente
+  // sobrevive aunque su cuenta de portal se desactive.
+  CustomerId        String?   @db.UniqueIdentifier
   // "Host" | "Cohost" | "Attendee"
   Role              String    @db.NVarChar(16)
   // "Waiting" | "Joined" | "Left" | "Removed"
@@ -588,6 +820,8 @@ model MeetingParticipant {
   VideoEnabled      Boolean   @default(true)
   ScreenSharing     Boolean   @default(false)
   HandRaised        Boolean   @default(false)
+  // F5 (D-49): cola de manos ordenada por este instante; null = mano baja.
+  HandRaisedAtUtc   DateTime? @db.DateTime2
   ConnectionQuality String    @default("Unknown") @db.NVarChar(16)
 
   Meeting Meeting @relation(fields: [MeetingId], references: [Id], onDelete: Cascade)
@@ -595,6 +829,29 @@ model MeetingParticipant {
   @@unique([MeetingId, UserId])
   @@index([TenantId, UserId, Status])
   @@index([MeetingId, Status])
+  @@index([TenantId, CustomerId])
+}
+
+// -----------------------------------------------------------------------------
+// MeetingEventLog — todo lo que pasa dentro de una reunión/llamada, en orden (C.3, INV-13 T-32).
+// -----------------------------------------------------------------------------
+model MeetingEventLog {
+  Id            String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId      String   @db.UniqueIdentifier
+  // "Meeting" | "Call"
+  Scope         String   @db.NVarChar(16)
+  ScopeId       String   @db.UniqueIdentifier
+  Seq           Int
+  At            DateTime @db.DateTime2
+  Type          String   @db.NVarChar(64)
+  ActorUserId   String?  @db.UniqueIdentifier
+  TargetUserId  String?  @db.UniqueIdentifier
+  PayloadJson   String?  @db.NVarChar(Max)
+  CorrelationId String?  @db.NVarChar(128)
+
+  @@unique([ScopeId, Seq])
+  @@index([TenantId, ScopeId, Seq])
+  @@index([TenantId, Type, At])
 }
 
 // =============================================================================
@@ -736,6 +993,12 @@ model MeetingInvitation {
   ExpiresAtUtc         DateTime  @db.DateTime2
   UsedAtUtc            DateTime? @db.DateTime2
   RevokedAtUtc         DateTime? @db.DateTime2
+  // F6 (D-48): usuarios con cuenta reutilizan el token (auditoria de usos); ClosedAtUtc = la reunion
+  // termino/se cancelo/expiro con la invitacion abierta.
+  FirstUsedAtUtc       DateTime? @db.DateTime2
+  LastUsedAtUtc        DateTime? @db.DateTime2
+  UseCount             Int       @default(0)
+  ClosedAtUtc          DateTime? @db.DateTime2
   CreatedAtUtc         DateTime  @default(now()) @db.DateTime2
 
   Meeting Meeting @relation(fields: [MeetingId], references: [Id], onDelete: Cascade)

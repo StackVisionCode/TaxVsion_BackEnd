@@ -11,6 +11,7 @@ import {
 } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingParticipantSnapshot } from '../../domain/meetings/meeting-participant.js';
 import {
+  isMeetingEndReason,
   isMeetingRole,
   isMeetingStatus,
   isMeetingStrategy,
@@ -28,6 +29,7 @@ export function toDomainMeetingParticipant(row: PrismaParticipant): MeetingParti
     userId: row.UserId,
     displayName: row.DisplayName,
     actorType: row.ActorType,
+    customerId: row.CustomerId,
     role: row.Role,
     status: row.Status,
     joinOrder: row.JoinOrder,
@@ -39,6 +41,7 @@ export function toDomainMeetingParticipant(row: PrismaParticipant): MeetingParti
     videoEnabled: row.VideoEnabled,
     screenSharing: row.ScreenSharing,
     handRaised: row.HandRaised,
+    handRaisedAtUtc: row.HandRaisedAtUtc,
     connectionQuality: isConnectionQuality(row.ConnectionQuality) ? row.ConnectionQuality : 'Unknown',
   };
 }
@@ -63,6 +66,13 @@ export function toDomainMeeting(row: PrismaMeeting, participants: PrismaParticip
     transcriptFileId: row.TranscriptFileId,
     hostUserId: row.HostUserId,
     scheduledForUtc: row.ScheduledForUtc,
+    scheduledDurationMinutes: row.ScheduledDurationMinutes,
+    maxDurationMinutes: row.MaxDurationMinutes,
+    endsAtUtc: row.EndsAtUtc,
+    endReason: row.EndReason !== null && isMeetingEndReason(row.EndReason) ? row.EndReason : null,
+    lastDurationWarningSeconds: row.LastDurationWarningSeconds,
+    reminderSentAtUtc: row.ReminderSentAtUtc,
+    continuationOfMeetingId: row.ContinuationOfMeetingId,
     startedAtUtc: row.StartedAtUtc,
     endedAtUtc: row.EndedAtUtc,
     durationSeconds: row.DurationSeconds,
@@ -91,6 +101,10 @@ export function toDomainMeetingInvitation(row: PrismaInvitation): MeetingInvitat
     expiresAtUtc: row.ExpiresAtUtc,
     usedAtUtc: row.UsedAtUtc,
     revokedAtUtc: row.RevokedAtUtc,
+    firstUsedAtUtc: row.FirstUsedAtUtc,
+    lastUsedAtUtc: row.LastUsedAtUtc,
+    useCount: row.UseCount,
+    closedAtUtc: row.ClosedAtUtc,
     createdAtUtc: row.CreatedAtUtc,
   };
   return MeetingInvitation.rehydrate(snapshot);

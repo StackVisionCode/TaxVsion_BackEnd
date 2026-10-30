@@ -2263,6 +2263,14 @@ services:
       dockerfile: Dockerfile
     expose:
       - "5350"
+    # SFU (mediasoup, F1/D-05): cada worker escucha en UN puerto fijo (UDP y TCP con el mismo numero)
+    # gracias al WebRtcServer — worker i = PORT_BASE + i. Estos son los UNICOS puertos RTC que hay que
+    # publicar al host y reenviar en el router (hoy el router reenvia 40000-49999 UDP; el TCP se agrega
+    # con los mismos numeros, ver P-034). Antes el contenedor no publicaba ninguno y toda reunion SFU
+    # quedaba sin media. PORT_END = PORT_BASE + NUM_WORKERS - 1.
+    ports:
+      - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/udp"
+      - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/tcp"
     environment:
       NODE_ENV: production
       LOG_LEVEL: info
@@ -2355,13 +2363,17 @@ services:
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: https://client.${TAXVISION_BASE_DOMAIN:-taxoffix.io}
-      # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
-      # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
-      # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
-      # SFU, ANNOUNCED_IP tiene que ser la IP publica del server (sin esto, los
-      # workers de mediasoup anuncian la IP interna del contenedor y el ICE
-      # candidate queda inalcanzable desde afuera).
+      # SFU propio (mediasoup). SIEMPRE encendido: NUM_WORKERS=0 significa "auto" (min(4, cpus)), no
+      # apagado — toda reunion con strategy=Sfu (cupo > umbral mesh) pasa por aqui. Se fija en 4 para que
+      # la lista de puertos publicada arriba sea determinista. ANNOUNCED_IP es la IP publica del server
+      # (sin ella los candidatos ICE llevan la IP interna del contenedor y nadie conecta). TURN no releva
+      # hacia el SFU (coturn vive en este mismo host, INV-02 H-12): los navegadores llegan directo a estos
+      # puertos, por eso van publicados.
       COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: ${COMMUNICATION_MEDIASOUP_ANNOUNCED_IP:-}
+      COMMUNICATION_MEDIASOUP_NUM_WORKERS: ${COMMUNICATION_MEDIASOUP_NUM_WORKERS:-4}
+      COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED:-true}
+      COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: ${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}
+      COMMUNICATION_MEDIASOUP_ENABLE_TCP: ${COMMUNICATION_MEDIASOUP_ENABLE_TCP:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: communication-service

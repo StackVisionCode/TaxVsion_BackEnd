@@ -85,7 +85,6 @@ function makeDeps(input: {
           employeeToEmployeeChatEnabled: true,
           restrictCustomerChatToAssignedPreparer: false,
           screenshotsEnabled: true,
-          internalGroupsEnabled: true,
           messageRetentionDays: 365,
         };
       },

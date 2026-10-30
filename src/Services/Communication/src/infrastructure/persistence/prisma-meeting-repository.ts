@@ -1,8 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { Meeting, MeetingSnapshot } from '../../domain/meetings/meeting.js';
 import type { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
-import type { MeetingRepository } from '../../application/ports/meeting-repository.js';
+import type { MeetingRepository, MeetingsForUserQuery } from '../../application/ports/meeting-repository.js';
 import { toDomainMeeting, toDomainMeetingInvitation } from './meeting-mapper.js';
+
+const PAST_STATUSES = ['Ended', 'Cancelled', 'Expired'] as const;
+const UPCOMING_STATUSES = ['Scheduled', 'Live'] as const;
 
 export class PrismaMeetingRepository implements MeetingRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -29,6 +32,13 @@ export class PrismaMeetingRepository implements MeetingRepository {
           TranscriptFileId: snapshot.transcriptFileId,
           HostUserId: snapshot.hostUserId,
           ScheduledForUtc: snapshot.scheduledForUtc,
+          ScheduledDurationMinutes: snapshot.scheduledDurationMinutes,
+          MaxDurationMinutes: snapshot.maxDurationMinutes,
+          EndsAtUtc: snapshot.endsAtUtc,
+          EndReason: snapshot.endReason,
+          LastDurationWarningSeconds: snapshot.lastDurationWarningSeconds,
+          ReminderSentAtUtc: snapshot.reminderSentAtUtc,
+          ContinuationOfMeetingId: snapshot.continuationOfMeetingId,
           StartedAtUtc: snapshot.startedAtUtc,
           EndedAtUtc: snapshot.endedAtUtc,
           DurationSeconds: snapshot.durationSeconds,
@@ -51,6 +61,12 @@ export class PrismaMeetingRepository implements MeetingRepository {
           // vieja, el evento salia con la nueva y los invitados quedaban avisados de una hora que la
           // sala no tenia.
           ScheduledForUtc: snapshot.scheduledForUtc,
+          ScheduledDurationMinutes: snapshot.scheduledDurationMinutes,
+          MaxDurationMinutes: snapshot.maxDurationMinutes,
+          EndsAtUtc: snapshot.endsAtUtc,
+          EndReason: snapshot.endReason,
+          LastDurationWarningSeconds: snapshot.lastDurationWarningSeconds,
+          ReminderSentAtUtc: snapshot.reminderSentAtUtc,
           StartedAtUtc: snapshot.startedAtUtc,
           EndedAtUtc: snapshot.endedAtUtc,
           DurationSeconds: snapshot.durationSeconds,
@@ -68,6 +84,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
             UserId: p.userId,
             DisplayName: p.displayName,
             ActorType: p.actorType,
+            CustomerId: p.customerId,
             Role: p.role,
             Status: p.status,
             JoinOrder: p.joinOrder,
@@ -79,13 +96,18 @@ export class PrismaMeetingRepository implements MeetingRepository {
             VideoEnabled: p.videoEnabled,
             ScreenSharing: p.screenSharing,
             HandRaised: p.handRaised,
+            HandRaisedAtUtc: p.handRaisedAtUtc,
             ConnectionQuality: p.connectionQuality,
           },
           update: {
             DisplayName: p.displayName,
             ActorType: p.actorType,
+            CustomerId: p.customerId,
             Role: p.role,
             Status: p.status,
+            // F1: el re-join renueva el joinOrder de una fila existente; sin esto la base lo dejaba en el
+            // valor original y los peers no detectaban la sesion nueva tras el siguiente evento.
+            JoinOrder: p.joinOrder,
             AdmittedAtUtc: p.admittedAtUtc,
             JoinedAtUtc: p.joinedAtUtc,
             LeftAtUtc: p.leftAtUtc,
@@ -93,6 +115,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
             VideoEnabled: p.videoEnabled,
             ScreenSharing: p.screenSharing,
             HandRaised: p.handRaised,
+            HandRaisedAtUtc: p.handRaisedAtUtc,
             ConnectionQuality: p.connectionQuality,
           },
         });
@@ -120,7 +143,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
 
   async listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]> {
     const rows = await this.prisma.meeting.findMany({
-      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: ['Scheduled', 'Live'] } },
+      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: [...UPCOMING_STATUSES] } },
       include: { Participants: true },
       orderBy: { CreatedAtUtc: 'asc' },
     });
@@ -129,8 +152,47 @@ export class PrismaMeetingRepository implements MeetingRepository {
 
   async countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number> {
     return this.prisma.meeting.count({
-      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: ['Scheduled', 'Live'] } },
+      where: { TenantId: tenantId, HostUserId: hostUserId, Status: { in: [...UPCOMING_STATUSES] } },
     });
+  }
+
+  /** Todas las oficinas: el scheduler de ciclo de vida recorre las reuniones en curso. */
+  async listLive(input: { take: number }): Promise<Meeting[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: { Status: 'Live' },
+      include: { Participants: true },
+      orderBy: { StartedAtUtc: 'asc' },
+      take: input.take,
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants));
+  }
+
+  /** F6 (T-64): agendadas con fecha dentro de la ventana y sin recordatorio enviado. */
+  async listScheduledForReminder(input: { untilUtc: Date; take: number }): Promise<Meeting[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: { Status: 'Scheduled', ReminderSentAtUtc: null, ScheduledForUtc: { not: null, lte: input.untilUtc } },
+      include: { Participants: true },
+      orderBy: { ScheduledForUtc: 'asc' },
+      take: input.take,
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants));
+  }
+
+  /** Agendadas cuya fecha (o creación, si nunca tuvieron fecha) quedó antes del corte: candidatas a Expired. */
+  async listScheduledBefore(input: { cutoffUtc: Date; take: number }): Promise<Meeting[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: {
+        Status: 'Scheduled',
+        OR: [
+          { ScheduledForUtc: { lt: input.cutoffUtc } },
+          { ScheduledForUtc: null, CreatedAtUtc: { lt: input.cutoffUtc } },
+        ],
+      },
+      include: { Participants: true },
+      orderBy: { CreatedAtUtc: 'asc' },
+      take: input.take,
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants));
   }
 
   async findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null> {
@@ -159,11 +221,19 @@ export class PrismaMeetingRepository implements MeetingRepository {
         ExpiresAtUtc: s.expiresAtUtc,
         UsedAtUtc: s.usedAtUtc,
         RevokedAtUtc: s.revokedAtUtc,
+        FirstUsedAtUtc: s.firstUsedAtUtc,
+        LastUsedAtUtc: s.lastUsedAtUtc,
+        UseCount: s.useCount,
+        ClosedAtUtc: s.closedAtUtc,
         CreatedAtUtc: s.createdAtUtc,
       },
       update: {
         UsedAtUtc: s.usedAtUtc,
         RevokedAtUtc: s.revokedAtUtc,
+        FirstUsedAtUtc: s.firstUsedAtUtc,
+        LastUsedAtUtc: s.lastUsedAtUtc,
+        UseCount: s.useCount,
+        ClosedAtUtc: s.closedAtUtc,
       },
     });
   }
@@ -188,15 +258,9 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return rows.map(toDomainMeetingInvitation);
   }
 
-  async listUpcomingForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    counterpartUserId?: string;
-  }): Promise<MeetingSnapshot[]> {
+  async listUpcomingForUser(input: MeetingsForUserQuery & { take: number; skip: number }): Promise<MeetingSnapshot[]> {
     const rows = await this.prisma.meeting.findMany({
-      where: meetingsForUserWhere(input.tenantId, ['Scheduled', 'Live'], input.userId, input.counterpartUserId),
+      where: meetingsForUserWhere([...UPCOMING_STATUSES], input),
       include: { Participants: true },
       orderBy: [{ ScheduledForUtc: 'asc' }, { CreatedAtUtc: 'desc' }],
       take: input.take,
@@ -205,21 +269,13 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return rows.map((row) => toDomainMeeting(row, row.Participants).toSnapshot());
   }
 
-  async countUpcomingForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number> {
-    return this.prisma.meeting.count({
-      where: meetingsForUserWhere(tenantId, ['Scheduled', 'Live'], userId, counterpartUserId),
-    });
+  async countUpcomingForUser(input: MeetingsForUserQuery): Promise<number> {
+    return this.prisma.meeting.count({ where: meetingsForUserWhere([...UPCOMING_STATUSES], input) });
   }
 
-  async listPastForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    counterpartUserId?: string;
-  }): Promise<MeetingSnapshot[]> {
+  async listPastForUser(input: MeetingsForUserQuery & { take: number; skip: number }): Promise<MeetingSnapshot[]> {
     const rows = await this.prisma.meeting.findMany({
-      where: meetingsForUserWhere(input.tenantId, ['Ended', 'Cancelled'], input.userId, input.counterpartUserId),
+      where: meetingsForUserWhere([...PAST_STATUSES], input),
       include: { Participants: true },
       // CreatedAtUtc siempre esta poblado (a diferencia de EndedAtUtc, que
       // un meeting Cancelled sin haber arrancado nunca tiene) — mismo
@@ -231,10 +287,8 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return rows.map((row) => toDomainMeeting(row, row.Participants).toSnapshot());
   }
 
-  async countPastForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number> {
-    return this.prisma.meeting.count({
-      where: meetingsForUserWhere(tenantId, ['Ended', 'Cancelled'], userId, counterpartUserId),
-    });
+  async countPastForUser(input: MeetingsForUserQuery): Promise<number> {
+    return this.prisma.meeting.count({ where: meetingsForUserWhere([...PAST_STATUSES], input) });
   }
 
   async getStatsForUser(input: {
@@ -295,34 +349,34 @@ export class PrismaMeetingRepository implements MeetingRepository {
  * host, participante o invitado vigente (sin esto, un invitado aun no unido no veia el meeting en su
  * lista; RevokedAtUtc:null excluye invitaciones anuladas).
  *
- * `counterpartUserId` (opcional, perfil del cliente): ademas restringe a los meetings donde ESE usuario
- * (el usuario del portal del cliente) participa o tiene invitacion vigente. Se combina con AND para no
- * pisar el OR de visibilidad del usuario actual.
+ * Filtro por cliente (perfil del cliente): la columna `CustomerId` del participante (D-58) es la
+ * fuente, así el historial sobrevive aunque su cuenta de portal se desactive; `counterpartUserId`
+ * (usuario de portal activo) sigue cubriendo invitaciones aún no usadas y filas anteriores al backfill.
+ * Se combina con AND para no pisar el OR de visibilidad del usuario actual.
  */
 function meetingsForUserWhere(
-  tenantId: string,
-  statuses: Array<'Scheduled' | 'Live' | 'Ended' | 'Cancelled'>,
-  userId: string,
-  counterpartUserId?: string,
+  statuses: Array<'Scheduled' | 'Live' | 'Ended' | 'Cancelled' | 'Expired'>,
+  input: MeetingsForUserQuery,
 ): Prisma.MeetingWhereInput {
   const visibleToUser: Prisma.MeetingWhereInput = {
     OR: [
-      { HostUserId: userId },
-      { Participants: { some: { UserId: userId } } },
-      { Invitations: { some: { InviteeUserId: userId, RevokedAtUtc: null } } },
+      { HostUserId: input.userId },
+      { Participants: { some: { UserId: input.userId } } },
+      { Invitations: { some: { InviteeUserId: input.userId, RevokedAtUtc: null } } },
     ],
   };
   const conditions: Prisma.MeetingWhereInput[] = [visibleToUser];
-  if (counterpartUserId) {
-    conditions.push({
-      OR: [
-        { Participants: { some: { UserId: counterpartUserId } } },
-        { Invitations: { some: { InviteeUserId: counterpartUserId, RevokedAtUtc: null } } },
-      ],
-    });
+  if (input.customerId || input.counterpartUserId) {
+    const byCustomer: Prisma.MeetingWhereInput[] = [];
+    if (input.customerId) byCustomer.push({ Participants: { some: { CustomerId: input.customerId } } });
+    if (input.counterpartUserId) {
+      byCustomer.push({ Participants: { some: { UserId: input.counterpartUserId } } });
+      byCustomer.push({ Invitations: { some: { InviteeUserId: input.counterpartUserId, RevokedAtUtc: null } } });
+    }
+    conditions.push({ OR: byCustomer });
   }
   return {
-    TenantId: tenantId,
+    TenantId: input.tenantId,
     Status: { in: statuses },
     AND: conditions,
   };

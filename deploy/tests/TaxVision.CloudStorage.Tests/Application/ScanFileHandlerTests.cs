@@ -198,6 +198,7 @@ public sealed class ScanFileHandlerTests
             fixture.ContentScanner,
             fixture.Inspector,
             Options.Create(fixture.Options),
+            new FakeUploadPolicyResolver(fixture.Options),
             new FakeSystemClock(fixture.Now),
             new FakeUnitOfWork(),
             fixture.Bus,
