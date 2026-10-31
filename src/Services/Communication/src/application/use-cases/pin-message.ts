@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
+import { isGroupAdminRole } from '../../domain/conversations/conversation-participant.js';
 import { checkPermission, CommunicationPermissions } from '../../domain/shared/permissions.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
@@ -52,7 +53,9 @@ export async function pinMessage(
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
   }
 
-  const requiresModerate = conversation.kind === 'Group' || conversation.kind === 'Meeting';
+  // F8b (D-22): en su grupo, Owner/Admin fijan sin el permiso global de moderación.
+  const isGroupAdmin = conversation.kind === 'Group' && isGroupAdminRole(conversation.roleOf(cmd.actorUserId));
+  const requiresModerate = (conversation.kind === 'Group' || conversation.kind === 'Meeting') && !isGroupAdmin;
   if (requiresModerate) {
     const permCheck = await checkPermission(
       {

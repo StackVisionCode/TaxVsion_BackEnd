@@ -50,4 +50,13 @@ public static class CommunicationPermissions
 
     // Analytics del propio microservicio (mismos usuarios que ven request.read en otros)
     public const string AnalyticsRead = "communication.analytics.read";
+
+    // PlatformOnly: valores globales de la plataforma (PlatformCommunicationSettings). Nunca de oficina.
+    public const string PlatformManage = "communication.platform.manage";
+
+    // PlatformOnly: techos por oficina (TenantCommunicationConstraints), patrón Signature.
+    public const string ConstraintsManage = "communication.constraints.manage";
+
+    // PlatformOnly: métricas agregadas de toda la plataforma (no las de una oficina).
+    public const string PlatformAnalyticsRead = "communication.platform.analytics.read";
 }

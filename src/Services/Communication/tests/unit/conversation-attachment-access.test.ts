@@ -31,7 +31,7 @@ function trackingRepo(snapshot: AttachmentTrackingSnapshot | null): AttachmentTr
 // Solo se usa `findById` + `isParticipant`; el resto del port no interviene.
 function conversationRepo(members: string[] | null): ConversationRepository {
   const conversation =
-    members === null ? null : ({ isParticipant: (uid: string) => members.includes(uid) } as unknown as Conversation);
+    members === null ? null : ({ isParticipant: (uid: string) => members.includes(uid), historyVisibleFrom: () => null } as unknown as Conversation);
   return { async findById() {
       return conversation;
     } } as unknown as ConversationRepository;
@@ -213,6 +213,20 @@ describe('conversation attachment access', () => {
       expect(result.value.status).toBe('Infected');
       expect(result.value.fileName).toBeNull();
       expect(result.value.sizeBytes).toBeNull();
+    }
+  });
+
+  // E2E F8: quien recibía un adjunto en revisión o bloqueado veía "Attachment" sin nombre.
+  it.each(['PendingReview', 'BlockedByPolicy'] as const)('keeps the file name for a %s attachment', async (status) => {
+    const result = await getAttachmentMetadata(cmd(), {
+      conversations: conversationRepo([memberId]),
+      attachmentTracking: trackingRepo(snap({ status })),
+      cloudStorageMetadata: metadataOk,
+    });
+    expect(result.isSuccess).toBe(true);
+    if (result.isSuccess) {
+      expect(result.value.status).toBe(status);
+      expect(result.value.fileName).toBe('w-2.pdf');
     }
   });
 

@@ -3,43 +3,58 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CloudStorageClient } from './cloudstorage/cloudstorage-client.js';
 import { DownloadStatusError } from './cloudstorage/cloudstorage-client.js';
-import type { RecordingReadyEvent } from './rabbit/consumer.js';
+import type { AudioTrackRef, RecordingReadyEvent } from './rabbit/consumer.js';
 import { publishTranscriptReady, publishTranscriptFailed } from './rabbit/publisher.js';
-import { transcodeToWav16kMono, probeAudioStreams } from './media/audio-transcoder.js';
+import { transcodeToWav16kMono, probeMedia, probeDurationSeconds } from './media/audio-transcoder.js';
 import { transcribeWav } from './whisper/whisper-transcriber.js';
+import { resolveWhisperLanguage } from './whisper/whisper-args.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import type { TranscriptFailureReason } from './contracts/events.js';
-import { withRetry } from './retry.js';
-import { pipelineDurationSeconds, pipelineFailuresTotal } from './telemetry/metrics.js';
+import { NoAudioStreamError, ProcessTimeoutError, TooLongError } from './errors.js';
+import { withRetry, type RetryPolicy } from './retry.js';
+import {
+  pipelineDurationSeconds,
+  pipelineFailuresTotal,
+  realtimeFactor,
+  tooLongTotal,
+  wordsPerSecondAnomaliesTotal,
+} from './telemetry/metrics.js';
+import {
+  buildTranscriptJsonV2,
+  collectSpeakers,
+  countWords,
+  formatTranscriptTxt,
+  mergeSegments,
+  pickDominantLanguage,
+  plainText,
+  shiftAndLabel,
+  truncateInlineText,
+  type TrackLabel,
+  type TranscriptSegment,
+} from './transcript/transcript-format.js';
+import { classifyWordsPerSecond, computeRatio, deriveRunTimeoutMs, isTooLong } from './transcript/limits.js';
 
-// Fase Transcript 4 — solo download y upload reintentan (fallas transientes
-// reales); ffmpeg/whisper NUNCA (fallas deterministicas, ver docblock mas
-// abajo). "hasta 3 intentos" = 3 REINTENTOS ademas del intento original = 4
-// intentos totales (config.retry.maxAttempts, default 4), con el ultimo ya
-// sin mas backoff antes de reportar+nack. Configurable por env (ver
-// config.ts) para poder acortar el backoff en tests sin tocar codigo.
+// Solo download y upload reintentan (fallas transientes); ffmpeg/whisper nunca
+// (deterministicas). maxAttempts = intento original + reintentos.
 const RETRY_MAX_ATTEMPTS = config.retry.maxAttempts;
 const RETRY_BACKOFF_MS = config.retry.backoffMs;
+const NOT_AVAILABLE_POLICY: RetryPolicy = config.retry.notAvailable;
 
-// 'File.NotAvailable' = el archivo todavia esta en ClamAV scan (CloudStorage
-// rechaza download-url con 403 hasta que Status pase a Available) — carrera
-// transitoria contra `recording_processing_started.v1` (se publica apenas
-// termina el upload, sin esperar el scan async), se resuelve sola en 1-3s.
-// Otros 403 (ej. 'File.Forbidden', mismatch real de scope) NO son retriables
-// a proposito, igual que el resto de errores de permiso/config — ver docblock
-// de RETRIABLE_UPLOAD_CODES mas abajo.
-function isRetriableDownloadError(err: unknown): boolean {
-  if (!(err instanceof DownloadStatusError)) return false;
-  return err.status >= 500 || err.errorCode === 'File.NotAvailable';
+// File.NotAvailable = archivo aun en escaneo ClamAV (CloudStorage escanea de a
+// uno: con varias pistas tarda minutos) => politica de espera larga propia.
+// Otros 403 (File.Forbidden) no se reintentan: un retry no los arregla.
+function isNotAvailable(err: unknown): boolean {
+  return err instanceof DownloadStatusError && err.errorCode === 'File.NotAvailable';
 }
 
-// Codigos tipicos de blip transiente hacia MinIO: errores de red de Node
-// (ECONNRESET/ETIMEDOUT/ECONNREFUSED/EPIPE/EAI_AGAIN) o codigos S3-style que
-// el SDK de MinIO expone en `err.code` para 5xx/backpressure del servidor.
-// Errores de credenciales/permiso (AccessDenied, InvalidAccessKeyId, etc.) o
-// bucket/policy mal configurados NO estan en esta lista a proposito — un
-// retry no los arregla, solo demora el nack 36s de mas.
+function isRetriableDownloadError(err: unknown): boolean {
+  if (!(err instanceof DownloadStatusError)) return false;
+  return err.status >= 500 || isNotAvailable(err);
+}
+
+// Blips de red/5xx hacia MinIO. Credenciales o policy mal configuradas no
+// estan a proposito: reintentarlas solo demora el nack.
 const RETRIABLE_UPLOAD_CODES = new Set([
   'ECONNRESET',
   'ETIMEDOUT',
@@ -57,46 +72,202 @@ function isRetriableUploadError(err: unknown): boolean {
   return typeof code === 'string' && RETRIABLE_UPLOAD_CODES.has(code);
 }
 
+/** Fallo de un stage con su reason; el catch de arriba reporta y relanza la causa original. */
+class StageFailure extends Error {
+  constructor(
+    readonly reason: TranscriptFailureReason,
+    readonly original: Error,
+  ) {
+    super(original.message);
+    this.name = 'StageFailure';
+  }
+}
+
+function reasonFor(defaultReason: TranscriptFailureReason, err: unknown): TranscriptFailureReason {
+  if (err instanceof ProcessTimeoutError) return 'Timeout';
+  if (err instanceof TooLongError) return 'TooLong';
+  return defaultReason;
+}
+
+async function stage<T>(reason: TranscriptFailureReason, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof StageFailure) throw err;
+    const error = err instanceof Error ? err : new Error(String(err));
+    throw new StageFailure(reasonFor(reason, error), error);
+  }
+}
+
+interface AudioSource {
+  readonly fileId: string;
+  readonly label: TrackLabel | null;
+  readonly startOffsetMs: number;
+}
+
+interface SourceResult {
+  readonly segments: TranscriptSegment[];
+  /** Duracion propia del audio de la fuente. */
+  readonly durationSeconds: number;
+  /** Fin en la linea de tiempo de la grabacion (offset + duracion). */
+  readonly endSeconds: number;
+  readonly detectedLanguage: string | null;
+  readonly processingSeconds: number;
+}
+
+interface RunContext {
+  readonly event: RecordingReadyEvent;
+  readonly workDir: string;
+  readonly timeoutMs: number;
+  readonly language: string;
+  readonly prompt: string | null;
+  readonly cloudStorage: CloudStorageClient;
+}
+
+function toSources(event: RecordingReadyEvent): AudioSource[] {
+  const tracks: readonly AudioTrackRef[] = event.audioTracks ?? [];
+  if (tracks.length === 0) return [{ fileId: event.recordingFileId, label: null, startOffsetMs: 0 }];
+  return tracks.map((track) => ({
+    fileId: track.fileId,
+    label: { userId: track.userId, displayName: track.displayName },
+    startOffsetMs: track.startOffsetMs,
+  }));
+}
+
+function assertNotTooLong(ctx: RunContext, source: AudioSource, durationSeconds: number | null): void {
+  if (durationSeconds === null) return;
+  const endSeconds = source.startOffsetMs / 1000 + durationSeconds;
+  if (isTooLong(endSeconds, ctx.event.maxDurationSeconds, config.limits.durationToleranceSeconds)) {
+    throw new TooLongError(
+      `audio ends at ${Math.round(endSeconds)} s, above maxDurationSeconds ${ctx.event.maxDurationSeconds} + tolerance ${config.limits.durationToleranceSeconds} s`,
+    );
+  }
+}
+
 /**
- * Orquesta un `RecordingReadyEvent`:
- *   1. Descarga la grabacion original desde CloudStorage.
- *   2. Transcodifica a WAV 16kHz mono con ffmpeg (whisper.cpp no lee webm/opus).
- *   3. Transcribe con whisper.cpp.
- *   4. Sube el .txt resultante a CloudStorage (OwnerType Communication /
- *      FolderType Transcripts — 'Recordings' solo admite .webm/.mp4, un .txt lo
- *      rechazaria la RecordingsPolicy; ver save-file-requested-publisher.ts) — el
- *      propio call/meeting es el "owner" logico del transcript, no hay otro OwnerId
- *      natural disponible aca.
- *   5. Publica `TranscriptReady` para que Communication lo adjunte.
+ * download → ffprobe (audio + duracion + TooLong) → ffmpeg → whisper de UNA
+ * fuente (archivo unico o pista). Con pistas, una pista sin audio se omite
+ * (`skipOnNoAudio`); sin pistas, es NoAudioStream como siempre.
+ */
+async function transcribeSource(
+  ctx: RunContext,
+  source: AudioSource,
+  index: number,
+  skipOnNoAudio: boolean,
+): Promise<SourceResult | NoAudioStreamError> {
+  const { event, workDir } = ctx;
+  const base = path.join(workDir, `source-${index}`);
+  const originalPath = `${base}.bin`;
+  const wavPath = `${base}.wav`;
+
+  try {
+    logger.info({ eventId: event.eventId, fileId: source.fileId, index }, 'downloading audio');
+    await stage('DownloadFailed', () =>
+      withRetry(() => ctx.cloudStorage.downloadFile(event.tenantId, source.fileId, originalPath), {
+        maxAttempts: RETRY_MAX_ATTEMPTS,
+        backoffMs: RETRY_BACKOFF_MS,
+        isRetriable: isRetriableDownloadError,
+        policyFor: (err) => (isNotAvailable(err) ? NOT_AVAILABLE_POLICY : undefined),
+        onRetry: (attempt, err, delayMs) =>
+          logger.warn(
+            { eventId: event.eventId, fileId: source.fileId, attempt, err: (err as Error).message, delayMs },
+            'download failed (retriable); retrying',
+          ),
+      }),
+    );
+
+    let probedSeconds: number | null;
+    try {
+      ({ durationSeconds: probedSeconds } = await probeMedia(originalPath));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (!skipOnNoAudio) throw new StageFailure('NoAudioStream', error);
+      logger.warn({ eventId: event.eventId, fileId: source.fileId, err: error.message }, 'audio track without audio; skipped');
+      return error instanceof NoAudioStreamError ? error : new NoAudioStreamError(error.message);
+    }
+    await stage('TooLong', async () => assertNotTooLong(ctx, source, probedSeconds));
+
+    logger.info({ eventId: event.eventId, index }, 'transcoding to wav');
+    await stage('FfmpegError', () => transcodeToWav16kMono(originalPath, wavPath, ctx.timeoutMs));
+    await rm(originalPath, { force: true });
+
+    let durationSeconds = probedSeconds;
+    if (durationSeconds === null) {
+      durationSeconds = await stage('FfmpegError', () => probeDurationSeconds(wavPath));
+      await stage('TooLong', async () => assertNotTooLong(ctx, source, durationSeconds));
+    }
+
+    logger.info({ eventId: event.eventId, index }, 'running whisper.cpp');
+    const transcription = await stage('WhisperError', () =>
+      transcribeWav(wavPath, base, { language: ctx.language, prompt: ctx.prompt, timeoutMs: ctx.timeoutMs }),
+    );
+
+    const lastEndMs = transcription.segments.reduce((max, segment) => Math.max(max, segment.endMs), 0);
+    const ownSeconds = durationSeconds ?? lastEndMs / 1000;
+    return {
+      segments: shiftAndLabel(transcription.segments, source.startOffsetMs, source.label),
+      durationSeconds: ownSeconds,
+      endSeconds: source.startOffsetMs / 1000 + ownSeconds,
+      detectedLanguage: transcription.detectedLanguage,
+      processingSeconds: transcription.processingSeconds,
+    };
+  } finally {
+    // Borrado por fuente: con N pistas no se acumulan N WAV en disco.
+    await Promise.all([rm(originalPath, { force: true }), rm(wavPath, { force: true })]);
+  }
+}
+
+function downloadName(kind: string, extension: 'txt' | 'json'): string {
+  const capKind = kind.charAt(0).toUpperCase() + kind.slice(1);
+  return `${capKind}_Transcript_${new Date().toISOString().slice(0, 10)}.${extension}`;
+}
+
+async function uploadTranscriptFile(
+  ctx: RunContext,
+  content: string,
+  extension: 'txt' | 'json',
+  contentType: string,
+): Promise<string> {
+  const { event, workDir } = ctx;
+  const localPath = path.join(workDir, `${event.kind}-${event.targetId}-transcript-${randomUUID()}.${extension}`);
+  await writeFile(localPath, content, 'utf-8');
+  const uploaded = await withRetry(
+    () =>
+      ctx.cloudStorage.uploadFile({
+        tenantId: event.tenantId,
+        filePath: localPath,
+        originalName: downloadName(event.kind, extension),
+        contentType,
+        sizeBytes: Buffer.byteLength(content, 'utf-8'),
+        ownerId: event.targetId,
+        correlationId: event.correlationId,
+      }),
+    {
+      maxAttempts: RETRY_MAX_ATTEMPTS,
+      backoffMs: RETRY_BACKOFF_MS,
+      isRetriable: isRetriableUploadError,
+      onRetry: (attempt, err, delayMs) =>
+        logger.warn(
+          { eventId: event.eventId, extension, attempt, err: (err as Error).message, delayMs },
+          'upload failed (retriable); retrying',
+        ),
+    },
+  );
+  return uploaded.fileId;
+}
+
+/**
+ * Orquesta un trigger de transcripcion (contratos 9.3/9.4):
+ *  - Con `audioTracks` (meetings/calls server-side, T-28): transcribe cada
+ *    pista, desplaza por `startOffsetMs`, etiqueta con el nombre y entrelaza.
+ *  - Sin pistas: archivo unico (`recordingFileId`), segmentos sin hablante.
+ *  - Salida `file`: sube TXT (`[hh:mm:ss] Nombre: texto`) + JSON v2 a
+ *    `Transcripts` y publica transcript_ready v2.
+ *  - Salida `inline` (notas de voz, D-27): sin subida, el texto va en el evento.
  *
- * Los archivos temporales viven bajo `config.whisper.tempDir/{eventId}` y se
- * borran siempre, exito o error (evita llenar disco en un pod de larga vida).
- *
- * Fase Transcript 2 — state awareness: todos los stages (incluido el chequeo
- * de audio, ver Fase Transcript 3 mas abajo) estan envueltos en su propio
- * try/catch. Cada catch identifica el `TranscriptFailureReason`
- * correspondiente al stage, publica `TranscriptFailed` (para que
- * Communication/Analytics se enteren de CUAL grabacion fallo y POR QUE, algo
- * que antes no pasaba — el error solo terminaba en un nack silencioso a la
- * DLQ) y vuelve a lanzar el error original SIN modificarlo, para que
- * `consumer.ts` siga haciendo exactamente lo que ya hacia (log +
- * inbox.unmark + nack a DLQ). No hay reintentos in-worker aca — la DLQ sigue
- * siendo la unica superficie de retry.
- *
- * Fase Transcript 3 — el chequeo de audio (`probeAudioStreams`, antes de
- * transcodificar) reemplaza al de Fase Backend 8: ya no hace ack-and-forget
- * cuando no hay audio, sigue el mismo camino report+rethrow que el resto.
- *
- * Fase Transcript 4 — download y upload (los 2 stages con fallas realmente
- * transientes: HTTP 5xx, blips de red a MinIO) reintentan hasta 3 veces con
- * backoff (1s/5s/30s) ANTES de reportar+relanzar — ver retry.ts. ffprobe/
- * ffmpeg/whisper siguen sin ningun retry (fallas deterministicas: un exit
- * code de ffmpeg no cambia si se reintenta).
- *
- * Fase Transcript 8 — observabilidad: `pipelineDurationSeconds` mide el
- * metodo completo (labels kind/status, un timer por invocacion, incluye
- * reintentos), `pipelineFailuresTotal` se incrementa en `reportTranscriptFailed`
- * (labels reason/kind) — ver telemetry/metrics.ts.
+ * Cada stage que falla publica TranscriptFailed con su reason y relanza el
+ * error original (consumer.ts: unmark + nack a la DLQ). Temporales en
+ * `tempDir/{eventId}`, borrados siempre.
  */
 export async function processRecordingReady(
   event: RecordingReadyEvent,
@@ -109,127 +280,98 @@ export async function processRecordingReady(
   let status: 'success' | 'failure' = 'success';
 
   try {
-    const originalPath = path.join(workDir, 'recording.bin');
-    const wavPath = path.join(workDir, 'audio.wav');
-    const txtOutPrefix = path.join(workDir, 'transcript');
+    const ctx: RunContext = {
+      event,
+      workDir,
+      cloudStorage: deps.cloudStorage,
+      timeoutMs: deriveRunTimeoutMs({
+        minTimeoutSeconds: config.limits.minTimeoutSeconds,
+        maxDurationSeconds: event.maxDurationSeconds,
+        timeoutFactorPct: event.timeoutFactorPct,
+      }),
+      language: resolveWhisperLanguage(event.language, config.whisper.language),
+      prompt: event.prompt?.trim() || config.whisper.prompt,
+    };
 
-    logger.info({ eventId: event.eventId, kind: event.kind, targetId: event.targetId }, 'downloading recording');
-    try {
-      await withRetry(() => deps.cloudStorage.downloadFile(event.tenantId, event.recordingFileId, originalPath), {
-        maxAttempts: RETRY_MAX_ATTEMPTS,
-        backoffMs: RETRY_BACKOFF_MS,
-        isRetriable: isRetriableDownloadError,
-        onRetry: (attempt, err, delayMs) =>
-          logger.warn(
-            { eventId: event.eventId, attempt, err: (err as Error).message, delayMs },
-            'download failed (retriable); retrying',
-          ),
-      });
-    } catch (err) {
-      reportTranscriptFailed(event, 'DownloadFailed', err as Error);
-      throw err;
+    const sources = toSources(event);
+    const multiTrack = (event.audioTracks?.length ?? 0) > 0;
+    const results: SourceResult[] = [];
+    let lastSkip: NoAudioStreamError | undefined;
+    for (const [index, source] of sources.entries()) {
+      const outcome = await transcribeSource(ctx, source, index, multiTrack);
+      if (outcome instanceof NoAudioStreamError) lastSkip = outcome;
+      else results.push(outcome);
+    }
+    if (results.length === 0) {
+      throw new StageFailure('NoAudioStream', lastSkip ?? new NoAudioStreamError('no audio track could be read'));
     }
 
-    // Fase Transcript 3 (bug #245) — validar audio antes de gastar CPU/tiempo
-    // en el transcode. Reemplaza el chequeo equivalente de Fase Backend 8
-    // (hasAudioStream + RecordingValidationFailed, ver docblock de
-    // probeAudioStreams): a diferencia de esa version, esta SI relanza el
-    // error (nack -> DLQ) en vez de ack-and-forget — una grabacion sin audio
-    // ahora queda disponible para inspeccion/reproceso manual igual que
-    // cualquier otro fallo del pipeline, no se descarta silenciosamente.
-    try {
-      await probeAudioStreams(originalPath);
-    } catch (err) {
-      reportTranscriptFailed(event, 'NoAudioStream', err as Error);
-      throw err;
-    }
+    const segments = mergeSegments(results.map((r) => r.segments));
+    const durationSeconds = Math.round(Math.max(...results.map((r) => r.endSeconds)));
+    const audioSeconds = results.reduce((sum, r) => sum + r.durationSeconds, 0);
+    const whisperSeconds = results.reduce((sum, r) => sum + r.processingSeconds, 0);
+    const detectedLanguage = pickDominantLanguage(results.map((r) => r.detectedLanguage));
+    const text = plainText(segments);
+    const wordCount = countWords(text);
+    const wordsPerSecond = computeRatio(wordCount, durationSeconds);
+    const rtf = computeRatio(whisperSeconds, audioSeconds);
+    const model = path.basename(config.whisper.modelPath);
+    const vad = config.whisper.vadModelPath !== null;
 
-    logger.info({ eventId: event.eventId }, 'transcoding to wav');
-    try {
-      await transcodeToWav16kMono(originalPath, wavPath);
-    } catch (err) {
-      reportTranscriptFailed(event, 'FfmpegError', err as Error);
-      throw err;
-    }
+    observeQuality(event, { model, rtf, wordsPerSecond, wordCount, durationSeconds });
 
-    logger.info({ eventId: event.eventId }, 'running whisper.cpp');
-    let text: string;
-    let detectedLanguage: string | null;
-    let durationSeconds: number;
-    let wordCount: number;
-    try {
-      ({ text, detectedLanguage, durationSeconds, wordCount } = await transcribeWav(wavPath, txtOutPrefix));
-    } catch (err) {
-      reportTranscriptFailed(event, 'WhisperError', err as Error);
-      throw err;
-    }
-
-    const transcriptFileName = `${event.kind}-${event.targetId}-transcript-${randomUUID()}.txt`;
-    const transcriptPath = path.join(workDir, transcriptFileName);
-    // Nombre de descarga profesional (no el GUID); el nombre local queda único aparte.
-    const capKind = event.kind.charAt(0).toUpperCase() + event.kind.slice(1);
-    const transcriptDownloadName = `${capKind}_Transcript_${new Date().toISOString().slice(0, 10)}.txt`;
-    await writeFile(transcriptPath, text, 'utf-8');
-
-    logger.info({ eventId: event.eventId }, 'uploading transcript');
-    let uploaded: { fileId: string };
-    try {
-      uploaded = await withRetry(
-        () =>
-          deps.cloudStorage.uploadFile({
-            tenantId: event.tenantId,
-            filePath: transcriptPath,
-            originalName: transcriptDownloadName,
-            contentType: 'text/plain',
-            sizeBytes: Buffer.byteLength(text, 'utf-8'),
-            ownerId: event.targetId,
-            correlationId: event.correlationId,
-          }),
-        {
-          maxAttempts: RETRY_MAX_ATTEMPTS,
-          backoffMs: RETRY_BACKOFF_MS,
-          isRetriable: isRetriableUploadError,
-          onRetry: (attempt, err, delayMs) =>
-            logger.warn(
-              { eventId: event.eventId, attempt, err: (err as Error).message, delayMs },
-              'upload failed (retriable); retrying',
-            ),
-        },
+    let transcriptFileId: string | null = null;
+    let transcriptJsonFileId: string | null = null;
+    if (event.output === 'file') {
+      const txt = formatTranscriptTxt(segments);
+      const json = JSON.stringify(buildTranscriptJsonV2({ segments, language: detectedLanguage, model, vad, durationSeconds }));
+      logger.info({ eventId: event.eventId, segments: segments.length }, 'uploading transcript (txt + json)');
+      transcriptFileId = await stage('UploadFailed', () => uploadTranscriptFile(ctx, txt, 'txt', 'text/plain'));
+      transcriptJsonFileId = await stage('UploadFailed', () =>
+        uploadTranscriptFile(ctx, json, 'json', 'application/json'),
       );
-    } catch (err) {
-      reportTranscriptFailed(event, 'UploadFailed', err as Error);
-      throw err;
     }
 
-    try {
+    // Sin reason dedicado para "fallo al publicar": se reusa 'Timeout' (el
+    // trabajo ya esta subido, lo que se pierde es la notificacion).
+    await stage('Timeout', async () =>
       publishTranscriptReady({
         kind: event.kind,
         tenantId: event.tenantId,
         correlationId: event.correlationId,
         targetId: event.targetId,
         recordingFileId: event.recordingFileId,
-        transcriptFileId: uploaded.fileId,
+        passthrough: event.passthrough,
         detectedLanguage,
         durationSeconds,
         wordCount,
-      });
-    } catch (err) {
-      // No hay un reason dedicado para "fallo al publicar" en el contrato de
-      // Fase Transcript 1 (solo NoAudioStream/FfmpegError/WhisperError/
-      // DownloadFailed/UploadFailed/Timeout) — 'Timeout' es el unico valor
-      // que sobra de los 6 definidos, se reusa aca como bucket generico. El
-      // transcript YA esta subido a CloudStorage en este punto; lo que se
-      // pierde es solo la notificacion, no el trabajo — igual se reporta.
-      reportTranscriptFailed(event, 'Timeout', err as Error);
-      throw err;
-    }
+        model,
+        vad,
+        realtimeFactor: rtf,
+        wordsPerSecond,
+        output:
+          event.output === 'file' && transcriptFileId
+            ? {
+                type: 'file',
+                transcriptFileId,
+                transcriptJsonFileId,
+                segmentCount: segments.length,
+                speakerCount: collectSpeakers(segments).length,
+              }
+            : { type: 'inline', transcriptText: truncateInlineText(text, config.inline.maxChars) },
+      }),
+    );
 
     logger.info(
-      { eventId: event.eventId, targetId: event.targetId, transcriptFileId: uploaded.fileId },
+      { eventId: event.eventId, targetId: event.targetId, transcriptFileId, transcriptJsonFileId, output: event.output },
       'transcript ready',
     );
   } catch (err) {
     status = 'failure';
+    if (err instanceof StageFailure) {
+      reportTranscriptFailed(event, err.reason, err.original);
+      throw err.original;
+    }
     throw err;
   } finally {
     stopTimer({ status });
@@ -239,12 +381,35 @@ export async function processRecordingReady(
   }
 }
 
+function observeQuality(
+  event: RecordingReadyEvent,
+  input: { model: string; rtf: number | null; wordsPerSecond: number | null; wordCount: number; durationSeconds: number },
+): void {
+  if (input.rtf !== null) realtimeFactor.observe({ kind: event.kind, model: input.model }, input.rtf);
+  const anomaly = classifyWordsPerSecond(input.wordsPerSecond, input.durationSeconds, {
+    min: config.quality.wpsMin,
+    max: config.quality.wpsMax,
+    minDurationSeconds: config.quality.wpsMinDurationSeconds,
+  });
+  if (anomaly) {
+    wordsPerSecondAnomaliesTotal.inc({ kind: event.kind, direction: anomaly });
+    logger.warn(
+      {
+        eventId: event.eventId,
+        targetId: event.targetId,
+        wordsPerSecond: input.wordsPerSecond,
+        wordCount: input.wordCount,
+        durationSeconds: input.durationSeconds,
+        direction: anomaly,
+      },
+      'transcript words/second out of range (empty recording or hallucination?)',
+    );
+  }
+}
+
 /**
- * Publica `TranscriptFailed` con el reason identificado por el stage que
- * llama, y loguea. Nunca lanza: si el publish mismo falla (ej. canal de
- * Rabbit caido), se loguea aparte y se deja que el error ORIGINAL del stage
- * (no este) sea el que propague — perder la notificacion es aceptable,
- * perder la causa raiz del error no.
+ * Publica TranscriptFailed y loguea. Nunca lanza: si el publish falla, el
+ * error ORIGINAL del stage sigue siendo el que propaga.
  */
 function reportTranscriptFailed(event: RecordingReadyEvent, reason: TranscriptFailureReason, err: Error): void {
   logger.error(
@@ -252,6 +417,7 @@ function reportTranscriptFailed(event: RecordingReadyEvent, reason: TranscriptFa
     'transcript pipeline stage failed',
   );
   pipelineFailuresTotal.inc({ reason, kind: event.kind });
+  if (reason === 'TooLong') tooLongTotal.inc({ kind: event.kind });
   try {
     publishTranscriptFailed({
       kind: event.kind,
@@ -259,6 +425,7 @@ function reportTranscriptFailed(event: RecordingReadyEvent, reason: TranscriptFa
       correlationId: event.correlationId,
       targetId: event.targetId,
       recordingFileId: event.recordingFileId,
+      passthrough: event.passthrough,
       failureReason: reason,
       errorMessage: err.message,
     });

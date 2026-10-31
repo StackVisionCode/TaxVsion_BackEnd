@@ -85,12 +85,12 @@ function makeDeps(input: {
           employeeToEmployeeChatEnabled: true,
           restrictCustomerChatToAssignedPreparer: false,
           screenshotsEnabled: true,
-          internalGroupsEnabled: true,
           messageRetentionDays: 365,
         };
       },
     } as unknown as SendSupportAgentMessageDeps['settings'],
     attachmentTracking: { async register() {} } as unknown as SendSupportAgentMessageDeps['attachmentTracking'],
+    attachmentReservations: { reserve: async () => {}, consume: async () => true, purgeOlderThan: async () => 0 },
     supportTickets: {
       async findById() {
         return input.ticket;

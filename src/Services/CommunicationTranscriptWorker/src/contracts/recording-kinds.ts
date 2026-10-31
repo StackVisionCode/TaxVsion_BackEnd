@@ -29,7 +29,18 @@ export interface RecordingKindMapping {
   readonly transcriptReadyEventType: string;
   /** Tipo de evento publicado cuando cualquier stage del pipeline falla. */
   readonly transcriptFailedEventType: string;
+  /** Campo del trigger con el fileId del audio (default `recordingFileId`; notas de voz: `fileId`). */
+  readonly recordingFileIdField: string;
+  /**
+   * `file`: sube TXT + JSON v2 a CloudStorage y publica sus fileIds.
+   * `inline`: sin subida; el evento ready lleva `transcriptText` (clips cortos, D-27).
+   */
+  readonly output: TranscriptOutputMode;
+  /** Campos del trigger copiados tal cual a ready/failed (ej. `conversationId`). */
+  readonly passthroughFields: readonly string[];
 }
+
+export type TranscriptOutputMode = 'file' | 'inline';
 
 const recordingKindMappingSchema = z.object({
   kind: z.string().min(1),
@@ -37,9 +48,18 @@ const recordingKindMappingSchema = z.object({
   triggerEventTypes: z.array(z.string().min(1)).min(1),
   transcriptReadyEventType: z.string().min(1),
   transcriptFailedEventType: z.string().min(1),
+  recordingFileIdField: z.string().min(1).default('recordingFileId'),
+  output: z.enum(['file', 'inline']).default('file'),
+  passthroughFields: z.array(z.string().min(1)).default([]),
 });
 
 export const recordingKindsSchema = z.array(recordingKindMappingSchema).min(1);
+
+/** Parsea el JSON de TRANSCRIPT_WORKER_RECORDING_KINDS; vacio = default de Communication. */
+export function parseRecordingKinds(raw: string): readonly RecordingKindMapping[] {
+  if (!raw.trim()) return COMMUNICATION_RECORDING_KINDS;
+  return recordingKindsSchema.parse(JSON.parse(raw));
+}
 
 /**
  * Default — reproduce 1:1 el mapeo que estaba hardcodeado en
@@ -51,22 +71,37 @@ export const COMMUNICATION_RECORDING_KINDS: readonly RecordingKindMapping[] = [
   {
     kind: 'call',
     targetIdField: 'callId',
-    triggerEventTypes: [
-      'communication.call.recording_ready.v1',
-      'communication.call.recording_processing_started.v1',
-    ],
+    // F7 (T-34): Ready = archivo disponible; el transcript se pide SOLO con processing_started (trae las
+    // pistas por participante). Escuchar tambien recording_ready lo transcribia dos veces y pisaba el bueno.
+    triggerEventTypes: ['communication.call.recording_processing_started.v1'],
     transcriptReadyEventType: 'communication.call.transcript_ready.v1',
     transcriptFailedEventType: 'communication.call.transcript_failed.v1',
+    recordingFileIdField: 'recordingFileId',
+    output: 'file',
+    passthroughFields: [],
   },
   {
     kind: 'meeting',
     targetIdField: 'meetingId',
-    triggerEventTypes: [
-      'communication.meeting.recording_ready.v1',
-      'communication.meeting.recording_processing_started.v1',
-    ],
+    // F7 (T-34): Ready = archivo disponible; el transcript se pide SOLO con processing_started (trae las
+    // pistas por participante). Escuchar tambien recording_ready lo transcribia dos veces y pisaba el bueno.
+    triggerEventTypes: ['communication.meeting.recording_processing_started.v1'],
     transcriptReadyEventType: 'communication.meeting.transcript_ready.v1',
     transcriptFailedEventType: 'communication.meeting.transcript_failed.v1',
+    recordingFileIdField: 'recordingFileId',
+    output: 'file',
+    passthroughFields: [],
+  },
+  // D-27 — notas de voz: salida inline (texto en el mensaje, sin .txt).
+  {
+    kind: 'voice-note',
+    targetIdField: 'messageId',
+    triggerEventTypes: ['communication.chat.voice_note_transcription_requested.v1'],
+    transcriptReadyEventType: 'communication.chat.voice_note_transcript_ready.v1',
+    transcriptFailedEventType: 'communication.chat.voice_note_transcript_failed.v1',
+    recordingFileIdField: 'fileId',
+    output: 'inline',
+    passthroughFields: ['conversationId'],
   },
 ];
 

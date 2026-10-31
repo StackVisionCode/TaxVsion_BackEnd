@@ -8,13 +8,19 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { TurnCredentialFactory } from '../ports/turn-credential-factory.js';
 import {
   MeetingEventTypes,
+  type MeetingInvitationUsedEvent,
   type MeetingParticipantJoinedEvent,
+  type MeetingParticipantRejoinedEvent,
 } from '../../contracts/events/meeting-events.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { buildMeetingSnapshotDto } from './meeting-mappers.js';
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 import { ensureMeetingConversation } from './ensure-meeting-conversation.js';
 import { issueIceCredentials, type IssueIceCredentialsResult } from './issue-ice-credentials.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
 export interface JoinMeetingCommand {
   readonly tenantId: string;
@@ -39,6 +45,10 @@ export interface JoinMeetingCommand {
 export interface JoinMeetingResult {
   readonly snapshot: MeetingSnapshotDto;
   readonly requiresAdmission: boolean;
+  /** F1: ya estaba Joined y volvio a entrar con media nueva (joinOrder renovado). */
+  readonly rejoined: boolean;
+  /** F5 (D-49): el re-join completo bajo la mano que tenia levantada; el cliente avisa. */
+  readonly handLoweredOnRejoin: boolean;
   /**
    * Fase Frontend 5 — un guest (auth.ticket) no puede llamar GET
    * /communication/webrtc/ice (exige un JWT real via app.authenticate, que
@@ -50,14 +60,18 @@ export interface JoinMeetingResult {
   readonly iceServers: IssueIceCredentialsResult;
 }
 
-export interface JoinMeetingDeps {
+export interface JoinMeetingDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
+  /** D-58: un usuario del portal entra con su CustomerId persistido en el participante. */
+  readonly customerPortalAccounts?: Pick<CustomerPortalAccountRepository, 'findActiveByUserId'> | undefined;
   readonly passcodes: PasscodeHasher;
   readonly publisher: IntegrationEventPublisher;
   readonly conversations: ConversationRepository;
   readonly turn: TurnCredentialFactory;
   /** F5: fotos de los participantes del snapshot. Opcional (sin el, salen sin `avatarFileId`). */
   readonly avatars?: AvatarResolver;
+  /** F6 (D-47): sala de espera forzada para guests segun la politica de la oficina. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
 }
 
 export async function joinMeeting(
@@ -83,6 +97,8 @@ export async function joinMeeting(
   const meetingId = meeting.toSnapshot().id;
 
   let invitationValid = false;
+  // F6: consumo del uso unico del guest, diferido hasta que el join quede guardado.
+  let afterJoinSaved: (() => Promise<void>) | null = null;
   if (command.invitationToken) {
     const hash = MeetingInvitation.hash(command.invitationToken);
     const invitation = await deps.meetings.findInvitationByHash(hash);
@@ -96,8 +112,11 @@ export async function joinMeeting(
       });
       if (validation.isSuccess) {
         invitationValid = true;
-        invitation.markUsed(new Date());
+        // F6 (D-48): el token sigue valiendo para este usuario; solo se deja rastro del uso.
+        const usedAt = new Date();
+        invitation.recordUse(usedAt);
         await deps.meetings.saveInvitation(invitation);
+        await noteInvitationUse(invitation, command, meetingId, usedAt, deps);
       }
     }
   } else if (command.guestInvitationId) {
@@ -107,10 +126,27 @@ export async function joinMeeting(
     if (!invitation || invitation.toSnapshot().meetingId !== meetingId) {
       return Result.fail(makeError('Meeting.Invitation.NotFound', 'Invitation not found.'));
     }
-    const consumeResult = invitation.consumeForGuestJoin(new Date());
-    if (!consumeResult.isSuccess) return Result.fail(consumeResult.error);
+    // F6 (D-48) + F11: el guest que ya entró (sigue dentro, espera admisión o salió con Leave) vuelve a
+    // entrar sin consumir otra vez su único uso; revocación, cierre o expulsión lo dejan fuera.
+    const guestStatus = meeting.toSnapshot().participants.find((p) => p.userId === command.user.userId)?.status ?? null;
+    if (invitation.toSnapshot().usedAtUtc !== null) {
+      if (invitation.toSnapshot().revokedAtUtc !== null) {
+        return Result.fail(makeError('Meeting.Invitation.Revoked', 'Invitation was revoked.'));
+      }
+      if (!invitation.allowsGuestRejoin(guestStatus)) {
+        return Result.fail(makeError('Meeting.Invitation.AlreadyUsed', 'Invitation was already used.'));
+      }
+    } else {
+      const usedAt = new Date();
+      const consumeResult = invitation.consumeForGuestJoin(usedAt);
+      if (!consumeResult.isSuccess) return Result.fail(consumeResult.error);
+      // El unico uso se persiste DESPUES de guardar el join: si el join falla, el enlace sigue valiendo.
+      afterJoinSaved = async () => {
+        await deps.meetings.saveInvitation(invitation);
+        await noteInvitationUse(invitation, command, meetingId, usedAt, deps);
+      };
+    }
     invitationValid = true;
-    await deps.meetings.saveInvitation(invitation);
   }
 
   let passcodeMatch: boolean | null = null;
@@ -120,36 +156,62 @@ export async function joinMeeting(
       : false;
   }
 
+  const customerId =
+    command.user.actorType === 'CustomerPortal' && deps.customerPortalAccounts
+      ? ((await deps.customerPortalAccounts.findActiveByUserId(command.user.userId).catch(() => null))?.customerId ?? null)
+      : null;
+  // F6 (D-47): la politica de la oficina manda a los guests a la sala de espera.
+  const forceWaitingRoom =
+    command.user.actorType === 'Guest' && deps.effectiveSettings
+      ? (await deps.effectiveSettings.resolve(command.tenantId)).meeting.guestsWaitingRoom
+      : false;
   const joinResult = meeting.requestJoin({
     userId: command.user.userId,
     displayName: command.user.displayName,
     ...(command.user.actorType !== undefined ? { actorType: command.user.actorType } : {}),
+    customerId,
     hasValidInvitation: invitationValid,
     passcodeMatch,
+    forceWaitingRoom,
     ...(command.audioDefault !== undefined ? { audioDefault: command.audioDefault } : {}),
     ...(command.videoDefault !== undefined ? { videoDefault: command.videoDefault } : {}),
   });
   if (!joinResult.isSuccess) return Result.fail(joinResult.error);
 
   await deps.meetings.save(meeting);
+  if (afterJoinSaved) await afterJoinSaved();
   const snapshot = meeting.toSnapshot();
   const yourRole = joinResult.value.role;
   const requiresAdmission = joinResult.value.requiresAdmission;
+  const rejoined = joinResult.value.rejoined;
+  const handLoweredOnRejoin = joinResult.value.handLoweredOnRejoin;
 
   let conversationId: string | null = null;
+  await recordMeetingEvent(deps, {
+    tenantId: command.tenantId,
+    meetingId,
+    type: requiresAdmission
+      ? MeetingEventType.ParticipantWaiting
+      : rejoined
+        ? MeetingEventType.ParticipantRejoined
+        : MeetingEventType.ParticipantJoined,
+    actorUserId: command.user.userId,
+    payload: { actorType: command.user.actorType ?? 'TenantEmployee' },
+    correlationId: command.correlationId,
+  });
+  if (handLoweredOnRejoin) {
+    await recordMeetingEvent(deps, {
+      tenantId: command.tenantId,
+      meetingId,
+      type: MeetingEventType.HandLowered,
+      actorUserId: command.user.userId,
+      payload: { reason: 'rejoin' },
+      correlationId: command.correlationId,
+    });
+  }
   if (!requiresAdmission) {
     const now = new Date();
-    const event: MeetingParticipantJoinedEvent = {
-      eventId: randomUUID(),
-      eventType: MeetingEventTypes.ParticipantJoined,
-      tenantId: command.tenantId,
-      correlationId: command.correlationId,
-      occurredOnUtc: now.toISOString(),
-      meetingId,
-      participantUserId: command.user.userId,
-      joinedAtUtc: now.toISOString(),
-    };
-    await deps.publisher.enqueue(event);
+    await deps.publisher.enqueue(rejoined ? rejoinedEvent(command, meetingId, snapshot, now) : joinedEvent(command, meetingId, now));
 
     // El chat del meeting es best-effort respecto del join en si — si falla
     // (bug, DB lenta) el usuario igual entra al meeting por WebRTC; solo se
@@ -187,7 +249,41 @@ export async function joinMeeting(
   const iceResult = issueIceCredentials({ tenantId: command.tenantId, userId: command.user.userId }, deps);
   const iceServers = iceResult.isSuccess ? iceResult.value : { iceServers: [], expiresAtUtc: new Date().toISOString() };
 
-  return Result.ok({ snapshot: dto, requiresAdmission, iceServers });
+  return Result.ok({ snapshot: dto, requiresAdmission, rejoined, handLoweredOnRejoin, iceServers });
+}
+
+function joinedEvent(command: JoinMeetingCommand, meetingId: string, now: Date): MeetingParticipantJoinedEvent {
+  return {
+    eventId: randomUUID(),
+    eventType: MeetingEventTypes.ParticipantJoined,
+    tenantId: command.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: now.toISOString(),
+    meetingId,
+    participantUserId: command.user.userId,
+    joinedAtUtc: now.toISOString(),
+    actorType: command.user.actorType ?? 'TenantEmployee',
+  };
+}
+
+function rejoinedEvent(
+  command: JoinMeetingCommand,
+  meetingId: string,
+  snapshot: { participants: readonly { userId: string; joinOrder: number }[] },
+  now: Date,
+): MeetingParticipantRejoinedEvent {
+  const me = snapshot.participants.find((p) => p.userId === command.user.userId);
+  return {
+    eventId: randomUUID(),
+    eventType: MeetingEventTypes.ParticipantRejoined,
+    tenantId: command.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: now.toISOString(),
+    meetingId,
+    participantUserId: command.user.userId,
+    joinOrder: me?.joinOrder ?? 0,
+    rejoinedAtUtc: now.toISOString(),
+  };
 }
 
 /**
@@ -195,6 +291,41 @@ export async function joinMeeting(
  * usuario. Una invitacion abierta (solo por email, sin userId) no ata al portador: el email no se
  * verifica en este flujo, asi que exigirlo dejaria fuera a invitados legitimos.
  */
+/** F6 (T-64): rastro de cada uso de invitacion (log + evento), para cuenta y para guest. */
+async function noteInvitationUse(
+  invitation: MeetingInvitation,
+  command: JoinMeetingCommand,
+  meetingId: string,
+  usedAt: Date,
+  deps: JoinMeetingDeps,
+): Promise<void> {
+  const s = invitation.toSnapshot();
+  await recordMeetingEvent(deps, {
+    tenantId: command.tenantId,
+    meetingId,
+    type: MeetingEventType.InvitationUsed,
+    actorUserId: command.user.userId,
+    payload: { invitationId: s.id, inviteeKind: s.inviteeKind, useCount: s.useCount },
+    correlationId: command.correlationId,
+    at: usedAt,
+  });
+  const event: MeetingInvitationUsedEvent = {
+    eventId: randomUUID(),
+    eventType: MeetingEventTypes.InvitationUsed,
+    tenantId: command.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: usedAt.toISOString(),
+    invitationId: s.id,
+    meetingId,
+    inviteeKind: s.inviteeKind,
+    inviteeUserId: s.inviteeUserId,
+    usedByUserId: command.user.userId,
+    usedAtUtc: usedAt.toISOString(),
+    useCount: s.useCount,
+  };
+  await deps.publisher.enqueue(event).catch(() => undefined);
+}
+
 function isInvitationForThisJoin(
   invitation: MeetingInvitation,
   command: JoinMeetingCommand,

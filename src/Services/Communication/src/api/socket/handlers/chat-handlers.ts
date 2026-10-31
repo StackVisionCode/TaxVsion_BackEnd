@@ -33,6 +33,17 @@ import { pinMessage } from '../../../application/use-cases/pin-message.js';
 import { unpinMessage } from '../../../application/use-cases/unpin-message.js';
 import { forwardMessage } from '../../../application/use-cases/forward-message.js';
 import { resolveAvatars } from '../../../application/use-cases/resolve-avatars.js';
+import { toConversationListItem, type ConversationListItem } from '../../../application/use-cases/list-conversations.js';
+import { isTenantAdminActor } from '../../../application/use-cases/group-membership-policy.js';
+import {
+  setConversationMuted,
+  setGroupAdminsOnly,
+  setGroupMemberRole,
+  transferGroupOwnership,
+  updateGroupInfo,
+  type GroupActor,
+} from '../../../application/use-cases/group-administration.js';
+import type { Result } from '../../../domain/shared/result.js';
 import {
   ChatSocketEvents,
   AddGroupParticipantPayloadSchema,
@@ -45,6 +56,11 @@ import {
   PinMessagePayloadSchema,
   RemoveGroupParticipantPayloadSchema,
   RemoveReactionPayloadSchema,
+  SetConversationMutedPayloadSchema,
+  SetGroupAdminsOnlyPayloadSchema,
+  SetGroupMemberRolePayloadSchema,
+  TransferGroupOwnershipPayloadSchema,
+  UpdateGroupInfoPayloadSchema,
   SendMessagePayloadSchema,
   StartDirectConversationPayloadSchema,
   StartGroupConversationPayloadSchema,
@@ -305,9 +321,55 @@ async function wireSocket(
     ack?.({ ok: true, value: result.value });
   });
 
+  /** F8b: actor de los comandos de grupo; el superpoder (D-22) = Tenant Admin o `group.manage_members`. */
+  const groupActor = async (): Promise<GroupActor> => ({
+    userId,
+    displayName: selfDisplayName,
+    actorType: principal.actorType,
+    canAdministerAnyGroup:
+      isTenantAdminActor(principal.actorType) ||
+      (await checkPermission(principal, CommunicationPermissions.GroupManageMembers, container.userPermissions)).allowed,
+  });
+  const groupDeps = { ...container, emitter };
+
+  /** T-12: la fila del listado del grupo recién creado, para que el creador la pinte sin releer la lista. */
+  async function groupSummary(conversationId: string): Promise<ConversationListItem | null> {
+    const conversation = await container.conversations.findById(tenantId, conversationId, 0);
+    if (!conversation) return null;
+    const snapshot = conversation.toSnapshot();
+    const avatars = await resolveAvatars(container.avatars, snapshot.participants.map((p) => p.userId));
+    return toConversationListItem(snapshot, userId, 0, avatars ? (id) => avatars.of(id) : undefined);
+  }
+
+  /** F8b: comandos de grupo con la misma forma (validar → caso de uso → ack por código). */
+  function onGroupCommand<T, R>(
+    event: string,
+    schema: { safeParse(input: unknown): { success: true; data: T } | { success: false; error: { message: string } } },
+    run: (data: T) => Promise<Result<R>>,
+  ): void {
+    socket.on(event, async (...args: unknown[]) => {
+      const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<R>) => void) : undefined;
+      const parsed = schema.safeParse(args[0]);
+      if (!parsed.success) {
+        ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+        return;
+      }
+      try {
+        const result = await run(parsed.data);
+        ack?.(result.isSuccess ? { ok: true, value: result.value } : { ok: false, code: result.error.code, message: result.error.message });
+      } catch (err) {
+        logger.error({ err, event, userId }, 'group command failed');
+        ack?.({ ok: false, code: 'Chat.Internal', message: 'Something went wrong. Try again.' });
+      }
+    });
+  }
+
   socket.on(ChatSocketEvents.StartGroupConversation, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ conversationId: string }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ conversationId: string; conversation: ConversationListItem | null }>) => void)
+        : undefined;
     const parsed = StartGroupConversationPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
@@ -318,23 +380,6 @@ async function wireSocket(
       ack?.({ ok: false, code: groupCreatePermCheck.code, message: groupCreatePermCheck.message });
       return;
     }
-    const resolvedMembers = await Promise.all(
-      parsed.data.memberUserIds.map(async (memberUserId) => ({
-        userId: memberUserId,
-        displayName: await resolveDisplayName(container.userDirectory, memberUserId),
-        actorType: await resolveActorType(container.userDirectory, memberUserId),
-      })),
-    );
-    const unresolvedMember = resolvedMembers.find((member) => member.actorType === null);
-    if (unresolvedMember) {
-      ack?.({
-        ok: false,
-        code: 'Directory.Unresolved',
-        message: `Member actor type could not be resolved yet: ${unresolvedMember.userId}.`,
-      });
-      return;
-    }
-    const members = resolvedMembers as { userId: string; displayName: string; actorType: string }[];
     const result = await startGroupConversation(
       {
         tenantId,
@@ -342,9 +387,10 @@ async function wireSocket(
         clientKey: parsed.data.clientKey,
         creator: { userId, displayName: selfDisplayName, actorType: principal.actorType },
         title: parsed.data.title,
-        members,
+        description: parsed.data.description ?? null,
+        memberUserIds: parsed.data.memberUserIds,
       },
-      container,
+      groupDeps,
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
@@ -352,11 +398,11 @@ async function wireSocket(
     }
     const groupRoom = `t:${tenantId}:c:${result.value.conversationId}`;
     await socket.join(groupRoom);
-    ack?.({ ok: true, value: result.value });
+    const summary = await groupSummary(result.value.conversationId);
+    ack?.({ ok: true, value: { conversationId: result.value.conversationId, conversation: summary } });
 
-    // A cada miembro: se une a la room sus sockets ya conectados (recibe en vivo sin refrescar) y se le
-    // notifica por su room personal para que el cliente refresque su lista. El join-on-connect cubre a
-    // los que reconecten después.
+    // A cada miembro y a las otras pestañas del creador (T-12): sus sockets entran a la sala y reciben
+    // `created` por su sala personal para refrescar la lista. El join-on-connect cubre a los que reconecten.
     const createdDto: ConversationCreatedDto = {
       id: result.value.conversationId,
       kind: 'Group',
@@ -364,11 +410,11 @@ async function wireSocket(
       createdByUserId: userId,
       createdAtUtc: new Date().toISOString(),
     };
-    for (const member of members) {
-      io.in(`t:${tenantId}:u:${member.userId}`).socketsJoin(groupRoom);
+    for (const memberUserId of [userId, ...result.value.memberUserIds]) {
+      io.in(`t:${tenantId}:u:${memberUserId}`).socketsJoin(groupRoom);
       emitter.emitToUser({
         tenantId,
-        userId: member.userId,
+        userId: memberUserId,
         event: ChatSocketEvents.ConversationCreated,
         envelope: envelope(createdDto),
       });
@@ -383,45 +429,33 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    const addParticipantPermCheck = await checkPermission(
-      principal,
-      CommunicationPermissions.GroupManageMembers,
-      container.userPermissions,
-    );
-    if (!addParticipantPermCheck.allowed) {
-      ack?.({ ok: false, code: addParticipantPermCheck.code, message: addParticipantPermCheck.message });
-      return;
-    }
-    const [newMemberDisplayName, newMemberActorType] = await Promise.all([
-      resolveDisplayName(container.userDirectory, parsed.data.newMemberUserId),
-      resolveActorType(container.userDirectory, parsed.data.newMemberUserId),
-    ]);
-    if (newMemberActorType === null) {
-      ack?.({ ok: false, code: 'Directory.Unresolved', message: 'New member actor type could not be resolved yet.' });
-      return;
-    }
+    // F8b: quién agrega lo decide el rol en el grupo (aggregate); el permiso global solo amplía (superpoder).
     const result = await addGroupParticipant(
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         conversationId: parsed.data.conversationId,
-        actorUserId: userId,
-        newMember: { userId: parsed.data.newMemberUserId, displayName: newMemberDisplayName, actorType: newMemberActorType },
+        actor: await groupActor(),
+        newMemberUserId: parsed.data.newMemberUserId,
       },
-      container,
+      groupDeps,
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    ack?.({ ok: true, value: result.value });
-    const avatars = await resolveAvatars(container.avatars, [result.value.newParticipantUserId]);
+    ack?.({ ok: true, value: { conversationId: result.value.conversationId, newParticipantUserId: result.value.newParticipantUserId } });
+    const [avatars, newMemberActorType] = await Promise.all([
+      resolveAvatars(container.avatars, [result.value.newParticipantUserId]),
+      resolveActorType(container.userDirectory, result.value.newParticipantUserId),
+    ]);
     const addedDto: ConversationParticipantAddedDto = {
       conversationId: result.value.conversationId,
       addedByUserId: userId,
       newParticipantUserId: result.value.newParticipantUserId,
-      newParticipantDisplayName: newMemberDisplayName,
+      newParticipantDisplayName: result.value.newParticipantDisplayName,
+      ...(newMemberActorType ? { newParticipantActorType: newMemberActorType } : {}),
       ...(avatars ? { newParticipantAvatarFileId: avatars.of(result.value.newParticipantUserId) } : {}),
       addedAtUtc: new Date().toISOString(),
     };
@@ -447,42 +481,40 @@ async function wireSocket(
 
   socket.on(ChatSocketEvents.RemoveGroupParticipant, async (...args: unknown[]) => {
     const raw = args[0];
-    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ conversationId: string; removedParticipantUserId: string; reason: 'Left' | 'Kicked' }>) => void) : undefined;
+    const ack =
+      typeof args[1] === 'function'
+        ? (args[1] as (r: SocketAck<{ conversationId: string; removedParticipantUserId: string; reason: 'Left' | 'Kicked' }>) => void)
+        : undefined;
     const parsed = RemoveGroupParticipantPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
     const targetUserId = parsed.data.targetUserId ?? userId;
-    // Salir de un grupo (targetUserId === self) no requiere el permiso de
-    // gestion — solo expulsar a otro participante lo requiere.
-    if (targetUserId !== userId) {
-      const removeParticipantPermCheck = await checkPermission(
-        principal,
-        CommunicationPermissions.GroupManageMembers,
-        container.userPermissions,
-      );
-      if (!removeParticipantPermCheck.allowed) {
-        ack?.({ ok: false, code: removeParticipantPermCheck.code, message: removeParticipantPermCheck.message });
-        return;
-      }
-    }
+    // F8b: salir nunca requiere permiso; expulsar lo decide el rol en el grupo (o el superpoder).
     const result = await removeGroupParticipant(
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         conversationId: parsed.data.conversationId,
-        actorUserId: userId,
+        actor: await groupActor(),
         targetUserId,
       },
-      container,
+      groupDeps,
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    ack?.({ ok: true, value: result.value });
+    ack?.({
+      ok: true,
+      value: {
+        conversationId: result.value.conversationId,
+        removedParticipantUserId: result.value.removedParticipantUserId,
+        reason: result.value.reason,
+      },
+    });
     const removedDto: ConversationParticipantRemovedDto = {
       conversationId: result.value.conversationId,
       removedByUserId: userId,
@@ -496,15 +528,52 @@ async function wireSocket(
       event: ChatSocketEvents.ConversationParticipantRemoved,
       envelope: envelope(removedDto),
     });
-    const room = `t:${tenantId}:c:${result.value.conversationId}`;
-    if (targetUserId === userId) {
-      await socket.leave(room);
-    } else {
-      // El expulsado puede tener otros sockets conectados (otra pestana,
-      // otro dispositivo) — hay que sacarlos a todos de la room o seguirian
-      // recibiendo mensajes de un grupo del que ya no son parte.
-      io.in(`t:${tenantId}:u:${targetUserId}`).socketsLeave(room);
+    // Todos los sockets del que sale (otras pestañas o dispositivos) dejan la sala; si no, seguirían
+    // recibiendo mensajes de un grupo del que ya no son parte.
+    io.in(`t:${tenantId}:u:${targetUserId}`).socketsLeave(`t:${tenantId}:c:${result.value.conversationId}`);
+  });
+
+  onGroupCommand(ChatSocketEvents.SetGroupMemberRole, SetGroupMemberRolePayloadSchema, async (data) =>
+    setGroupMemberRole(
+      { tenantId, conversationId: data.conversationId, actor: await groupActor(), targetUserId: data.targetUserId, role: data.role },
+      groupDeps,
+    ),
+  );
+
+  onGroupCommand(ChatSocketEvents.TransferGroupOwnership, TransferGroupOwnershipPayloadSchema, async (data) =>
+    transferGroupOwnership({ tenantId, conversationId: data.conversationId, actor: await groupActor(), targetUserId: data.targetUserId }, groupDeps),
+  );
+
+  onGroupCommand(ChatSocketEvents.UpdateGroupInfo, UpdateGroupInfoPayloadSchema, async (data) =>
+    updateGroupInfo(
+      {
+        tenantId,
+        conversationId: data.conversationId,
+        actor: await groupActor(),
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.avatarFileId !== undefined ? { avatarFileId: data.avatarFileId } : {}),
+      },
+      groupDeps,
+    ),
+  );
+
+  onGroupCommand(ChatSocketEvents.SetGroupAdminsOnly, SetGroupAdminsOnlyPayloadSchema, async (data) =>
+    setGroupAdminsOnly({ tenantId, conversationId: data.conversationId, actor: await groupActor(), enabled: data.enabled }, groupDeps),
+  );
+
+  // ADD-05 H-6: silencio propio; las otras pestañas del usuario se enteran por su sala personal.
+  onGroupCommand(ChatSocketEvents.SetConversationMuted, SetConversationMutedPayloadSchema, async (data) => {
+    const result = await setConversationMuted({ tenantId, conversationId: data.conversationId, userId, muted: data.muted }, container);
+    if (result.isSuccess) {
+      emitter.emitToUser({
+        tenantId,
+        userId,
+        event: ChatSocketEvents.ConversationUpdated,
+        envelope: envelope({ conversationId: result.value.conversationId, kind: result.value.kind, isMuted: result.value.isMuted }),
+      });
     }
+    return result;
   });
 
   socket.on(ChatSocketEvents.SendMessage, async (...args: unknown[]) => {
@@ -975,22 +1044,28 @@ async function wireSocket(
       if (allowedUserIds.length === 0) return;
     }
 
-    const online = new Set(await container.presence.listOnline(tenantId, allowedUserIds));
+    // F8c: estado completo (incluido Busy en llamada o reunión) para pintar el punto correcto al cargar.
     const now = new Date().toISOString();
-    for (const targetUserId of allowedUserIds) {
-      // Solo online/offline (el getter de presencia no expone Busy); una transición Busy posterior la
-      // corrige en vivo. Suficiente para que el peer deje de verse "Offline" falso al abrir el chat.
-      socket.emit(
-        ChatSocketEvents.PresenceChanged,
-        envelope({
-          userId: targetUserId,
-          status: online.has(targetUserId) ? 'Online' : 'Offline',
-          busyReason: null,
-          changedAtUtc: now,
-        }),
-      );
+    const states = container.presence.snapshot
+      ? await container.presence.snapshot(tenantId, allowedUserIds)
+      : await container.presence.listOnline(tenantId, allowedUserIds).then((online) => {
+          const set = new Set(online);
+          return allowedUserIds.map((id) => ({ userId: id, status: set.has(id) ? ('Online' as const) : ('Offline' as const), busyReason: null }));
+        });
+    for (const state of states) {
+      socket.emit(ChatSocketEvents.PresenceChanged, envelope({ ...state, changedAtUtc: now }));
     }
   });
+
+  /** F8d: agregar/quitar reacciones comparten el límite por persona (configuración). */
+  const allowReaction = async (): Promise<boolean> =>
+    container.rateLimiter.allow({
+      scope: CommunicationRateLimitPolicyNames.ChatReaction,
+      tenantId,
+      userId,
+      maxPerWindow: config.rateLimit.chatReaction.maxPerWindow,
+      windowSeconds: config.rateLimit.chatReaction.windowSeconds,
+    });
 
   socket.on(ChatSocketEvents.AddReaction, async (...args: unknown[]) => {
     const raw = args[0];
@@ -1003,6 +1078,10 @@ async function wireSocket(
     const addReactionPermCheck = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
     if (!addReactionPermCheck.allowed) {
       ack?.({ ok: false, code: addReactionPermCheck.code, message: addReactionPermCheck.message });
+      return;
+    }
+    if (!(await allowReaction())) {
+      ack?.({ ok: false, code: 'Chat.RateLimited', message: 'Too many reactions, slow down.' });
       return;
     }
     const result = await addMessageReaction(
@@ -1028,6 +1107,10 @@ async function wireSocket(
     const parsed = RemoveReactionPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await allowReaction())) {
+      ack?.({ ok: false, code: 'Chat.RateLimited', message: 'Too many reactions, slow down.' });
       return;
     }
     const result = await removeMessageReaction(

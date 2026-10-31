@@ -47,7 +47,43 @@ internal static class FormRequestApplicationSupport
             else if (value.Component.Type == "taxId" && value.Value.ValueKind == JsonValueKind.Object)
                 ValidateSensitive(value, request, requireReady, issues);
         }
+        if (requireReady)
+            ValidateHeldAttachments(request, issues);
         return issues;
+    }
+
+    /// <summary>
+    /// Un archivo subido que sigue escaneándose o en revisión de contenido frena el envío aunque la respuesta no lo
+    /// nombre (el portal solo lo escribe al quedar disponible). Para mandar sin él, el cliente lo quita (Detached).
+    /// </summary>
+    private static void ValidateHeldAttachments(FormRequest request, ICollection<ValidationIssue> issues)
+    {
+        foreach (var attachment in request.Submission?.Attachments ?? [])
+        {
+            if (issues.Any(issue => issue.ComponentId == attachment.ComponentId && issue.RowId == attachment.RowId))
+                continue;
+            var path = $"/values/{attachment.ComponentId}";
+            if (attachment.Status == FormAttachmentStatus.Pending)
+                issues.Add(
+                    new(
+                        "answer.attachment_pending",
+                        path,
+                        attachment.ComponentId,
+                        attachment.RowId,
+                        "The attachment is still being processed."
+                    )
+                );
+            else if (attachment.Status == FormAttachmentStatus.UnderReview)
+                issues.Add(
+                    new(
+                        "answer.attachment_under_review",
+                        path,
+                        attachment.ComponentId,
+                        attachment.RowId,
+                        "The attachment is under review against our content policy."
+                    )
+                );
+        }
     }
 
     internal static (IReadOnlyCollection<Guid> FileIds, IReadOnlyCollection<Guid> SensitiveIds) References(
@@ -166,6 +202,14 @@ internal static class FormRequestApplicationSupport
                 );
             else if (requireReady && attachment.Status == FormAttachmentStatus.Pending)
                 issues.Add(Issue("answer.attachment_pending", value, "The attachment is still being processed."));
+            else if (requireReady && attachment.Status == FormAttachmentStatus.UnderReview)
+                issues.Add(
+                    Issue(
+                        "answer.attachment_under_review",
+                        value,
+                        "The attachment is under review against our content policy."
+                    )
+                );
             else if (requireReady && attachment.Status == FormAttachmentStatus.Rejected)
                 issues.Add(Issue("answer.attachment_rejected", value, "The attachment was rejected."));
         }

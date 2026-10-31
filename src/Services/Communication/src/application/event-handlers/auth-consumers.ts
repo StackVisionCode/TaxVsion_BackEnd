@@ -4,6 +4,9 @@ import type { RolePermissionsProjectionRepository } from '../ports/role-permissi
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
+import { removeUserFromGroups } from '../use-cases/group-administration.js';
 import { logger } from '../../infrastructure/logger/logger.js';
 import { emitUserProfileChanged, readOptionalGuid } from './user-profile-realtime.js';
 import {
@@ -32,6 +35,9 @@ export function bindAuthConsumers(
     customerPortalAccounts: CustomerPortalAccountRepository;
     /** Opcional: sin emisor los consumers siguen proyectando, solo no avisan en vivo. */
     emitter?: RealtimeEmitter;
+    /** F8b (T-19): la baja saca al usuario de sus grupos (con sucesión). Sin repo, no se toca. */
+    conversations?: ConversationRepository;
+    conversationAudit?: ConversationAuditRepository;
   },
 ): void {
   /**
@@ -173,6 +179,12 @@ export function bindAuthConsumers(
     await deps.userPermissions.markInactive(userId, new Date());
     await deps.userDirectory.markInactive(userId);
     await deps.customerPortalAccounts.markInactiveByUserId(userId);
+    if (deps.conversations) {
+      await removeUserFromGroups(
+        { tenantId: env.tenantId, userId, reason: 'Deactivated' },
+        { conversations: deps.conversations, conversationAudit: deps.conversationAudit, emitter: deps.emitter },
+      );
+    }
   });
 
   // Contraparte de `deactivated`: sin este consumer, reactivar un usuario en Auth

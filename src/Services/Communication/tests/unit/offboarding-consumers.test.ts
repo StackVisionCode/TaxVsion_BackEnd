@@ -20,6 +20,9 @@ function u(): string {
 }
 
 class FakeMeetingRepository implements MeetingRepository {
+  async listScheduledForReminder(): Promise<Meeting[]> {
+    return [];
+  }
   private readonly meetings = new Map<string, Meeting>();
   async save(meeting: Meeting): Promise<void> {
     this.meetings.set(meeting.id, meeting);
@@ -55,6 +58,12 @@ class FakeMeetingRepository implements MeetingRepository {
     return null;
   }
   async listInvitationsByMeeting(): Promise<MeetingInvitation[]> {
+    return [];
+  }
+  async listLive(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledBefore(): Promise<Meeting[]> {
     return [];
   }
   async listUpcomingForUser(): Promise<MeetingSnapshot[]> {

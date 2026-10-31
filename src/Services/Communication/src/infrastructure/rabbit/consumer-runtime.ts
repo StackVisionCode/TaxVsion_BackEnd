@@ -2,6 +2,7 @@ import type { ConsumeMessage } from 'amqplib';
 import { ATTEMPT_HEADER, RETRY_COOLDOWNS_MS, getRabbitContext, retryQueueName } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
+import { consumerProjectionFailuresTotal } from '../telemetry/metrics.js';
 import type { ProcessedEventStore } from '../../application/ports/processed-event-store.js';
 import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/event-consumer.js';
 
@@ -180,6 +181,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'cloudstorage.file.pending_review.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileRestoredIntegrationEvent':
     'cloudstorage.file.restored.v1',
+  // F7: un compuesto que no pasa el escaneo deja la grabacion en Failed (antes se ignoraba).
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent':
+    'cloudstorage.file.scan_failed.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent':
     'cloudstorage.sharelink.folder_item_added.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent':
@@ -228,7 +232,6 @@ const INTENTIONALLY_IGNORED_EVENT_TYPES = new Set([
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormActionFailedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormCompletedIntegrationEvent',
   'BuildingBlocks.Messaging.ClientFormsIntegrationEvents.CustomerCreationFromFormRejectedIntegrationEvent',
-  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileScanFailedIntegrationEvent',
 ]);
 const UNKNOWN_EVENT_LOG_INTERVAL_MS = 60_000;
 
@@ -236,6 +239,8 @@ export type { ConsumerHandler, IncomingEnvelope };
 
 export class ConsumerRuntime {
   private handlers = new Map<string, ConsumerHandler>();
+  /** F10: proyecciones de lectura (analítica) que corren tras el handler principal del mismo evento. */
+  private projections = new Map<string, ConsumerHandler[]>();
   private readonly unknownEventLastLoggedAt = new Map<string, number>();
   private consumerTag: string | undefined;
   private inFlightCount = 0;
@@ -249,6 +254,17 @@ export class ConsumerRuntime {
     this.handlers.set(eventType, handler);
   }
 
+  /**
+   * F10 (ADD-08): varias proyecciones por evento, además del handler principal. Corren después de
+   * él y su fallo se registra sin reintentar el mensaje: reintentar repetiría los efectos del
+   * principal (mensajes de sistema, notificaciones) por un contador.
+   */
+  registerProjection(eventType: string, handler: ConsumerHandler): void {
+    const list = this.projections.get(eventType) ?? [];
+    list.push(handler);
+    this.projections.set(eventType, list);
+  }
+
   async start(): Promise<void> {
     const rabbit = getRabbitContext();
     await rabbit.channel.prefetch(20);
@@ -257,7 +273,10 @@ export class ConsumerRuntime {
       void this.dispatch(msg);
     });
     this.consumerTag = consumerTag;
-    logger.info({ queue: config.rabbitmq.queue, handlers: this.handlers.size }, 'consumer runtime started');
+    logger.info(
+      { queue: config.rabbitmq.queue, handlers: this.handlers.size, projections: this.projections.size },
+      'consumer runtime started',
+    );
   }
 
   /**
@@ -321,7 +340,15 @@ export class ConsumerRuntime {
     }
 
     const handler = this.handlers.get(envelope.eventType);
-    if (!handler) {
+    const projections = this.projections.get(envelope.eventType);
+    if (!handler && !projections) {
+      // Eco propio del fanout compartido (p. ej. el pedido de transcripción para el worker): no es un
+      // handler que falte, se descarta sin aviso. Lo de otros servicios sin handler sigue avisando.
+      if (config.serviceName && msg.properties.appId === config.serviceName) {
+        logger.debug({ eventType: envelope.eventType }, 'consumer: own event echoed by the fanout; ack to skip');
+        rabbit.channel.ack(msg);
+        return;
+      }
       this.logUnknownEvent(envelope, amqpTypeHeader);
       rabbit.channel.ack(msg);
       return;
@@ -340,7 +367,8 @@ export class ConsumerRuntime {
     }
 
     try {
-      await handler(envelope);
+      if (handler) await handler(envelope);
+      if (projections) await this.runProjections(envelope, projections);
       rabbit.channel.ack(msg);
     } catch (err) {
       // Rollback the inbox mark: sin esto el reintento se veria como duplicado y se
@@ -385,6 +413,20 @@ export class ConsumerRuntime {
       // nack with requeue=false → dead-letter routing (see rabbit-connection.ts:
       // main queue has deadLetterExchange:'' + deadLetterRoutingKey:dlq).
       rabbit.channel.nack(msg, false, false);
+    }
+  }
+
+  private async runProjections(envelope: IncomingEnvelope, projections: readonly ConsumerHandler[]): Promise<void> {
+    for (const projection of projections) {
+      try {
+        await projection(envelope);
+      } catch (err) {
+        consumerProjectionFailuresTotal.inc({ event_type: envelope.eventType });
+        logger.warn(
+          { err: (err as Error).message, eventId: envelope.eventId, eventType: envelope.eventType },
+          'consumer projection failed — counted and skipped (the main handler already ran)',
+        );
+      }
     }
   }
 

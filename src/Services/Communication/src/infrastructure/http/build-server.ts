@@ -5,19 +5,25 @@ import sensible from '@fastify/sensible';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import { CORRELATION_HEADER, normalizeCorrelationId } from '../../domain/shared/correlation.js';
-import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds } from '../telemetry/metrics.js';
+import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds, routeLabelOf } from '../telemetry/metrics.js';
 import { sendRateLimited } from './rate-limit-rejection.js';
+import { registerHttpErrorHandler } from './http-error-handler.js';
 import { registerHealthRoutes } from '../../api/http/routes/health.route.js';
 import { registerAuthPlugin } from '../../api/http/plugins/auth.plugin.js';
 import { registerConversationRoutes } from '../../api/http/routes/conversations.route.js';
 import { registerCallRoutes } from '../../api/http/routes/calls.route.js';
 import { registerMeetingRoutes } from '../../api/http/routes/meetings.route.js';
+import { registerRecordingRoutes } from '../../api/http/routes/recordings.route.js';
 import { registerMeetingInvitationRoutes } from '../../api/http/routes/meeting-invitations.route.js';
 import { registerDirectoryRoutes } from '../../api/http/routes/directory.route.js';
 import { registerNotificationRoutes } from '../../api/http/routes/notifications.route.js';
 import { registerSupportRoutes } from '../../api/http/routes/support.route.js';
 import { registerSettingsRoutes } from '../../api/http/routes/settings.route.js';
+import { registerAdminSettingsRoutes } from '../../api/http/routes/admin-settings.route.js';
+import { registerPreferencesRoutes } from '../../api/http/routes/preferences.route.js';
+import { registerMediaPolicyRoutes } from '../../api/http/routes/media-policy.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
+import { registerAdminAnalyticsRoutes } from '../../api/http/routes/admin-analytics.route.js';
 import type { AppContainer } from '../container.js';
 import { isAllowedOrigin } from './cors-origins.js';
 
@@ -43,6 +49,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   }) as unknown as FastifyInstance;
 
   await app.register(sensible);
+  registerHttpErrorHandler(app);
   await app.register(helmet, { global: true });
   await app.register(cors, {
     // Orígenes de la plataforma (PlatformSettings) + los extra de config. El allow-all sin ninguno de
@@ -79,7 +86,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
     (req as unknown as { metricsStartHrTime: bigint }).metricsStartHrTime = process.hrtime.bigint();
   });
   app.addHook('onResponse', async (req, reply) => {
-    const route = req.routeOptions?.url ?? req.url;
+    const route = routeLabelOf(req.routeOptions?.url);
     const status = String(reply.statusCode);
     const method = req.method;
     httpRequestsTotal.labels(method, route, status).inc();
@@ -109,12 +116,17 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerConversationRoutes(app, container);
   await registerCallRoutes(app, container);
   await registerMeetingRoutes(app, container);
+  await registerRecordingRoutes(app, container);
   await registerMeetingInvitationRoutes(app, container);
   await registerDirectoryRoutes(app, container);
   await registerNotificationRoutes(app, container);
   await registerSupportRoutes(app, container);
   await registerSettingsRoutes(app, container);
+  await registerAdminSettingsRoutes(app, container);
+  await registerPreferencesRoutes(app, container);
+  await registerMediaPolicyRoutes(app, container);
   await registerAnalyticsRoutes(app, container);
+  await registerAdminAnalyticsRoutes(app, container, config.platformAnalytics);
 
   return app;
 }

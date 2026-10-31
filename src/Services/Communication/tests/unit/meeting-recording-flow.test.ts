@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { InMemoryRecordingSessionRepository } from '../helpers/fake-recording-session-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Meeting } from '../../src/domain/meetings/meeting.js';
 import type { MeetingRepository } from '../../src/application/ports/meeting-repository.js';
 import type { MeetingInvitation } from '../../src/domain/meetings/meeting-invitation.js';
 import type { MeetingSnapshot } from '../../src/domain/meetings/meeting.js';
-import { RecordingSession } from '../../src/domain/recording/recording-session.js';
 import { RecordingScope } from '../../src/domain/recording/recording-session-state.js';
-import { RecordingConsentEntry } from '../../src/domain/recording/recording-consent-entry.js';
+import type { RecordingConsentEntry } from '../../src/domain/recording/recording-consent-entry.js';
 import { RecordingConsentPolicy } from '../../src/domain/recording/recording-consent.js';
-import type { RecordingSessionRepository, RecordingConsentRepository } from '../../src/application/ports/recording-repository.js';
+import type { RecordingConsentRepository } from '../../src/application/ports/recording-repository.js';
 import { TenantCommunicationSettings } from '../../src/domain/settings/tenant-communication-settings.js';
 import type { SettingsRepository, LimitsRepository } from '../../src/application/ports/settings-repository.js';
 import type { TenantCommunicationLimitsSnapshot } from '../../src/domain/settings/tenant-communication-limits.js';
@@ -22,6 +22,9 @@ function u(): string {
 }
 
 class FakeMeetingRepository implements MeetingRepository {
+  async listScheduledForReminder(): Promise<Meeting[]> {
+    return [];
+  }
   async listActiveHostedBy(): Promise<Meeting[]> {
     return [];
   }
@@ -52,6 +55,12 @@ class FakeMeetingRepository implements MeetingRepository {
   async listInvitationsByMeeting(): Promise<MeetingInvitation[]> {
     return [];
   }
+  async listLive(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledBefore(): Promise<Meeting[]> {
+    return [];
+  }
   async listUpcomingForUser(): Promise<MeetingSnapshot[]> {
     return [];
   }
@@ -69,30 +78,7 @@ class FakeMeetingRepository implements MeetingRepository {
   }
 }
 
-class FakeRecordingSessionRepository implements RecordingSessionRepository {
-  private readonly store = new Map<string, RecordingSession>();
-  private key(scope: string, scopeId: string): string {
-    return `${scope}:${scopeId}`;
-  }
-  async save(session: RecordingSession): Promise<void> {
-    const s = session.toSnapshot();
-    this.store.set(this.key(s.scope, s.scopeId), session);
-  }
-  async findByScope(tenantId: string, scope: RecordingScope, scopeId: string): Promise<RecordingSession | null> {
-    const session = this.store.get(this.key(scope, scopeId));
-    if (!session) return null;
-    return session.toSnapshot().tenantId === tenantId ? session : null;
-  }
-  async listStaleRequesting(olderThanUtc: Date, scope?: RecordingScope): Promise<RecordingSession[]> {
-    return [...this.store.values()].filter((session) => {
-      const snap = session.toSnapshot();
-      if (snap.state !== 'Requesting') return false;
-      if (snap.requestedAtUtc.getTime() > olderThanUtc.getTime()) return false;
-      if (scope && snap.scope !== scope) return false;
-      return true;
-    });
-  }
-}
+class FakeRecordingSessionRepository extends InMemoryRecordingSessionRepository {}
 
 class FakeRecordingConsentRepository implements RecordingConsentRepository {
   private readonly rows: RecordingConsentEntry[] = [];

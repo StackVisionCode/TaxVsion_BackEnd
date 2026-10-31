@@ -5,9 +5,16 @@ namespace TaxVision.Auth.Tests.SlotGating;
 /// <summary>
 /// Garantiza que SOLO el Gateway sea entry point público. Si falla, el middleware de slot gating
 /// no cubre tráfico directo a un servicio — el request esquivaría el 403 llegando por otro port.
+/// Única excepción declarada: los puertos de MEDIA WebRTC del SFU de communication-api (UDP/TCP del
+/// WebRtcServer de mediasoup). No son HTTP: no esquivan el gateway ni el slot gating, y sin publicarlos
+/// ninguna reunión SFU tiene audio/video (INV-02 H-1). Se exige que esos puertos salgan de la variable
+/// del SFU y nunca del puerto HTTP del servicio.
 /// </summary>
 public sealed class DockerComposeNoPublicApiPortsFitnessTests
 {
+    private const string SfuMediaService = "communication-api";
+    private const string SfuPortVariable = "COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE";
+
     [Fact]
     public void No_api_service_publishes_ports_to_the_host()
     {
@@ -15,6 +22,7 @@ public sealed class DockerComposeNoPublicApiPortsFitnessTests
 
         var offenders = ApiServiceBlocks(compose)
             .Where(block => HasActivePortsSection(block.body))
+            .Where(block => !(block.name == SfuMediaService && PublishesOnlySfuMediaPorts(block.body)))
             .Select(block => block.name)
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
@@ -24,6 +32,57 @@ public sealed class DockerComposeNoPublicApiPortsFitnessTests
             "Estos -api/-service exponen `ports:` al host — el único entry point público debe ser gateway: "
                 + string.Join(", ", offenders)
         );
+    }
+
+    [Fact]
+    public void Communication_api_publishes_only_sfu_media_ports()
+    {
+        var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
+        var block = ServiceBlocks(compose).Single(b => b.name == SfuMediaService);
+
+        Assert.True(
+            HasActivePortsSection(block.body),
+            "communication-api debe publicar los puertos del WebRtcServer (UDP y TCP)."
+        );
+        Assert.True(
+            PublishesOnlySfuMediaPorts(block.body),
+            "communication-api solo puede publicar puertos de media del SFU (derivados de "
+                + SfuPortVariable
+                + ", con sufijo /udp o /tcp); nunca su puerto HTTP 5350."
+        );
+    }
+
+    /// <summary>Cada entrada de `ports:` debe venir de la variable del SFU y llevar protocolo explícito.</summary>
+    private static bool PublishesOnlySfuMediaPorts(string body)
+    {
+        var entries = PortEntries(body);
+        return entries.Count > 0
+            && entries.All(entry =>
+                entry.Contains(SfuPortVariable, StringComparison.Ordinal)
+                && (
+                    entry.EndsWith("/udp", StringComparison.Ordinal) || entry.EndsWith("/tcp", StringComparison.Ordinal)
+                )
+                && !entry.Contains("5350", StringComparison.Ordinal)
+            );
+    }
+
+    private static List<string> PortEntries(string body)
+    {
+        var portsHeader = new Regex("^    ports:\\s*$", RegexOptions.Multiline);
+        var match = portsHeader.Match(body);
+        if (!match.Success)
+            return new List<string>();
+        var after = body[(match.Index + match.Length)..];
+        var entries = new List<string>();
+        foreach (var line in after.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r');
+            if (trimmed.StartsWith("      - ", StringComparison.Ordinal))
+                entries.Add(trimmed["      - ".Length..].Trim().Trim('"'));
+            else if (trimmed.Trim().Length > 0 && !trimmed.StartsWith("      ", StringComparison.Ordinal))
+                break; // otra clave del servicio: fin de la sección ports
+        }
+        return entries;
     }
 
     [Fact]

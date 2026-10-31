@@ -154,10 +154,14 @@ describe('mapeo de recording kinds configurable (reusabilidad genérica del work
       correlationId: undefined,
       targetId: episodeId,
       recordingFileId: u(),
-      transcriptFileId: u(),
       detectedLanguage: 'es',
       durationSeconds: 120,
       wordCount: 300,
+      model: 'ggml-small-q5_1.bin',
+      vad: true,
+      realtimeFactor: 0.25,
+      wordsPerSecond: 2.5,
+      output: { type: 'file', transcriptFileId: u(), transcriptJsonFileId: u(), segmentCount: 10, speakerCount: 0 },
     });
 
     expect(channel.publish).toHaveBeenCalledTimes(1);
@@ -173,6 +177,13 @@ describe('mapeo de recording kinds configurable (reusabilidad genérica del work
     const body = JSON.parse(buffer.toString('utf-8')) as Record<string, unknown>;
     expect(body['eventType']).toBe('podcasts.episode.transcript_ready.v1');
     expect(body['episodeId']).toBe(episodeId);
+    // Defaults del schema: recordingFileIdField = recordingFileId, salida file.
+    expect(body).toHaveProperty('recordingFileId');
+    expect(body).toHaveProperty('transcriptJsonFileId');
+    expect(body['segmentCount']).toBe(10);
+    expect(body['model']).toBe('ggml-small-q5_1.bin');
+    expect(body['vad']).toBe(true);
+    expect(body).not.toHaveProperty('transcriptText');
     expect(body).not.toHaveProperty('callId');
     expect(body).not.toHaveProperty('meetingId');
   });

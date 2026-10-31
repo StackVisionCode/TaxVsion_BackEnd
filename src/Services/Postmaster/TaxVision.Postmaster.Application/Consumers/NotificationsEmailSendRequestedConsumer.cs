@@ -451,12 +451,13 @@ public static class NotificationsEmailSendRequestedConsumer
         CancellationToken ct
     )
     {
+        var inline = DecodeInlineAttachments(evt, logger);
         if (evt.AttachmentFileIds is not { Count: > 0 } fileIds)
-            return [];
+            return inline;
 
         var fetched = await attachmentFetcher.FetchByFileIdsAsync(evt.TenantId, fileIds, ct);
         if (fetched.IsSuccess)
-            return fetched.Value;
+            return [.. fetched.Value, .. inline];
 
         logger.LogWarning(
             "Failed to fetch {Count} attachment(s) for tenant {TenantId}: {Error}. The email will not be sent.",
@@ -466,6 +467,67 @@ public static class NotificationsEmailSendRequestedConsumer
         );
         await FailAndPublishAsync(message, evt, fetched.Error.Message, idempotencyGuard, unitOfWork, bus, ct);
         return null;
+    }
+
+    /// <summary>Tope por adjunto en memoria (F6, el <c>.ics</c>): Notification ya aplica 256 KB al total.</summary>
+    public const int MaxInlineAttachmentBytes = 256 * 1024;
+
+    /// <summary>
+    /// Adjuntos que viajan en el evento (base64) y no en CloudStorage. Uno inválido o demasiado grande se
+    /// descarta con aviso y el correo sale igual: a diferencia de la factura sin PDF, una invitación sin
+    /// el <c>.ics</c> sigue siendo correcta (lleva fecha, enlace y código en el cuerpo).
+    /// </summary>
+    private static List<OutboundAttachmentBytes> DecodeInlineAttachments(
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        ILogger logger
+    )
+    {
+        var result = new List<OutboundAttachmentBytes>();
+        if (evt.InlineAttachments is not { Count: > 0 } attachments)
+            return result;
+
+        foreach (var attachment in attachments)
+        {
+            if (string.IsNullOrWhiteSpace(attachment.FileName) || string.IsNullOrWhiteSpace(attachment.ContentType))
+            {
+                logger.LogWarning(
+                    "Discarding inline attachment without file name or content type for tenant {TenantId}.",
+                    evt.TenantId
+                );
+                continue;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(attachment.ContentBase64 ?? string.Empty);
+            }
+            catch (FormatException)
+            {
+                logger.LogWarning(
+                    "Discarding inline attachment '{FileName}' for tenant {TenantId}: content is not valid base64.",
+                    attachment.FileName,
+                    evt.TenantId
+                );
+                continue;
+            }
+
+            if (bytes.Length == 0 || bytes.Length > MaxInlineAttachmentBytes)
+            {
+                logger.LogWarning(
+                    "Discarding inline attachment '{FileName}' for tenant {TenantId}: {Bytes} bytes (max {Max}).",
+                    attachment.FileName,
+                    evt.TenantId,
+                    bytes.Length,
+                    MaxInlineAttachmentBytes
+                );
+                continue;
+            }
+
+            result.Add(new OutboundAttachmentBytes(attachment.FileName.Trim(), attachment.ContentType.Trim(), bytes));
+        }
+
+        return result;
     }
 
     private static async Task FailAndPublishAsync(

@@ -68,6 +68,14 @@ public sealed class FormAttachment : TenantEntity
         }
         if (Status == FormAttachmentStatus.Available)
             return FileVerdictOutcome.Ignored;
+        // T-20: en revisión no es un veredicto final; Available o Blocked llegan después.
+        if (verdict.Status == FormFileVerdictStatus.PendingReview)
+        {
+            if (Status != FormAttachmentStatus.Pending)
+                return FileVerdictOutcome.Ignored;
+            Status = FormAttachmentStatus.UnderReview;
+            return FileVerdictOutcome.UnderReview;
+        }
 
         var rejection = verdict.Status switch
         {

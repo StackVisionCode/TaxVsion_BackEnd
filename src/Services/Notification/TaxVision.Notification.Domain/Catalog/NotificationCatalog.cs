@@ -37,6 +37,17 @@ public static class NotificationCatalog
             NotificationAction.Review
         ),
         Entry(
+            // T-20: solo a quien subió el archivo; el motivo con la puntuación no se muestra.
+            NotificationKinds.CloudStorageFilePendingReview,
+            NotificationCatalogCategory.DocumentsStorage,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "file",
+            NotificationAction.Review
+        ),
+        Entry(
             NotificationKinds.CloudStorageFileInfected,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.Urgent,
@@ -571,6 +582,46 @@ public static class NotificationCatalog
         ),
         Entry(
             NotificationKinds.CommunicationMeetingInvitationCreated,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingInvitationRevoked,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "meeting",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingCancelled,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingRescheduled,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppEmail,
+            false,
+            "meeting",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationMeetingReminder,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
             NotificationRecipientPolicy.ExplicitUser,

@@ -60,8 +60,12 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Where(file =>
                 file.TenantId == tenantId
                 && file.Status != FileStatus.SoftDeleted
-                // Sin filtro explícito, las fotos de perfil (Avatars) quedan fuera de los listados.
-                && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
+                // Sin filtro explícito, fotos de perfil y pistas crudas de grabación quedan fuera de los listados.
+                && (
+                    folderType == null
+                        ? file.FolderType != FolderType.Avatars && file.FolderType != FolderType.RecordingTracks
+                        : file.FolderType == folderType
+                )
                 && (
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -358,8 +362,9 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 file.TenantId == tenantId
                 && file.Status == FileStatus.SoftDeleted
                 && file.DeletedBatchId == null
-                // Las fotos de perfil borradas no se listan (ni se restauran); la purga sí las alcanza.
+                // Fotos de perfil y pistas de grabación borradas no se listan (ni se restauran); la purga sí las alcanza.
                 && file.FolderType != FolderType.Avatars
+                && file.FolderType != FolderType.RecordingTracks
             )
             .OrderByDescending(file => file.SoftDeletedAtUtc)
             .Skip(skip)

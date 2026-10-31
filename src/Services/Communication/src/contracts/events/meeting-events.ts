@@ -27,6 +27,10 @@ export const MeetingEventTypes = {
   ParticipantLeft:         'communication.meeting.participant_left.v1',
   ParticipantAdmitted:     'communication.meeting.participant_admitted.v1',
   ParticipantRemovedByHost: 'communication.meeting.participant_removed_by_host.v1',
+  // F4: simetricos a los de calls (INV-04 §13.4) y resumen de calidad al terminar (INV-03 §13.6, ADD-08).
+  ScreenShareStarted: 'communication.meeting.screen_share_started.v1',
+  ScreenShareStopped: 'communication.meeting.screen_share_stopped.v1',
+  QualitySummary: 'communication.meeting.quality_summary.v1',
   RecordingConsentRequested: 'communication.meeting.recording_consent_requested.v1',
   RecordingConsentRecorded: 'communication.meeting.recording_consent_recorded.v1',
   RecordingStarted:        'communication.meeting.recording_started.v1',
@@ -44,7 +48,75 @@ export const MeetingEventTypes = {
   ParticipantRoleChanged:  'communication.meeting.participant_role_changed.v1',
   RecordingValidationFailed: 'communication.meeting.recording_validation_failed.v1',
   RecordingFailed:         'communication.meeting.recording_failed.v1',
+  // F7 (T-35): corte por limite (metricas ADD-08 y auditoria).
+  RecordingLimitReached:   'communication.meeting.recording_limit_reached.v1',
+  // F1 — un participante Joined volvio a entrar con media nueva (recarga, otra pestaña).
+  ParticipantRejoined:     'communication.meeting.participant_rejoined.v1',
+  // F1 — un transport del SFU llego a ICE/DTLS failed: base del MeetingEventLog (F3) y analytics (F10).
+  TransportFailed:         'communication.meeting.transport_failed.v1',
+  // F3 — ciclo de vida: aviso 10/5/1 antes del corte, agendada vencida, salida forzada por el sistema.
+  DurationWarning:         'communication.meeting.duration_warning.v1',
+  Expired:                 'communication.meeting.expired.v1',
+  ParticipantForcedLeave:  'communication.meeting.participant_forced_leave.v1',
+  // F6 — invitaciones (T-64) y recordatorio.
+  InvitationUsed:          'communication.meeting.invitation_used.v1',
+  InvitationRevoked:       'communication.meeting.invitation_revoked.v1',
+  InvitationExpired:       'communication.meeting.invitation_expired.v1',
+  Reminder:                'communication.meeting.reminder.v1',
 } as const;
+
+/** Motivo del fin de una reunión (espejo de MeetingEndReason del dominio). */
+export type MeetingEndReasonValue = 'Host' | 'MaxDurationReached' | 'NoParticipants' | 'Offboarding' | 'Backfill';
+
+/** Por qué un participante salió sin pedirlo: venció su gracia, le revocaron la sesión, venció su token, lo retiraron o terminó la reunión. */
+export type ForcedLeaveReason = 'Grace' | 'Revoked' | 'Expired' | 'Offboarding' | 'MeetingEnded';
+
+/** @since F3 — meeting-lifecycle-scheduler: una vez por umbral (600/300/60 s). */
+export interface MeetingDurationWarningEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.duration_warning.v1';
+  readonly meetingId: string;
+  readonly remainingSeconds: number;
+  readonly endsAtUtc: string;
+}
+
+/** @since F3 — agendada que nunca se inició y venció (D-35), por el scheduler o el job de limpieza. */
+export interface MeetingExpiredEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.expired.v1';
+  readonly meetingId: string;
+  readonly hostUserId: string;
+  readonly scheduledForUtc: string | null;
+  readonly expiredAtUtc: string;
+}
+
+/** @since F3 — force-leave-meeting.ts. Se publica además del `participant_left` normal. */
+export interface MeetingParticipantForcedLeaveEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.participant_forced_leave.v1';
+  readonly meetingId: string;
+  readonly participantUserId: string;
+  readonly reason: ForcedLeaveReason;
+  readonly leftAtUtc: string;
+}
+
+/** @since F1 — join-meeting.ts cuando `Meeting.requestJoin` renueva la sesion de un participante Joined. */
+export interface MeetingParticipantRejoinedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.participant_rejoined.v1';
+  readonly meetingId: string;
+  readonly participantUserId: string;
+  /** joinOrder nuevo: los peers rearman su PeerConnection cuando ven uno mayor. */
+  readonly joinOrder: number;
+  readonly rejoinedAtUtc: string;
+}
+
+/** @since F1 — sfu-transport-observer.ts. Solo se publica en `failed` (no en cada transicion). */
+export interface MeetingTransportFailedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.transport_failed.v1';
+  readonly meetingId: string;
+  readonly participantUserId: string;
+  readonly direction: 'send' | 'recv';
+  readonly transportId: string;
+  readonly layer: 'ice' | 'dtls';
+  readonly failedAtUtc: string;
+}
 
 export interface MeetingScheduledEvent extends IntegrationEvent {
   readonly eventType: 'communication.meeting.scheduled.v1';
@@ -72,6 +144,8 @@ export interface MeetingStartedEvent extends IntegrationEvent {
   readonly meetingId: string;
   readonly hostUserId: string;
   readonly startedAtUtc: string;
+  /** F10 (ADD-08 T-71): topologia de media para contar reuniones mesh vs SFU. Opcional por compatibilidad. */
+  readonly strategy?: 'Mesh' | 'Sfu';
 }
 
 export interface MeetingEndedEvent extends IntegrationEvent {
@@ -82,6 +156,8 @@ export interface MeetingEndedEvent extends IntegrationEvent {
   readonly durationSeconds: number;
   readonly participantCount: number;
   readonly recordingFileId: string | null;
+  /** @since F3 — Host (End explícito) o el motivo del sistema. */
+  readonly reason: MeetingEndReasonValue;
 }
 
 export interface MeetingLockedEvent extends IntegrationEvent {
@@ -104,6 +180,8 @@ export interface MeetingHostTransferredEvent extends IntegrationEvent {
   readonly previousHostUserId: string;
   readonly newHostUserId: string;
   readonly transferredAtUtc: string;
+  /** @since F3 — Transfer (el host lo cedió), Succession (venció su gracia, D-08) u Offboarding (consumer). */
+  readonly reason?: 'Transfer' | 'Succession' | 'Offboarding';
 }
 
 export interface MeetingParticipantJoinedEvent extends IntegrationEvent {
@@ -111,6 +189,8 @@ export interface MeetingParticipantJoinedEvent extends IntegrationEvent {
   readonly meetingId: string;
   readonly participantUserId: string;
   readonly joinedAtUtc: string;
+  /** F10 (ADD-08 T-71): tipo de actor (Guest, CustomerPortal, TenantEmployee…) para contar invitados. Opcional. */
+  readonly actorType?: string;
 }
 
 export interface MeetingParticipantLeftEvent extends IntegrationEvent {
@@ -128,6 +208,8 @@ export interface MeetingParticipantAdmittedEvent extends IntegrationEvent {
   readonly participantUserId: string;
   readonly admittedByUserId: string;
   readonly admittedAtUtc: string;
+  /** F10: tipo de actor del admitido (la admision es su entrada a la reunion). Opcional. */
+  readonly actorType?: string;
 }
 
 export interface MeetingParticipantRemovedByHostEvent extends IntegrationEvent {
@@ -136,6 +218,34 @@ export interface MeetingParticipantRemovedByHostEvent extends IntegrationEvent {
   readonly removedParticipantUserId: string;
   readonly removedByUserId: string;
   readonly removedAtUtc: string;
+}
+
+export interface MeetingScreenShareStartedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.screen_share_started.v1';
+  readonly meetingId: string;
+  readonly sharingUserId: string;
+  readonly startedAtUtc: string;
+}
+
+export interface MeetingScreenShareStoppedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.screen_share_stopped.v1';
+  readonly meetingId: string;
+  readonly sharingUserId: string;
+  readonly stoppedAtUtc: string;
+}
+
+/** Agregado por reunion al terminar (F4 → ADD-08): niveles reportados y scores del SFU. */
+export interface MeetingQualitySummaryEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.quality_summary.v1';
+  readonly meetingId: string;
+  readonly participants: number;
+  /** Conteo de reportes por nivel (Excellent/Good/Fair/Poor/Disconnected). */
+  readonly levels: Record<string, number>;
+  readonly relayReports: number;
+  readonly sfuScoreSamples: number;
+  readonly sfuScoreAvg: number | null;
+  readonly transportFailures: number;
+  readonly endedAtUtc: string;
 }
 
 export interface MeetingRecordingReadyEvent extends IntegrationEvent {
@@ -203,6 +313,30 @@ export interface MeetingRecordingProcessingStartedEvent extends IntegrationEvent
   readonly meetingId: string;
   readonly recordingFileId: string;
   readonly startedAtUtc: string;
+  /** F7 (T-28): pistas de audio por participante (captura server-side); sin ellas el worker usa el archivo unico. */
+  readonly audioTracks?: readonly RecordingAudioTrackRef[];
+  /** F7: idioma de la oficina ('auto' o codigo) y vocabulario (T-30). */
+  readonly language?: string;
+  readonly prompt?: string | null;
+  /** F7 (INV-12 H-1): limite efectivo para que el worker derive su timeout y rechace archivos mas largos. */
+  readonly maxDurationSeconds?: number;
+  readonly timeoutFactorPct?: number;
+}
+
+/** F7: pista de audio de un participante tal como la necesita el worker de transcript. */
+export interface RecordingAudioTrackRef {
+  readonly fileId: string;
+  readonly userId: string;
+  readonly displayName: string;
+  readonly startOffsetMs: number;
+}
+
+/** F7 (T-35): la grabacion se detuvo al llegar al limite (la reunion sigue). */
+export interface MeetingRecordingLimitReachedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.recording_limit_reached.v1';
+  readonly meetingId: string;
+  readonly maxDurationSeconds: number;
+  readonly stoppedAtUtc: string;
 }
 
 /** Ver docblock de CallTranscriptReadyEvent — mismo flujo, para meetings. */
@@ -217,6 +351,14 @@ export interface MeetingTranscriptReadyEvent extends IntegrationEvent {
   /** @since Fase Transcript 5 — conteo de palabras del transcript ya limpio (sin timestamps). */
   readonly wordCount: number;
   readonly readyAtUtc: string;
+  /** F7 (T-28): transcript v2. */
+  readonly transcriptJsonFileId?: string | null;
+  readonly segmentCount?: number;
+  readonly speakerCount?: number;
+  readonly model?: string;
+  readonly vad?: boolean;
+  readonly realtimeFactor?: number | null;
+  readonly wordsPerSecond?: number | null;
 }
 
 /**
@@ -231,10 +373,19 @@ export interface MeetingCancelledEvent extends IntegrationEvent {
   readonly cancelledAtUtc: string;
   /** IDs de participantes ya registrados (Host + Cohost + Attendee, cualquier status). */
   readonly participantUserIds: readonly string[];
-  /** Emails de invitados no-usuarios (External kind) que aun no habian entrado. */
+  /** F6: solo externos sin cuenta (los de cuenta reciben in-app por `inviteeUserIds`). */
   readonly invitedEmails: readonly string[];
   /** Motivo opcional escrito por el host, se puede incluir en el mail al participante. */
   readonly reason: string | null;
+  /** F6 (T-64): datos para el email y el `.ics` de cancelacion. */
+  readonly meetingTitle: string;
+  readonly shortCode: string;
+  readonly scheduledForUtc: string | null;
+  readonly durationMinutes: number | null;
+  readonly hostUserId: string;
+  readonly hostDisplayName: string;
+  readonly timeZone: string | null;
+  readonly inviteeUserIds: readonly string[];
 }
 
 /** @since Fase Backend 6 — reschedule-meeting.ts */
@@ -246,7 +397,16 @@ export interface MeetingRescheduledEvent extends IntegrationEvent {
   readonly newScheduledForUtc: string | null;
   readonly rescheduledAtUtc: string;
   readonly participantUserIds: readonly string[];
+  /** F6: solo externos sin cuenta. */
   readonly invitedEmails: readonly string[];
+  /** F6 (T-64): datos para el email y el `.ics` actualizado. */
+  readonly meetingTitle: string;
+  readonly shortCode: string;
+  readonly durationMinutes: number | null;
+  readonly hostUserId: string;
+  readonly hostDisplayName: string;
+  readonly timeZone: string | null;
+  readonly inviteeUserIds: readonly string[];
 }
 
 /**
@@ -334,4 +494,73 @@ export interface MeetingInvitationCreatedEvent extends IntegrationEvent {
   readonly tokenHash: string;
   readonly expiresAtUtc: string;
   readonly joinUrl: string;
+  /** F6 (T-64): email completo (titulo, hora local, duracion, host, codigo) y `.ics`. */
+  readonly meetingTitle: string;
+  readonly meetingStatus: 'Scheduled' | 'Live';
+  readonly shortCode: string;
+  readonly scheduledForUtc: string | null;
+  readonly durationMinutes: number | null;
+  readonly hostUserId: string;
+  readonly hostDisplayName: string;
+  readonly timeZone: string | null;
+  readonly invitedByUserId: string;
+  readonly invitedByDisplayName: string;
+}
+
+/** @since F6 — join-meeting.ts: un invitado con cuenta (reutilizable) o un guest (unico) uso su token. */
+export interface MeetingInvitationUsedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.invitation_used.v1';
+  readonly invitationId: string;
+  readonly meetingId: string;
+  readonly inviteeKind: 'Employee' | 'Customer' | 'External';
+  readonly inviteeUserId: string | null;
+  readonly usedByUserId: string;
+  readonly usedAtUtc: string;
+  readonly useCount: number;
+}
+
+/** @since F6 — revoke-meeting-invitation.ts; `ejected` = el guest estaba dentro y se le saco. */
+export interface MeetingInvitationRevokedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.invitation_revoked.v1';
+  readonly invitationId: string;
+  readonly meetingId: string;
+  readonly meetingTitle: string;
+  readonly inviteeKind: 'Employee' | 'Customer' | 'External';
+  readonly inviteeUserId: string | null;
+  readonly inviteeEmail: string | null;
+  readonly revokedByUserId: string;
+  readonly revokedAtUtc: string;
+  readonly ejected: boolean;
+}
+
+/** @since F6 — close-meeting-invitations.ts: la reunion termino/se cancelo/expiro con la invitacion abierta. */
+export interface MeetingInvitationExpiredEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.invitation_expired.v1';
+  readonly invitationId: string;
+  readonly meetingId: string;
+  readonly inviteeKind: 'Employee' | 'Customer' | 'External';
+  readonly inviteeUserId: string | null;
+  readonly inviteeEmail: string | null;
+  readonly reason: 'Ended' | 'Cancelled' | 'Expired';
+  readonly closedAtUtc: string;
+}
+
+/** @since F6 (T-64) — meeting-lifecycle-sweep.ts: T-N minutos antes de una reunion agendada, una sola vez. */
+export interface MeetingReminderEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.reminder.v1';
+  readonly meetingId: string;
+  readonly meetingTitle: string;
+  readonly shortCode: string;
+  readonly scheduledForUtc: string;
+  readonly durationMinutes: number | null;
+  readonly minutesBefore: number;
+  readonly hostUserId: string;
+  readonly hostDisplayName: string;
+  readonly timeZone: string | null;
+  readonly participantUserIds: readonly string[];
+  readonly inviteeUserIds: readonly string[];
+  /** Externos sin cuenta: el email les recuerda usar el enlace de su invitacion y el codigo. */
+  readonly invitedEmails: readonly string[];
+  readonly staffJoinUrl: string;
+  readonly portalJoinUrl: string;
 }

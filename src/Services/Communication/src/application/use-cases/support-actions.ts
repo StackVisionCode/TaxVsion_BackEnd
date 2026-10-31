@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
+import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import {
   SupportEventTypes,
@@ -128,7 +129,12 @@ export interface ReopenSupportTicketCommand {
 
 export async function reopenSupportTicket(
   cmd: ReopenSupportTicketCommand,
-  deps: { supportTickets: SupportTicketRepository; publisher: IntegrationEventPublisher },
+  deps: {
+    supportTickets: SupportTicketRepository;
+    publisher: IntegrationEventPublisher;
+    // Las salas archivadas no se unen al conectar: al reabrir, quien abrió el ticket vuelve a recibir en vivo.
+    emitter?: Pick<RealtimeEmitter, 'addUserToConversation'> | undefined;
+  },
 ): Promise<Result<{ ticketId: string }>> {
   const ticket = await deps.supportTickets.findById(cmd.ticketId);
   if (!ticket) return Result.fail(makeError('Support.NotFound', 'Ticket not found.'));
@@ -161,6 +167,12 @@ export async function reopenSupportTicket(
     reason: cmd.reason ?? null,
   };
   await deps.publisher.enqueue(event);
+  const snapshot = ticket.toSnapshot();
+  deps.emitter?.addUserToConversation?.({
+    tenantId: snapshot.tenantId,
+    userId: snapshot.openedByUserId,
+    conversationId: snapshot.conversationId,
+  });
   return Result.ok({ ticketId: ticket.id });
 }
 

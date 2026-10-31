@@ -21,7 +21,9 @@ public static class GetMyCustomerContactHandler
         var upload = CustomerAvatarStatus.Of(
             customer.PendingProfilePictureFileId,
             customer.PendingProfilePictureRequestedAtUtc,
-            time.GetUtcNow().UtcDateTime
+            time.GetUtcNow().UtcDateTime,
+            customer.ProfilePictureModerationFileId,
+            customer.ProfilePictureModerationState
         );
 
         return Result.Success(
@@ -30,7 +32,9 @@ public static class GetMyCustomerContactHandler
                 customer.PrimaryEmail.Value,
                 customer.ProfilePictureFileId,
                 upload.PendingAvatarFileId,
-                upload.UploadStatus
+                upload.UploadStatus,
+                upload.ModerationStatus,
+                upload.ModerationFileId
             )
         );
     }

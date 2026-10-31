@@ -11,7 +11,8 @@ import {
   MeetingSocketEvents,
   type MeetingParticipantDeniedDto,
 } from '../../contracts/socket/meeting-socket-events.js';
-import { logHostAction } from './host-audit.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
 export interface DenyWaitingRoomCommand {
   readonly tenantId: string;
@@ -21,7 +22,7 @@ export interface DenyWaitingRoomCommand {
   readonly targetUserId: string;
 }
 
-export interface DenyWaitingRoomDeps {
+export interface DenyWaitingRoomDeps extends MeetingEventLogDeps {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
@@ -88,13 +89,14 @@ export async function denyWaitingRoomParticipant(
     },
   });
 
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.deny_waiting_room',
+    type: MeetingEventType.ParticipantDenied,
     actorUserId: cmd.hostUserId,
     targetUserId: cmd.targetUserId,
     correlationId: cmd.correlationId,
+    at: now,
   });
 
   return Result.okVoid();

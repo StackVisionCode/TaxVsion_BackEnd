@@ -6,10 +6,24 @@ import type { MessageReaction, MessageReactionSnapshot } from '../../domain/conv
  * (edit / delete / mark-batch-read). Cada operacion valida tenant y ownership
  * antes de aplicar. Cierra el N+1 legacy (mark_messages_read por lote).
  */
+/** F8: una versión anterior de un mensaje editado (Revision 1 = el texto original). */
+export interface MessageEditRecord {
+  readonly revision: number;
+  readonly previousBody: string;
+  readonly editedByUserId: string;
+  readonly editedAtUtc: Date;
+}
+
 export interface MessageRepository {
   findById(tenantId: string, messageId: string): Promise<Message | null>;
 
   update(tenantId: string, message: Message): Promise<void>;
+  /** F8: guarda la edición (texto, contador) y la versión anterior en una sola transacción. */
+  recordEdit(tenantId: string, message: Message, edit: MessageEditRecord): Promise<void>;
+  /** F8: versiones anteriores, de la más vieja a la más nueva. */
+  listEdits(tenantId: string, messageId: string): Promise<MessageEditRecord[]>;
+  /** F8a (D-15): adjuntos que ya mandó el usuario en esta conversación (incluye borrados: el tope no se esquiva borrando). */
+  countAttachmentsBySender(tenantId: string, conversationId: string, senderId: string): Promise<number>;
 
   /**
    * Fase Backend 9 — persiste un mensaje reenviado (mismo shape que un send
@@ -104,6 +118,8 @@ export interface MessageRepository {
   }): Promise<{ wasPresent: boolean }>;
 
   listReactionsByMessage(tenantId: string, messageId: string): Promise<MessageReactionSnapshot[]>;
+  /** F8d (T-26): reacciones de varios mensajes (historial). Opcional para no tocar los fakes viejos. */
+  listReactionsByMessages?(tenantId: string, messageIds: readonly string[]): Promise<MessageReactionSnapshot[]>;
 
   /**
    * Fase Backend 9 — full-text search por LIKE (SQL Server sin Full-Text
@@ -117,5 +133,7 @@ export interface MessageRepository {
     conversationId: string;
     query: string;
     limit: number;
+    /** F8b (D-21). */
+    notBeforeUtc?: Date | null;
   }): Promise<MessageSnapshot[]>;
 }

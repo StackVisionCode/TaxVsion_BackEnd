@@ -13,9 +13,12 @@ public sealed class StoragePolicyDispatcher(
 {
     public async Task CopyAvailableFileAsync(FileAvailableIntegrationEvent message, CancellationToken ct)
     {
-        // Las fotos de perfil no se espejan al Drive/OneDrive/Dropbox de la oficina: allá el borrado
-        // de la foto vieja nunca llegaría.
-        if (string.Equals(message.FolderType, nameof(FolderType.Avatars), StringComparison.OrdinalIgnoreCase))
+        // Fotos de perfil y pistas de grabación no se espejan al Drive/OneDrive/Dropbox de la oficina:
+        // allá el borrado (foto reemplazada, retención de pistas) nunca llegaría.
+        if (
+            string.Equals(message.FolderType, nameof(FolderType.Avatars), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(message.FolderType, nameof(FolderType.RecordingTracks), StringComparison.OrdinalIgnoreCase)
+        )
             return;
 
         var policy = await db

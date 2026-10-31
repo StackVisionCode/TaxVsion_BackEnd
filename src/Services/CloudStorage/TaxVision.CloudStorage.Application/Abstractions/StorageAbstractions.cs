@@ -531,19 +531,25 @@ public interface IFileContentInspector
 }
 
 /// <summary>
-/// Escaneo de CONTENIDO (no virus — eso es <see cref="IVirusScanner"/>): NSFW,
-/// CSAM, u otra politica de moderacion. MVP registra <c>NoOpContentScanner</c>
-/// (siempre Clean) via DI — el pipeline en <c>ScanFileHandler</c> ya maneja los
-/// 3 verdicts reales para que enchufar un scanner de verdad despues sea swap de
-/// implementacion, sin tocar el flujo. Corre SIEMPRE (no hay flag por tenant):
-/// mismo criterio que <see cref="IVirusScanner"/>, que tampoco es opcional.
+/// Escaneo de CONTENIDO (no virus — eso es <see cref="IVirusScanner"/>): contenido sexual segun la
+/// politica de moderacion de plataforma (T-20). La implementacion (<c>ContentModerationScanner</c>)
+/// decide con los umbrales en BD si aplica, y devuelve uno de los 3 verdicts que maneja
+/// <c>ScanFileHandler</c>. Corre SIEMPRE (no hay flag por tenant), igual que <see cref="IVirusScanner"/>.
 /// </summary>
 public interface IContentScanner
 {
     Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct);
 }
 
-public sealed record ContentScanContext(Guid TenantId, Guid FileId, OwnerType OwnerType, string OriginalName);
+/// <param name="DetectedContentType">Tipo detectado por el inspector (nunca el declarado): decide si se escanea.</param>
+public sealed record ContentScanContext(
+    Guid TenantId,
+    Guid FileId,
+    OwnerType OwnerType,
+    string OriginalName,
+    string DetectedContentType,
+    FolderType FolderType
+);
 
 public sealed record ContentScanResult(ContentScanVerdict Verdict, string? Reason)
 {

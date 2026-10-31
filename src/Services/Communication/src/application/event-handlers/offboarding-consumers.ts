@@ -5,6 +5,9 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
+import { removeUserFromGroups } from '../use-cases/group-administration.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { Meeting } from '../../domain/meetings/meeting.js';
 import { MeetingStatus } from '../../domain/meetings/meeting-enums.js';
@@ -39,6 +42,9 @@ export function bindOffboardingConsumers(
     meetings: MeetingRepository;
     publisher: IntegrationEventPublisher;
     emitter: RealtimeEmitter;
+    /** F8b (T-19): sale de sus grupos con sucesión (Owner → Admin más antiguo → staff más antiguo). */
+    conversations?: ConversationRepository;
+    conversationAudit?: ConversationAuditRepository;
   },
 ): void {
   register('auth.user.offboarded.v1', async (env) => {
@@ -66,6 +72,14 @@ export function bindOffboardingConsumers(
       } else {
         await cancelOrEnd(meeting, actorUserId, env, deps);
       }
+    }
+
+    // 4. Grupos: sale de todos; la sucesión la resuelve cada aggregate.
+    if (deps.conversations) {
+      await removeUserFromGroups(
+        { tenantId: env.tenantId, userId, reason: 'Offboarded' },
+        { conversations: deps.conversations, conversationAudit: deps.conversationAudit, emitter: deps.emitter },
+      );
     }
   });
 }
@@ -109,6 +123,7 @@ async function reassignHost(
     previousHostUserId,
     newHostUserId: successor.userId,
     transferredAtUtc: now.toISOString(),
+    reason: 'Offboarding',
   };
   await deps.publisher.enqueue(event);
 }
@@ -120,7 +135,7 @@ async function cancelOrEnd(
   deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; emitter: RealtimeEmitter },
 ): Promise<void> {
   const wasLive = meeting.status === MeetingStatus.Live;
-  const result = wasLive ? meeting.endBySystem() : meeting.cancelBySystem();
+  const result = wasLive ? meeting.endBySystem({ reason: 'Offboarding' }) : meeting.cancelBySystem();
   if (!result.isSuccess) return;
   await deps.meetings.save(meeting);
 
@@ -141,6 +156,7 @@ async function cancelOrEnd(
       durationSeconds: snapshot.durationSeconds ?? 0,
       participantCount: snapshot.participants.length,
       recordingFileId: snapshot.recordingFileId,
+      reason: 'Offboarding',
     };
     await deps.publisher.enqueue(event);
     // Realtime: los participantes ven la reunion pasar de "upcoming" a "past" sin recargar.
@@ -163,11 +179,13 @@ async function cancelOrEnd(
 
   // Scheduled -> Cancelled. Se recuperan los emails de invitados-por-link (aun no unidos) para
   // que Notification pueda avisarles, igual que cancel-meeting.ts.
-  const invitations = await deps.meetings.listInvitationsByMeeting(env.tenantId, meeting.id);
-  const invitedEmails = invitations
+  const invitations = (await deps.meetings.listInvitationsByMeeting(env.tenantId, meeting.id))
     .map((inv) => inv.toSnapshot())
-    .filter((s) => s.usedAtUtc === null && s.revokedAtUtc === null && s.inviteeEmail !== null)
-    .map((s) => s.inviteeEmail!);
+    .filter((s) => s.revokedAtUtc === null);
+  // F6: externos sin cuenta por email; los de cuenta por in-app.
+  const invitedEmails = invitations.filter((s) => s.inviteeUserId === null && s.inviteeEmail !== null).map((s) => s.inviteeEmail!);
+  const inviteeUserIds = [...new Set(invitations.filter((s) => s.inviteeUserId !== null).map((s) => s.inviteeUserId!))];
+  const meetingSnapshot = meeting.toSnapshot();
 
   const event: MeetingCancelledEvent = {
     eventId: randomUUID(),
@@ -181,6 +199,14 @@ async function cancelOrEnd(
     participantUserIds,
     invitedEmails,
     reason: CANCEL_REASON,
+    meetingTitle: meetingSnapshot.title,
+    shortCode: meetingSnapshot.shortCode,
+    scheduledForUtc: meetingSnapshot.scheduledForUtc ? meetingSnapshot.scheduledForUtc.toISOString() : null,
+    durationMinutes: meetingSnapshot.scheduledDurationMinutes ?? meetingSnapshot.maxDurationMinutes,
+    hostUserId: meetingSnapshot.hostUserId,
+    hostDisplayName: meetingSnapshot.participants.find((p) => p.userId === meetingSnapshot.hostUserId)?.displayName ?? 'Host',
+    timeZone: null,
+    inviteeUserIds,
   };
   await deps.publisher.enqueue(event);
 

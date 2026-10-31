@@ -6,6 +6,15 @@ import type { AppContainer } from '../../../infrastructure/container.js';
 import { searchEmployeeDirectory } from '../../../application/use-cases/search-employee-directory.js';
 import { searchCustomerDirectory } from '../../../application/use-cases/search-customer-directory.js';
 import { isStaffActor } from '../../../domain/shared/permissions.js';
+import { DIRECTORY_PAGE_MAX, pageCustomerDirectory, pageStaffDirectory } from '../../../application/use-cases/page-chat-directory.js';
+
+// F8c (T-14): rail del chat; `q` opcional, cursor opaco y página de hasta 50.
+const PageQuery = z.object({
+  q: z.string().max(100).optional(),
+  cursor: z.string().max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(DIRECTORY_PAGE_MAX).optional(),
+});
+const INVALID_PAGE = { code: 'Directory.InvalidSearch', message: 'q max 100 characters; limit must be 1-50.' } as const;
 
 const SearchQuery = z.object({
   q: z.string().min(1).max(100),
@@ -47,6 +56,54 @@ export async function registerDirectoryRoutes(app: FastifyInstance, container: A
         container,
       );
       return reply.send(results);
+    },
+  );
+
+  // F8c: página del rail Team (con el bloqueo empleado↔empleado calculado por fila).
+  app.get(
+    '/communication/directory/employees/page',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatStart)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal || !isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
+      const parsed = PageQuery.safeParse(request.query ?? {});
+      if (!parsed.success) return reply.code(400).send(INVALID_PAGE);
+      const result = await pageStaffDirectory(
+        {
+          tenantId: principal.tenantId,
+          actor: { userId: principal.userId, actorType: principal.actorType },
+          query: parsed.data.q ?? null,
+          cursor: parsed.data.cursor ?? null,
+          ...(parsed.data.limit !== undefined ? { limit: parsed.data.limit } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      return reply.send(result.value);
+    },
+  );
+
+  // F8c: página del rail Clients (ABAC en la consulta, `portalUserId` y bloqueo por fila). Término en el cuerpo.
+  app.post(
+    '/communication/directory/customers/page',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatStart)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal || !isStaffActor(principal.actorType)) return reply.code(403).send(STAFF_ONLY);
+      const parsed = PageQuery.safeParse(request.body ?? {});
+      if (!parsed.success) return reply.code(400).send(INVALID_PAGE);
+      const result = await pageCustomerDirectory(
+        {
+          tenantId: principal.tenantId,
+          actor: { userId: principal.userId, actorType: principal.actorType },
+          query: parsed.data.q ?? null,
+          cursor: parsed.data.cursor ?? null,
+          ...(parsed.data.limit !== undefined ? { limit: parsed.data.limit } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) return reply.code(400).send({ code: result.error.code, message: result.error.message });
+      return reply.send(result.value);
     },
   );
 

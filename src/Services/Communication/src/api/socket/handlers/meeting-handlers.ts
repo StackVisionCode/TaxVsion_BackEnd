@@ -7,13 +7,15 @@ import type { CommunicationIoServer, CommunicationSocket } from '../../../infras
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
 import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
+import { TECHNICAL_LIMITS } from '../../../domain/settings/technical-limits.js';
 import {
   AdmitPayloadSchema,
   AttachMeetingRecordingPayloadSchema,
   CancelMeetingPayloadSchema,
   DemoteCohostPayloadSchema,
   DenyParticipantPayloadSchema,
-  DominantSpeakerPayloadSchema,
+  LowerAllHandsPayloadSchema,
+  LowerHandPayloadSchema,
   JoinMeetingPayloadSchema,
   RejoinMeetingPayloadSchema,
   LeaveMeetingPayloadSchema,
@@ -24,8 +26,13 @@ import {
   MeetingChatEditPayloadSchema,
   MeetingChatMarkReadPayloadSchema,
   MeetingChatSendPayloadSchema,
+  MeetingChatAttachmentPayloadSchema,
+  MeetingChatHistoryPayloadSchema,
   MeetingMediaStatusPayloadSchema,
   MeetingRaiseHandPayloadSchema,
+  MeetingReactionPayloadSchema,
+  MeetingSpeakingPayloadSchema,
+  MeetingConnectionQualityPayloadSchema,
   MeetingSignalPayloadSchema,
   MeetingSocketEvents,
   RemovePayloadSchema,
@@ -36,12 +43,15 @@ import {
   SfuCreateTransportPayloadSchema,
   SfuListRemoteProducersPayloadSchema,
   SfuProducePayloadSchema,
+  SfuRestartIcePayloadSchema,
   SfuResumeConsumerPayloadSchema,
   SfuSetPreferredLayersPayloadSchema,
   SfuRouterCapabilitiesPayloadSchema,
   StopMeetingRecordingPayloadSchema,
   TransferHostPayloadSchema,
   type MeetingParticipantDto,
+  type MeetingHandLoweredByHostDto,
+  type MeetingRaiseHandAckDto,
   type MessageDeletedDto,
   type MessageDto,
   type MessageEditedDto,
@@ -53,10 +63,11 @@ import { joinMeeting, type JoinMeetingResult } from '../../../application/use-ca
 import { rejoinMeeting, type RejoinMeetingResult } from '../../../application/use-cases/rejoin-meeting.js';
 import { leaveMeeting } from '../../../application/use-cases/leave-meeting.js';
 import { relayMeetingSignal } from '../../../application/use-cases/relay-meeting-signal.js';
-import {
-  updateMeetingMediaStatus,
-  updateRaiseHand,
-} from '../../../application/use-cases/update-meeting-media-status.js';
+import { updateRaiseHand } from '../../../application/use-cases/update-meeting-media-status.js';
+import { lowerAllHands, lowerParticipantHand } from '../../../application/use-cases/meeting-hand-actions.js';
+import { sendMeetingReaction } from '../../../application/services/meeting-reaction.service.js';
+import { recordMeetingEvent } from '../../../application/use-cases/meeting-event-log-writer.js';
+import { MeetingEventType } from '../../../domain/meetings/meeting-event-log.js';
 import {
   admitParticipant,
   muteAllInMeeting,
@@ -64,10 +75,9 @@ import {
   setMeetingLocked,
   transferMeetingHost,
 } from '../../../application/use-cases/meeting-host-actions.js';
-import { attachMeetingRecording } from '../../../application/use-cases/attach-meeting-recording.js';
-import { requestMeetingRecording } from '../../../application/use-cases/request-meeting-recording.js';
-import { respondMeetingRecordingConsent } from '../../../application/use-cases/respond-meeting-recording-consent.js';
-import { stopMeetingRecording } from '../../../application/use-cases/stop-meeting-recording.js';
+import { attachRecording, requestRecording, respondRecordingConsent, stopRecording } from '../../../application/services/recording-application.service.js';
+import { updateMediaStatus } from '../../../application/services/media-status.service.js';
+import { reportConnectionQuality } from '../../../application/services/connection-quality.service.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
 import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
 import { denyWaitingRoomParticipant } from '../../../application/use-cases/deny-waiting-room-participant.js';
@@ -83,19 +93,29 @@ import {
   getSfuRouterCapabilities,
   listSfuRemoteProducers,
   produceSfuMedia,
+  restartSfuTransportIce,
   resumeSfuConsumer,
   setSfuConsumerPreferredLayers,
 } from '../../../application/use-cases/sfu-signaling.js';
+import { MeetingSocketRegistry } from './meeting-socket-registry.js';
 import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
+import { authorizeMeetingChatSend } from '../../../application/use-cases/meeting-chat-send-policy.js';
+import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
+import { getMeetingChatHistory } from '../../../application/use-cases/get-meeting-chat-history.js';
+import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
+import { ChatSocketEvents } from '../../../contracts/socket/chat-socket-events.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
 import { computeMeetingUniquenessKey } from '../../../domain/conversations/uniqueness-key.js';
+import { forceLeaveMeeting } from '../../../application/use-cases/force-leave-meeting.js';
+import type { MeetingHostChangedDto, MeetingYouRemovedDto } from '../../../contracts/socket/meeting-socket-events.js';
 
 export function registerMeetingHandlers(io: CommunicationIoServer, container: AppContainer): void {
   const emitter = new SocketRealtimeEmitter(io);
+  const registry = new MeetingSocketRegistry();
   io.on('connection', (socket) => {
-    wireMeetingSocket(socket, io, container, emitter);
+    wireMeetingSocket(socket, io, container, emitter, registry);
   });
 }
 
@@ -133,11 +153,11 @@ async function clearMeetingBusyFor(
 /**
  * Gracia de reconexión ante un `disconnect`: en vez de sacar al participante de una vez (lo que hacía
  * que un blip de red o un cambio de pestaña del host terminara el meeting — host se va sin cohost →
- * Meeting.end()), se AGENDA su salida tras {@link DISCONNECT_GRACE_MS}. Si el MISMO usuario reconecta
- * (join/rejoin) dentro de la ventana, se cancela. Registro en memoria por (tenant:meeting:user); es
- * válido en la flota local single-instance (el churn de cloudflared reconecta en segundos).
+ * Meeting.end()), se AGENDA su salida tras la gracia vigente (`meeting.disconnectGraceSeconds` del
+ * resolver, global). Si el MISMO usuario reconecta (join/rejoin) dentro de la ventana, se cancela.
+ * Registro en memoria por (tenant:meeting:user); es válido en la flota local single-instance (el churn
+ * de cloudflared reconecta en segundos).
  */
-const DISCONNECT_GRACE_MS = 30_000;
 const pendingLeaves = new Map<string, ReturnType<typeof setTimeout>>();
 const leaveKey = (tenantId: string, meetingId: string, userId: string): string =>
   `${tenantId}:${meetingId}:${userId}`;
@@ -152,9 +172,8 @@ function cancelPendingLeave(tenantId: string, meetingId: string, userId: string)
 }
 
 /**
- * Ejecuta la salida real de un participante cuya gracia venció (no reconectó). Réplica de la lógica
- * que antes vivía inline en el handler `disconnect`, más el aviso `meeting.ended` a las LISTAS cuando
- * el meeting terminó en cascada (host sin cohost) para que el UX de meetings mueva la fila a "past".
+ * La gracia venció sin reconexión: salida forzada única (T-08) — saca al participante, avisa a la sala,
+ * libera SFU y "busy", y si era el host aplica la sucesión (D-08) o el cierre ordenado.
  */
 async function performLeaveAfterGrace(
   container: AppContainer,
@@ -163,72 +182,14 @@ async function performLeaveAfterGrace(
   meetingId: string,
   userId: string,
 ): Promise<void> {
-  const result = await leaveMeeting(
-    { tenantId, correlationId: `disconnect:${userId}`, meetingId, userId },
-    container,
+  const result = await forceLeaveMeeting(
+    { tenantId, meetingId, userId, reason: 'Grace', correlationId: `disconnect:${userId}` },
+    { ...container, emitter },
   ).catch((err: unknown) => {
     logger.warn({ err, meetingId }, 'leave meeting after grace failed');
     return null;
   });
   if (!result || !result.isSuccess) return;
-
-  // Igual que en la salida explícita: avisar a la room que este participante salió (status:'Left') para
-  // que los demás poden su tile y cierren el peer. La gracia venció sin reconexión → ya no es fantasma.
-  emitter.emitToMeeting({
-    tenantId,
-    meetingId,
-    event: MeetingSocketEvents.ParticipantChanged,
-    envelope: envelope({ meetingId, participant: result.value.participant, sequence: 0 }),
-  });
-
-  // Cerrar el SFU del que se fue: avisar a los demás que sus producers desaparecen y liberar transports.
-  for (const p of container.sfu.listProducersForUser(meetingId, userId)) {
-    emitter.emitToMeeting({
-      tenantId,
-      meetingId,
-      event: MeetingSocketEvents.SfuProducerClosed,
-      envelope: envelope({ meetingId, userId, producerId: p.producerId } satisfies SfuProducerClosedDto),
-    });
-  }
-  await container.sfu
-    .closeParticipant(meetingId, userId)
-    .catch((err: unknown) => logger.warn({ err, meetingId, userId }, 'sfu closeParticipant failed'));
-
-  const snap = (await container.meetings.findById(tenantId, meetingId))?.toSnapshot();
-  if (snap?.status === 'Ended') {
-    await container.sfu
-      .closeMeeting(meetingId)
-      .catch((err: unknown) => logger.warn({ err, meetingId }, 'sfu closeMeeting failed'));
-    await clearMeetingBusyFor(
-      container,
-      tenantId,
-      meetingId,
-      snap.participants.map((p) => p.userId),
-    );
-  } else {
-    await clearMeetingBusyFor(container, tenantId, meetingId, [userId]);
-  }
-  emitter.emitToMeeting({
-    tenantId,
-    meetingId,
-    event: MeetingSocketEvents.StateChanged,
-    envelope: envelope({
-      meetingId,
-      status: snap?.status ?? 'Live',
-      isLocked: snap?.isLocked ?? false,
-      hostUserId: snap?.hostUserId ?? userId,
-      sequence: 0,
-    }),
-  });
-  if (snap?.status === 'Ended') {
-    await emitMeetingEndedToLists(
-      container,
-      emitter,
-      tenantId,
-      meetingId,
-      snap.participants.map((p) => p.userId),
-    );
-  }
 }
 
 /**
@@ -263,6 +224,7 @@ function wireMeetingSocket(
   io: CommunicationIoServer,
   container: AppContainer,
   emitter: SocketRealtimeEmitter,
+  registry: MeetingSocketRegistry,
 ): void {
   const principal = socket.data.principal;
   if (!principal) return;
@@ -287,6 +249,15 @@ function wireMeetingSocket(
       .catch((err: unknown) =>
         logger.warn({ err, meetingId, userId: leavingUserId }, 'sfu closeParticipant failed'),
       );
+  };
+
+  // INV-07 H-10: las acciones de host exigen el permiso `communication.meeting.host` además del rol
+  // en el agregado (permiso ≠ recurso). Un guest no tiene permisos, así que nunca pasa de aquí.
+  const requireHostPermission = async (ack?: (r: SocketAck<never>) => void): Promise<boolean> => {
+    const check = await checkPermission(principal, CommunicationPermissions.MeetingHost, container.userPermissions);
+    if (check.allowed) return true;
+    ack?.({ ok: false, code: check.code, message: check.message });
+    return false;
   };
 
   socket.on(MeetingSocketEvents.Join, async (...args: unknown[]) => {
@@ -356,12 +327,22 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
-    if (result.value.snapshot.conversationId) {
-      await socket.join(`t:${tenantId}:c:${result.value.snapshot.conversationId}`);
+    // F11 (E-259): en sala de espera NO entra a la room de la reunión (vería nombres, grabación y
+    // producers sin estar admitido); al admitirlo el handler de Admit lo une. El fin le llega por su room.
+    if (!result.value.requiresAdmission) {
+      await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
+      if (result.value.snapshot.conversationId) {
+        await socket.join(`t:${tenantId}:c:${result.value.snapshot.conversationId}`);
+      }
     }
     // Reconectó / volvió a entrar: cancelar cualquier salida agendada por un disconnect anterior.
     cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
+    registry.register(tenantId, parsed.data.meetingId, userId, socket.id);
+    if (result.value.rejoined) {
+      // Media nueva (recarga/otra pestaña): los producers viejos del SFU no vuelven. Avisar y liberar
+      // antes de que el cliente cree sus transports, para que nadie conserve consumers huérfanos.
+      await closeSfuForParticipant(parsed.data.meetingId, userId);
+    }
     ack?.({ ok: true, value: result.value });
     // Avisar a la room del cambio de participante — SIEMPRE, entre directo (status Joined) o en sala de
     // espera (status Waiting). El caso Waiting es clave: sin este emit el host NUNCA se enteraba de que
@@ -411,6 +392,7 @@ function wireMeetingSocket(
     await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
     // Reconexión transparente (churn): cancelar la salida agendada por el disconnect que la disparó.
     cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
+    registry.register(tenantId, parsed.data.meetingId, userId, socket.id);
     ack?.({ ok: true, value: result.value });
   });
 
@@ -424,6 +406,7 @@ function wireMeetingSocket(
     if (!result.isSuccess) return;
     // Salida explícita: no dejar una salida agendada colgando para este user/meeting.
     cancelPendingLeave(tenantId, parsed.data.meetingId, userId);
+    registry.unregister(tenantId, parsed.data.meetingId, userId, socket.id);
     // Avisar a la room que este participante salió (status:'Left') para que los demás poden su tile y
     // cierren el peer. Sin esto el roster quedaba con un participante fantasma (leave solo emitía
     // StateChanged, que no poda participantes; el Remove/expulsar sí lo emitía y por eso ese sí limpiaba).
@@ -495,6 +478,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await admitParticipant(
       {
         tenantId,
@@ -510,9 +494,10 @@ function wireMeetingSocket(
       return;
     }
     ack?.({ ok: true, value: result.value.participant });
+    // El admitido no dispara este handler (lo hace el host) — sus sockets no entraron a las rooms de la
+    // reunión ni de su chat mientras esperaba: se los mete desde acá.
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsJoin(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
-      // El admitido no dispara este handler (lo hace el host) — sus sockets
-      // no llamaron socket.join, hay que meterlos a la room desde aca.
       io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsJoin(
         `t:${tenantId}:c:${result.value.conversationId}`,
       );
@@ -557,6 +542,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await removeParticipant(
       {
         tenantId,
@@ -572,6 +558,15 @@ function wireMeetingSocket(
       return;
     }
     ack?.({ ok: true, value: result.value.participant });
+    const removedDto: MeetingYouRemovedDto = { meetingId: parsed.data.meetingId, reason: 'RemovedByHost' };
+    emitter.emitToUser({
+      tenantId,
+      userId: parsed.data.targetUserId,
+      event: MeetingSocketEvents.YouRemoved,
+      envelope: envelope(removedDto),
+    });
+    // F11 (E-259): fuera de la room de la reunión en todos sus sockets (antes seguía recibiendo sus eventos).
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsLeave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     if (result.value.conversationId) {
       // El expulsado puede tener otros sockets conectados (otra pestana,
       // otro dispositivo) — sacarlos a todos de la room de chat del meeting,
@@ -606,8 +601,13 @@ function wireMeetingSocket(
   });
 
   socket.on(MeetingSocketEvents.Lock, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ isLocked: boolean }>) => void) : undefined;
     const parsed = LockPayloadSchema.safeParse(args[0]);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await requireHostPermission(ack))) return;
     const result = await setMeetingLocked(
       {
         tenantId,
@@ -619,9 +619,10 @@ function wireMeetingSocket(
       container,
     );
     if (!result.isSuccess) {
-      logger.debug({ err: result.error }, 'Lock rejected');
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
+    ack?.({ ok: true, value: result.value });
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
@@ -637,13 +638,22 @@ function wireMeetingSocket(
   });
 
   socket.on(MeetingSocketEvents.MuteAll, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ affected: number }>) => void) : undefined;
     const parsed = LeaveMeetingPayloadSchema.safeParse(args[0]);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await requireHostPermission(ack))) return;
     const result = await muteAllInMeeting(
-      { tenantId, meetingId: parsed.data.meetingId, hostUserId: userId },
+      { tenantId, meetingId: parsed.data.meetingId, hostUserId: userId, correlationId: socket.id },
       container,
     );
-    if (!result.isSuccess) return;
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
@@ -653,8 +663,13 @@ function wireMeetingSocket(
   });
 
   socket.on(MeetingSocketEvents.TransferHost, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ hostUserId: string }>) => void) : undefined;
     const parsed = TransferHostPayloadSchema.safeParse(args[0]);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await requireHostPermission(ack))) return;
     const result = await transferMeetingHost(
       {
         tenantId,
@@ -665,7 +680,32 @@ function wireMeetingSocket(
       },
       container,
     );
-    if (!result.isSuccess) return;
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { hostUserId: result.value.hostUserId } });
+    // Orden INV-07 §13.1: roles de los dos afectados → host.changed → estado real (lock incluido).
+    for (const participant of result.value.changed) {
+      emitter.emitToMeeting({
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        event: MeetingSocketEvents.ParticipantChanged,
+        envelope: envelope({ meetingId: parsed.data.meetingId, participant, sequence: 0 }),
+      });
+    }
+    const hostChanged: MeetingHostChangedDto = {
+      meetingId: parsed.data.meetingId,
+      previousHostUserId: result.value.previousHostUserId,
+      newHostUserId: result.value.hostUserId,
+      reason: 'Transfer',
+    };
+    emitter.emitToMeeting({
+      tenantId,
+      meetingId: parsed.data.meetingId,
+      event: MeetingSocketEvents.HostChanged,
+      envelope: envelope(hostChanged),
+    });
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
@@ -673,7 +713,7 @@ function wireMeetingSocket(
       envelope: envelope({
         meetingId: parsed.data.meetingId,
         status: 'Live' as const,
-        isLocked: false,
+        isLocked: result.value.isLocked,
         hostUserId: result.value.hostUserId,
         sequence: 0,
       }),
@@ -688,6 +728,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await denyWaitingRoomParticipant(
       {
         tenantId,
@@ -702,6 +743,8 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
+    // F11: un rechazado nunca debe quedar en la room de la reunión (p. ej. por una pestaña vieja).
+    io.in(`t:${tenantId}:u:${parsed.data.targetUserId}`).socketsLeave(`t:${tenantId}:m:${parsed.data.meetingId}`);
     ack?.({ ok: true, value: undefined });
   });
 
@@ -713,6 +756,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await cancelMeeting(
       {
         tenantId,
@@ -738,6 +782,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await rescheduleMeeting(
       {
         tenantId,
@@ -764,6 +809,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await promoteParticipantToCohost(
       {
         tenantId,
@@ -790,6 +836,7 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
+    if (!(await requireHostPermission(ack))) return;
     const result = await demoteCohostToAttendee(
       {
         tenantId,
@@ -822,6 +869,16 @@ function wireMeetingSocket(
       container,
     );
     if (!result.isSuccess) return;
+    // Dirigida al socket que está en la reunión; si no se conoce (pestaña vieja), al room del usuario.
+    const targetSocketId = registry.find(tenantId, parsed.data.meetingId, result.value.targetUserId);
+    if (targetSocketId) {
+      emitter.emitToSocket({
+        socketId: targetSocketId,
+        event: MeetingSocketEvents.SignalFrom,
+        envelope: envelope(result.value.signal),
+      });
+      return;
+    }
     emitter.emitToUser({
       tenantId,
       userId: result.value.targetUserId,
@@ -833,34 +890,62 @@ function wireMeetingSocket(
   socket.on(MeetingSocketEvents.MediaStatus, async (...args: unknown[]) => {
     const parsed = MeetingMediaStatusPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    const result = await updateMeetingMediaStatus(
+    const result = await updateMediaStatus(
       {
+        scope: 'Meeting',
+        scopeId: parsed.data.meetingId,
         tenantId,
-        meetingId: parsed.data.meetingId,
-        actorUserId: userId,
+        userId,
         audioEnabled: parsed.data.audioEnabled,
         videoEnabled: parsed.data.videoEnabled,
         screenSharing: parsed.data.screenSharing,
+        correlationId: socket.id,
       },
       container,
     );
-    if (!result.isSuccess) return;
+    if (!result.isSuccess || result.value.scope !== 'Meeting') return;
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
       event: MeetingSocketEvents.ParticipantChanged,
-      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value, sequence: 0 }),
+      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
     });
   });
 
-  socket.on(MeetingSocketEvents.RaiseHand, async (...args: unknown[]) => {
-    const parsed = MeetingRaiseHandPayloadSchema.safeParse(args[0]);
+  // F4 (T-48): nivel de conexion propio. Rate limit por socket derivado del intervalo de muestreo de la
+  // politica (mitad del intervalo): un cliente roto no puede inundar el log ni la sala.
+  let lastQualityReportAtMs = 0;
+  socket.on(MeetingSocketEvents.ConnectionQuality, async (...args: unknown[]) => {
+    const parsed = MeetingConnectionQualityPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
+    const effective = await container.effectiveSettings.resolve(tenantId).catch(() => null);
+    const minGapMs = ((effective?.media.quality.sampleIntervalSeconds ?? TECHNICAL_LIMITS.qualitySampleIntervalSeconds.fallback) * 1000) / 2;
+    const nowMs = Date.now();
+    if (nowMs - lastQualityReportAtMs < minGapMs) return;
+    lastQualityReportAtMs = nowMs;
+    await reportConnectionQuality(
+      { scope: 'Meeting', scopeId: parsed.data.meetingId, tenantId, userId, quality: parsed.data.quality, metrics: parsed.data.metrics, correlationId: socket.id },
+      { ...container, emitter },
+    );
+  });
+
+  // F5 (D-49): mano con ack (la UI hace rollback si falla) y timestamp para la cola del host.
+  socket.on(MeetingSocketEvents.RaiseHand, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<MeetingRaiseHandAckDto>) => void) : undefined;
+    const parsed = MeetingRaiseHandPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
     const result = await updateRaiseHand(
       { tenantId, meetingId: parsed.data.meetingId, actorUserId: userId, raised: parsed.data.raised },
       container,
     );
-    if (!result.isSuccess) return;
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { handRaised: result.value.handRaised, handRaisedAtUtc: result.value.handRaisedAtUtc } });
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
@@ -869,24 +954,111 @@ function wireMeetingSocket(
     });
   });
 
-  socket.on(MeetingSocketEvents.DominantSpeaker, async (...args: unknown[]) => {
-    const parsed = DominantSpeakerPayloadSchema.safeParse(args[0]);
-    if (!parsed.success) return;
-    const allowed = await container.dominantSpeakerThrottle.allow({
-      tenantId,
-      meetingId: parsed.data.meetingId,
-      userId,
-    });
-    if (!allowed) return;
+  // F5 (D-49): host/cohost baja una mano; el afectado recibe `meeting.hand.lowered_by_host` en su room de usuario.
+  socket.on(MeetingSocketEvents.LowerHand, async (...args: unknown[]) => {
+    const ack =
+      typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ participant: MeetingParticipantDto }>) => void) : undefined;
+    const parsed = LowerHandPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await requireHostPermission(ack))) return;
+    const result = await lowerParticipantHand(
+      { tenantId, meetingId: parsed.data.meetingId, hostUserId: userId, targetUserId: parsed.data.targetUserId, correlationId: socket.id },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { participant: result.value.participant } });
+    if (!result.value.changed) return;
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
-      event: MeetingSocketEvents.DominantSpeakerChanged,
-      envelope: envelope({
+      event: MeetingSocketEvents.ParticipantChanged,
+      envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
+    });
+    const lowered: MeetingHandLoweredByHostDto = { meetingId: parsed.data.meetingId, byUserId: userId, all: false };
+    emitter.emitToUser({ tenantId, userId: parsed.data.targetUserId, event: MeetingSocketEvents.HandLoweredByHost, envelope: envelope(lowered) });
+  });
+
+  socket.on(MeetingSocketEvents.LowerAllHands, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ lowered: number }>) => void) : undefined;
+    const parsed = LowerAllHandsPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!(await requireHostPermission(ack))) return;
+    const result = await lowerAllHands(
+      { tenantId, meetingId: parsed.data.meetingId, hostUserId: userId, correlationId: socket.id },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { lowered: result.value.participants.length } });
+    const lowered: MeetingHandLoweredByHostDto = { meetingId: parsed.data.meetingId, byUserId: userId, all: true };
+    for (const participant of result.value.participants) {
+      emitter.emitToMeeting({
+        tenantId,
         meetingId: parsed.data.meetingId,
-        peerUserId: userId,
-        audioLevel: parsed.data.audioLevel,
-      }),
+        event: MeetingSocketEvents.ParticipantChanged,
+        envelope: envelope({ meetingId: parsed.data.meetingId, participant, sequence: 0 }),
+      });
+      emitter.emitToUser({ tenantId, userId: participant.userId, event: MeetingSocketEvents.HandLoweredByHost, envelope: envelope(lowered) });
+    }
+  });
+
+  // F5 (D-50): reaccion efimera con ack por codigo; la difusion volatil a la sala la hace el servicio.
+  socket.on(MeetingSocketEvents.Reaction, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<null>) => void) : undefined;
+    const parsed = MeetingReactionPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // Pre-filtro barato por el registro de sockets del meeting (en vivo `socket.rooms` no es fiable con
+    // el adapter de Redis); el caso de uso vuelve a comprobar que sea participante Joined en BD.
+    if (registry.find(tenantId, parsed.data.meetingId, userId) === undefined) {
+      ack?.({ ok: false, code: 'Meeting.NotParticipant', message: 'Not a joined participant.' });
+      return;
+    }
+    const result = await sendMeetingReaction(
+      { tenantId, meetingId: parsed.data.meetingId, userId, emoji: parsed.data.emoji, correlationId: socket.id },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: null });
+  });
+
+  // F5 (T-69): linea de tiempo de hablantes. Sin difusion (la UI detecta al hablante en local); solo
+  // el MeetingEventLog, con el tope por segundo de la politica y sin repetir el mismo estado.
+  let lastSpeaking: boolean | null = null;
+  socket.on(MeetingSocketEvents.Speaking, async (...args: unknown[]) => {
+    const parsed = MeetingSpeakingPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) return;
+    if (registry.find(tenantId, parsed.data.meetingId, userId) === undefined) return;
+    if (parsed.data.speaking === lastSpeaking) return;
+    const effective = await container.effectiveSettings.resolve(tenantId).catch(() => null);
+    const allowed = await container.speakingThrottle.allow(
+      { tenantId, meetingId: parsed.data.meetingId, userId },
+      effective?.media.speaking.maxPerSecond,
+    );
+    if (!allowed) return;
+    lastSpeaking = parsed.data.speaking;
+    await recordMeetingEvent(container, {
+      tenantId,
+      meetingId: parsed.data.meetingId,
+      type: parsed.data.speaking ? MeetingEventType.SpeakerStarted : MeetingEventType.SpeakerStopped,
+      actorUserId: userId,
+      correlationId: socket.id,
     });
   });
 
@@ -913,12 +1085,13 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: attachRecordingPermCheck.code, message: attachRecordingPermCheck.message });
       return;
     }
-    const result = await attachMeetingRecording(
+    const result = await attachRecording(
+      'Meeting',
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
-        meetingId: parsed.data.meetingId,
+        scopeId: parsed.data.meetingId,
         actorUserId: userId,
         fileId: parsed.data.fileId,
       },
@@ -969,12 +1142,13 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: requestRecordingPermCheck.code, message: requestRecordingPermCheck.message });
       return;
     }
-    const result = await requestMeetingRecording(
+    const result = await requestRecording(
+      'Meeting',
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
-        meetingId: parsed.data.meetingId,
+        scopeId: parsed.data.meetingId,
         actorUserId: userId,
       },
       { ...container, emitter },
@@ -997,11 +1171,12 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
-    const result = await respondMeetingRecordingConsent(
+    const result = await respondRecordingConsent(
+      'Meeting',
       {
         tenantId,
         correlationId: socket.id,
-        meetingId: parsed.data.meetingId,
+        scopeId: parsed.data.meetingId,
         actorUserId: userId,
         response: parsed.data.response,
       },
@@ -1037,12 +1212,13 @@ function wireMeetingSocket(
       ack?.({ ok: false, code: stopRecordingPermCheck.code, message: stopRecordingPermCheck.message });
       return;
     }
-    const result = await stopMeetingRecording(
+    const result = await stopRecording(
+      'Meeting',
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
-        meetingId: parsed.data.meetingId,
+        scopeId: parsed.data.meetingId,
         actorUserId: userId,
       },
       { ...container, emitter },
@@ -1093,6 +1269,15 @@ function wireMeetingSocket(
       });
       return;
     }
+    // F8a: permiso del chat para cuentas (INV-10 H-7), guests solo texto (D-14) y topes de adjuntos (D-15).
+    const policy = await authorizeMeetingChatSend(
+      { principal: { ...principal, tenantId }, conversationId, hasAttachment: Boolean(parsed.data.attachmentFileId) },
+      container,
+    );
+    if (!policy.isSuccess) {
+      ack?.({ ok: false, code: policy.error.code, message: policy.error.message });
+      return;
+    }
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.MeetingChatSend,
       tenantId,
@@ -1131,7 +1316,89 @@ function wireMeetingSocket(
       event: MeetingSocketEvents.ChatMessageNew,
       envelope: envelope(result.value.message),
     });
+    // F8a (T-10): evento único del chat con `conversationKind: 'Meeting'` y `meetingId`; el de la sala queda de fachada.
+    emitter.emitToConversation({
+      tenantId,
+      conversationId,
+      event: ChatSocketEvents.MessageNew,
+      envelope: envelope(result.value.message),
+    });
   });
+
+  /**
+   * F11: adjuntos del chat de la sala por el socket. El invitado entra con su ticket y no tiene JWT para
+   * `/communication/conversations/:id/attachments/*`; la regla es la misma (participante del chat, piso del
+   * historial, estado del escaneo). Las cuentas además necesitan `communication.chat.reply`, como en el HTTP.
+   */
+  const handleChatAttachment = (kind: 'meta' | 'url') => async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = MeetingChatAttachmentPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (principal.actorType !== 'Guest') {
+      const perm = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+      if (!perm.allowed) {
+        ack?.({ ok: false, code: perm.code, message: perm.message });
+        return;
+      }
+    }
+    const conversationId = await resolveMeetingConversationId(parsed.data.meetingId);
+    if (!conversationId) {
+      ack?.({ ok: false, code: 'Chat.Attachment.NotFound', message: 'Attachment not found.' });
+      return;
+    }
+    const command = { tenantId, userId, conversationId, fileId: parsed.data.fileId };
+    const result = kind === 'meta' ? await getAttachmentMetadata(command, container) : await getAttachmentDownloadUrl(command, container);
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  };
+  socket.on(MeetingSocketEvents.ChatAttachmentMeta, handleChatAttachment('meta'));
+
+  // F11: historial del chat de la sala para quien participó (invitados incluidos), como la ficha (D-01).
+  socket.on(MeetingSocketEvents.ChatHistory, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = MeetingChatHistoryPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (principal.actorType !== 'Guest') {
+      const perm = await checkPermission(principal, CommunicationPermissions.MeetingJoin, container.userPermissions);
+      if (!perm.allowed) {
+        ack?.({ ok: false, code: perm.code, message: perm.message });
+        return;
+      }
+    }
+    // En vivo solo para quien está dentro: el caso de uso admite a cualquier participante conocido (sirve a
+    // la ficha tras el End) y eso incluye sala de espera y expulsados.
+    const live = await container.meetings.findById(tenantId, parsed.data.meetingId);
+    const me = live?.toSnapshot().participants.find((p) => p.userId === userId);
+    if (!me || me.status !== 'Joined') {
+      ack?.({ ok: false, code: 'Meeting.NotParticipant', message: 'Only participants inside the meeting can read its chat.' });
+      return;
+    }
+    const result = await getMeetingChatHistory(
+      {
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        userId,
+        take: parsed.data.take,
+        ...(parsed.data.before !== undefined ? { beforeUtc: parsed.data.before } : {}),
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+  socket.on(MeetingSocketEvents.ChatAttachmentDownloadUrl, handleChatAttachment('url'));
 
   socket.on(MeetingSocketEvents.ChatEdit, async (...args: unknown[]) => {
     const raw = args[0];
@@ -1278,6 +1545,33 @@ function wireMeetingSocket(
     }
     const result = await createSfuTransport(
       { tenantId, meetingId: parsed.data.meetingId, userId, direction: parsed.data.direction },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+    // El transport anterior (reconexión) se cerró con sus producers: los demás cierran esos consumers.
+    for (const producerId of result.value.replacedProducerIds) {
+      emitter.emitToMeeting({
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        event: MeetingSocketEvents.SfuProducerClosed,
+        envelope: envelope({ meetingId: parsed.data.meetingId, userId, producerId } satisfies SfuProducerClosedDto),
+      });
+    }
+  });
+
+  socket.on(MeetingSocketEvents.SfuRestartIce, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = SfuRestartIcePayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await restartSfuTransportIce(
+      { tenantId, meetingId: parsed.data.meetingId, userId, transportId: parsed.data.transportId },
       container,
     );
     if (!result.isSuccess) {
@@ -1437,23 +1731,35 @@ function wireMeetingSocket(
   // (se joinea en Meeting.Join), marcamos leave y avisamos a los demas
   // participantes — sin esto el roster se queda con un participant "Joined"
   // fantasma indefinidamente hasta que alguien lo saque a mano.
-  socket.on('disconnect', () => {
+  // `disconnecting` y no `disconnect`: en Socket.IO 4 las rooms ya están vacías en `disconnect`
+  // (la gracia nunca se agendaba y el participante quedaba Joined fantasma).
+  socket.on('disconnecting', () => {
     const meetingRoomPrefix = `t:${tenantId}:m:`;
     const activeMeetingIds = [...socket.rooms].filter((room) => room.startsWith(meetingRoomPrefix));
-    for (const room of activeMeetingIds) {
-      const meetingId = room.slice(meetingRoomPrefix.length);
-      // NO se saca al participante de una vez: se AGENDA su salida tras la gracia. Si el mismo usuario
-      // reconecta (join/rejoin) dentro de la ventana, join/rejoin cancela este timer. Así un blip de red
-      // o un cambio de pestaña del host no termina el meeting (host sin cohost → Meeting.end).
-      const key = leaveKey(tenantId, meetingId, userId);
-      const existing = pendingLeaves.get(key);
-      if (existing) clearTimeout(existing);
-      const timer = setTimeout(() => {
-        pendingLeaves.delete(key);
-        void performLeaveAfterGrace(container, emitter, tenantId, meetingId, userId);
-      }, DISCONNECT_GRACE_MS);
-      pendingLeaves.set(key, timer);
-    }
+    if (activeMeetingIds.length === 0) return;
+    // Las rooms del socket desaparecen tras el `disconnect`: se capturan ahora y la gracia se lee
+    // después (resolver con caché; si falla, cae al default técnico y nunca deja al participante colgado).
+    void container.effectiveSettings
+      .resolve(tenantId)
+      .then((effective) => effective.meeting.disconnectGraceSeconds * 1000)
+      .catch(() => TECHNICAL_LIMITS.disconnectGraceSeconds.fallback * 1000)
+      .then((graceMs) => {
+        for (const room of activeMeetingIds) {
+          const meetingId = room.slice(meetingRoomPrefix.length);
+          registry.unregister(tenantId, meetingId, userId, socket.id);
+          // NO se saca al participante de una vez: se AGENDA su salida tras la gracia. Si el mismo usuario
+          // reconecta (join/rejoin) dentro de la ventana, join/rejoin cancela este timer. Así un blip de red
+          // o un cambio de pestaña del host no termina el meeting (host sin cohost → Meeting.end).
+          const key = leaveKey(tenantId, meetingId, userId);
+          const existing = pendingLeaves.get(key);
+          if (existing) clearTimeout(existing);
+          const timer = setTimeout(() => {
+            pendingLeaves.delete(key);
+            void performLeaveAfterGrace(container, emitter, tenantId, meetingId, userId);
+          }, graceMs);
+          pendingLeaves.set(key, timer);
+        }
+      });
   });
 }
 

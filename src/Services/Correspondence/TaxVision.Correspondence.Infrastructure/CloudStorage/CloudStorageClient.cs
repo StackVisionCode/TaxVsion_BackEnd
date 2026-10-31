@@ -42,7 +42,7 @@ internal sealed class CloudStorageClient(
             return Result.Failure<CloudStorageDownloadUrl>(
                 new Error(
                     "CloudStorageClient.ServiceAuthUnavailable",
-                    "Could not acquire a service token to call CloudStorage."
+                    "The file service is unavailable right now. Try again later."
                 )
             );
 
@@ -62,7 +62,7 @@ internal sealed class CloudStorageClient(
                     return Result.Failure<CloudStorageDownloadUrl>(
                         new Error(
                             "IncomingEmailAttachment.NotReady",
-                            "The attachment is still being scanned by CloudStorage."
+                            "The attachment is still being scanned by the system. Try again in a moment."
                         )
                     );
 
@@ -70,14 +70,14 @@ internal sealed class CloudStorageClient(
                 // descarga el archivo todavía no existe. El handler decide si es espera o pérdida.
                 if (response.StatusCode == HttpStatusCode.NotFound)
                     return Result.Failure<CloudStorageDownloadUrl>(
-                        new Error("CloudStorageClient.FileNotRegistered", "CloudStorage has no file with this id yet.")
+                        new Error("CloudStorageClient.FileNotRegistered", "The attachment is not ready yet.")
                     );
 
                 logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
                 return Result.Failure<CloudStorageDownloadUrl>(
                     new Error(
                         "CloudStorageClient.UnexpectedStatus",
-                        $"CloudStorage returned HTTP {(int)response.StatusCode}."
+                        "The file service returned an unexpected response. Try again later."
                     )
                 );
             }
@@ -113,7 +113,7 @@ internal sealed class CloudStorageClient(
             return Result.Failure<CloudStorageFileMetadata>(
                 new Error(
                     "CloudStorageClient.ServiceAuthUnavailable",
-                    "Could not acquire a service token to call CloudStorage."
+                    "The file service is unavailable right now. Try again later."
                 )
             );
 
@@ -129,7 +129,7 @@ internal sealed class CloudStorageClient(
                 return Result.Failure<CloudStorageFileMetadata>(
                     new Error(
                         "CloudStorageClient.UnexpectedStatus",
-                        $"CloudStorage returned HTTP {(int)response.StatusCode}."
+                        "The file service returned an unexpected response. Try again later."
                     )
                 );
             }

@@ -78,6 +78,36 @@ public sealed class ScanFileHandlerTests
         Assert.Equal("Customer", blocked.OwnerType);
         Assert.Equal(blockedFixture.CustomerId, blocked.OwnerId);
         Assert.Equal("ClientForms", blocked.FolderType);
+        Assert.True(blockedFixture.File.IsLegalHeld); // evidencia: el purgador no la borra
+    }
+
+    [Fact]
+    public async Task Pending_review_keeps_the_checksum_and_tells_who_uploaded_it()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.ContentScanner.Result = ContentScanResult.Uncertain("Possible sexual content (score 0.700).");
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.PendingReview, fixture.File.Status);
+        Assert.Equal(Sha256, fixture.File.ChecksumSha256);
+        Assert.False(fixture.File.IsLegalHeld);
+        Assert.Contains(
+            (
+                fixture.Options.TempBucket,
+                fixture.File.ObjectKey,
+                fixture.Options.QuarantineBucket,
+                fixture.File.ObjectKey
+            ),
+            fixture.Storage.Copied
+        );
+        var pending = Assert.Single(fixture.Bus.Published.OfType<FilePendingReviewIntegrationEvent>());
+        Assert.Equal(fixture.File.CreatedBy, pending.CreatedBy);
+        Assert.Equal("Customer", pending.OwnerType);
+        Assert.Equal(fixture.CustomerId, pending.OwnerId);
+        Assert.Equal("Documents", pending.FolderType);
+        Assert.Equal("application/pdf", fixture.ContentScanner.LastContext!.DetectedContentType);
+        Assert.Equal(FolderType.Documents, fixture.ContentScanner.LastContext.FolderType);
     }
 
     [Fact]
@@ -113,6 +143,57 @@ public sealed class ScanFileHandlerTests
 
         Assert.Equal(FileStatus.Available, fixture.File.Status);
         Assert.Single(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Clean_json_transcript_becomes_available()
+    {
+        // F7: el JSON v2 del transcript worker pasa el chequeo de tipo detectado (.json ↔ application/json).
+        var fixture = CreateFixture(
+            FolderType.Transcripts,
+            null,
+            "Meeting_Transcript_2026-10-30.json",
+            "application/json",
+            OwnerType.Communication
+        );
+        fixture.Inspector.Result = new InspectedContent("application/json", Sha256);
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.Available, fixture.File.Status);
+        Assert.Equal(
+            "Transcripts",
+            Assert.Single(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>()).FolderType
+        );
+        Assert.Empty(fixture.Bus.Published.OfType<FileScanFailedIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Clean_audio_track_sniffed_as_video_webm_becomes_available_on_a_plan_without_audio()
+    {
+        // La pista declara audio/webm pero el inspector la ve video/webm; RecordingTracks no se intersecta con el plan.
+        var fixture = CreateFixture(
+            FolderType.RecordingTracks,
+            null,
+            "Track_user_track.webm",
+            "audio/webm",
+            OwnerType.Communication
+        );
+        fixture.Inspector.Result = new InspectedContent("video/webm", Sha256);
+        fixture.Options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".pdf"],
+            AllowedContentTypes = ["application/pdf"],
+        };
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.Available, fixture.File.Status);
+        Assert.Equal(
+            "RecordingTracks",
+            Assert.Single(fixture.Bus.Published.OfType<FileAvailableIntegrationEvent>()).FolderType
+        );
     }
 
     [Fact]
@@ -198,6 +279,7 @@ public sealed class ScanFileHandlerTests
             fixture.ContentScanner,
             fixture.Inspector,
             Options.Create(fixture.Options),
+            new FakeUploadPolicyResolver(fixture.Options),
             new FakeSystemClock(fixture.Now),
             new FakeUnitOfWork(),
             fixture.Bus,
@@ -230,9 +312,13 @@ public sealed class ScanFileHandlerTests
     private sealed class StubContentScanner(ContentScanResult result) : IContentScanner
     {
         public ContentScanResult Result { get; set; } = result;
+        public ContentScanContext? LastContext { get; private set; }
 
-        public Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct) =>
-            Task.FromResult(Result);
+        public Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct)
+        {
+            LastContext = context;
+            return Task.FromResult(Result);
+        }
     }
 
     private sealed class StubInspector(InspectedContent result) : IFileContentInspector

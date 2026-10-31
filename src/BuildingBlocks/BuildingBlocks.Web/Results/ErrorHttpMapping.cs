@@ -112,7 +112,9 @@ public static class ErrorHttpMapping
             or "Signature.Profile.NotFound"
             or "Signature.Profile.NoEffective"
             // Tenant todavía no sembró la marca de la plataforma (el seeder corre al arrancar).
-            or "PlatformSettings.NotFound" => StatusCodes.Status404NotFound,
+            or "PlatformSettings.NotFound"
+            // La fila única de la política de moderación (T-20) la siembra la migración.
+            or "ContentModeration.PolicyMissing" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -315,6 +317,8 @@ public static class ErrorHttpMapping
             or "StorageQuota.Suspended"
             or "File.NotAvailable"
             or "IncomingEmailAttachment.Blocked"
+            // T-20: retenido por la moderación de contenido; no es "todavía no" (409) sino "no se ofrece".
+            or "IncomingEmailAttachment.UnderReview"
             or "File.Forbidden"
             // Carpeta reservada a servicios (Avatars): un usuario no sube ahí directo.
             or "File.FolderReserved"
@@ -376,6 +380,8 @@ public static class ErrorHttpMapping
             or "Plan.InvitationLimitReached"
             or "Mfa.AlreadyEnabled"
             or "StorageQuota.Exceeded"
+            // Aprobar/rechazar/reportar un archivo que ya no está en revisión ni bloqueado por contenido.
+            or "ContentModeration.NotUnderModeration"
             or "EmailConfiguration.Conflict"
             or "EmailTemplate.KeyConflict"
             or "EmailLayout.NameConflict"

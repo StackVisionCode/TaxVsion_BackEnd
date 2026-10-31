@@ -34,6 +34,23 @@ public sealed class TaskAttachmentTests
         Assert.Equal(AttachmentStatus.Pending, uploaded.Value.Status);
     }
 
+    // T-20: en revisión de contenido sigue activo; el revisor lo aprueba o lo rechaza después.
+    [Fact]
+    public void An_uploaded_file_under_review_waits_for_the_reviewer()
+    {
+        var task = NewTask();
+        var fileId = Guid.NewGuid();
+        task.AttachUploadedFile(fileId, "photo.jpg", "image/jpeg", 512, UserId, Now);
+
+        Assert.True(task.MarkAttachmentUnderReview(fileId));
+        Assert.False(task.MarkAttachmentUnderReview(fileId));
+        Assert.Equal(AttachmentStatus.UnderReview, task.Attachments.Single().Status);
+
+        Assert.True(task.MarkAttachmentAvailable(fileId));
+        Assert.Equal(AttachmentStatus.Available, task.Attachments.Single().Status);
+        Assert.False(task.MarkAttachmentUnderReview(fileId));
+    }
+
     [Fact]
     public void The_same_file_cannot_be_attached_twice_while_active()
     {

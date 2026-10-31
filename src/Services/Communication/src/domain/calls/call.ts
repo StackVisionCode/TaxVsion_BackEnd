@@ -5,11 +5,11 @@ import { CallStatus, isTerminal } from './call-status.js';
 import { CallParticipant, type CallParticipantSnapshot } from './call-participant.js';
 import type { ConnectionQuality, MediaStatus } from './media-status.js';
 import { RecordingSession } from '../recording/recording-session.js';
-import { RecordingScope } from '../recording/recording-session-state.js';
+import { RecordingScope, type RecordingCaptureMode, type RecordingStopReason } from '../recording/recording-session-state.js';
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
 import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
 
-export type CallEndReason = 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed';
+export type CallEndReason = 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed' | 'MaxDurationReached';
 
 export interface CallSnapshot {
   readonly id: string;
@@ -28,6 +28,10 @@ export interface CallSnapshot {
   readonly recordingRequested: boolean;
   readonly recordingFileId: string | null;
   readonly transcriptFileId: string | null;
+  // F4 (INV-12 H-3): tope de minutos del plan aplicado al aceptar; null = sin tope.
+  readonly maxDurationMinutes: number | null;
+  readonly endsAtUtc: Date | null;
+  readonly lastDurationWarningSeconds: number | null;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
   readonly participants: readonly CallParticipantSnapshot[];
@@ -54,7 +58,7 @@ export class Call {
   static initiate(input: {
     tenantId: string;
     kind: CallKind;
-    caller: { userId: string; displayName: string };
+    caller: { userId: string; displayName: string; customerId?: string | null };
     callee: { userId: string; displayName: string };
     conversationId?: string | null;
     recordingRequested?: boolean;
@@ -75,6 +79,7 @@ export class Call {
       joinOrder: 1,
       audioDefault: true,
       videoDefault: input.kind === 'Video',
+      customerId: input.caller.customerId ?? null,
       now,
     });
 
@@ -95,6 +100,9 @@ export class Call {
       recordingRequested: input.recordingRequested ?? false,
       recordingFileId: null,
       transcriptFileId: null,
+      maxDurationMinutes: null,
+      endsAtUtc: null,
+      lastDurationWarningSeconds: null,
       createdAtUtc: now,
       updatedAtUtc: now,
       participants: [callerParticipant.toSnapshot()],
@@ -102,7 +110,7 @@ export class Call {
     return Result.ok(new Call(snapshot));
   }
 
-  accept(input: { byUserId: string; calleeDisplayName: string; now?: Date }): Result<void> {
+  accept(input: { byUserId: string; calleeDisplayName: string; calleeCustomerId?: string | null; maxDurationMinutes?: number | null; now?: Date }): Result<void> {
     if (this.state.status !== CallStatus.Ringing) {
       return Result.fail(makeError('Call.InvalidTransition', `Cannot accept a call in status ${this.state.status}.`));
     }
@@ -119,13 +127,18 @@ export class Call {
       joinOrder: 2,
       audioDefault: true,
       videoDefault: this.state.kind === 'Video',
+      customerId: input.calleeCustomerId ?? null,
       now,
     });
     this.participants.push(calleeParticipant);
+    // El tope vigente del plan se fija al aceptar: las llamadas en curso conservan el suyo.
+    const maxDurationMinutes = input.maxDurationMinutes ?? null;
     this.state = {
       ...this.state,
       status: CallStatus.Accepted,
       acceptedAtUtc: now,
+      maxDurationMinutes,
+      endsAtUtc: maxDurationMinutes ? new Date(now.getTime() + maxDurationMinutes * 60_000) : null,
       updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),
     };
@@ -225,6 +238,47 @@ export class Call {
       updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),
     };
+    return Result.okVoid();
+  }
+
+  /** F4: fin decidido por el servidor (tope de minutos). No exige actor. */
+  endBySystem(input: { reason: 'MaxDurationReached'; now?: Date }): Result<void> {
+    if (this.state.status !== CallStatus.Accepted && this.state.status !== CallStatus.Active) {
+      return Result.fail(makeError('Call.InvalidTransition', `Cannot end a call in ${this.state.status}.`));
+    }
+    const now = input.now ?? new Date();
+    const start = this.state.startedAtUtc ?? this.state.acceptedAtUtc ?? this.state.ringingAtUtc;
+    this.participants.forEach((p) => {
+      if (!p.hasLeft) p.markLeft(now);
+    });
+    this.state = {
+      ...this.state,
+      status: CallStatus.Ended,
+      endedAtUtc: now,
+      endReason: input.reason,
+      durationSeconds: Math.max(0, Math.floor((now.getTime() - start.getTime()) / 1000)),
+      updatedAtUtc: now,
+      participants: this.participants.map((p) => p.toSnapshot()),
+    };
+    return Result.okVoid();
+  }
+
+  /** Segundos hasta el corte; null si la llamada no esta en curso o no tiene tope. */
+  remainingSeconds(now: Date = new Date()): number | null {
+    if ((this.state.status !== CallStatus.Accepted && this.state.status !== CallStatus.Active) || !this.state.endsAtUtc) return null;
+    return Math.ceil((this.state.endsAtUtc.getTime() - now.getTime()) / 1000);
+  }
+
+  /** Aviso 10/5/1 idempotente (mismo criterio que Meeting.markDurationWarning). */
+  markDurationWarning(input: { thresholdSeconds: number; now?: Date }): Result<void> {
+    if (this.state.status !== CallStatus.Accepted && this.state.status !== CallStatus.Active) {
+      return Result.fail(makeError('Call.InvalidTransition', 'Only an ongoing call gets duration warnings.'));
+    }
+    const last = this.state.lastDurationWarningSeconds;
+    if (last !== null && input.thresholdSeconds >= last) {
+      return Result.fail(makeError('Call.NoOp', 'This warning was already sent.'));
+    }
+    this.state = { ...this.state, lastDurationWarningSeconds: input.thresholdSeconds, updatedAtUtc: input.now ?? new Date() };
     return Result.okVoid();
   }
 
@@ -400,6 +454,32 @@ export class Call {
    * warn-and-drop en el consumer, sin retry) aunque el archivo ya existiera
    * en CloudStorage.
    */
+  /**
+   * F7: archivo de la grabacion server-side (compuesto). A diferencia de `attachRecording` (cliente,
+   * una sola vez), un recompuesto reemplaza al anterior: la fuente de verdad es la RecordingSession.
+   */
+  setRecordingFile(fileId: string): Result<void> {
+    if (this.state.status !== CallStatus.Ended && this.state.status !== CallStatus.Active) {
+      return Result.fail(makeError('Call.Recording.InvalidState', `Cannot set the recording in status ${this.state.status}.`));
+    }
+    this.state = { ...this.state, recordingFileId: fileId, updatedAtUtc: new Date() };
+    return Result.okVoid();
+  }
+
+  /** F7: transcript v2 (o reproceso) reemplaza al anterior; el estado vive en TranscriptArtifact. */
+  setTranscriptFile(fileId: string): Result<void> {
+    if (this.state.status !== CallStatus.Ended && this.state.status !== CallStatus.Active) {
+      return Result.fail(makeError('Call.Transcript.InvalidState', `Cannot set the transcript in status ${this.state.status}.`));
+    }
+    this.state = { ...this.state, transcriptFileId: fileId, updatedAtUtc: new Date() };
+    return Result.okVoid();
+  }
+
+  /** F7 (T-37): la retencion borro los archivos; la ficha ya no los ofrece. */
+  clearRecordingFiles(): void {
+    this.state = { ...this.state, recordingFileId: null, transcriptFileId: null, updatedAtUtc: new Date() };
+  }
+
   attachTranscript(fileId: string): Result<void> {
     if (this.state.status !== CallStatus.Ended && this.state.status !== CallStatus.Active) {
       return Result.fail(
@@ -484,24 +564,31 @@ export class Call {
     session: RecordingSession;
     policyAllows: boolean;
     now?: Date;
+    captureMode?: RecordingCaptureMode;
+    maxDurationSeconds?: number | null;
   }): Result<RecordingSession> {
     if (!this.isParticipant(input.actorUserId)) {
       return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
     }
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.start({ policyAllows: input.policyAllows, now: input.now ?? new Date() });
+    const result = input.session.start({
+      policyAllows: input.policyAllows,
+      now: input.now ?? new Date(),
+      ...(input.captureMode ? { captureMode: input.captureMode } : {}),
+      maxDurationSeconds: input.maxDurationSeconds ?? null,
+    });
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
 
-  stopRecording(input: { actorUserId: string; session: RecordingSession; now?: Date }): Result<RecordingSession> {
+  stopRecording(input: { actorUserId: string; session: RecordingSession; now?: Date; reason?: RecordingStopReason }): Result<RecordingSession> {
     if (!this.isParticipant(input.actorUserId)) {
       return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
     }
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.stop(input.now);
+    const result = input.session.stop(input.now, input.reason);
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
@@ -512,10 +599,10 @@ export class Call {
    * pidio la grabacion" antes de llegar aca (mas estricto que meetings, que
    * acepta cualquier Host/Cohost).
    */
-  beginProcessingRecording(input: { session: RecordingSession }): Result<RecordingSession> {
+  beginProcessingRecording(input: { session: RecordingSession; recordingFileId?: string }): Result<RecordingSession> {
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.beginProcessing();
+    const result = input.session.beginProcessing(input.recordingFileId);
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }
@@ -530,19 +617,11 @@ export class Call {
   }
 
   /** System-triggered (transcript worker confirma Ready) — sin chequeo de actor. */
-  completeRecording(input: {
-    session: RecordingSession;
-    recordingFileId: string;
-    durationSeconds: number;
-    now?: Date;
-  }): Result<RecordingSession> {
+  /** F7 (T-34): el archivo de la grabacion ya esta Available en CloudStorage — sin chequeo de actor (sistema). */
+  markRecordingReady(input: { session: RecordingSession; now?: Date }): Result<RecordingSession> {
     const belongs = this.ensureSessionBelongsHere(input.session);
     if (!belongs.isSuccess) return belongs;
-    const result = input.session.complete({
-      recordingFileId: input.recordingFileId,
-      durationSeconds: input.durationSeconds,
-      now: input.now ?? new Date(),
-    });
+    const result = input.session.markReady({ now: input.now ?? new Date() });
     if (!result.isSuccess) return result;
     return Result.ok(input.session);
   }

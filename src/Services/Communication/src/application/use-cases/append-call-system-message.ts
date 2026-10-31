@@ -5,10 +5,15 @@ import type { SocketEnvelope } from '../../contracts/socket/socket-envelope.js';
 import { ChatSocketEvents } from '../../contracts/socket/chat-socket-events.js';
 import type { CallKind } from '../../domain/calls/call-kind.js';
 import { messageSnapshotToDto } from './chat-mappers.js';
+import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
+import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 
 export interface CallSystemMessageDeps {
   readonly conversations: ConversationRepository;
   readonly emitter: RealtimeEmitter;
+  /** Con adjunto (transcript): se registra como adjunto del chat para que ambos lados lo descarguen. */
+  readonly attachmentTracking?: AttachmentTrackingRepository | undefined;
+  readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
 }
 
 /**
@@ -17,17 +22,21 @@ export interface CallSystemMessageDeps {
  * si la conversación no existe o el append falla, no rompe el flujo de la llamada.
  */
 export async function appendCallSystemMessage(
-  input: { tenantId: string; conversationId: string; body: string; now?: Date },
+  input: { tenantId: string; conversationId: string; body: string; attachmentFileId?: string | null; now?: Date },
   deps: CallSystemMessageDeps,
 ): Promise<void> {
   const conversation = await deps.conversations.findById(input.tenantId, input.conversationId, 0);
   if (!conversation) return;
   const messageResult = conversation.appendSystemMessage({
     body: input.body,
+    attachmentFileId: input.attachmentFileId ?? null,
     ...(input.now ? { now: input.now } : {}),
   });
   if (!messageResult.isSuccess) return;
   await deps.conversations.save(conversation);
+  if (input.attachmentFileId) {
+    await trackSystemAttachment(input.tenantId, input.conversationId, messageResult.value.id, input.attachmentFileId, deps);
+  }
   const envelope: SocketEnvelope<unknown> = {
     eventId: randomUUID(),
     correlationId: '',
@@ -40,6 +49,23 @@ export async function appendCallSystemMessage(
     event: ChatSocketEvents.MessageNew,
     envelope,
   });
+}
+
+/**
+ * La descarga del portal pasa por la membresia del chat (`AttachmentTracking`). El aviso de disponible de
+ * CloudStorage pudo llegar antes de este registro, asi que el estado se toma de CloudStorage ahora.
+ */
+async function trackSystemAttachment(
+  tenantId: string,
+  conversationId: string,
+  messageId: string,
+  fileId: string,
+  deps: CallSystemMessageDeps,
+): Promise<void> {
+  if (!deps.attachmentTracking) return;
+  await deps.attachmentTracking.register({ fileId, messageId, conversationId, tenantId });
+  const metadata = await deps.cloudStorageMetadata?.getMetadata(tenantId, fileId).catch(() => null);
+  if (metadata?.status === 'Available') await deps.attachmentTracking.markStatus({ fileId, status: 'Available' });
 }
 
 /** "m:ss" a partir de segundos (para el cuerpo "Call · 2:34"). */

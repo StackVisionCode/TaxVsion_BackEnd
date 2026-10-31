@@ -1,3 +1,4 @@
+import { emitRecordingState, lifecycleFrom, markRecordingFileAvailable, requestTranscript, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { RecordingScope } from '../../domain/recording/recording-session-state.js';
@@ -47,7 +48,7 @@ export interface AttachMeetingRecordingResult {
   readonly recordingFileId: string;
 }
 
-export interface AttachMeetingRecordingDeps {
+export interface AttachMeetingRecordingDeps extends RecordingLifecycleOptionalDeps {
   readonly meetings: MeetingRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly idempotency: IdempotencyStore;
@@ -152,6 +153,12 @@ export async function attachMeetingRecording(
     return Result.fail(makeError('Meeting.HostOnly', 'Only host or cohost can attach the recording.'));
   }
 
+  // F7: en captura server-side el navegador no sube nada; un adjunto tardio del cliente se rechaza.
+  if (session.captureMode === 'Server') {
+    await release();
+    return Result.fail(makeError('RecordingSession.ServerCapture', 'This recording is captured by the server.'));
+  }
+
   const attachResult = meeting.attachRecording(command.fileId);
   if (!attachResult.isSuccess) {
     await release();
@@ -159,38 +166,48 @@ export async function attachMeetingRecording(
   }
   await deps.meetings.save(meeting);
 
-  const processingResult = meeting.beginProcessingRecording({ session });
+  const processingResult = meeting.beginProcessingRecording({ session, recordingFileId: command.fileId });
   if (!processingResult.isSuccess) {
     await release();
     return Result.fail(processingResult.error);
   }
   await deps.recordingSessions.save(processingResult.value);
 
-  const startedAtUtc = new Date().toISOString();
-  const processingEvent: MeetingRecordingProcessingStartedEvent = {
-    eventId: randomUUID(),
-    eventType: MeetingEventTypes.RecordingProcessingStarted,
-    tenantId: command.tenantId,
-    correlationId: command.correlationId,
-    occurredOnUtc: startedAtUtc,
-    meetingId: command.meetingId,
-    recordingFileId: command.fileId,
-    startedAtUtc,
-  };
-  await deps.publisher.enqueue(processingEvent);
-
-  const dto: MeetingRecordingStateChangedDto = { meetingId: command.meetingId, state: 'Processing', updatedAtUtc: startedAtUtc };
-  deps.emitter.emitToMeeting({
-    tenantId: command.tenantId,
-    meetingId: command.meetingId,
-    event: MeetingSocketEvents.RecordingStateChanged,
-    envelope: {
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) {
+    // F7: el transcript se pide con idioma, vocabulario y limite de la oficina; Ready lo decide CloudStorage.
+    await requestTranscript(processingResult.value, lifecycle, command.correlationId);
+    emitRecordingState(deps, processingResult.value, command.correlationId);
+    if (metadata.status === 'Available') {
+      await markRecordingFileAvailable({ tenantId: command.tenantId, fileId: command.fileId, correlationId: command.correlationId }, lifecycle);
+    }
+  } else {
+    const startedAtUtc = new Date().toISOString();
+    const processingEvent: MeetingRecordingProcessingStartedEvent = {
       eventId: randomUUID(),
+      eventType: MeetingEventTypes.RecordingProcessingStarted,
+      tenantId: command.tenantId,
       correlationId: command.correlationId,
-      emittedAtUtc: new Date().toISOString(),
-      payload: dto,
-    },
-  });
+      occurredOnUtc: startedAtUtc,
+      meetingId: command.meetingId,
+      recordingFileId: command.fileId,
+      startedAtUtc,
+    };
+    await deps.publisher.enqueue(processingEvent);
+
+    const dto: MeetingRecordingStateChangedDto = { meetingId: command.meetingId, state: 'Processing', updatedAtUtc: startedAtUtc };
+    deps.emitter.emitToMeeting({
+      tenantId: command.tenantId,
+      meetingId: command.meetingId,
+      event: MeetingSocketEvents.RecordingStateChanged,
+      envelope: {
+        eventId: randomUUID(),
+        correlationId: command.correlationId,
+        emittedAtUtc: new Date().toISOString(),
+        payload: dto,
+      },
+    });
+  }
 
   const result: AttachMeetingRecordingResult = { meetingId: command.meetingId, recordingFileId: command.fileId };
   await deps.idempotency.commit({

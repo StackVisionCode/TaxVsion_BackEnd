@@ -74,4 +74,38 @@ public static partial class RateLimitPolicyCatalog
         windowSeconds: 10,
         RateLimitAlgorithm.FixedWindow
     );
+
+    // F8a (D-15): adjuntos del chat de la sala por minuto; el tope efectivo lo fija la configuración de Communication.
+    public static readonly RateLimitPolicyDefinition CommunicationMeetingChatAttachment = Define(
+        "communication.o.meeting_chat_attachment",
+        RateLimitCategory.O,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [],
+        quota: 5,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    // F11 (E-259): invitaciones a reuniones por persona (cada una puede ser un email externo); el tope efectivo
+    // lo fija la configuración de Communication.
+    public static readonly RateLimitPolicyDefinition CommunicationMeetingInvitationsCreate = Define(
+        "communication.o.meeting_invitations_create",
+        RateLimitCategory.O,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [],
+        quota: 20,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow
+    );
+
+    // F8d: reacciones del chat por persona; el tope efectivo lo fija la configuración de Communication.
+    public static readonly RateLimitPolicyDefinition CommunicationChatReaction = Define(
+        "communication.o.chat_reaction",
+        RateLimitCategory.O,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [],
+        quota: 30,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
 }

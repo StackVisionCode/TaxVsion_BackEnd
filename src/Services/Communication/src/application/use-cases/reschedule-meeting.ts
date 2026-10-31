@@ -8,7 +8,11 @@ import {
   type MeetingRescheduledEvent,
 } from '../../contracts/events/meeting-events.js';
 import { MeetingSocketEvents, type MeetingRescheduledDto } from '../../contracts/socket/meeting-socket-events.js';
-import { logHostAction } from './host-audit.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
+import { resolveUserDisplayName } from './resolve-user-display-name.js';
+import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
+import type { TenantHostResolver } from '../ports/tenant-host-resolver.js';
 
 export interface RescheduleMeetingCommand {
   readonly tenantId: string;
@@ -23,6 +27,10 @@ export interface RescheduleMeetingDeps {
   readonly meetings: MeetingRepository;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
+  readonly meetingEvents?: MeetingEventLogDeps['meetingEvents'];
+  /** F6: nombre del host y zona horaria para el email y el `.ics`. */
+  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId'> | undefined;
+  readonly tenantHostResolver?: Pick<TenantHostResolver, 'resolveTimeZone'> | undefined;
 }
 
 export async function rescheduleMeeting(
@@ -45,10 +53,16 @@ export async function rescheduleMeeting(
   const snapshot = meeting.toSnapshot();
   const participantUserIds = snapshot.participants.map((p) => p.userId);
   const invitations = await deps.meetings.listInvitationsByMeeting(cmd.tenantId, cmd.meetingId);
-  const invitedEmails = invitations
-    .map((inv) => inv.toSnapshot())
-    .filter((s) => s.usedAtUtc === null && s.revokedAtUtc === null && s.inviteeEmail !== null)
-    .map((s) => s.inviteeEmail!);
+  const invitationSnapshots = invitations.map((inv) => inv.toSnapshot()).filter((s) => s.revokedAtUtc === null);
+  // F6: externos sin cuenta por email; los de cuenta reciben in-app (inviteeUserIds).
+  const invitedEmails = invitationSnapshots.filter((s) => s.inviteeUserId === null && s.inviteeEmail !== null).map((s) => s.inviteeEmail!);
+  const inviteeUserIds = [...new Set(invitationSnapshots.filter((s) => s.inviteeUserId !== null).map((s) => s.inviteeUserId!))];
+  const hostDisplayName = await resolveUserDisplayName(
+    deps.userDirectory,
+    snapshot.hostUserId,
+    snapshot.participants.find((p) => p.userId === snapshot.hostUserId)?.displayName,
+  );
+  const timeZone = (await deps.tenantHostResolver?.resolveTimeZone?.(cmd.tenantId)) ?? null;
 
   const now = new Date();
   const newIso = newDate ? newDate.toISOString() : null;
@@ -67,6 +81,13 @@ export async function rescheduleMeeting(
     rescheduledAtUtc: now.toISOString(),
     participantUserIds,
     invitedEmails,
+    meetingTitle: snapshot.title,
+    shortCode: snapshot.shortCode,
+    durationMinutes: snapshot.scheduledDurationMinutes ?? snapshot.maxDurationMinutes,
+    hostUserId: snapshot.hostUserId,
+    hostDisplayName,
+    timeZone,
+    inviteeUserIds,
   };
   await deps.publisher.enqueue(event);
 
@@ -89,13 +110,14 @@ export async function rescheduleMeeting(
     },
   });
 
-  logHostAction({
+  await recordMeetingEvent(deps, {
     tenantId: cmd.tenantId,
     meetingId: cmd.meetingId,
-    action: 'meeting.reschedule',
+    type: MeetingEventType.Rescheduled,
     actorUserId: cmd.hostUserId,
+    payload: { previousScheduledForUtc: prevIso, newScheduledForUtc: newIso },
     correlationId: cmd.correlationId,
-    metadata: { previousScheduledForUtc: prevIso, newScheduledForUtc: newIso },
+    at: now,
   });
 
   return Result.okVoid();

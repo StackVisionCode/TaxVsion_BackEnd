@@ -8,22 +8,33 @@
  * (que en RabbitMQ no tiene backoff propio) en errores que suelen resolverse
  * solos en unos segundos (503 de un load balancer, blip de red a MinIO).
  */
-export interface RetryOptions {
+export interface RetryPolicy {
   readonly maxAttempts: number;
   readonly backoffMs: readonly number[];
+}
+
+export interface RetryOptions extends RetryPolicy {
   readonly isRetriable: (err: unknown) => boolean;
   readonly onRetry: (attempt: number, err: unknown, delayMs: number) => void;
+  /**
+   * Politica alternativa por tipo de error (ej. File.NotAvailable con espera
+   * larga). Cada politica lleva su propio contador de intentos.
+   */
+  readonly policyFor?: (err: unknown) => RetryPolicy | undefined;
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions): Promise<T> {
+  const attemptsByPolicy = new Map<RetryPolicy, number>();
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await fn();
     } catch (err) {
-      if (attempt >= opts.maxAttempts || !opts.isRetriable(err)) {
-        throw err;
-      }
-      const delayMs = opts.backoffMs[attempt - 1] ?? opts.backoffMs[opts.backoffMs.length - 1] ?? 0;
+      if (!opts.isRetriable(err)) throw err;
+      const policy = opts.policyFor?.(err) ?? opts;
+      const policyAttempt = (attemptsByPolicy.get(policy) ?? 0) + 1;
+      attemptsByPolicy.set(policy, policyAttempt);
+      if (policyAttempt >= policy.maxAttempts) throw err;
+      const delayMs = policy.backoffMs[policyAttempt - 1] ?? policy.backoffMs[policy.backoffMs.length - 1] ?? 0;
       opts.onRetry(attempt, err, delayMs);
       await sleep(delayMs);
     }

@@ -24,6 +24,9 @@
     <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Domain/TaxVision.CloudStorage.Domain.csproj" />
     <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Infrastructure/TaxVision.CloudStorage.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Services/ContentScanner/">
+    <Project Path="src/Services/ContentScanner/TaxVision.ContentScanner/TaxVision.ContentScanner.csproj" />
+  </Folder>
 
   <!-- AuthService -->
   <Folder Name="/src/Services/Auth/">
@@ -202,6 +205,7 @@
     <Project Path="deploy/tests/TaxVision.Campaigns.Tests/TaxVision.Campaigns.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Inventory.Tests/TaxVision.Inventory.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.ContentScanner.Tests/TaxVision.ContentScanner.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />

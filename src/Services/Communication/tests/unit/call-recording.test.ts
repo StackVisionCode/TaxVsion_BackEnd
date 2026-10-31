@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { F7_SNAPSHOT_DEFAULTS } from '../helpers/fake-recording-session-repository.js';
 import { randomUUID } from 'node:crypto';
 import { Call } from '../../src/domain/calls/call.js';
 import { RecordingSession, type RecordingSessionSnapshot } from '../../src/domain/recording/recording-session.js';
@@ -19,7 +20,7 @@ function activeCall() {
   return { call, caller, callee };
 }
 
-function processingSessionFor(call: Call): RecordingSession {
+function processingSessionFor(call: Call, recordingFileId: string | null = null): RecordingSession {
   const snapshot: RecordingSessionSnapshot = {
     id: u(),
     tenantId: call.tenantId,
@@ -30,9 +31,10 @@ function processingSessionFor(call: Call): RecordingSession {
     requestedAtUtc: new Date(),
     startedAtUtc: new Date(),
     stoppedAtUtc: new Date(),
-    recordingFileId: null,
+    recordingFileId,
     durationSeconds: null,
     failureReason: null,
+    ...F7_SNAPSHOT_DEFAULTS,
   };
   return RecordingSession.rehydrate(snapshot);
 }
@@ -126,11 +128,11 @@ describe('Call.failRecording / completeRecording', () => {
     if (r.isSuccess) expect(r.value.sessionState).toBe('Failed');
   });
 
-  it('completes a Processing session', () => {
+  it('marks a Processing session with its file as Ready', () => {
     const { call } = activeCall();
-    const processing = processingSessionFor(call);
     const fileId = u();
-    const r = call.completeRecording({ session: processing, recordingFileId: fileId, durationSeconds: 45 });
+    const processing = processingSessionFor(call, fileId);
+    const r = call.markRecordingReady({ session: processing });
     expect(r.isSuccess).toBe(true);
     if (r.isSuccess) {
       expect(r.value.sessionState).toBe('Ready');

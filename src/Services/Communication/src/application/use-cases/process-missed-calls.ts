@@ -26,7 +26,10 @@ import { appendCallSystemMessage, callSystemMessageBody } from './append-call-sy
  * Scheduler concreto (RedisDistributedLock + setInterval) vive en infrastructure.
  */
 export interface ProcessMissedCallsInput {
+  /** Edad mínima para considerar una llamada: el menor timeout posible (rango técnico). */
   readonly timeoutSeconds: number;
+  /** Timeout vigente por oficina (global + ajuste de oficina); sin él rige `timeoutSeconds`. */
+  readonly ringingTimeoutFor?: (tenantId: string) => Promise<number>;
   readonly now?: Date;
 }
 
@@ -56,6 +59,10 @@ export async function processMissedCalls(
   let processed = 0;
 
   for (const snapshot of candidates) {
+    if (input.ringingTimeoutFor) {
+      const tenantTimeout = await input.ringingTimeoutFor(snapshot.tenantId).catch(() => input.timeoutSeconds);
+      if (now.getTime() - snapshot.ringingAtUtc.getTime() < tenantTimeout * 1000) continue;
+    }
     const call = Call.rehydrate(snapshot);
     const markResult = call.markMissed(now);
     if (!markResult.isSuccess) continue;

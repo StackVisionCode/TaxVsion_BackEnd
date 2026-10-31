@@ -13,10 +13,8 @@ public enum FileStatus
     // Content moderation (no antivirus): IContentScanner.Verdict == PolicyViolation.
     BlockedByPolicy,
 
-    // Content moderation: IContentScanner.Verdict == Uncertain — requiere revision
-    // humana antes de decidir Available vs BlockedByPolicy. Sin flujo de reviewer
-    // en este MVP (NoOpContentScanner nunca devuelve Uncertain); el estado existe
-    // para que un scanner real no necesite una migracion nueva al enchufarse.
+    // Content moderation: IContentScanner.Verdict == Uncertain — espera revision humana
+    // (storage/admin/content-review) que decide Available vs BlockedByPolicy.
     PendingReview,
 }
 
@@ -102,6 +100,10 @@ public enum FolderType
 
     // Adjuntos exclusivos del producto Client Forms.
     ClientForms = 17,
+
+    // Pistas de audio crudas de la grabación server-side (CommunicationRecorder, F7). Solo las sube el
+    // recorder y las lee el transcript worker: oculta de listados y papelera, reservada a servicios.
+    RecordingTracks = 18,
 }
 
 public static class FolderTypeRules
@@ -122,6 +124,7 @@ public static class FolderTypeRules
             FolderType.EmailIncoming => "email-incoming",
             FolderType.EmailOutgoing => "email-outgoing",
             FolderType.ClientForms => "client-forms",
+            FolderType.RecordingTracks => "recording-tracks",
             _ => type.ToString().ToLowerInvariant(),
         };
 

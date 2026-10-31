@@ -10,6 +10,8 @@ import {
 import type { MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
 import { removeFromMeetingConversation } from './ensure-meeting-conversation.js';
+import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
+import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 
 export interface LeaveMeetingCommand {
   readonly tenantId: string;
@@ -20,15 +22,30 @@ export interface LeaveMeetingCommand {
 
 export async function leaveMeeting(
   cmd: LeaveMeetingCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
+  deps: MeetingEventLogDeps & {
+    meetings: MeetingRepository;
+    publisher: IntegrationEventPublisher;
+    conversations: ConversationRepository;
+  },
 ): Promise<Result<{ leftAtUtc: string; conversationId: string | null; participant: MeetingParticipantDto }>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
   const now = new Date();
+  const wasJoined = meeting.isJoinedParticipant(cmd.userId);
   const result = meeting.leave({ userId: cmd.userId, now });
   if (!result.isSuccess) return Result.fail(result.error);
   await deps.meetings.save(meeting);
+  if (wasJoined) {
+    await recordMeetingEvent(deps, {
+      tenantId: cmd.tenantId,
+      meetingId: cmd.meetingId,
+      type: MeetingEventType.ParticipantLeft,
+      actorUserId: cmd.userId,
+      correlationId: cmd.correlationId,
+      at: now,
+    });
+  }
 
   // Best-effort, igual que en join-meeting.ts — un fallo aca no debe impedir
   // que el usuario salga del meeting. El caller usa `conversationId` solo
@@ -58,6 +75,7 @@ export async function leaveMeeting(
         videoEnabled: false,
         screenSharing: false,
         handRaised: false,
+        handRaisedAtUtc: null,
       };
 
   if (participant?.joinedAtUtc && participant?.leftAtUtc) {

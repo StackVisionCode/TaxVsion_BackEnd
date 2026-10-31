@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { FakeEffectiveSettingsResolver } from '../helpers/fake-effective-settings.js';
+import type { SfuService } from '../../src/application/ports/sfu-service.js';
+import type { PresenceService } from '../../src/application/ports/presence-service.js';
+import type { RecordingSessionRepository } from '../../src/application/ports/recording-repository.js';
+import type { IdempotencyStore } from '../../src/application/ports/idempotency-store.js';
 import { Meeting } from '../../src/domain/meetings/meeting.js';
 import type { MeetingRepository } from '../../src/application/ports/meeting-repository.js';
 import { MeetingInvitation } from '../../src/domain/meetings/meeting-invitation.js';
@@ -25,6 +30,13 @@ import { joinMeeting } from '../../src/application/use-cases/join-meeting.js';
 
 function u(): string {
   return randomUUID();
+}
+
+/** F6 (D-47): External va a `/meet/{token}` (CRM); Customer sigue con `?token=` (portal). */
+function tokenFromJoinUrl(joinUrl: string): string {
+  const url = new URL(joinUrl);
+  const guest = url.pathname.match(/\/meet\/([^/]+)$/);
+  return guest ? decodeURIComponent(guest[1]!) : url.searchParams.get('token')!;
 }
 
 class FakeMeetingRepository implements MeetingRepository {
@@ -72,6 +84,15 @@ class FakeMeetingRepository implements MeetingRepository {
       return s.tenantId === tenantId && s.meetingId === meetingId;
     });
   }
+  async listLive(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledForReminder(): Promise<Meeting[]> {
+    return [];
+  }
+  async listScheduledBefore(): Promise<Meeting[]> {
+    return [];
+  }
   async listUpcomingForUser(): Promise<MeetingSnapshot[]> {
     return [];
   }
@@ -115,6 +136,9 @@ class FakeConversationRepository implements ConversationRepository {
   }
   async listForUser(): Promise<[]> {
     return [];
+  }
+  async countUnreadByKind(): Promise<{ Direct: number; Group: number; Support: number; Meeting: number }> {
+    return { Direct: 0, Group: 0, Support: 0, Meeting: 0 };
   }
   async countForUser(): Promise<number> {
     return 0;
@@ -188,7 +212,28 @@ function buildHarness() {
   const customerPortalAccounts = new FakeCustomerPortalAccounts();
   const emitter = new FakeEmitter();
   const tenantHostResolver = new FakeTenantHostResolver('manfer.taxproffice.com');
-  return { meetings, publisher, passcodes, conversations, turn, customerPortalAccounts, emitter, tenantHostResolver };
+  const effectiveSettings = new FakeEffectiveSettingsResolver();
+  // El fin de reunión pasa por el cierre ordenado: SFU, presencia y grabación como dobles mínimos.
+  const sfu = { closeMeeting: async () => undefined, closeParticipant: async () => undefined, listProducersForUser: () => [] } as unknown as SfuService;
+  const presence = { clearBusy: async () => undefined, markBusy: async () => undefined } as unknown as PresenceService;
+  const recordingSessions = { findByScope: async () => null } as unknown as RecordingSessionRepository;
+  const idempotency = {} as IdempotencyStore;
+  return {
+    meetings,
+    publisher,
+    passcodes,
+    conversations,
+    turn,
+    customerPortalAccounts,
+    emitter,
+    tenantHostResolver,
+    effectiveSettings,
+    sfu,
+    presence,
+    recordingSessions,
+    idempotency,
+    maxInvitationsPerMeeting: 3,
+  };
 }
 
 function liveMeeting() {
@@ -220,10 +265,37 @@ describe('createMeetingInvitations', () => {
     if (!result.isSuccess) return;
     expect(result.value.invitations).toHaveLength(1);
     // Link al SUBDOMINIO del tenant (no app./client.taxproffice.com) → portal del cliente para External.
-    expect(result.value.invitations[0]?.joinUrl).toContain('https://manfer.taxproffice.com/portal/client/meetings/accept/');
-    expect(result.value.invitations[0]?.joinUrl).toContain('?token=');
+    // F6 (D-47): el externo entra por la pagina publica de guest del CRM, en la raiz del subdominio.
+    expect(result.value.invitations[0]?.joinUrl).toContain('https://manfer.taxproffice.com/meet/');
     expect(harness.publisher.events).toHaveLength(1);
     expect(harness.publisher.events[0]?.eventType).toBe('communication.meeting.invitation_created.v1');
+  });
+
+  it('F11 (E-259): no pasa del tope de invitaciones por reunión', async () => {
+    const harness = buildHarness(); // tope 3 en el arnés
+    const { meeting, host } = liveMeeting();
+    await harness.meetings.save(meeting);
+    const invite = (emails: string[]) =>
+      createMeetingInvitations(
+        { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, actorUserId: host.userId, invitees: emails.map((email) => ({ kind: 'External' as const, email })) },
+        harness,
+      );
+    expect((await invite(['a@x.com', 'b@x.com'])).isSuccess).toBe(true);
+    const over = await invite(['c@x.com', 'd@x.com']);
+    expect(over.isSuccess ? 'ok' : over.error.code).toBe('Meeting.Invitation.LimitReached');
+    expect((await harness.meetings.listInvitationsByMeeting(meeting.tenantId, meeting.id)).length).toBe(2);
+  });
+
+  it('F11 (E-259): sin invitados externos permitidos no se crea su enlace', async () => {
+    const harness = { ...buildHarness(), effectiveSettings: new FakeEffectiveSettingsResolver({ guestsAllowed: false }) };
+    const { meeting, host } = liveMeeting();
+    await harness.meetings.save(meeting);
+    const result = await createMeetingInvitations(
+      { tenantId: meeting.tenantId, correlationId: u(), meetingId: meeting.id, actorUserId: host.userId, invitees: [{ kind: 'External', email: 'x@x.com' }] },
+      harness,
+    );
+    expect(result.isSuccess ? 'ok' : result.error.code).toBe('Meeting.GuestsNotAllowed');
+    expect(harness.publisher.events).toHaveLength(0);
   });
 
   it('rejects when actor is not host/cohost', async () => {
@@ -270,7 +342,7 @@ describe('createMeetingInvitations', () => {
     const invited = harness.emitter.toUser.filter((e) => e.event === 'meeting.invited');
     expect(invited).toHaveLength(1);
     expect(invited[0]?.userId).toBe(employeeId);
-    expect(invited[0]?.payload).toEqual({ meetingId: meeting.id });
+    expect(invited[0]?.payload).toMatchObject({ meetingId: meeting.id, status: 'Live', invitedByUserId: host.userId });
   });
 
   it('a customer invitee is resolved (customerId → portal userId) and notified', async () => {
@@ -400,8 +472,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     );
     if (!created.isSuccess) throw new Error();
     const joinUrl = created.value.invitations[0]!.joinUrl;
-    const token = new URL(joinUrl).searchParams.get('token')!;
-    return token;
+    return tokenFromJoinUrl(joinUrl);
   }
 
   it('resolves a valid token to a short-lived join ticket and lets the guest join the waiting room', async () => {
@@ -425,7 +496,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     expect(invitations.isSuccess).toBe(true);
     if (invitations.isSuccess) expect(invitations.value.invitations[0]?.usedAt).toBeNull();
 
-    const guestUserId = `guest:${resolved.value.invitationId}`;
+    const guestUserId = resolved.value.invitationId;
     const joinResult = await joinMeeting(
       {
         tenantId: meeting.tenantId,
@@ -451,7 +522,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     if (afterJoin.isSuccess) expect(afterJoin.value.invitations[0]?.usedAt).not.toBeNull();
   });
 
-  it('a second join attempt with the same invitationId fails (already used)', async () => {
+  it('the same guest re-joins with its link while inside or after Leave (D-48 + F11), but not once the host removed it', async () => {
     const harness = buildHarness();
     const { meeting, host } = liveMeeting();
     await harness.meetings.save(meeting);
@@ -459,7 +530,7 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
     const resolved = await resolveInvitationToken({ token }, harness);
     if (!resolved.isSuccess) throw new Error();
 
-    const guestUserId = `guest:${resolved.value.invitationId}`;
+    const guestUserId = resolved.value.invitationId;
     const first = await joinMeeting(
       {
         tenantId: meeting.tenantId,
@@ -482,8 +553,44 @@ describe('resolveInvitationToken + guest join-meeting flow', () => {
       },
       harness,
     );
-    expect(second.isSuccess).toBe(false);
-    if (!second.isSuccess) expect(second.error.code).toBe('Meeting.Invitation.AlreadyUsed');
+    // Sigue en la sala de espera: es un re-join (recarga), no un segundo uso.
+    expect(second.isSuccess).toBe(true);
+
+    const saved = await harness.meetings.findById(meeting.tenantId, meeting.id);
+    saved!.admit({ hostUserId: host.userId, targetUserId: guestUserId });
+    saved!.leave({ userId: guestUserId });
+    await harness.meetings.save(saved!);
+    const third = await joinMeeting(
+      {
+        tenantId: meeting.tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
+        guestInvitationId: resolved.value.invitationId,
+      },
+      harness,
+    );
+    // F11: salió con Leave y vuelve con su mismo enlace (botón "Rejoin" o recarga).
+    expect(third.isSuccess).toBe(true);
+
+    const again = await harness.meetings.findById(meeting.tenantId, meeting.id);
+    again!.admit({ hostUserId: host.userId, targetUserId: guestUserId });
+    again!.removeParticipant({ hostUserId: host.userId, targetUserId: guestUserId });
+    await harness.meetings.save(again!);
+    const fourth = await joinMeeting(
+      {
+        tenantId: meeting.tenantId,
+        correlationId: u(),
+        meetingId: meeting.id,
+        user: { userId: guestUserId, displayName: 'Invitado', actorType: 'Guest' },
+        guestInvitationId: resolved.value.invitationId,
+      },
+      harness,
+    );
+    expect(fourth.isSuccess).toBe(false);
+    if (!fourth.isSuccess) expect(fourth.error.code).toBe('Meeting.Invitation.AlreadyUsed');
+    const relink = await resolveInvitationToken({ token }, harness);
+    expect(relink.isSuccess).toBe(false);
   });
 
   it('a revoked invitation is rejected with the same generic error as not-found (anti-enumeration)', async () => {
@@ -547,7 +654,7 @@ describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado
     if (!created.isSuccess) throw new Error();
     const joinUrl = created.value.invitations[0]!.joinUrl;
     return {
-      token: new URL(joinUrl).searchParams.get('token')!,
+      token: tokenFromJoinUrl(joinUrl),
       invitationId: created.value.invitations[0]!.id,
     };
   }
@@ -672,7 +779,7 @@ describe('joinMeeting — la invitacion solo sirve para su meeting y su invitado
         tenantId,
         correlationId: u(),
         meetingId: second.meeting.id,
-        user: { userId: `guest:${resolved.value.invitationId}`, displayName: 'Invitado', actorType: 'Guest' },
+        user: { userId: resolved.value.invitationId, displayName: 'Invitado', actorType: 'Guest' },
         guestInvitationId: resolved.value.invitationId,
       },
       harness,

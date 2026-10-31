@@ -45,6 +45,10 @@ public sealed class Customer : TenantEntity
     /// <summary>Foto subida que espera el resultado del escaneo; no se muestra hasta confirmarse.</summary>
     public Guid? PendingProfilePictureFileId { get; private set; }
     public DateTime? PendingProfilePictureRequestedAtUtc { get; private set; }
+
+    /// <summary>Moderación de contenido (T-20) de la última foto subida: en revisión o bloqueada.</summary>
+    public Guid? ProfilePictureModerationFileId { get; private set; }
+    public ProfilePictureModerationState? ProfilePictureModerationState { get; private set; }
     public Guid? OccupationId { get; private set; }
     public Guid? AssignedPreparerUserId { get; private set; }
     public CustomerFiscalProfile? FiscalProfile { get; private set; }
@@ -201,8 +205,34 @@ public sealed class Customer : TenantEntity
 
         PendingProfilePictureFileId = fileId;
         PendingProfilePictureRequestedAtUtc = nowUtc;
+        ClearProfilePictureModeration();
         Touch(byUserId);
         return Result.Success();
+    }
+
+    public bool IsPendingProfilePictureUnderReview =>
+        PendingProfilePictureFileId is { } pending
+        && ProfilePictureModerationFileId == pending
+        && ProfilePictureModerationState == Customers.ProfilePictureModerationState.UnderReview;
+
+    /// <summary>La moderación dejó la pendiente en revisión humana; true si era esa foto.</summary>
+    public bool HoldPendingProfilePictureForReview(Guid fileId)
+    {
+        if (PendingProfilePictureFileId != fileId)
+            return false;
+        ProfilePictureModerationFileId = fileId;
+        ProfilePictureModerationState = Customers.ProfilePictureModerationState.UnderReview;
+        return true;
+    }
+
+    /// <summary>La foto pendiente viola la política de contenido: se descarta y queda constancia.</summary>
+    public bool RejectPendingProfilePictureForPolicy(Guid fileId)
+    {
+        if (!DiscardPendingProfilePicture(fileId))
+            return false;
+        ProfilePictureModerationFileId = fileId;
+        ProfilePictureModerationState = Customers.ProfilePictureModerationState.Blocked;
+        return true;
     }
 
     /// <summary>
@@ -217,6 +247,7 @@ public sealed class Customer : TenantEntity
         var previous = ProfilePictureFileId;
         ProfilePictureFileId = fileId;
         ClearPendingProfilePicture();
+        ClearProfilePictureModeration();
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success(previous);
     }
@@ -231,8 +262,11 @@ public sealed class Customer : TenantEntity
         return true;
     }
 
+    /// <summary>En revisión de contenido no vence: espera al revisor.</summary>
     public bool IsPendingProfilePictureExpired(DateTime nowUtc) =>
-        PendingProfilePictureRequestedAtUtc is { } requestedAt && nowUtc - requestedAt >= PendingProfilePictureTimeout;
+        !IsPendingProfilePictureUnderReview
+        && PendingProfilePictureRequestedAtUtc is { } requestedAt
+        && nowUtc - requestedAt >= PendingProfilePictureTimeout;
 
     /// <summary>Quita la foto vigente y cualquier pendiente. Devuelve la vigente que había (null si no había).</summary>
     public Result<Guid?> RemoveProfilePicture(Guid byUserId)
@@ -246,6 +280,7 @@ public sealed class Customer : TenantEntity
 
         ProfilePictureFileId = null;
         ClearPendingProfilePicture();
+        ClearProfilePictureModeration();
         Touch(byUserId);
         return Result.Success(removed);
     }
@@ -254,6 +289,12 @@ public sealed class Customer : TenantEntity
     {
         PendingProfilePictureFileId = null;
         PendingProfilePictureRequestedAtUtc = null;
+    }
+
+    private void ClearProfilePictureModeration()
+    {
+        ProfilePictureModerationFileId = null;
+        ProfilePictureModerationState = null;
     }
 
     // ============== Identidad (nombre / negocio / DOB) ==============

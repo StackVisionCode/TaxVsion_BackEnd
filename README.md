@@ -1296,10 +1296,22 @@ todo lo necesario para un despliegue de produccion real detras de un solo host:
   Prometheus/Grafana.
 - `caddy` (`caddy:2-alpine`): unico servicio que publica 80/443 al host; ver mas abajo.
 - `minio-provision` (`minio/mc:latest`, perfil `tools`, un solo uso): aprovisiona cuentas de
-  servicio MinIO con alcance minimo (`signature-worker`, `notification-worker`,
-  `communication-transcript-worker`) y sus policies IAM (`deploy/docker/minio/policies/*.json`)
+  servicio MinIO con alcance minimo (`signature-worker`, `communication-transcript-worker`,
+  `customer-worker`, `correspondence-worker`, `scribe-worker`, `tenant-worker`, `documents-worker`,
+  `auth-worker` y `communication-recorder`) y sus policies IAM (`deploy/docker/minio/policies/*.json`)
   para que cada servicio de la Fase D (sec 27.2) suba directo a su propio prefijo temporal, sin
   usar `MINIO_ROOT_USER`/`PASSWORD`. Idempotente: se puede correr en cada deploy.
+  `communication-recorder` (F7, secreto `RECORDER_MINIO_SECRET` en `production-extra`) es la unica
+  con permisos de multipart ademas de `PutObject`: sube compuestos de cientos de MB a
+  `taxvision-temp/recording/*`.
+- `communication-recorder` (F7): grabacion server-side. Recibe el RTP de los PlainTransport de
+  mediasoup por la red interna (rango 44000-44999, sin `ports:`), compone con ffmpeg y sube
+  compuesto (`Recordings`) y pistas de audio (`RecordingTracks`) por MinIO temp + `SaveFileRequested`.
+  Volumen `recorder-spool` para pistas y composiciones en curso; `mem_limit` 1536m.
+- `clamav`: el entrypoint reescribe `StreamMaxLength`/`MaxFileSize`/`MaxScanSize` de
+  `/etc/clamav/clamd.conf` (variables `CLAMD_*`, default `2100M`) antes de `exec /init`. Con los
+  100M por defecto una grabacion de mas de ~100 MB fallaba con `scan_error`; por lo mismo
+  `cloudstorage-api` lleva `ClamAv__TimeoutSeconds: "600"` (tope del clamp).
 - `signature-api`, `communication-api`, `communication-transcript-worker`: los tres
   microservicios mas recientes tambien estan dockerizados en este compose (Dockerfiles propios
   bajo cada `src/Services/<Nombre>/`).
@@ -3244,7 +3256,8 @@ Reinstated`:
 
 `CloudStorageOptions.FolderTypePolicies` define, por `FolderType`, un whitelist/blacklist de
 extensiones y MIME mas un tope de tamano (p. ej. `Avatars` 5 MB solo jpg/png/webp; `Recordings`
-500 MB solo webm/mp4; `Transcripts` 5 MB solo txt/text-plain). Una blacklist global
+500 MB solo webm/mp4; `RecordingTracks` solo webm audio/video; `Transcripts` 5 MB txt/text-plain y
+json/application-json). Una blacklist global
 `DangerousExtensions` (ejecutables, imagenes de disco, formatos asociados a pirateria, `.torrent`)
 se resta siempre. La politica efectiva de una subida es la interseccion de la politica del
 `FolderType` con la del plan del tenant, menos la blacklist global; un rechazo por tamano devuelve
@@ -3266,7 +3279,15 @@ whisper.cpp) es un folder aparte de `Recordings` a proposito: `RecordingsPolicy`
 webm/mp4, asi que un transcript etiquetado como `Recordings` era rechazado siempre por whitelist
 (`SaveFileRequested ... rejected by upload policy`), sin importar el tamano — no era una falla
 transitoria, el pipeline de transcripts nunca pudo registrar un archivo en CloudStorage hasta este
-fix.
+fix. Desde F7 acepta tambien el `.json` v2 (segmentos con hablante); el inspector lo clasifica como
+`application/json` por extension + `{`/`[` inicial.
+
+`FolderType.RecordingTracks` (F7) guarda las pistas de audio crudas que sube CommunicationRecorder
+(una por participante, `Track_{userId}_{trackId}.webm`). Igual que `Avatars`: reservada a servicios
+(`File.FolderReserved` para humanos), fuera del listado plano y de la papelera, sin restaurar y sin
+espejo a proveedores externos. Sus tipos no se intersectan con el plan (como `Recordings`); el tope
+lo fija la fila Global de `UploadSizePolicies` (2 GB, migracion
+`SeedRecordingTracksUploadSizePolicy`) y, sin fila, hereda el override de `Recordings` del plan.
 
 ## 27.13 Pendientes reales de CloudStorage
 

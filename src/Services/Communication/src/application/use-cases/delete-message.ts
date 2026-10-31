@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
+import { isGroupAdminRole } from '../../domain/conversations/conversation-participant.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
@@ -21,8 +23,21 @@ export interface DeleteMessageResult {
 
 export interface DeleteMessageDeps {
   readonly messages: MessageRepository;
+  /** F8b (D-22): Owner/Admin borran mensajes ajenos dentro de su grupo. */
+  readonly conversations?: Pick<ConversationRepository, 'findById'> | undefined;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
+}
+
+async function isGroupModerator(
+  deps: DeleteMessageDeps,
+  tenantId: string,
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!deps.conversations) return false;
+  const conversation = await deps.conversations.findById(tenantId, conversationId, 0);
+  return conversation?.kind === 'Group' && isGroupAdminRole(conversation.roleOf(userId));
 }
 
 export async function deleteMessage(
@@ -51,7 +66,8 @@ export async function deleteMessage(
   }
 
   const now = new Date();
-  const deleteResult = message.softDelete(command.actorUserId, command.actorCanModerate, now);
+  const canModerate = command.actorCanModerate || (await isGroupModerator(deps, command.tenantId, message.toSnapshot().conversationId, command.actorUserId));
+  const deleteResult = message.softDelete(command.actorUserId, canModerate, now);
   if (!deleteResult.isSuccess) {
     await deps.idempotency.release({
       tenantId: command.tenantId,

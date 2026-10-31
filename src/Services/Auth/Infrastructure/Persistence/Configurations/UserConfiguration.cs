@@ -36,6 +36,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.AvatarFileId);
         builder.Property(user => user.PendingAvatarFileId);
         builder.Property(user => user.PendingAvatarRequestedAtUtc);
+        builder.Property(user => user.AvatarModerationFileId);
+        builder.Property(user => user.AvatarModerationState).HasConversion<string>().HasMaxLength(16);
         // El mantenimiento barre las fotos pendientes vencidas de todas las oficinas.
         builder
             .HasIndex(user => user.PendingAvatarRequestedAtUtc)

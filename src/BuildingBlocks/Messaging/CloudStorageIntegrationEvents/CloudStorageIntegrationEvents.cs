@@ -70,6 +70,12 @@ public sealed record FilePendingReviewIntegrationEvent : IntegrationEvent
     public required Guid FileId { get; init; }
     public required string ObjectKey { get; init; }
     public required string Reason { get; init; }
+
+    // Aditivos (T-20): quién subió y dónde, para avisarle al dueño sin consultar CloudStorage.
+    public Guid? CreatedBy { get; init; }
+    public string? OwnerType { get; init; }
+    public Guid? OwnerId { get; init; }
+    public string? FolderType { get; init; }
 }
 
 public sealed record FileDeletedIntegrationEvent : IntegrationEvent

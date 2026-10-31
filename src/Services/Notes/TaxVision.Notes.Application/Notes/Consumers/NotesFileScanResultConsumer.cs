@@ -55,6 +55,30 @@ public static class NotesFileScanResultConsumer
         }
     }
 
+    // T-20: en revisión de contenido. Si el revisor aprueba llega FileAvailable; si rechaza, FileBlockedByPolicy.
+    public static async Task Handle(
+        FilePendingReviewIntegrationEvent evt,
+        INoteRepository notes,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<Note> logger,
+        CancellationToken ct
+    )
+    {
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
+        {
+            var note = await LoadOwningNoteOrNullAsync(evt.TenantId, evt.FileId, notes, logger, ct);
+            if (note is null || note.MarkAttachmentUnderReview(evt.FileId).IsFailure)
+                return;
+
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+    }
+
     public static async Task Handle(
         FileInfectedDetectedIntegrationEvent evt,
         INoteRepository notes,

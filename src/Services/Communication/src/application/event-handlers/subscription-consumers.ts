@@ -29,6 +29,8 @@ export function bindSubscriptionConsumers(
     limits: LimitsRepository;
     planCodeCache?: { invalidate(tenantId: string): void };
     modulesCache?: { invalidate(tenantId: string): void };
+    /** Los valores efectivos de la oficina dependen del plan: se recomputan tras cada cambio. */
+    effectiveSettings?: { invalidateTenant(tenantId: string): Promise<void> };
     /** Opcional: sin emisor la proyeccion se actualiza igual, solo no se avisa en vivo. */
     emitter?: RealtimeEmitter;
   },
@@ -105,18 +107,27 @@ function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimits
   const entitlementValues = getEntitlementValues(env.payload);
   const subscriptionStatus = getString(env.payload, 'subscriptionStatus', 'SubscriptionStatus');
 
+  // Clave ausente → null: rige el valor global (PlatformCommunicationSettings), no un default de código.
+  const num = (key: string): number | null => getEntitlementNumber(entitlementValues, key) ?? null;
+  const bool = (key: string): boolean | null => getEntitlementBool(entitlementValues, key) ?? null;
   return {
     tenantId: env.tenantId,
     planCode,
-    maxMeetingParticipants:
-      getEntitlementNumber(entitlementValues, 'communication.max_participants_per_meeting') ?? 4,
-    maxMeetingMinutes: getEntitlementNumber(entitlementValues, 'communication.max_meeting_minutes') ?? 60,
-    maxConcurrentCalls: getEntitlementNumber(entitlementValues, 'communication.max_concurrent_calls') ?? 2,
-    maxMonthlyMinutes: getEntitlementNumber(entitlementValues, 'communication.max_monthly_minutes') ?? 600,
-    recordingEnabled: getEntitlementBool(entitlementValues, 'communication.recording_enabled') ?? false,
-    supportEnabled: getEntitlementBool(entitlementValues, 'communication.support_chat_enabled') ?? true,
+    maxMeetingParticipants: num('communication.max_participants_per_meeting'),
+    maxMeetingMinutes: num('communication.max_meeting_minutes'),
+    maxConcurrentCalls: num('communication.max_concurrent_calls'),
+    maxMonthlyMinutes: num('communication.max_monthly_minutes'),
+    recordingEnabled: bool('communication.recording_enabled'),
+    supportEnabled: bool('communication.support_chat_enabled') ?? true,
     isSuspended: subscriptionStatus === 'Suspended',
     enabledModules: extractEnabledModules(entitlementValues),
+    maxRecordingMinutesMeeting: num('communication.max_recording_minutes.meeting'),
+    maxRecordingMinutesAudioCall: num('communication.max_recording_minutes.audio_call'),
+    maxRecordingMinutesVideoCall: num('communication.max_recording_minutes.video_call'),
+    recordingVideoEnabled: bool('communication.recording_video_enabled'),
+    transcriptEnabled: bool('communication.transcript_enabled'),
+    callsEnabled: bool('communication.calls_enabled'),
+    maxCallMinutes: num('communication.max_call_minutes'),
     updatedAtUtc: new Date(),
   };
 }

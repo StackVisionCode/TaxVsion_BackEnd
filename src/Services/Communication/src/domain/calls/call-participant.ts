@@ -27,6 +27,8 @@ export interface CallParticipantSnapshot {
    */
   readonly screenShareStartedAtUtc: Date | null;
   readonly connectionQuality: ConnectionQuality;
+  /** D-58: cliente detras del usuario del portal (null para staff). */
+  readonly customerId: string | null;
 }
 
 export class CallParticipant {
@@ -45,6 +47,7 @@ export class CallParticipant {
     joinOrder: number;
     audioDefault: boolean;
     videoDefault: boolean;
+    customerId?: string | null;
     now: Date;
   }): CallParticipant {
     return new CallParticipant({
@@ -62,6 +65,7 @@ export class CallParticipant {
       screenSharing: false,
       screenShareStartedAtUtc: null,
       connectionQuality: 'Unknown',
+      customerId: input.customerId ?? null,
     });
   }
 

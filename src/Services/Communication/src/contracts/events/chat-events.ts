@@ -17,7 +17,22 @@ export const ChatEventTypes = {
   MessageSent:                  'communication.chat.message_sent.v1',
   MessageEdited:                'communication.chat.message_edited.v1',
   MessageDeleted:               'communication.chat.message_deleted.v1',
+  // F7 (D-27): transcript de notas de voz por el worker (salida en linea, sin archivo).
+  VoiceNoteTranscriptionRequested: 'communication.chat.voice_note_transcription_requested.v1',
+  VoiceNoteTranscriptReady:     'communication.chat.voice_note_transcript_ready.v1',
+  VoiceNoteTranscriptFailed:    'communication.chat.voice_note_transcript_failed.v1',
 } as const;
+
+/** F7 (D-27): pedido al worker; `fileId` es la nota de voz en CloudStorage (VoiceNotes). */
+export interface VoiceNoteTranscriptionRequestedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.chat.voice_note_transcription_requested.v1';
+  readonly messageId: string;
+  readonly conversationId: string;
+  readonly fileId: string;
+  readonly durationMs: number;
+  readonly language: string;
+  readonly prompt: string | null;
+}
 
 export interface ConversationStartedEvent extends IntegrationEvent {
   readonly eventType: 'communication.chat.conversation_started.v1';

@@ -37,6 +37,12 @@ public interface IEmailDispatchGateway
 /// <c>InProcessEmailDispatchGateway</c> las ignora — el path directo por SMTP nunca tuvo soporte de
 /// logos inline y no es parte de esta fase.
 /// </param>
+/// <param name="InlineAttachments">
+/// Adjuntos pequeños generados en memoria (el <c>.ics</c> de una reunión, F6), distintos de
+/// <c>AttachmentFileIds</c> (CloudStorage). <c>EventBasedEmailDispatchGateway</c> los propaga al
+/// evento hacia Postmaster con tope total de 256 KB; <c>InProcessEmailDispatchGateway</c> los ignora,
+/// como a los logos inline.
+/// </param>
 public sealed record EmailDispatchRequest(
     Guid TenantId,
     string To,
@@ -56,7 +62,8 @@ public sealed record EmailDispatchRequest(
     Guid? ReplyToThreadId = null,
     IReadOnlyList<Guid>? AttachmentFileIds = null,
     IReadOnlyList<EmailInlineAssetReference>? InlineAssets = null,
-    bool Confidential = false
+    bool Confidential = false,
+    IReadOnlyList<EmailInlineAttachment>? InlineAttachments = null
 );
 
 public sealed record EmailDispatchResult(

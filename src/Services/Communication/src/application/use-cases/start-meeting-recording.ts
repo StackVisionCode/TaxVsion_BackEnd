@@ -12,11 +12,8 @@ import type { SettingsRepository } from '../ports/settings-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import { MeetingEventTypes, type MeetingRecordingStartedEvent } from '../../contracts/events/meeting-events.js';
-import {
-  MeetingSocketEvents,
-  type MeetingRecordingStateChangedDto,
-} from '../../contracts/socket/meeting-socket-events.js';
 import type { RecordingConsentSnapshotEntry } from '../../contracts/events/integration-event.js';
+import { beginServerCapture, emitRecordingState, lifecycleFrom, resolveRecordingStart, type RecordingLifecycleOptionalDeps } from './recording-lifecycle.js';
 
 /**
  * NO se dispara directamente desde un evento de socket — solo desde
@@ -37,7 +34,7 @@ export interface StartMeetingRecordingCommand {
   readonly actorUserId: string;
 }
 
-export interface StartMeetingRecordingDeps {
+export interface StartMeetingRecordingDeps extends RecordingLifecycleOptionalDeps {
   readonly meetings: MeetingRepository;
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
@@ -95,7 +92,16 @@ export async function startMeetingRecording(
     return Result.fail(makeError('RecordingSession.ConsentPolicyNotSatisfied', 'Consent policy does not allow starting yet.'));
   }
 
-  const startResult = meeting.startRecording({ actorUserId: command.actorUserId, session, policyAllows: true });
+  // F7: modo de captura (C-03) y limite efectivo (T-35) segun la oficina.
+  const start = deps.effectiveSettings
+    ? await resolveRecordingStart({ effectiveSettings: deps.effectiveSettings }, { tenantId: command.tenantId, scope: RecordingScope.Meeting })
+    : null;
+  const startResult = meeting.startRecording({
+    actorUserId: command.actorUserId,
+    session,
+    policyAllows: true,
+    ...(start ? { captureMode: start.captureMode, maxDurationSeconds: start.maxDurationSeconds } : {}),
+  });
   if (!startResult.isSuccess) return Result.fail(startResult.error);
   await deps.recordingSessions.save(startResult.value);
 
@@ -115,18 +121,9 @@ export async function startMeetingRecording(
   };
   await deps.publisher.enqueue(event);
 
-  const dto: MeetingRecordingStateChangedDto = { meetingId: command.meetingId, state: 'Recording', updatedAtUtc: startedAtUtc };
-  deps.emitter.emitToMeeting({
-    tenantId: command.tenantId,
-    meetingId: command.meetingId,
-    event: MeetingSocketEvents.RecordingStateChanged,
-    envelope: {
-      eventId: randomUUID(),
-      correlationId: command.correlationId,
-      emittedAtUtc: new Date().toISOString(),
-      payload: dto,
-    },
-  });
+  emitRecordingState(deps, startResult.value, command.correlationId);
+  const lifecycle = lifecycleFrom(deps);
+  if (lifecycle) await beginServerCapture(startResult.value, lifecycle, command.correlationId);
 
   return Result.ok({ startedAtUtc });
 }

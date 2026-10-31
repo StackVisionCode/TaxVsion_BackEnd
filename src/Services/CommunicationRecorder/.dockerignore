@@ -1,0 +1,8 @@
+# El contexto de build es esta carpeta; el Dockerfile solo copia package*.json, tsconfig y src/.
+node_modules/
+dist/
+tests/
+coverage/
+.spool/
+*.log
+.env

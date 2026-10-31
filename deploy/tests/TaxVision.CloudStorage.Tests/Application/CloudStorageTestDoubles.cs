@@ -54,7 +54,11 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 .Values.Where(file =>
                     file.TenantId == tenantId
                     && file.Status != FileStatus.SoftDeleted
-                    && (folderType == null ? file.FolderType != FolderType.Avatars : file.FolderType == folderType)
+                    && (
+                        folderType == null
+                            ? file.FolderType != FolderType.Avatars && file.FolderType != FolderType.RecordingTracks
+                            : file.FolderType == folderType
+                    )
                     && (
                         restrictedCustomerId == null
                         || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
@@ -162,6 +166,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                     && file.Status == FileStatus.SoftDeleted
                     && file.DeletedBatchId == null
                     && file.FolderType != FolderType.Avatars
+                    && file.FolderType != FolderType.RecordingTracks
                 )
                 .ToList()
         );
@@ -855,6 +860,29 @@ internal sealed class FakeMultipartUploadStorage : IMultipartUploadStorage
 internal sealed class FakeSystemClock(DateTime utcNow) : ISystemClock
 {
     public DateTime UtcNow { get; } = utcNow;
+}
+
+/// <summary>Resolver sin filas en BD: devuelve exactamente lo que daba CloudStorageOptions (fallback técnico de D-33).</summary>
+internal sealed class FakeUploadPolicyResolver(
+    TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions? options = null
+) : TaxVision.CloudStorage.Application.Quotas.IUploadPolicyResolver
+{
+    private readonly TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions _options =
+        options ?? new TaxVision.CloudStorage.Application.Configuration.CloudStorageOptions();
+
+    /// <summary>Simula una fila administrada: reemplaza solo el tamaño, nunca los tipos.</summary>
+    public long? MaxFileSizeOverride { get; set; }
+
+    public Task<TaxVision.CloudStorage.Application.Configuration.EffectiveUploadPolicy> ResolveAsync(
+        Guid tenantId,
+        string planCode,
+        FolderType folderType,
+        CancellationToken ct
+    )
+    {
+        var policy = _options.ResolveUploadPolicy(planCode, folderType);
+        return Task.FromResult(MaxFileSizeOverride is { } bytes ? policy with { MaxFileSizeBytes = bytes } : policy);
+    }
 }
 
 internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork

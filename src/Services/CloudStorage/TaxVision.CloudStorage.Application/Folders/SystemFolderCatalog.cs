@@ -8,7 +8,7 @@ public readonly record struct SystemFolderSpec(string Name, string Category);
 /// <summary>
 /// Mapea cada <see cref="FolderType"/> DE CARA AL USUARIO a la carpeta navegable
 /// canonica donde deben aterrizar sus archivos. Los FolderType internos (Branding,
-/// Avatars, Templates, Backups, Recordings, Transcripts, Imports, Other) NO estan en
+/// Avatars, Templates, Backups, Recordings, RecordingTracks, Transcripts, Imports, Other) NO estan en
 /// el mapa: sus archivos se quedan en la raiz y el explorer los oculta por tipo — es
 /// una clasificacion en codigo, no un flag por fila.
 ///

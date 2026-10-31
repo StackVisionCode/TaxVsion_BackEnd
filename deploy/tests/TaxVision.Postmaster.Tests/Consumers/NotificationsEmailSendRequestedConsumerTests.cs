@@ -1033,4 +1033,107 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         // El id del relay queda para correlacionar sus avisos cuando no traen nuestro Message-ID.
         Assert.Equal("relay-42", accepted.ProviderMessageId);
     }
+
+    // ---------- F6: adjuntos en memoria (el .ics de una reunión) ----------
+
+    /// <summary>Sin AttachmentFileIds el .ics igual llega al sender: antes ese camino devolvía [] y cortaba.</summary>
+    [Fact]
+    public async Task Handle_sends_inline_attachments_decoded_from_base64()
+    {
+        var ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n"u8.ToArray();
+        var evt = CreateEvent() with
+        {
+            InlineAttachments =
+            [
+                new EmailInlineAttachment("invite.ics", "text/calendar; method=REQUEST", Convert.ToBase64String(ics)),
+            ],
+        };
+        var emailSender = new FakeEmailSender();
+
+        await HandleViaSystemSmtpAsync(evt, emailSender, new FakeOutboundAttachmentFetcher());
+
+        var attachment = Assert.Single(emailSender.LastAttachments);
+        Assert.Equal("invite.ics", attachment.Filename);
+        Assert.Equal("text/calendar; method=REQUEST", attachment.ContentType);
+        Assert.Equal(ics, attachment.Content);
+    }
+
+    /// <summary>Los de CloudStorage van primero y el .ics después; uno no desplaza al otro.</summary>
+    [Fact]
+    public async Task Handle_appends_inline_attachments_after_the_cloud_storage_ones()
+    {
+        var pdfId = Guid.NewGuid();
+        var evt = CreateEvent() with
+        {
+            AttachmentFileIds = [pdfId],
+            InlineAttachments =
+            [
+                new EmailInlineAttachment("invite.ics", "text/calendar", Convert.ToBase64String("x"u8.ToArray())),
+            ],
+        };
+        var emailSender = new FakeEmailSender();
+        var fetcher = new FakeOutboundAttachmentFetcher();
+
+        await HandleViaSystemSmtpAsync(evt, emailSender, fetcher);
+
+        Assert.Equal([pdfId], fetcher.LastRequestedFileIds);
+        Assert.Equal(2, emailSender.LastAttachments.Count);
+        Assert.Equal("invite.ics", emailSender.LastAttachments[1].Filename);
+    }
+
+    /// <summary>Uno roto o por encima del tope se descarta con aviso y el correo sale igual.</summary>
+    [Fact]
+    public async Task Handle_discards_invalid_or_oversized_inline_attachments_but_still_sends()
+    {
+        var evt = CreateEvent() with
+        {
+            InlineAttachments =
+            [
+                new EmailInlineAttachment("broken.ics", "text/calendar", "not base64 !!"),
+                new EmailInlineAttachment(
+                    "big.bin",
+                    "application/octet-stream",
+                    Convert.ToBase64String(new byte[256 * 1024 + 1])
+                ),
+                new EmailInlineAttachment("ok.ics", "text/calendar", Convert.ToBase64String("ok"u8.ToArray())),
+            ],
+        };
+        var emailSender = new FakeEmailSender();
+
+        await HandleViaSystemSmtpAsync(evt, emailSender, new FakeOutboundAttachmentFetcher());
+
+        Assert.Equal("ok.ics", Assert.Single(emailSender.LastAttachments).Filename);
+    }
+
+    private static Task HandleViaSystemSmtpAsync(
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        FakeEmailSender emailSender,
+        FakeOutboundAttachmentFetcher attachmentFetcher
+    ) =>
+        NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            new FakeIdempotencyGuard(),
+            new FakeProviderResolver
+            {
+                ResolveReturnValue = new ResolveResult(
+                    ProviderResolutionStatus.Resolved,
+                    CreateResolvedProvider(),
+                    null
+                ),
+            },
+            new FakeConnectedMailboxResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeConnectedMailboxSender(),
+            new FakeInlineAssetFetcher(),
+            attachmentFetcher,
+            new FakeSentMessageRepository(),
+            new FakeTenantDirectoryRepository(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            NullLogger.Instance,
+            CancellationToken.None
+        );
 }

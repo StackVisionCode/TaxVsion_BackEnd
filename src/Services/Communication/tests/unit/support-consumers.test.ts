@@ -39,6 +39,9 @@ function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') 
   const analytics: AnalyticsRepository = {
     incrementCounters: vi.fn().mockResolvedValue(undefined),
     listForRange: vi.fn().mockResolvedValue([]),
+    raisePeaks: vi.fn().mockResolvedValue(undefined),
+    listAllForRange: vi.fn().mockResolvedValue([]),
+    purgeBefore: vi.fn().mockResolvedValue(0),
   };
   const notifications: NotificationRepository = {
     createIfMissing: vi.fn().mockResolvedValue(true),

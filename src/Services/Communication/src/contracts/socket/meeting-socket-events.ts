@@ -68,17 +68,61 @@ export const MeetingMediaStatusPayloadSchema = z.object({
 });
 export type MeetingMediaStatusPayload = z.infer<typeof MeetingMediaStatusPayloadSchema>;
 
+export const ConnectionQualityDtoSchema = z.enum(['Unknown', 'Excellent', 'Good', 'Fair', 'Poor', 'Disconnected']);
+export type ConnectionQualityDto = z.infer<typeof ConnectionQualityDtoSchema>;
+
+/** F4: metricas opcionales que justifican el nivel; se guardan en el log, no se difunden. */
+// Cada cifra puede faltar o venir null (p. ej. sin audio entrante no hay pérdida que medir): nunca se rechaza el reporte.
+export const ConnectionQualityMetricsSchema = z.object({
+  rttMs: z.number().min(0).nullable().optional(),
+  lossPct: z.number().min(0).max(100).nullable().optional(),
+  jitterMs: z.number().min(0).nullable().optional(),
+  viaRelay: z.boolean().nullable().optional(),
+  inKbps: z.number().min(0).nullable().optional(),
+  outKbps: z.number().min(0).nullable().optional(),
+  fps: z.number().min(0).nullable().optional(),
+  // Capa activa: índice numérico (0..2) o etiqueta del navegador ('r2', '720p').
+  layer: z.union([z.number().int().min(0), z.string().max(16)]).nullable().optional(),
+});
+
+export const MeetingConnectionQualityPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  quality: z.enum(['Excellent', 'Good', 'Fair', 'Poor', 'Disconnected']),
+  metrics: ConnectionQualityMetricsSchema.optional(),
+});
+export type MeetingConnectionQualityPayload = z.infer<typeof MeetingConnectionQualityPayloadSchema>;
+
+export interface MeetingParticipantQualityChangedDto {
+  meetingId: string;
+  userId: string;
+  quality: ConnectionQualityDto;
+}
+
 export const MeetingRaiseHandPayloadSchema = z.object({
   meetingId: z.string().uuid(),
   raised: z.boolean(),
 });
 export type MeetingRaiseHandPayload = z.infer<typeof MeetingRaiseHandPayloadSchema>;
 
-export const DominantSpeakerPayloadSchema = z.object({
+/** F5 (D-49): acciones de host sobre manos. */
+export const LowerHandPayloadSchema = AdmitPayloadSchema;
+export type LowerHandPayload = z.infer<typeof LowerHandPayloadSchema>;
+export const LowerAllHandsPayloadSchema = z.object({ meetingId: z.string().uuid() });
+export type LowerAllHandsPayload = z.infer<typeof LowerAllHandsPayloadSchema>;
+
+/** F5 (D-50): reaccion efimera; el servidor la valida contra el catalogo efectivo. */
+export const MeetingReactionPayloadSchema = z.object({
   meetingId: z.string().uuid(),
-  audioLevel: z.number().min(0).max(1),
+  emoji: z.string().min(1).max(16),
 });
-export type DominantSpeakerPayload = z.infer<typeof DominantSpeakerPayloadSchema>;
+export type MeetingReactionPayload = z.infer<typeof MeetingReactionPayloadSchema>;
+
+/** F5 (T-69): cambio del estado de habla propio (RMS local). Solo alimenta el MeetingEventLog. */
+export const MeetingSpeakingPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  speaking: z.boolean(),
+});
+export type MeetingSpeakingPayload = z.infer<typeof MeetingSpeakingPayloadSchema>;
 
 export const AttachMeetingRecordingPayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
@@ -150,6 +194,11 @@ export interface MeetingTranscriptReadyDto {
   /** Fase Transcript 5 — conteo de palabras del transcript, para previsualizacion sin descargar el archivo completo. */
   wordCount: number;
   readyAtUtc: string;
+  /** F7 (T-28): transcript v2 con hablantes (JSON) y su resumen. */
+  transcriptJsonFileId?: string | null;
+  speakerCount?: number;
+  segmentCount?: number;
+  language?: string | null;
 }
 
 // ---------- SFU (mediasoup) — meetings con strategy 'Sfu', >4 participantes ----------
@@ -211,6 +260,14 @@ export type SfuSetPreferredLayersPayload = z.infer<typeof SfuSetPreferredLayersP
 export const SfuListRemoteProducersPayloadSchema = z.object({ meetingId: z.string().uuid() });
 export type SfuListRemoteProducersPayload = z.infer<typeof SfuListRemoteProducersPayloadSchema>;
 
+// F1 — ICE restart de un transport del SFU (tras `failed` o `disconnected` sostenido en el cliente).
+// El ack devuelve los `iceParameters` nuevos que el cliente aplica con `transport.restartIce()`.
+export const SfuRestartIcePayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  transportId: z.string().min(1),
+});
+export type SfuRestartIcePayload = z.infer<typeof SfuRestartIcePayloadSchema>;
+
 // ---------- Chat dentro del meeting (Fase 8) ----------
 // Reusa integramente el motor de chat (Conversation kind 'Meeting',
 // sendMessage/editMessage/deleteMessage/markMessagesRead) — estos payloads
@@ -226,6 +283,21 @@ export const MeetingChatSendPayloadSchema = z.object({
   replyToMessageId: z.string().uuid().optional(),
 });
 export type MeetingChatSendPayload = z.infer<typeof MeetingChatSendPayloadSchema>;
+
+/** F11: adjunto del chat de la sala (metadata o URL); la autorización es la misma que en el HTTP del chat. */
+export const MeetingChatAttachmentPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  fileId: z.string().uuid(),
+});
+export type MeetingChatAttachmentPayload = z.infer<typeof MeetingChatAttachmentPayloadSchema>;
+
+/** F11: página del historial del chat de la sala (misma regla que la ficha del meeting, D-01). */
+export const MeetingChatHistoryPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  take: z.number().int().min(1).max(100).default(50),
+  before: z.string().datetime().optional(),
+});
+export type MeetingChatHistoryPayload = z.infer<typeof MeetingChatHistoryPayloadSchema>;
 
 export const MeetingChatEditPayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
@@ -254,6 +326,8 @@ export type MeetingChatMarkReadPayload = z.infer<typeof MeetingChatMarkReadPaylo
 export interface MeetingParticipantDto {
   userId: string;
   displayName: string;
+  /** F3 — "TenantEmployee" | "TenantAdmin" | "CustomerPortal" | "Guest"...: el front decide badges y elegibilidad. */
+  actorType?: string;
   /**
    * F5 avatares — foto resuelta al armar el snapshot (join/rejoin/admit) y el participante que entra.
    * Ausente en los `participant.changed` de media/mano/salida: conservar la que ya se tenga. null = sin foto.
@@ -266,11 +340,18 @@ export interface MeetingParticipantDto {
   videoEnabled: boolean;
   screenSharing: boolean;
   handRaised: boolean;
+  /** F5 (D-49): ISO de cuando levanto la mano; null = baja. Ordena la cola de manos. */
+  handRaisedAtUtc: string | null;
+  /** F4 (D-39): ultimo nivel reportado por ese participante; 'Unknown' hasta el primer muestreo. */
+  connectionQuality?: ConnectionQualityDto;
 }
+
+export type MeetingStatusDto = 'Scheduled' | 'Live' | 'Ended' | 'Cancelled' | 'Expired';
+export type MeetingEndReasonDto = 'Host' | 'MaxDurationReached' | 'NoParticipants' | 'Offboarding' | 'Backfill';
 
 export interface MeetingSnapshotDto {
   meetingId: string;
-  status: 'Scheduled' | 'Live' | 'Ended' | 'Cancelled';
+  status: MeetingStatusDto;
   strategy: 'Mesh' | 'Sfu';
   hostUserId: string;
   isLocked: boolean;
@@ -280,6 +361,12 @@ export interface MeetingSnapshotDto {
   // null mientras el join esta en la sala de espera (requiresAdmission=true)
   // — el chat del meeting recien se crea/asocia cuando efectivamente se entra.
   conversationId: string | null;
+  // F3 (T-40) — el reloj del cliente se calcula desde `endsAtUtc` del servidor, nunca desde el suyo.
+  scheduledDurationMinutes: number | null;
+  maxDurationMinutes: number | null;
+  endsAtUtc: string | null;
+  endReason: MeetingEndReasonDto | null;
+  continuationOfMeetingId: string | null;
 }
 
 export interface MeetingParticipantChangedDto {
@@ -297,16 +384,61 @@ export interface MeetingSignalDto {
 
 export interface MeetingStateDto {
   meetingId: string;
-  status: 'Scheduled' | 'Live' | 'Ended' | 'Cancelled';
+  status: MeetingStatusDto;
   isLocked: boolean;
   hostUserId: string;
   sequence: number;
+  /** F3 — presente cuando status es Ended. */
+  endReason?: MeetingEndReasonDto | null;
 }
 
-export interface MeetingDominantSpeakerDto {
+/** F3 — aviso de tiempo restante (room del meeting), una vez por umbral. */
+export interface MeetingDurationWarningDto {
   meetingId: string;
-  peerUserId: string;
-  audioLevel: number;
+  remainingSeconds: number;
+  endsAtUtc: string;
+}
+
+/** F3 — cambió el host (transfer, sucesión al vencer la gracia, offboarding). Va tras los `participant.changed`. */
+export interface MeetingHostChangedDto {
+  meetingId: string;
+  previousHostUserId: string;
+  newHostUserId: string;
+  reason: 'Transfer' | 'Succession' | 'Offboarding';
+}
+
+/** F3 — dirigido al socket que el sistema saca de la sala (gracia, revocación, token vencido, retiro). */
+export interface MeetingYouRemovedDto {
+  meetingId: string;
+  reason: 'Grace' | 'Revoked' | 'Expired' | 'Offboarding' | 'MeetingEnded' | 'RemovedByHost';
+}
+
+/** F3 — `meeting.ended` ahora lleva el motivo (lista y sala). */
+export interface MeetingEndedDto {
+  meetingId: string;
+  reason: MeetingEndReasonDto | 'Expired';
+}
+
+/** F5 (D-49): ack de `meeting.raise_hand`. */
+export interface MeetingRaiseHandAckDto {
+  handRaised: boolean;
+  handRaisedAtUtc: string | null;
+}
+
+/** F5 (D-49): a la room de usuario del afectado cuando el host le baja la mano (o todas). */
+export interface MeetingHandLoweredByHostDto {
+  meetingId: string;
+  byUserId: string;
+  all: boolean;
+}
+
+/** F5 (D-50): reaccion efimera difundida con emision volatil; nunca se persiste por unidad. */
+export interface MeetingReactionReceivedDto {
+  meetingId: string;
+  userId: string;
+  displayName: string;
+  emoji: string;
+  at: string;
 }
 
 export interface SfuNewProducerDto {
@@ -335,6 +467,7 @@ export type MeetingRecordingState =
   | 'Requesting'
   | 'Recording'
   | 'Stopping'
+  | 'Composing'
   | 'Processing'
   | 'Ready'
   | 'Failed';
@@ -349,6 +482,20 @@ export interface MeetingRecordingStateChangedDto {
   meetingId: string;
   state: MeetingRecordingState;
   updatedAtUtc: string;
+  /** F7: quien captura (`Server` = recorder; `Client` = mezcla en el navegador, fallback C-03). */
+  captureMode?: 'Server' | 'Client';
+  /** F7: inicio real y limite efectivo; el front calcula la cuenta regresiva con el reloj del servidor. */
+  startedAtUtc?: string | null;
+  maxDurationSeconds?: number | null;
+  /** F7: en Stopping = User|LimitReached|MeetingEnded|CallEnded; en Failed = codigo del fallo. */
+  reason?: string | null;
+}
+
+/** F7 (T-35): la grabacion se corta pronto por el limite (una sola vez por sesion). */
+export interface MeetingRecordingLimitWarningDto {
+  meetingId: string;
+  remainingSeconds: number;
+  stopsAtUtc: string;
 }
 
 /**
@@ -401,6 +548,22 @@ export interface MeetingListChangedDto {
   meetingId: string;
 }
 
+/** F6 (T-62): `meeting.invited` ahora dice quien invita y si la reunion ya esta en curso (toast "Join"). */
+export interface MeetingInvitedDto extends MeetingListChangedDto {
+  title: string;
+  status: 'Scheduled' | 'Live';
+  invitedByUserId: string;
+  invitedByDisplayName: string;
+}
+
+/** F6 (T-64): recordatorio T-N a la room de usuario de invitados y participantes. */
+export interface MeetingReminderDto {
+  meetingId: string;
+  title: string;
+  scheduledForUtc: string;
+  minutesBefore: number;
+}
+
 export const MeetingSocketEvents = {
   // c -> s
   Join: 'meeting.join',
@@ -414,7 +577,12 @@ export const MeetingSocketEvents = {
   Signal: 'meeting.signal',
   MediaStatus: 'meeting.media_status',
   RaiseHand: 'meeting.raise_hand',
-  DominantSpeaker: 'meeting.dominant_speaker',
+  // F4 (T-48): el cliente reporta su nivel (solo al cambiar; rate limit por socket).
+  ConnectionQuality: 'meeting.connection_quality',
+  LowerHand: 'meeting.host.lower_hand',
+  LowerAllHands: 'meeting.host.lower_all_hands',
+  Reaction: 'meeting.reaction',
+  Speaking: 'meeting.speaking',
   AttachRecording: 'meeting.recording.attach',
   RequestRecording: 'meeting.recording.start_request',
   StopRecording: 'meeting.recording.stop',
@@ -432,28 +600,43 @@ export const MeetingSocketEvents = {
   SfuResumeConsumer: 'meeting.sfu.resume_consumer',
   SfuSetPreferredLayers: 'meeting.sfu.set_preferred_layers',
   SfuListRemoteProducers: 'meeting.sfu.list_remote_producers',
+  SfuRestartIce: 'meeting.sfu.restart_ice',
   ChatSend: 'meeting.chat.send',
   ChatEdit: 'meeting.chat.edit',
   ChatDelete: 'meeting.chat.delete',
   ChatMarkRead: 'meeting.chat.mark_read',
+  // F11: metadata y URL de un adjunto del chat de la sala por el socket (el invitado no tiene JWT para el HTTP).
+  ChatAttachmentMeta: 'meeting.chat.attachment.meta',
+  ChatAttachmentDownloadUrl: 'meeting.chat.attachment.download_url',
+  // F11: historial del chat de la sala por el socket (el invitado no tiene JWT para el HTTP).
+  ChatHistory: 'meeting.chat.history',
   // s -> c
   Snapshot: 'meeting.snapshot',
   ParticipantChanged: 'meeting.participant.changed',
   StateChanged: 'meeting.state.changed',
   SignalFrom: 'meeting.signal.from',
-  DominantSpeakerChanged: 'meeting.dominant_speaker.changed',
+  HandLoweredByHost: 'meeting.hand.lowered_by_host',
+  ReactionReceived: 'meeting.reaction.received',
   MutedByHost: 'meeting.you.muted',
   SfuNewProducer: 'meeting.sfu.new_producer',
   SfuProducerClosed: 'meeting.sfu.producer_closed',
+  // F3 — ciclo de vida y host.
+  DurationWarning: 'meeting.duration.warning',
+  // F4 (D-39): nivel de otro participante, para su tile.
+  ParticipantQualityChanged: 'meeting.participant.quality_changed',
+  HostChanged: 'meeting.host.changed',
+  YouRemoved: 'meeting.you.removed',
   TranscriptReady: 'meeting.transcript_ready',
   RecordingConsentRequested: 'meeting.recording.consent_requested',
   RecordingConsentRecorded: 'meeting.recording.consent_recorded',
   RecordingStateChanged: 'meeting.recording.state_changed',
+  RecordingLimitWarning: 'meeting.recording.limit_warning',
   ParticipantDenied: 'meeting.participant.denied',
   Cancelled: 'meeting.cancelled',
   Rescheduled: 'meeting.rescheduled',
   // Avisos para la LISTA de meetings (no la sala): refrescan el UX de meetings del invitado.
   Invited: 'meeting.invited',
+  Reminder: 'meeting.reminder',
   Started: 'meeting.started',
   // Terminó (por End explícito o cascada host-sin-cohost): la lista mueve el meeting de upcoming a past.
   Ended: 'meeting.ended',

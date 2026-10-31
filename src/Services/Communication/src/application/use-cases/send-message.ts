@@ -1,9 +1,13 @@
+import { recordAttachmentMetadata } from './record-attachment-metadata.js';
+import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { AttachmentUploadReservationRepository } from '../ports/attachment-upload-reservation-repository.js';
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import { ChatEventTypes, type MessageSentEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
@@ -44,11 +48,17 @@ export interface SendMessageResult {
 }
 
 export interface SendMessageDeps {
+  /** F7 (D-27): politica de transcript de notas de voz; sin resolver (tests viejos) no se pide transcript. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   readonly conversations: ConversationRepository;
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
   readonly attachmentTracking: AttachmentTrackingRepository;
+  /** F11 (E-259): reserva de la subida; sin ella un adjunto no se acepta. */
+  readonly attachmentReservations: AttachmentUploadReservationRepository;
+  /** F8d: para la categoría provisional del adjunto (opcional). */
+  readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
 }
 
 export async function sendMessage(
@@ -120,6 +130,34 @@ export async function sendMessage(
     return Result.fail(messageResult.error);
   }
 
+  // F11 (E-259): el adjunto tiene que haberlo subido este usuario para esta conversación, y se usa una
+  // sola vez. Respuesta uniforme (NotFound) para no revelar si el archivo existe en otro chat.
+  if (command.attachmentFileId !== undefined) {
+    const reserved = await deps.attachmentReservations.consume({
+      fileId: command.attachmentFileId,
+      tenantId: command.tenantId,
+      conversationId: command.conversationId,
+      uploadedByUserId: command.senderUserId,
+    });
+    if (!reserved) {
+      await deps.idempotency.release({
+        tenantId: command.tenantId,
+        userId: command.senderUserId,
+        scope: 'chat.message.send',
+        clientKey: command.clientKey,
+        token: reservation.token,
+      });
+      return Result.fail(makeError('Chat.Attachment.NotFound', 'Attachment not found.'));
+    }
+  }
+
+  // F7 (D-27): una nota de voz nace transcribible a demanda (o Skipped si la politica no lo cubre).
+  const voiceNotePolicy =
+    deps.effectiveSettings && messageResult.value.isVoiceNote()
+      ? await resolveVoiceNotePolicy(deps.effectiveSettings, command.tenantId, messageResult.value.toSnapshot().audioDurationMs ?? 0)
+      : null;
+  if (voiceNotePolicy) messageResult.value.setTranscript({ state: voiceNotePolicy.transcribe ? 'NotRequested' : 'Skipped' });
+
   await deps.conversations.save(conversation);
 
   const messageSnapshot = messageResult.value.toSnapshot();
@@ -131,6 +169,8 @@ export async function sendMessage(
       conversationId: command.conversationId,
       tenantId: command.tenantId,
     });
+    // F8d: categoría provisional con el tipo declarado; al pasar el escaneo se reemplaza por el detectado.
+    void recordAttachmentMetadata({ tenantId: command.tenantId, fileId: messageSnapshot.attachmentFileId }, deps).catch(() => undefined);
   }
 
   const recipients = conversation
@@ -154,7 +194,12 @@ export async function sendMessage(
   };
   await deps.publisher.enqueue(sentEvent);
 
-  const dto: MessageDto = messageSnapshotToDto(messageSnapshot);
+  // F8a (T-10): el evento lleva el tipo de chat (y el meeting) para que cada módulo tome lo suyo.
+  const dto: MessageDto = {
+    ...messageSnapshotToDto(messageSnapshot),
+    conversationKind: conversation.kind,
+    ...(conversation.meetingId ? { meetingId: conversation.meetingId } : {}),
+  };
   const result: SendMessageResult = { message: dto, recipientUserIds: recipients };
   await deps.idempotency.commit({
     tenantId: command.tenantId,
@@ -165,4 +210,19 @@ export async function sendMessage(
     token: reservation.token,
   });
   return Result.ok(result);
+}
+
+/** D-27: transcribir solo si el plan y la oficina lo permiten y la nota no supera la duracion maxima. */
+export async function resolveVoiceNotePolicy(
+  resolver: Pick<EffectiveSettingsResolver, 'resolve'>,
+  tenantId: string,
+  durationMs: number,
+): Promise<{ transcribe: boolean; language: string; prompt: string | null }> {
+  const effective = await resolver.resolve(tenantId);
+  const policy = effective.recording.voiceNote;
+  return {
+    transcribe: policy.enabled && durationMs > 0 && durationMs <= policy.maxSeconds * 1000,
+    language: effective.recording.transcriptLanguage,
+    prompt: effective.recording.transcriptPrompt,
+  };
 }

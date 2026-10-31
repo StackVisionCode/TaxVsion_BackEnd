@@ -16,6 +16,11 @@ export default defineConfig({
       TRANSCRIPT_WORKER_MINIO_ENDPOINT: 'localhost',
       TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: 'test-access-key',
       TRANSCRIPT_WORKER_MINIO_SECRET_KEY: 'test-secret-key',
+      // Fijas para que el .env local (dotenv no pisa lo ya definido) no cambie los resultados.
+      TRANSCRIPT_WORKER_WHISPER_MODEL_PATH: '/opt/whisper.cpp/models/ggml-small-q5_1.bin',
+      TRANSCRIPT_WORKER_WHISPER_VAD_MODEL_PATH: '',
+      TRANSCRIPT_WORKER_WHISPER_LANGUAGE: '',
+      TRANSCRIPT_WORKER_WHISPER_PROMPT: '',
     },
   },
 });

@@ -7660,6 +7660,13 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ProfilePictureFileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ProfilePictureModerationFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProfilePictureModerationState")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)

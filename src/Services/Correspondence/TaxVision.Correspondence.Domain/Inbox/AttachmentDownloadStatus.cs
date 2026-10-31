@@ -14,4 +14,7 @@ public enum AttachmentDownloadStatus
 
     // El escaneo de CloudStorage lo marcó peligroso (virus o contenido bloqueado). No se descarga.
     Blocked = 4,
+
+    // T-20: la moderación de contenido lo retuvo; vuelve a Downloaded si el revisor lo aprueba.
+    UnderReview = 5,
 }

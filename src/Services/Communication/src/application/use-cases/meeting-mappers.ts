@@ -12,6 +12,7 @@ export function participantSnapshotToDto(
     userId: snap.userId,
     displayName: snap.displayName,
     ...(avatars ? { avatarFileId: avatars.of(snap.userId) } : {}),
+    actorType: snap.actorType,
     role: snap.role,
     status: snap.status,
     joinOrder: snap.joinOrder,
@@ -19,6 +20,8 @@ export function participantSnapshotToDto(
     videoEnabled: snap.videoEnabled,
     screenSharing: snap.screenSharing,
     handRaised: snap.handRaised,
+    handRaisedAtUtc: snap.handRaisedAtUtc ? snap.handRaisedAtUtc.toISOString() : null,
+    connectionQuality: snap.connectionQuality,
   };
 }
 
@@ -44,5 +47,10 @@ export function buildMeetingSnapshotDto(
     yourRole,
     sequence: 0,
     conversationId,
+    scheduledDurationMinutes: snapshot.scheduledDurationMinutes,
+    maxDurationMinutes: snapshot.maxDurationMinutes,
+    endsAtUtc: snapshot.endsAtUtc ? snapshot.endsAtUtc.toISOString() : null,
+    endReason: snapshot.endReason,
+    continuationOfMeetingId: snapshot.continuationOfMeetingId,
   };
 }

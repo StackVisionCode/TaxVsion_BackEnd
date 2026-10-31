@@ -87,6 +87,14 @@ jobs:
           npm run typecheck
           npm test
 
+      # F7 — el recorder (grabación server-side) tampoco está en TaxVision.slnx: mismo gate que el worker.
+      - name: Test CommunicationRecorder (Node)
+        working-directory: src/Services/CommunicationRecorder
+        run: |
+          npm ci --no-audit --no-fund --prefer-offline
+          npm run typecheck
+          npm test
+
       # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
       # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
@@ -416,6 +424,14 @@ jobs:
           COMMUNICATION_TURN_TTL_SECONDS=${{ secrets.COMMUNICATION_TURN_TTL_SECONDS }}
           COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
+          # SFU (F1/D-05): un puerto fijo por worker (UDP y TCP, mismo numero) via WebRtcServer.
+          # El compose publica PORT_BASE..PORT_END y el router los reenvia (UDP ya; TCP pendiente,
+          # P-034). PORT_END = PORT_BASE + NUM_WORKERS - 1. Valores fijos, no secretos.
+          COMMUNICATION_MEDIASOUP_NUM_WORKERS=4
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_ENABLED=true
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE=40000
+          COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END=40003
+          COMMUNICATION_MEDIASOUP_ENABLE_TCP=true
           # Faltaban desde la propia Fase Backend 5/8 — sin esto communication-api no
           # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET y
           # COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET son z.string().min() requeridos).
@@ -665,6 +681,11 @@ jobs:
           # Ambas vacias mantienen IntakeLinksEnabled cerrado. La site key es publica.
           TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY }}
           TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
+          # CommunicationRecorder (F7): password de su cuenta MinIO scoped (communication-recorder).
+          # Requerida con :? por communication-recorder y minio-provision: vacía, compose no arranca.
+          RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}
+          # T-20: clave compartida CloudStorage -> content-scanner (red interna). Requerida con :? por ambos.
+          CONTENT_SCANNER_API_KEY=${{ secrets.CONTENT_SCANNER_API_KEY }}
           EOF
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este

@@ -21,6 +21,7 @@ export function toDomainCallParticipant(row: PrismaParticipant): CallParticipant
     screenSharing: row.ScreenSharing,
     screenShareStartedAtUtc: row.ScreenShareStartedAtUtc,
     connectionQuality: isConnectionQuality(row.ConnectionQuality) ? row.ConnectionQuality : 'Unknown',
+    customerId: row.CustomerId ?? null,
   };
 }
 
@@ -48,13 +49,17 @@ export function toDomainCall(row: PrismaCall, participants: PrismaParticipant[])
       row.EndReason === 'Missed' ||
       row.EndReason === 'Rejected' ||
       row.EndReason === 'Cancelled' ||
-      row.EndReason === 'IceFailed'
+      row.EndReason === 'IceFailed' ||
+      row.EndReason === 'MaxDurationReached'
         ? row.EndReason
         : null,
     durationSeconds: row.DurationSeconds,
     recordingRequested: row.RecordingRequested,
     recordingFileId: row.RecordingFileId,
     transcriptFileId: row.TranscriptFileId,
+    maxDurationMinutes: row.MaxDurationMinutes,
+    endsAtUtc: row.EndsAtUtc,
+    lastDurationWarningSeconds: row.LastDurationWarningSeconds,
     createdAtUtc: row.CreatedAtUtc,
     updatedAtUtc: row.UpdatedAtUtc,
     participants: participants.map(toDomainCallParticipant),

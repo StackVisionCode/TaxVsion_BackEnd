@@ -82,7 +82,18 @@ public sealed record NotificationsEmailSendRequestedIntegrationEvent : Integrati
     /// pieza pero nunca conectado de punta a punta. Este campo es el eslabón que faltaba.
     /// </summary>
     public IReadOnlyList<EmailInlineAssetReference>? InlineAssets { get; init; }
+
+    /// <summary>
+    /// Adjuntos pequeños generados en memoria (p. ej. el <c>.ics</c> de una reunión, F6). Viajan como
+    /// bytes en base64, a diferencia de <see cref="AttachmentFileIds"/> (referencias a CloudStorage):
+    /// no hay archivo que subir ni que borrar después. Notification valida el tope total (256 KB) antes
+    /// de publicar; Postmaster los suma a los adjuntos de CloudStorage al armar el MIME.
+    /// </summary>
+    public IReadOnlyList<EmailInlineAttachment>? InlineAttachments { get; init; }
 }
+
+/// <summary>Adjunto en memoria para <see cref="NotificationsEmailSendRequestedIntegrationEvent.InlineAttachments"/>.</summary>
+public sealed record EmailInlineAttachment(string FileName, string ContentType, string ContentBase64);
 
 /// <summary>
 /// Referencia (no bytes) a un asset embebido por Content-ID — mismo shape que

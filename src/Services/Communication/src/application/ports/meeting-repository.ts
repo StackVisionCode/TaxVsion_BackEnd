@@ -1,6 +1,16 @@
 import type { Meeting, MeetingSnapshot } from '../../domain/meetings/meeting.js';
 import type { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 
+/** Listados por usuario; `customerId`/`counterpartUserId` acotan al perfil de un cliente (solo staff). */
+export interface MeetingsForUserQuery {
+  readonly tenantId: string;
+  readonly userId: string;
+  /** D-58: columna `CustomerId` del participante; sobrevive a la baja de la cuenta de portal. */
+  readonly customerId?: string;
+  /** Usuario de portal activo del cliente: cubre invitaciones sin usar y filas previas al backfill. */
+  readonly counterpartUserId?: string;
+}
+
 export interface MeetingRepository {
   save(meeting: Meeting): Promise<void>;
   findById(tenantId: string, meetingId: string): Promise<Meeting | null>;
@@ -12,6 +22,12 @@ export interface MeetingRepository {
   listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]>;
   /** Cuántas reuniones activas (Scheduled|Live) tiene como host — pre-flight de impacto al retirarlo. */
   countActiveHostedBy(tenantId: string, hostUserId: string): Promise<number>;
+  /** F3 — scheduler de ciclo de vida: todas las reuniones Live de la plataforma (lote acotado). */
+  listLive(input: { take: number }): Promise<Meeting[]>;
+  /** F3 — Scheduled con fecha (o creación, si no tienen fecha) anterior al corte: candidatas a Expired. */
+  listScheduledBefore(input: { cutoffUtc: Date; take: number }): Promise<Meeting[]>;
+  /** F6 (T-64) — Scheduled con fecha hasta `untilUtc` y sin recordatorio enviado (lote acotado). */
+  listScheduledForReminder(input: { untilUtc: Date; take: number }): Promise<Meeting[]>;
   /**
    * Cross-tenant lookup por diseno — Fase Backend 5, usado por el endpoint
    * publico GET /communication/meetings/by-code/:shortCode (sin JWT, sin
@@ -34,25 +50,11 @@ export interface MeetingRepository {
   findInvitationById(tenantId: string, invitationId: string): Promise<MeetingInvitation | null>;
   /** Fase Backend 5 — listado/revocacion por Host/Cohost (GET/DELETE .../invitations). */
   listInvitationsByMeeting(tenantId: string, meetingId: string): Promise<MeetingInvitation[]>;
-  listUpcomingForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    /** Perfil del cliente: solo meetings donde este usuario (portal del cliente) participa o está invitado. */
-    counterpartUserId?: string;
-  }): Promise<MeetingSnapshot[]>;
-  countUpcomingForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number>;
-  /** Fase Frontend 9 — "historial" (Ended/Cancelled), separado de upcoming (Scheduled/Live). */
-  listPastForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    /** Perfil del cliente: solo meetings donde este usuario (portal del cliente) participa o está invitado. */
-    counterpartUserId?: string;
-  }): Promise<MeetingSnapshot[]>;
-  countPastForUser(tenantId: string, userId: string, counterpartUserId?: string): Promise<number>;
+  listUpcomingForUser(input: MeetingsForUserQuery & { take: number; skip: number }): Promise<MeetingSnapshot[]>;
+  countUpcomingForUser(input: MeetingsForUserQuery): Promise<number>;
+  /** Fase Frontend 9 — "historial" (Ended/Cancelled/Expired), separado de upcoming (Scheduled/Live). */
+  listPastForUser(input: MeetingsForUserQuery & { take: number; skip: number }): Promise<MeetingSnapshot[]>;
+  countPastForUser(input: MeetingsForUserQuery): Promise<number>;
   /**
    * Contadores para las tarjetas del dashboard de meetings, calculados sobre TODOS los meetings del
    * usuario (no la página cargada en el cliente). Las fronteras de día/semana vienen ya resueltas a UTC
