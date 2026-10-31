@@ -27,6 +27,7 @@ public sealed class RealScannerIntegrationTests : IDisposable
             Std = [0.5f, 0.5f, 0.5f],
             NsfwLabelIndex = 1,
             FfmpegPath = "ffmpeg",
+            FfprobePath = "ffprobe",
             FfmpegTimeoutSeconds = 60,
             MaxConcurrentScans = 1,
             QueueTimeoutSeconds = 30,
@@ -77,6 +78,25 @@ public sealed class RealScannerIntegrationTests : IDisposable
 
         Assert.InRange(everyTwo.Count, 3, 5);
         Assert.Equal(3, capped.Count);
+    }
+
+    [Fact]
+    public async Task Ffprobe_tells_an_audio_only_webm_from_a_video()
+    {
+        var voiceNote = Generate("voice.webm", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "libopus");
+        var mp4 = Generate(
+            "tiny.mp4",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=1:size=64x48:rate=5",
+            "-pix_fmt",
+            "yuv420p"
+        );
+        var extractor = new FfmpegFrameExtractor(Microsoft.Extensions.Options.Options.Create(Options()));
+
+        Assert.False(await extractor.HasVideoStreamAsync(voiceNote, CancellationToken.None));
+        Assert.True(await extractor.HasVideoStreamAsync(mp4, CancellationToken.None));
     }
 
     [Fact]

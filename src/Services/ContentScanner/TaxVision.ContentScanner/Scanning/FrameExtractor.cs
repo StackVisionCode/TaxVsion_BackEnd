@@ -17,6 +17,12 @@ public sealed record FrameSampling(int IntervalSeconds, int MaxFrames);
 public interface IFrameExtractor
 {
     Task<IReadOnlyList<byte[]>> ExtractAsync(string path, MediaKind kind, FrameSampling sampling, CancellationToken ct);
+
+    /// <summary>
+    /// False solo si el contenedor se lee bien y no trae ninguna pista de video (audio en `.webm`/`.mp4`).
+    /// Si ffprobe no puede leerlo devuelve true: que la extracción decida si es indecodificable.
+    /// </summary>
+    Task<bool> HasVideoStreamAsync(string path, CancellationToken ct);
 }
 
 /// <summary>Contenido que ffmpeg no pudo decodificar (corrupto o formato no soportado).</summary>
@@ -83,6 +89,56 @@ public sealed class FfmpegFrameExtractor(IOptions<ContentScannerOptions> options
                 process.Kill(entireProcessTree: true);
         }
     }
+
+    public async Task<bool> HasVideoStreamAsync(string path, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(_options.FfprobePath)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var arg in BuildProbeArguments(path))
+            psi.ArgumentList.Add(arg);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_options.FfmpegTimeoutSeconds));
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("ffprobe could not be started.");
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            await stderr;
+            return process.ExitCode != 0 || (await stdout).Contains("video", StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new UndecodableMediaException("ffprobe timed out.");
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+    }
+
+    internal static IReadOnlyList<string> BuildProbeArguments(string path) =>
+        [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-protocol_whitelist",
+            "file",
+            "-select_streams",
+            "v",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            path,
+        ];
 
     internal static IReadOnlyList<string> BuildArguments(string path, MediaKind kind, FrameSampling sampling, int size)
     {

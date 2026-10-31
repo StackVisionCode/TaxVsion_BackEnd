@@ -35,6 +35,12 @@ public sealed class ScanService(
         try
         {
             var watch = Stopwatch.StartNew();
+            // Solo se modera lo visual: un audio en contenedor de video (nota de voz) no tiene nada que puntuar.
+            if (kind == MediaKind.Video && !await extractor.HasVideoStreamAsync(path, ct))
+            {
+                logger.LogInformation("No video stream in {Kind}: nothing visual to score", kind);
+                return new ScanResult("audio", 0, 0f, watch.ElapsedMilliseconds);
+            }
             var frames = await extractor.ExtractAsync(path, kind, sampling, ct);
             var worst = 0f;
             foreach (var frame in frames)

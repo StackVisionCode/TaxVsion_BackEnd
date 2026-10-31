@@ -45,6 +45,15 @@ public sealed class ScanningUnitTests
     }
 
     [Fact]
+    public void Ffprobe_reads_only_the_local_file_and_lists_video_streams()
+    {
+        var probe = FfmpegFrameExtractor.BuildProbeArguments("/tmp/x.bin").ToList();
+        Assert.Equal("file", probe[probe.IndexOf("-protocol_whitelist") + 1]);
+        Assert.Equal("v", probe[probe.IndexOf("-select_streams") + 1]);
+        Assert.Equal("/tmp/x.bin", probe[^1]);
+    }
+
+    [Fact]
     public async Task With_every_turn_taken_the_scan_reports_busy()
     {
         var gate = new TaskCompletionSource();
@@ -85,6 +94,8 @@ public sealed class ScanningUnitTests
             await gate;
             return [new byte[3]];
         }
+
+        public Task<bool> HasVideoStreamAsync(string path, CancellationToken ct) => Task.FromResult(true);
     }
 
     private sealed class ZeroClassifier : INsfwClassifier
