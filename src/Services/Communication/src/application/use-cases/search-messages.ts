@@ -66,6 +66,7 @@ export async function searchMessages(
     conversationId: cmd.conversationId,
     query,
     limit,
+    notBeforeUtc: conversation.historyVisibleFrom(cmd.actorUserId),
   });
 
   return Result.ok({

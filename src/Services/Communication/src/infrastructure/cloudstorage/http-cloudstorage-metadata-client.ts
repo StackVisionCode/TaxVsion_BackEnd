@@ -14,6 +14,10 @@ import type { ServiceTokenClient } from '../auth/service-token-client.js';
  * RecordingSession a Processing.
  */
 interface RawCloudStorageMetadata {
+  detectedContentType?: unknown;
+  DetectedContentType?: unknown;
+  declaredContentType?: unknown;
+  DeclaredContentType?: unknown;
   readonly fileId?: unknown;
   readonly id?: unknown;
   readonly sizeBytes?: unknown;
@@ -55,10 +59,17 @@ export class HttpCloudStorageMetadataClient implements CloudStorageMetadataClien
     return {
       fileId: rawFileId,
       sizeBytes: rawSize,
-      mimeType: typeof raw.mimeType === 'string' ? raw.mimeType : typeof raw.contentType === 'string' ? raw.contentType : null,
+      // F8d (ADD-01 H-1): CloudStorage manda `detectedContentType` (tras el escaneo) y `declaredContentType`; el
+      // detectado manda. Los nombres viejos quedan de respaldo.
+      mimeType: firstString(raw.detectedContentType, raw.DetectedContentType, raw.declaredContentType, raw.DeclaredContentType, raw.mimeType, raw.contentType),
       originalName:
         typeof raw.originalName === 'string' ? raw.originalName : typeof raw.fileName === 'string' ? raw.fileName : null,
       status: typeof raw.status === 'string' ? raw.status : typeof raw.Status === 'string' ? raw.Status : null,
     };
   }
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) if (typeof value === 'string' && value.trim()) return value;
+  return null;
 }

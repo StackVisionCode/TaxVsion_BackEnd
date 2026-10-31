@@ -186,6 +186,64 @@ public sealed class UserAvatarScanResultConsumerTests
         Assert.Equal(0, unitOfWork.Saves);
     }
 
+    // T-20: en revisión la foto sigue pendiente y no vence; aprobada se confirma como cualquier otra.
+    [Fact]
+    public async Task Pendiente_en_revision_no_vence_y_al_aprobarse_se_confirma()
+    {
+        var user = AvatarDoubles.Employee();
+        var pending = Guid.NewGuid();
+        user.BeginAvatarChange(pending, DateTime.UtcNow.AddHours(-2));
+        var bus = new FakeMessageBus();
+
+        await ReviewAsync(user, pending, new OrderedUnitOfWork(bus));
+
+        Assert.True(user.IsPendingAvatarUnderReview);
+        Assert.True(user.HasLivePendingAvatar(DateTime.UtcNow));
+        Assert.Equal(AvatarModerationState.UnderReview, user.AvatarModerationState);
+
+        await AvailableAsync(user, Available(user, pending), new OrderedUnitOfWork(bus), bus);
+
+        Assert.Equal(pending, user.AvatarFileId);
+        Assert.Null(user.AvatarModerationState);
+    }
+
+    [Fact]
+    public async Task Bloqueada_por_contenido_se_descarta_y_deja_constancia_hasta_la_proxima_subida()
+    {
+        var user = AvatarDoubles.Employee();
+        var pending = Guid.NewGuid();
+        user.BeginAvatarChange(pending, DateTime.UtcNow);
+
+        await FailAsync("blocked", user, pending, new OrderedUnitOfWork(new FakeMessageBus()));
+
+        Assert.Null(user.PendingAvatarFileId);
+        Assert.Equal(pending, user.AvatarModerationFileId);
+        Assert.Equal(AvatarModerationState.Blocked, user.AvatarModerationState);
+
+        user.BeginAvatarChange(Guid.NewGuid(), DateTime.UtcNow);
+        Assert.Null(user.AvatarModerationState);
+    }
+
+    private static Task ReviewAsync(User user, Guid fileId, OrderedUnitOfWork unitOfWork) =>
+        UserAvatarScanResultConsumer.Handle(
+            new FilePendingReviewIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                FileId = fileId,
+                ObjectKey = "k",
+                Reason = "Possible sexual content (score 0.700).",
+                CreatedBy = user.Id,
+                OwnerType = "User",
+                OwnerId = user.Id,
+                FolderType = "Avatars",
+            },
+            AvatarDoubles.Users(user),
+            unitOfWork,
+            new AvatarCorrelation(),
+            NullLogger<User>.Instance,
+            CancellationToken.None
+        );
+
     private static FileAvailableIntegrationEvent Available(User user, Guid fileId) =>
         new()
         {

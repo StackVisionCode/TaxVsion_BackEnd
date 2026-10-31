@@ -1,5 +1,6 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { MessageRepository } from '../ports/message-repository.js';
 import type {
   AttachmentTrackingRepository,
   AttachmentTrackingSnapshot,
@@ -29,6 +30,8 @@ export interface AuthorizeConversationAttachmentCommand {
 export interface AuthorizeConversationAttachmentDeps {
   readonly conversations: ConversationRepository;
   readonly attachmentTracking: AttachmentTrackingRepository;
+  /** F8b (D-21): para el corte por ingreso del cliente en grupos. */
+  readonly messages?: Pick<MessageRepository, 'findById'> | undefined;
 }
 
 export async function authorizeConversationAttachment(
@@ -53,6 +56,14 @@ export async function authorizeConversationAttachment(
   }
   if (!conversation.isParticipant(command.userId)) {
     return Result.fail(makeError('Chat.Conversation.NotParticipant', 'User is not a participant.'));
+  }
+  // F8b (D-21): un adjunto anterior al ingreso del cliente no existe para él (misma respuesta uniforme).
+  const floor = conversation.historyVisibleFrom(command.userId);
+  if (floor && deps.messages) {
+    const message = await deps.messages.findById(command.tenantId, tracking.messageId);
+    if (!message || message.toSnapshot().createdAtUtc < floor) {
+      return Result.fail(makeError('Chat.Attachment.NotFound', 'Attachment not found.'));
+    }
   }
 
   return Result.ok(tracking);

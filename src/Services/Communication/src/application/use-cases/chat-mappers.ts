@@ -34,6 +34,7 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     replyToMessageId: m.replyToMessageId,
     forwardedFromMessageId: m.forwardedFromMessageId,
     isEdited: m.isEdited,
+    editCount: m.editCount ?? 0,
     isDeleted: m.isDeleted,
     isPinned: m.isPinned,
     pinnedAtUtc: m.pinnedAtUtc ? m.pinnedAtUtc.toISOString() : null,

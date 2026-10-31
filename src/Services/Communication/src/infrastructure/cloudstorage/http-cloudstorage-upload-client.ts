@@ -59,7 +59,8 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
     // Nota de voz (audio/*): va a la carpeta navegable "Voice Notes" del TENANT (decisión A: una sola
     // carpeta en el gestor del staff), owner Tenant/ownerId=null. El resto de adjuntos siguen anclados
     // a la conversación (owner Communication). Un adjunto normal nunca es audio — OtherPolicy lo rechaza.
-    const isVoiceNote = request.contentType.toLowerCase().startsWith('audio/');
+    const isGroupAvatar = request.purpose === 'GroupAvatar';
+    const isVoiceNote = !isGroupAvatar && request.contentType.toLowerCase().startsWith('audio/');
     const response = await fetch(`${config.cloudStorage.baseUrl}/storage/files/uploads`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -72,8 +73,10 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
         // a la conversación (antes iba `null` → 400 File.OwnerRequired → 500 en el chat).
         // Para Tenant (nota de voz) va null: el tenant es implícito por el token/tenantId.
         ownerId: isVoiceNote ? null : request.conversationId,
-        folderType: isVoiceNote ? 'VoiceNotes' : 'Other',
+        // F8b: la foto del grupo va a `Avatars` (servida por /storage/avatars/{id} una vez escaneada).
+        folderType: isGroupAvatar ? 'Avatars' : isVoiceNote ? 'VoiceNotes' : 'Other',
         taxYear: null,
+        onBehalfOfUserId: request.uploadedByUserId,
       }),
     });
     if (!response.ok) {

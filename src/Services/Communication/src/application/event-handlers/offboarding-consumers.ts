@@ -5,6 +5,9 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
+import { removeUserFromGroups } from '../use-cases/group-administration.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { Meeting } from '../../domain/meetings/meeting.js';
 import { MeetingStatus } from '../../domain/meetings/meeting-enums.js';
@@ -39,6 +42,9 @@ export function bindOffboardingConsumers(
     meetings: MeetingRepository;
     publisher: IntegrationEventPublisher;
     emitter: RealtimeEmitter;
+    /** F8b (T-19): sale de sus grupos con sucesión (Owner → Admin más antiguo → staff más antiguo). */
+    conversations?: ConversationRepository;
+    conversationAudit?: ConversationAuditRepository;
   },
 ): void {
   register('auth.user.offboarded.v1', async (env) => {
@@ -66,6 +72,14 @@ export function bindOffboardingConsumers(
       } else {
         await cancelOrEnd(meeting, actorUserId, env, deps);
       }
+    }
+
+    // 4. Grupos: sale de todos; la sucesión la resuelve cada aggregate.
+    if (deps.conversations) {
+      await removeUserFromGroups(
+        { tenantId: env.tenantId, userId, reason: 'Offboarded' },
+        { conversations: deps.conversations, conversationAudit: deps.conversationAudit, emitter: deps.emitter },
+      );
     }
   });
 }

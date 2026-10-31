@@ -24,6 +24,11 @@ export interface EffectiveCeilings {
   readonly maxRecordingMinutesVideoCall: number;
   readonly meetingChatAttachmentsPerMinute: number;
   readonly meetingChatAttachmentsPerMeeting: number;
+  readonly chatEditWindowMinutesDirect: number;
+  readonly chatEditWindowMinutesGroup: number;
+  readonly chatEditWindowMinutesSupport: number;
+  readonly chatEditWindowMinutesMeeting: number;
+  readonly chatMaxEditsPerMessage: number;
   readonly recordingAllowed: boolean;
   readonly recordingVideoAllowed: boolean;
   readonly transcriptAllowed: boolean;
@@ -94,7 +99,11 @@ export interface EffectiveCommunicationSettings {
     readonly enabled: boolean;
     readonly internalGroupsEnabled: boolean;
     readonly employeeToEmployeeChatEnabled: boolean;
+    /** F8b (D-20). */
+    readonly groupsAllowMultipleClients: boolean;
     readonly maxReactionsPerMessage: number;
+    /** F8: edición de mensajes propios (minutos por tipo de chat; 0 = no se edita). */
+    readonly edit: ChatEditPolicy;
   };
   readonly support: { readonly enabled: boolean };
   readonly invitations: {
@@ -117,6 +126,12 @@ export interface EffectiveCommunicationSettings {
       readonly autoGainControl: boolean | null;
     };
   } | null;
+}
+
+/** F8: cuánto dura la ventana para editar un mensaje propio según el tipo de chat, y cuántas veces. */
+export interface ChatEditPolicy {
+  readonly windowMinutes: { readonly Direct: number; readonly Group: number; readonly Support: number; readonly Meeting: number };
+  readonly maxEdits: number;
 }
 
 /** F7 (T-33, D-29): cómo compone el recorder (720p@25, MP4 por defecto) y qué capa de cámara graba. */
@@ -327,6 +342,11 @@ export function resolveCeilings(input: {
     ),
     meetingChatAttachmentsPerMinute: clampToTechnical('meetingChatAttachmentsPerMinute', platform.meetingChatAttachmentsPerMinute),
     meetingChatAttachmentsPerMeeting: clampToTechnical('meetingChatAttachmentsPerMeeting', platform.meetingChatAttachmentsPerMeeting),
+    chatEditWindowMinutesDirect: clampToTechnical('chatEditWindowMinutesDirect', platform.chatEditWindowMinutesDirect),
+    chatEditWindowMinutesGroup: clampToTechnical('chatEditWindowMinutesGroup', platform.chatEditWindowMinutesGroup),
+    chatEditWindowMinutesSupport: clampToTechnical('chatEditWindowMinutesSupport', platform.chatEditWindowMinutesSupport),
+    chatEditWindowMinutesMeeting: clampToTechnical('chatEditWindowMinutesMeeting', platform.chatEditWindowMinutesMeeting),
+    chatMaxEditsPerMessage: clampToTechnical('chatMaxEditsPerMessage', platform.chatMaxEditsPerMessage),
     // Un plan que no define la clave no restringe (rige la plataforma): mismo criterio que los números.
     recordingAllowed: (limits?.recordingEnabled ?? true) && (constraints?.recordingAllowed ?? true),
     recordingVideoAllowed: (limits?.recordingEnabled ?? true) && (limits?.recordingVideoEnabled ?? true) && (constraints?.recordingAllowed ?? true),
@@ -454,7 +474,17 @@ export function resolveEffectiveSettings(input: ResolveEffectiveInput): Effectiv
       // D-16: interruptor global; la oficina ya no lo decide.
       internalGroupsEnabled: platform.internalGroupsEnabled,
       employeeToEmployeeChatEnabled: tenant.employeeToEmployeeChatEnabled,
+      groupsAllowMultipleClients: tenant.groupsAllowMultipleClients ?? false,
       maxReactionsPerMessage: clampToTechnical('maxReactionsPerMessage', platform.maxReactionsPerMessage),
+      edit: {
+        windowMinutes: {
+          Direct: officeValue(tenant.chatEditWindowMinutesDirect ?? null, ceilings.chatEditWindowMinutesDirect, ceilings.chatEditWindowMinutesDirect, 'chatEditWindowMinutesDirect'),
+          Group: officeValue(tenant.chatEditWindowMinutesGroup ?? null, ceilings.chatEditWindowMinutesGroup, ceilings.chatEditWindowMinutesGroup, 'chatEditWindowMinutesGroup'),
+          Support: officeValue(tenant.chatEditWindowMinutesSupport ?? null, ceilings.chatEditWindowMinutesSupport, ceilings.chatEditWindowMinutesSupport, 'chatEditWindowMinutesSupport'),
+          Meeting: officeValue(tenant.chatEditWindowMinutesMeeting ?? null, ceilings.chatEditWindowMinutesMeeting, ceilings.chatEditWindowMinutesMeeting, 'chatEditWindowMinutesMeeting'),
+        },
+        maxEdits: officeValue(tenant.chatMaxEditsPerMessage ?? null, ceilings.chatMaxEditsPerMessage, ceilings.chatMaxEditsPerMessage, 'chatMaxEditsPerMessage'),
+      },
     },
     support: { enabled: ceilings.supportAllowed && tenant.supportEnabled },
     invitations: {

@@ -1,3 +1,5 @@
+import { recordAttachmentMetadata } from './record-attachment-metadata.js';
+import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
@@ -52,6 +54,8 @@ export interface SendMessageDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
   readonly attachmentTracking: AttachmentTrackingRepository;
+  /** F8d: para la categoría provisional del adjunto (opcional). */
+  readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
 }
 
 export async function sendMessage(
@@ -141,6 +145,8 @@ export async function sendMessage(
       conversationId: command.conversationId,
       tenantId: command.tenantId,
     });
+    // F8d: categoría provisional con el tipo declarado; al pasar el escaneo se reemplaza por el detectado.
+    void recordAttachmentMetadata({ tenantId: command.tenantId, fileId: messageSnapshot.attachmentFileId }, deps).catch(() => undefined);
   }
 
   const recipients = conversation
@@ -164,7 +170,12 @@ export async function sendMessage(
   };
   await deps.publisher.enqueue(sentEvent);
 
-  const dto: MessageDto = messageSnapshotToDto(messageSnapshot);
+  // F8a (T-10): el evento lleva el tipo de chat (y el meeting) para que cada módulo tome lo suyo.
+  const dto: MessageDto = {
+    ...messageSnapshotToDto(messageSnapshot),
+    conversationKind: conversation.kind,
+    ...(conversation.meetingId ? { meetingId: conversation.meetingId } : {}),
+  };
   const result: SendMessageResult = { message: dto, recipientUserIds: recipients };
   await deps.idempotency.commit({
     tenantId: command.tenantId,

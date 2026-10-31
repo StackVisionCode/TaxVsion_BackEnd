@@ -4,9 +4,11 @@ import type { SupportTicketSnapshot } from '../../src/domain/support/support-tic
 import { SupportTicket } from '../../src/domain/support/support-ticket.js';
 import type { SupportTicketRepository } from '../../src/application/ports/support-ticket-repository.js';
 import type { UserDirectoryRepository } from '../../src/application/ports/user-directory-repository.js';
+import type { ConversationActivityReader } from '../../src/application/ports/conversation-activity-reader.js';
 import {
   getSupportTicket,
   listSupportTicketsForAgent,
+  listSupportTicketsForCustomer,
 } from '../../src/application/use-cases/support-queries.js';
 
 function u(): string {
@@ -201,5 +203,56 @@ describe('support queries', () => {
     expect(denied.isSuccess).toBe(false);
     if (denied.isSuccess) return;
     expect(denied.error.code).toBe('Auth.Forbidden');
+  });
+
+  // Bandeja de Support: la lista del que abrió el ticket dice cuál trae el mensaje nuevo.
+  it('the customer list carries unread count and last message per ticket', async () => {
+    const tenantId = u();
+    const me = u();
+    const withReply = ticket({ tenantId, openedByUserId: me });
+    const quiet = ticket({ tenantId, openedByUserId: me });
+    const supportTickets = {
+      listForCustomer: vi.fn().mockResolvedValue([withReply, quiet]),
+      countForCustomer: vi.fn().mockResolvedValue(2),
+    } as unknown as SupportTicketRepository;
+    const userDirectory = { findByUserId: vi.fn(), findByUserIds: vi.fn().mockResolvedValue([]) } as unknown as UserDirectoryRepository;
+    const conversationActivity: ConversationActivityReader = {
+      readForUser: vi.fn().mockResolvedValue(
+        new Map([
+          [
+            withReply.conversationId,
+            {
+              unreadCount: 2,
+              lastMessage: { senderId: u(), kind: 'Text', body: 'We fixed it', isDeleted: false, createdAtUtc: new Date('2026-10-31T17:39:00Z') },
+            },
+          ],
+          [
+            quiet.conversationId,
+            {
+              unreadCount: 0,
+              lastMessage: { senderId: me, kind: 'Text', body: 'Thanks', isDeleted: false, createdAtUtc: new Date('2026-10-02T09:00:00Z') },
+            },
+          ],
+        ]),
+      ),
+    };
+
+    const result = await listSupportTicketsForCustomer(
+      { tenantId, openedByUserId: me, page: 1, size: 20, includeClosed: true },
+      { supportTickets, userDirectory, conversationActivity },
+    );
+
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    expect(conversationActivity.readForUser).toHaveBeenCalledWith({
+      tenantId,
+      userId: me,
+      conversationIds: [withReply.conversationId, quiet.conversationId],
+    });
+    const [first, second] = result.value.items;
+    expect(first!.unreadCount).toBe(2);
+    expect(first!.lastMessage).toMatchObject({ fromMe: false, preview: 'We fixed it', createdAtUtc: '2026-10-31T17:39:00.000Z' });
+    expect(second!.unreadCount).toBe(0);
+    expect(second!.lastMessage?.fromMe).toBe(true);
   });
 });

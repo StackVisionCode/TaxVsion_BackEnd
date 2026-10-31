@@ -684,6 +684,8 @@ jobs:
           # CommunicationRecorder (F7): password de su cuenta MinIO scoped (communication-recorder).
           # Requerida con :? por communication-recorder y minio-provision: vacía, compose no arranca.
           RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}
+          # T-20: clave compartida CloudStorage -> content-scanner (red interna). Requerida con :? por ambos.
+          CONTENT_SCANNER_API_KEY=${{ secrets.CONTENT_SCANNER_API_KEY }}
           EOF
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este

@@ -42,6 +42,12 @@ export interface RealtimeEmitter {
 
   emitToUser<T>(input: { tenantId: string; userId: string; event: string; envelope: SocketEnvelope<T> }): void;
 
+  /** F8b (T-19): saca todos los sockets de un usuario de la sala de una conversación (baja desde un consumer). */
+  removeUserFromConversation?(input: { tenantId: string; userId: string; conversationId: string }): void;
+
+  /** Une los sockets ya conectados de un usuario a la sala de una conversación creada o reabierta por HTTP. */
+  addUserToConversation?(input: { tenantId: string; userId: string; conversationId: string }): void;
+
   emitToTenant<T>(input: { tenantId: string; event: string; envelope: SocketEnvelope<T> }): void;
 
   /**

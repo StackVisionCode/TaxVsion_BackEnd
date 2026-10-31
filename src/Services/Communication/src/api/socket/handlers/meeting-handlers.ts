@@ -98,6 +98,8 @@ import {
 import { MeetingSocketRegistry } from './meeting-socket-registry.js';
 import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
+import { authorizeMeetingChatSend } from '../../../application/use-cases/meeting-chat-send-policy.js';
+import { ChatSocketEvents } from '../../../contracts/socket/chat-socket-events.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
 import { computeMeetingUniquenessKey } from '../../../domain/conversations/uniqueness-key.js';
@@ -1253,6 +1255,15 @@ function wireMeetingSocket(
       });
       return;
     }
+    // F8a: permiso del chat para cuentas (INV-10 H-7), guests solo texto (D-14) y topes de adjuntos (D-15).
+    const policy = await authorizeMeetingChatSend(
+      { principal: { ...principal, tenantId }, conversationId, hasAttachment: Boolean(parsed.data.attachmentFileId) },
+      container,
+    );
+    if (!policy.isSuccess) {
+      ack?.({ ok: false, code: policy.error.code, message: policy.error.message });
+      return;
+    }
     const allowed = await container.rateLimiter.allow({
       scope: CommunicationRateLimitPolicyNames.MeetingChatSend,
       tenantId,
@@ -1289,6 +1300,13 @@ function wireMeetingSocket(
       tenantId,
       conversationId,
       event: MeetingSocketEvents.ChatMessageNew,
+      envelope: envelope(result.value.message),
+    });
+    // F8a (T-10): evento único del chat con `conversationKind: 'Meeting'` y `meetingId`; el de la sala queda de fachada.
+    emitter.emitToConversation({
+      tenantId,
+      conversationId,
+      event: ChatSocketEvents.MessageNew,
       envelope: envelope(result.value.message),
     });
   });

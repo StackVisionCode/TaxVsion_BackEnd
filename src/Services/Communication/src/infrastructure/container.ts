@@ -109,6 +109,13 @@ import { RedisEffectiveSettingsResolver } from './persistence/redis-effective-se
 import type { MeetingEventLogRepository } from '../application/ports/meeting-event-log-repository.js';
 import { PrismaMeetingEventLogRepository } from './persistence/prisma-meeting-event-log-repository.js';
 import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
+import type { CustomerDirectoryPager, StaffDirectoryPager } from '../application/ports/directory-pager.js';
+import type { ConversationContentRepository } from '../application/ports/conversation-content-repository.js';
+import type { ConversationActivityReader } from '../application/ports/conversation-activity-reader.js';
+import { PrismaConversationContentRepository } from './persistence/prisma-conversation-content-repository.js';
+import { PrismaConversationActivityReader } from './persistence/prisma-conversation-activity-reader.js';
+import type { ConversationAuditRepository } from '../application/ports/conversation-audit-repository.js';
+import { PrismaConversationAuditRepository } from './persistence/prisma-conversation-audit-repository.js';
 import type { SocketSessionTerminator } from '../application/ports/socket-session-terminator.js';
 import type { TenantHostResolver } from '../application/ports/tenant-host-resolver.js';
 import type { TenantHostCache } from '../application/ports/tenant-host-cache.js';
@@ -167,6 +174,9 @@ export interface AppContainer {
   readonly customerPortalAccountsReconcile: CustomerPortalAccountReconcileWriter;
   readonly userDirectory: UserDirectoryRepository;
   readonly customerDirectory: CustomerDirectoryRepository;
+  /** F8c (T-14): páginas del rail del chat (mismas instancias que el directorio). */
+  readonly staffDirectory: StaffDirectoryPager;
+  readonly customerDirectoryPager: CustomerDirectoryPager;
   /** F5 avatares: foto por lote al armar participantes/remitentes (staff → Auth, portal → ficha). */
   readonly avatars: AvatarResolver;
   readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
@@ -176,6 +186,10 @@ export interface AppContainer {
   // (picker de customers, gate de chat) lo combinan por OR con el setting por-tenant.
   readonly assignmentVisibilityEnabled: boolean;
   readonly attachmentTracking: AttachmentTrackingRepository;
+  /** F8d: pestañas de Info (adjuntos por categoría y enlaces). */
+  readonly conversationContent: ConversationContentRepository;
+  /** Bandeja de Support: no leídos y último mensaje por ticket. */
+  readonly conversationActivity: ConversationActivityReader;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
   readonly tenantSettings: SettingsRepository;
@@ -189,6 +203,8 @@ export interface AppContainer {
   readonly tenantConstraints: TenantCommunicationConstraintsRepository;
   readonly userPreferences: UserCommunicationPreferencesRepository;
   readonly configurationAudit: ConfigurationAuditRepository;
+  /** F8b (T-22): bitácora de administración de grupos. */
+  readonly conversationAudit: ConversationAuditRepository;
   readonly effectiveSettings: EffectiveSettingsResolver;
   /** La misma instancia que `settings`, vista como invalidador (T-13). */
   readonly settingsCache: TenantSettingsCacheInvalidator;
@@ -233,6 +249,8 @@ export function buildContainer(): AppContainer {
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   const tenantHost = new HttpTenantHostResolver(serviceTokens);
   const notifications = new PrismaNotificationRepository(prisma);
+  const userDirectoryRepository = new PrismaUserDirectoryRepository(prisma);
+  const customerDirectoryRepository = new PrismaCustomerDirectoryRepository(prisma);
   const customerPortalAccounts = new PrismaCustomerPortalAccountRepository(prisma);
   const tenantSettingsRepository = new PrismaSettingsRepository(prisma);
   const settingsProvider = new RedisCachedTenantSettingsProvider(prisma, redis);
@@ -280,6 +298,7 @@ export function buildContainer(): AppContainer {
     tenantConstraints,
     userPreferences,
     configurationAudit: new PrismaConfigurationAuditRepository(prisma),
+    conversationAudit: new PrismaConversationAuditRepository(prisma),
     effectiveSettings,
     presence: new RedisPresenceService(redis),
     turn: new HmacTurnCredentialFactory(),
@@ -304,14 +323,18 @@ export function buildContainer(): AppContainer {
     rolePermissions: new PrismaRolePermissionsProjectionRepository(prisma),
     customerPortalAccounts,
     customerPortalAccountsReconcile: customerPortalAccounts,
-    userDirectory: new PrismaUserDirectoryRepository(prisma),
-    customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
+    userDirectory: userDirectoryRepository,
+    customerDirectory: customerDirectoryRepository,
+    staffDirectory: userDirectoryRepository,
+    customerDirectoryPager: customerDirectoryRepository,
     avatars,
     customerPreparerAssignments: new PrismaCustomerPreparerAssignmentRepository(prisma),
     presenceAudiences: new PrismaPresenceAudienceRepository(prisma),
     customerAssignments: new PrismaCustomerAssignmentProjectionRepository(prisma),
     assignmentVisibilityEnabled: config.assignmentVisibility.enabled,
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
+    conversationContent: new PrismaConversationContentRepository(prisma),
+    conversationActivity: new PrismaConversationActivityReader(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: tenantSettingsRepository,

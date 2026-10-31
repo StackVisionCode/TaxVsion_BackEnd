@@ -12,4 +12,7 @@ public enum NoteAttachmentStatus
     Available = 1,
     Rejected = 2,
     Detached = 3,
+
+    // T-20: la moderación de contenido lo retuvo para revisión humana; luego Available o Rejected.
+    UnderReview = 4,
 }

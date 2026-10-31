@@ -1,8 +1,10 @@
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Attachments.Abstractions;
 using TaxVision.Tasks.Application.ClientRequests;
 using TaxVision.Tasks.Application.ClientRequests.Abstractions;
 using TaxVision.Tasks.Application.ClientRequests.Commands;
 using TaxVision.Tasks.Domain.ClientRequests;
+using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Tests.Dependencies;
 
 namespace TaxVision.Tasks.Tests.ClientRequests;
@@ -70,10 +72,33 @@ public sealed class SubmitClientDocumentHandlerTests
         Assert.DoesNotContain("ResolvedByUserId", fields);
     }
 
+    /// <summary>
+    /// El portal espera el escaneo antes de registrar: el veredicto ya se publicó y no vuelve, así que
+    /// se pregunta al registrar (T-20: también "en revisión").
+    /// </summary>
+    [Theory]
+    [InlineData(RemoteFileScanStatus.Available, AttachmentStatus.Available)]
+    [InlineData(RemoteFileScanStatus.PendingReview, AttachmentStatus.UnderReview)]
+    [InlineData(RemoteFileScanStatus.BlockedByPolicy, AttachmentStatus.Rejected)]
+    [InlineData(RemoteFileScanStatus.Unknown, AttachmentStatus.Pending)]
+    public async Task An_already_published_verdict_is_applied_when_the_document_is_registered(
+        RemoteFileScanStatus remote,
+        AttachmentStatus expected
+    )
+    {
+        var request = NewRequest(CustomerId);
+        var repository = new InMemoryClientRequestRepository(request);
+
+        await SubmitAsync(repository, CustomerId, request.Id, remote);
+
+        Assert.Equal(expected, request.Documents.Single().Status);
+    }
+
     private static async Task<Result<PortalClientRequestResponse>> SubmitAsync(
         IClientRequestRepository repository,
         Guid customerId,
-        Guid requestId
+        Guid requestId,
+        RemoteFileScanStatus remote = RemoteFileScanStatus.Unknown
     ) =>
         await SubmitClientDocumentHandler.Handle(
             new SubmitClientDocumentCommand(
@@ -86,11 +111,21 @@ public sealed class SubmitClientDocumentHandlerTests
                 2048
             ),
             repository,
+            new FixedScanStatus(remote),
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
+
+    private sealed class FixedScanStatus(RemoteFileScanStatus status) : ITaskFileScanStatusClient
+    {
+        public Task<RemoteFileScanStatus> GetStatusAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(status);
+
+        public Task<RemoteFileMetadata> GetFileMetadataAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
+            Task.FromResult(RemoteFileMetadata.Unknown);
+    }
 
     private static ClientRequest NewRequest(Guid customerId) =>
         ClientRequest.Create(TenantId, customerId, PreparerId, null, "W-2 2025", null, null, Now).Value;

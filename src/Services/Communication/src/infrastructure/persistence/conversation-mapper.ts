@@ -7,7 +7,7 @@ import {
   Conversation,
   type ConversationSnapshot,
 } from '../../domain/conversations/conversation.js';
-import type { ConversationParticipantSnapshot } from '../../domain/conversations/conversation-participant.js';
+import type { ConversationParticipantSnapshot, GroupRole } from '../../domain/conversations/conversation-participant.js';
 import type { MessageSnapshot } from '../../domain/conversations/message.js';
 import { isConversationKind } from '../../domain/conversations/conversation-kind.js';
 import { isMessageKind } from '../../domain/conversations/message-kind.js';
@@ -26,7 +26,8 @@ export function toDomainParticipant(row: PrismaParticipant): ConversationPartici
     userId: row.UserId,
     displayName: row.DisplayName,
     actorType: row.ActorType,
-    role: row.Role === 'Owner' ? 'Owner' : 'Member',
+    role: toGroupRole(row.Role),
+    customerId: row.CustomerId,
     isPrimaryPreparer: row.IsPrimaryPreparer,
     isMuted: row.IsMuted,
     isRemoved: row.IsRemoved,
@@ -65,6 +66,7 @@ export function toDomainMessage(row: PrismaMessage): MessageSnapshot {
     transcriptText: row.TranscriptText,
     transcriptState: isMessageTranscriptState(row.TranscriptState) ? row.TranscriptState : null,
     transcriptLanguage: row.TranscriptLanguage,
+    editCount: row.EditCount,
   };
 }
 
@@ -83,6 +85,9 @@ export function toDomainConversation(
     title: row.Title,
     uniquenessKey: row.UniquenessKey,
     isArchived: row.IsArchived,
+    description: row.Description,
+    avatarFileId: row.AvatarFileId,
+    adminsOnlyWrite: row.AdminsOnlyWrite,
     lastMessageAtUtc: row.LastMessageAtUtc,
     createdByUserId: row.CreatedByUserId,
     createdAtUtc: row.CreatedAtUtc,
@@ -91,6 +96,11 @@ export function toDomainConversation(
     recentMessages: recentMessages.map(toDomainMessage),
   };
   return Conversation.rehydrate(snapshot);
+}
+
+/** Rol persistido → dominio; cualquier valor desconocido cae a Member (el de menor privilegio). */
+export function toGroupRole(value: string): GroupRole {
+  return value === 'Owner' || value === 'Admin' ? value : 'Member';
 }
 
 function isMessageTranscriptState(value: string | null): value is MessageTranscriptState {

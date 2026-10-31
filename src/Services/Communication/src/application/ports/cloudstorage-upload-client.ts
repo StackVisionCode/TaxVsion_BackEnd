@@ -15,6 +15,10 @@ export interface CloudStorageUploadRequest {
   // El blob se ancla a la conversación: CloudStorage exige un ownerId para todo
   // ownerType != Tenant (FileObject.Create), así que va el conversationId como dueño.
   readonly conversationId: string;
+  /** F8b (T-21): foto del grupo → carpeta `Avatars` (solo servicios suben ahí). Ausente = adjunto. */
+  readonly purpose?: 'GroupAvatar';
+  /** Quien sube: CloudStorage lo guarda como autor (si no, quedaría la cuenta de servicio y sus avisos no llegan). */
+  readonly uploadedByUserId: string;
 }
 
 export interface CloudStorageInitiatedUpload {

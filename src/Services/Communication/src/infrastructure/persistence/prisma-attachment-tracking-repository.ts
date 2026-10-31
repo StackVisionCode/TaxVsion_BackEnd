@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { AttachmentCategory } from '../../domain/attachments/attachment-category.js';
 import type {
   AttachmentTrackingRepository,
   AttachmentTrackingSnapshot,
@@ -57,6 +58,26 @@ export class PrismaAttachmentTrackingRepository implements AttachmentTrackingRep
       .update({ where: { FileId: input.fileId }, data: { Status: input.status } })
       .catch(() => null);
     return row ? toSnapshot(row) : null;
+  }
+
+  async recordMetadata(input: {
+    fileId: string;
+    contentType: string | null;
+    fileName: string | null;
+    sizeBytes: number | null;
+    category: AttachmentCategory;
+  }): Promise<void> {
+    await this.prisma.attachmentTracking
+      .update({
+        where: { FileId: input.fileId },
+        data: {
+          Category: input.category,
+          ContentType: input.contentType?.slice(0, 128) ?? null,
+          FileName: input.fileName?.slice(0, 260) ?? null,
+          SizeBytes: input.sizeBytes === null ? null : BigInt(input.sizeBytes),
+        },
+      })
+      .catch(() => undefined);
   }
 
   async findByFileId(fileId: string): Promise<AttachmentTrackingSnapshot | null> {

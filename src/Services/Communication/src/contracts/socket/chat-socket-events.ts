@@ -21,6 +21,8 @@ export type StartDirectConversationPayload = z.infer<typeof StartDirectConversat
 export const StartGroupConversationPayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
   title: z.string().min(1).max(120),
+  // F8b (T-21): descripción opcional al crear.
+  description: z.string().max(500).optional(),
   memberUserIds: z.array(z.string().uuid()).min(1).max(200),
 });
 export type StartGroupConversationPayload = z.infer<typeof StartGroupConversationPayloadSchema>;
@@ -39,6 +41,43 @@ export const RemoveGroupParticipantPayloadSchema = z.object({
   targetUserId: z.string().uuid().optional(),
 });
 export type RemoveGroupParticipantPayload = z.infer<typeof RemoveGroupParticipantPayloadSchema>;
+
+/** F8b (T-21): nombre, descripción e imagen del grupo; campos ausentes no cambian, null borra. */
+export const UpdateGroupInfoPayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+  title: z.string().min(1).max(120).optional(),
+  description: z.string().max(500).nullable().optional(),
+  avatarFileId: z.string().uuid().nullable().optional(),
+});
+export type UpdateGroupInfoPayload = z.infer<typeof UpdateGroupInfoPayloadSchema>;
+
+/** F8b (D-23): modo anuncio. */
+export const SetGroupAdminsOnlyPayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+  enabled: z.boolean(),
+});
+export type SetGroupAdminsOnlyPayload = z.infer<typeof SetGroupAdminsOnlyPayloadSchema>;
+
+/** F8b (D-22): el Owner nombra o quita Admins. */
+export const SetGroupMemberRolePayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+  role: z.enum(['Admin', 'Member']),
+});
+export type SetGroupMemberRolePayload = z.infer<typeof SetGroupMemberRolePayloadSchema>;
+
+export const TransferGroupOwnershipPayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+});
+export type TransferGroupOwnershipPayload = z.infer<typeof TransferGroupOwnershipPayloadSchema>;
+
+/** ADD-05 H-6: silencio de notificaciones propio. */
+export const SetConversationMutedPayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+  muted: z.boolean(),
+});
+export type SetConversationMutedPayload = z.infer<typeof SetConversationMutedPayloadSchema>;
 
 export const SendMessagePayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
@@ -173,6 +212,13 @@ export interface ConversationSummaryDto {
   updatedAtUtc: string;
 }
 
+/** F8d (T-26): reacciones agregadas de un mensaje (historial). `userIds` = quién, para el tooltip con foto. */
+export interface MessageReactionSummaryDto {
+  emoji: string;
+  count: number;
+  userIds: string[];
+}
+
 export interface MessageDto {
   id: string;
   conversationId: string;
@@ -183,6 +229,13 @@ export interface MessageDto {
    * en vivo (`chat.message.new`): el front usa la de los participantes. null = sin foto.
    */
   senderAvatarFileId?: string | null;
+  /**
+   * F8a (T-10): tipo de la conversación en `chat.message.new`, para que cada módulo tome lo suyo (Chat =
+   * Direct/Group, Support, sala = Meeting). Ausente en el historial (ya se pidió por conversación).
+   */
+  conversationKind?: 'Direct' | 'Group' | 'Support' | 'Meeting';
+  /** F8a: meeting dueño cuando `conversationKind` es Meeting. */
+  meetingId?: string | null;
   kind: 'Text' | 'Attachment' | 'System';
   body: string | null;
   attachmentFileId: string | null;
@@ -190,6 +243,8 @@ export interface MessageDto {
   /** Fase Backend 9 — set en messages creados via forward-message.ts. */
   forwardedFromMessageId: string | null;
   isEdited: boolean;
+  /** F8: cuántas veces se editó (tope por política). */
+  editCount: number;
   isDeleted: boolean;
   /** Fase Backend 9 — snapshot del estado de pin. Cambia via MessagePinned/Unpinned events. */
   isPinned: boolean;
@@ -211,6 +266,8 @@ export interface MessageDto {
   /** F7 (D-27): transcript de la nota de voz y su estado (null en cualquier otro mensaje). */
   transcriptText?: string | null;
   transcriptState?: MessageTranscriptState | null;
+  /** F8d (T-26): solo en el historial; en vivo se suman con `chat.message.reaction.*`. */
+  reactions?: MessageReactionSummaryDto[];
 }
 
 export type MessageTranscriptState = 'NotRequested' | 'Processing' | 'Ready' | 'Failed' | 'Skipped';
@@ -228,6 +285,8 @@ export interface MessageEditedDto {
   conversationId: string;
   body: string;
   editedAtUtc: string;
+  /** F8: total de ediciones tras esta (el front oculta "Edit" al llegar al tope). */
+  editCount: number;
 }
 
 export interface MessageDeletedDto {
@@ -280,7 +339,8 @@ export interface AttachmentFlaggedDto {
   messageId: string;
   conversationId: string;
   fileId: string;
-  status: 'Infected' | 'Deleted' | 'BlockedByPolicy';
+  // PendingReview: en revisión de contenido; Available: el revisor lo aprobó y vuelve a mostrarse.
+  status: 'Infected' | 'Deleted' | 'BlockedByPolicy' | 'PendingReview' | 'Available';
   flaggedAtUtc: string;
 }
 
@@ -331,7 +391,19 @@ export interface ConversationParticipantAddedDto {
   newParticipantDisplayName: string;
   /** F5 avatares — foto del nuevo miembro; ausente si no se pudo resolver, null = sin foto. */
   newParticipantAvatarFileId?: string | null;
+  /** F8b: cliente vs staff (los clientes nunca administran). */
+  newParticipantActorType?: string;
   addedAtUtc: string;
+}
+
+/** F8b (D-22): cambio de rol en un grupo (promoción, revocación, transferencia o sucesión automática). */
+export interface ConversationParticipantRoleChangedDto {
+  conversationId: string;
+  userId: string;
+  role: 'Owner' | 'Admin' | 'Member';
+  /** null = el sistema (sucesión por salida o baja). */
+  changedByUserId: string | null;
+  changedAtUtc: string;
 }
 
 export interface ConversationParticipantRemovedDto {
@@ -340,6 +412,22 @@ export interface ConversationParticipantRemovedDto {
   removedParticipantUserId: string;
   reason: 'Left' | 'Kicked';
   removedAtUtc: string;
+}
+
+/**
+ * F8: cambio de la conversación para quien la tiene abierta. Campos ausentes = no cambiaron. 8a: `isArchived`
+ * (meeting terminado / ticket cerrado → solo lectura); 8b suma nombre, descripción, imagen y "solo admins".
+ */
+export interface ConversationUpdatedDto {
+  conversationId: string;
+  kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
+  isArchived?: boolean;
+  title?: string | null;
+  description?: string | null;
+  avatarFileId?: string | null;
+  adminsOnlyWrite?: boolean;
+  /** Solo a las pestañas del propio usuario (silencio propio). */
+  isMuted?: boolean;
 }
 
 export const ChatSocketEvents = {
@@ -363,6 +451,12 @@ export const ChatSocketEvents = {
   PinMessage: 'chat.message.pin',
   UnpinMessage: 'chat.message.unpin',
   ForwardMessage: 'chat.message.forward',
+  // F8b: administración de grupos y silencio propio (c -> s).
+  UpdateGroupInfo: 'chat.conversation.update_info',
+  SetGroupAdminsOnly: 'chat.conversation.set_admins_only',
+  SetGroupMemberRole: 'chat.conversation.set_role',
+  TransferGroupOwnership: 'chat.conversation.transfer_ownership',
+  SetConversationMuted: 'chat.conversation.mute',
   // Support — chat de agente (c -> s). La salida reusa MessageNew/MessageDelivered.
   SupportAgentJoin: 'support.ticket.join',
   SupportAgentSendMessage: 'support.message.send',
@@ -380,6 +474,9 @@ export const ChatSocketEvents = {
   ConversationCreated: 'chat.conversation.created',
   ConversationParticipantAdded: 'chat.conversation.participant_added',
   ConversationParticipantRemoved: 'chat.conversation.participant_removed',
+  // F8: archivado (8a) y datos del grupo (8b).
+  ConversationUpdated: 'chat.conversation.updated',
+  ConversationParticipantRoleChanged: 'chat.conversation.participant_role_changed',
   PresenceChanged: 'chat.presence.changed',
   AttachmentFlagged: 'chat.message.attachment_flagged',
   MessageReactionAdded: 'chat.message.reaction.added',

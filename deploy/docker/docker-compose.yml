@@ -116,6 +116,32 @@ services:
       retries: 20
       start_period: 120s
 
+  # T-20: moderación de contenido. Solo red interna, sin puerto publicado: CloudStorage lo llama en
+  # http://content-scanner:8080 con X-Scanner-Key. Devuelve puntuaciones; los umbrales viven en la BD
+  # de CloudStorage. El modelo va dentro de la imagen (descargado y verificado por SHA-256 en el build).
+  # La VM de producción es ARM64: la imagen se construye ahí mismo (onnxruntime y ffmpeg tienen arm64).
+  content-scanner:
+    image: taxvision/content-scanner:dev
+    container_name: taxvision-content-scanner
+    restart: unless-stopped
+    build:
+      context: ../..
+      dockerfile: src/Services/ContentScanner/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
+    mem_limit: 768m
+    cpus: 1.0
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
   # (uso propio del negocio, sin redistribuir), version completa sin los limites de
   # Express. En local usa loopback; produccion lo enlaza exclusivamente a la IP
@@ -1830,6 +1856,9 @@ services:
       # Tope del clamp de ClamAvVirusScanner (5..600): una grabación de 2 GB no termina en los 120 s por
       # defecto y el escaneo caía en scan_error (F7).
       ClamAv__TimeoutSeconds: "600"
+      # T-20: sin scanner (caído o sin configurar) la política falla cerrada: las imágenes quedan en revisión.
+      ContentScanner__BaseUrl: http://content-scanner:8080
+      ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de CloudStorage (antes
       # solo RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.

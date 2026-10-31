@@ -73,6 +73,9 @@ public enum FormAttachmentStatus
     Available = 2,
     Rejected = 3,
     Detached = 4,
+
+    // T-20: retenido por la moderación de contenido; no vence y luego queda Available o Rejected.
+    UnderReview = 5,
 }
 
 public enum FormFileVerdictStatus
@@ -82,6 +85,7 @@ public enum FormFileVerdictStatus
     Blocked = 3,
     ScanFailed = 4,
     Deleted = 5,
+    PendingReview = 6,
 }
 
 public enum FormTaxIdentifierKind
@@ -110,6 +114,7 @@ public enum FileVerdictOutcome
     Available = 1,
     Rejected = 2,
     Detached = 3,
+    UnderReview = 4,
 }
 
 public enum CustomerLinkResult

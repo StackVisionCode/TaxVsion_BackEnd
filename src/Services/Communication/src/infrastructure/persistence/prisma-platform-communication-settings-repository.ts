@@ -49,6 +49,11 @@ export class PrismaPlatformCommunicationSettingsRepository implements PlatformCo
       MeetingChatAttachmentsPerMinute: s.meetingChatAttachmentsPerMinute,
       MeetingChatAttachmentsPerMeeting: s.meetingChatAttachmentsPerMeeting,
       MaxReactionsPerMessage: s.maxReactionsPerMessage,
+      ChatEditWindowMinutesDirect: s.chatEditWindowMinutesDirect,
+      ChatEditWindowMinutesGroup: s.chatEditWindowMinutesGroup,
+      ChatEditWindowMinutesSupport: s.chatEditWindowMinutesSupport,
+      ChatEditWindowMinutesMeeting: s.chatEditWindowMinutesMeeting,
+      ChatMaxEditsPerMessage: s.chatMaxEditsPerMessage,
       MeetingSoundsPolicy: s.meetingSoundsPolicy,
       TranscriptDefaultLanguage: s.transcriptDefaultLanguage,
       OutboxRetentionDays: s.outboxRetentionDays,
@@ -151,6 +156,11 @@ function toSnapshot(row: {
   MeetingChatAttachmentsPerMinute: number;
   MeetingChatAttachmentsPerMeeting: number;
   MaxReactionsPerMessage: number;
+  ChatEditWindowMinutesDirect: number;
+  ChatEditWindowMinutesGroup: number;
+  ChatEditWindowMinutesSupport: number;
+  ChatEditWindowMinutesMeeting: number;
+  ChatMaxEditsPerMessage: number;
   MeetingSoundsPolicy: string;
   TranscriptDefaultLanguage: string;
   OutboxRetentionDays: number;
@@ -246,6 +256,11 @@ function toSnapshot(row: {
     meetingChatAttachmentsPerMinute: row.MeetingChatAttachmentsPerMinute,
     meetingChatAttachmentsPerMeeting: row.MeetingChatAttachmentsPerMeeting,
     maxReactionsPerMessage: row.MaxReactionsPerMessage,
+    chatEditWindowMinutesDirect: row.ChatEditWindowMinutesDirect,
+    chatEditWindowMinutesGroup: row.ChatEditWindowMinutesGroup,
+    chatEditWindowMinutesSupport: row.ChatEditWindowMinutesSupport,
+    chatEditWindowMinutesMeeting: row.ChatEditWindowMinutesMeeting,
+    chatMaxEditsPerMessage: row.ChatMaxEditsPerMessage,
     // rehydrate() valida el enum; aquí solo se tipa.
     meetingSoundsPolicy: row.MeetingSoundsPolicy as MeetingSoundsPolicy,
     transcriptDefaultLanguage: row.TranscriptDefaultLanguage,

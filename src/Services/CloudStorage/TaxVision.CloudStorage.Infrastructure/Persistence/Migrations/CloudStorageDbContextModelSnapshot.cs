@@ -447,6 +447,86 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.ToTable("CloudStorageDmcaNotices", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Moderation.ContentModerationPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<double>("BlockThreshold")
+                        .HasColumnType("float");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ExcludedFolders")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("FailClosed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("FrameIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxFrames")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MaxScanBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("ReviewThreshold")
+                        .HasColumnType("float");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<bool>("ScanVideos")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ContentModerationPolicies", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Moderation.ContentModerationPolicyAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("NewSettingsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OldSettingsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc")
+                        .HasDatabaseName("IX_ContentModerationPolicyAudits_OccurredAt");
+
+                    b.ToTable("ContentModerationPolicyAudits", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")

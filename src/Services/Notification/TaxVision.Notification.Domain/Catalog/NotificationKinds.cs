@@ -3,6 +3,7 @@ namespace TaxVision.Notification.Domain.Catalog;
 public static class NotificationKinds
 {
     public const string CloudStorageFileBlockedByPolicy = "cloudstorage.file.blocked_by_policy";
+    public const string CloudStorageFilePendingReview = "cloudstorage.file.pending_review";
     public const string CloudStorageFileInfected = "cloudstorage.file.infected";
     public const string CloudStorageStorageLimitExceeded = "cloudstorage.storage_limit_exceeded";
     public const string CloudStorageFolderItemAdded = "cloudstorage.sharelink.folder_item_added";

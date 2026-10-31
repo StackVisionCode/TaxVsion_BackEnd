@@ -95,6 +95,14 @@ public static class GetAttachmentDownloadUrlHandler
                 new Error("IncomingEmailAttachment.Blocked", "This attachment was blocked by the security scan.")
             );
 
+        if (attachment.DownloadStatus == AttachmentDownloadStatus.UnderReview)
+            return Result.Failure<IncomingEmailAttachment>(
+                new Error(
+                    "IncomingEmailAttachment.UnderReview",
+                    "This attachment is under review against our content policy."
+                )
+            );
+
         return attachment.DownloadStatus != AttachmentDownloadStatus.Downloaded
             ? Result.Failure<IncomingEmailAttachment>(
                 new Error(

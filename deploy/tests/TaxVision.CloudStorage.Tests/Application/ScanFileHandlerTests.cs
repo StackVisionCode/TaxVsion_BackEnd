@@ -78,6 +78,28 @@ public sealed class ScanFileHandlerTests
         Assert.Equal("Customer", blocked.OwnerType);
         Assert.Equal(blockedFixture.CustomerId, blocked.OwnerId);
         Assert.Equal("ClientForms", blocked.FolderType);
+        Assert.True(blockedFixture.File.IsLegalHeld); // evidencia: el purgador no la borra
+    }
+
+    [Fact]
+    public async Task Pending_review_keeps_the_checksum_and_tells_who_uploaded_it()
+    {
+        var fixture = CreateFixture(FolderType.Documents, 2026);
+        fixture.ContentScanner.Result = ContentScanResult.Uncertain("Possible sexual content (score 0.700).");
+
+        await ScanAsync(fixture);
+
+        Assert.Equal(FileStatus.PendingReview, fixture.File.Status);
+        Assert.Equal(Sha256, fixture.File.ChecksumSha256);
+        Assert.False(fixture.File.IsLegalHeld);
+        Assert.Contains((fixture.Options.TempBucket, fixture.File.ObjectKey, fixture.Options.QuarantineBucket, fixture.File.ObjectKey), fixture.Storage.Copied);
+        var pending = Assert.Single(fixture.Bus.Published.OfType<FilePendingReviewIntegrationEvent>());
+        Assert.Equal(fixture.File.CreatedBy, pending.CreatedBy);
+        Assert.Equal("Customer", pending.OwnerType);
+        Assert.Equal(fixture.CustomerId, pending.OwnerId);
+        Assert.Equal("Documents", pending.FolderType);
+        Assert.Equal("application/pdf", fixture.ContentScanner.LastContext!.DetectedContentType);
+        Assert.Equal(FolderType.Documents, fixture.ContentScanner.LastContext.FolderType);
     }
 
     [Fact]
@@ -282,9 +304,13 @@ public sealed class ScanFileHandlerTests
     private sealed class StubContentScanner(ContentScanResult result) : IContentScanner
     {
         public ContentScanResult Result { get; set; } = result;
+        public ContentScanContext? LastContext { get; private set; }
 
-        public Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct) =>
-            Task.FromResult(Result);
+        public Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct)
+        {
+            LastContext = context;
+            return Task.FromResult(Result);
+        }
     }
 
     private sealed class StubInspector(InspectedContent result) : IFileContentInspector

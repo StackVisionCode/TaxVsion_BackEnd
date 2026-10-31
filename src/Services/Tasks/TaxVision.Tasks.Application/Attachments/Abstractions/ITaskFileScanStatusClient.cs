@@ -9,6 +9,9 @@ public enum RemoteFileScanStatus
     Infected = 2,
     BlockedByPolicy = 3,
     Deleted = 4,
+
+    /// <summary>T-20: retenido por la moderación de contenido hasta que lo decida una persona.</summary>
+    PendingReview = 5,
 }
 
 public sealed record RemoteFileMetadata(

@@ -101,6 +101,8 @@ const rawEnv = z
     COMMUNICATION_RATE_LIMIT_CHAT_SEND_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
     COMMUNICATION_RATE_LIMIT_CHAT_EDIT_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
+    COMMUNICATION_RATE_LIMIT_CHAT_REACTION_MAX: z.coerce.number().int().positive().default(30),
+    COMMUNICATION_RATE_LIMIT_CHAT_REACTION_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
     // "grabando nota de voz…": el cliente re-emite start cada ~12-15s mientras graba; un poco mas
@@ -409,6 +411,10 @@ export const config = {
     chatEdit: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_EDIT_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS,
+    },
+    chatReaction: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_REACTION_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_REACTION_WINDOW_SECONDS,
     },
     chatTyping: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX,

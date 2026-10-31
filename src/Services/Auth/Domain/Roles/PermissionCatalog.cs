@@ -71,6 +71,9 @@ public static class PermissionCatalog
     // tenant los edita — mismo criterio que signature.constraints.manage.
     public const string CloudStorageUploadPolicyManage = CloudStoragePermissions.UploadPolicyManage;
 
+    // Moderación de contenido (T-20): umbrales y revisión de lo marcado. PlatformOnly, como los topes.
+    public const string CloudStorageModerationManage = CloudStoragePermissions.ModerationManage;
+
     // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
     public const string SignatureRequestCreate = SignaturePermissions.RequestCreate;
     public const string SignatureRequestRead = SignaturePermissions.RequestRead;
@@ -692,6 +695,16 @@ public static class PermissionCatalog
             CloudStorageUploadPolicyManage,
             "cloudstorage",
             "Manage upload size policies per folder, plan and office",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // PlatformOnly: revisar contenido marcado y fijar umbrales es tarea de la plataforma.
+            new Guid("a1000000-0000-0000-0000-000000000217"),
+            CloudStorageModerationManage,
+            "cloudstorage",
+            "Review flagged uploads and manage the content moderation policy",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true

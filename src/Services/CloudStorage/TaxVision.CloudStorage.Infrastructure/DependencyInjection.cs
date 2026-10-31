@@ -14,6 +14,7 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Avatars;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Moderation;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
@@ -72,6 +73,7 @@ public static class DependencyInjection
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
         services.Configure<ClamAvOptions>(configuration.GetSection(ClamAvOptions.SectionName));
+        services.Configure<ContentScannerOptions>(configuration.GetSection(ContentScannerOptions.SectionName));
         services.Configure<GoogleDriveOptions>(configuration.GetSection(GoogleDriveOptions.SectionName));
         services.Configure<OneDriveOptions>(configuration.GetSection(OneDriveOptions.SectionName));
         services.Configure<DropboxOptions>(configuration.GetSection(DropboxOptions.SectionName));
@@ -187,10 +189,15 @@ public static class DependencyInjection
         services.AddSingleton<IMultipartUploadStorage, S3MultipartUploadStorage>();
         services.AddSingleton<IObjectKeyBuilder, DefaultObjectKeyBuilder>();
         services.AddSingleton<IVirusScanner, ClamAvVirusScanner>();
-        // Moderacion de contenido (NSFW/CSAM/politica) — NoOp por defecto en este
-        // MVP. Swap a una implementacion real cuando exista sin tocar el pipeline
-        // de ScanFileHandler (ver docblock de IContentScanner).
-        services.AddSingleton<IContentScanner, NoOpContentScanner>();
+        // Moderacion de contenido (T-20): la politica en BD decide; el scanner HTTP solo puntua.
+        services.AddScoped<IContentScanner, ContentModerationScanner>();
+        services.AddSingleton<ContentModerationPolicyCache>();
+        services.AddScoped<IContentModerationPolicyRepository, ContentModerationPolicyRepository>();
+        services.AddScoped<IContentModerationPolicyAuditRepository, ContentModerationPolicyAuditRepository>();
+        services.AddScoped<IContentReviewQueue, ContentReviewQueue>();
+        services.AddHttpClient<IContentClassifier, HttpContentClassifier>("content-scanner", (sp, client) =>
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(1, sp.GetRequiredService<IOptions<ContentScannerOptions>>().Value.TimeoutSeconds))
+        );
         services.AddSingleton<IFileContentInspector, FileContentInspector>();
         services.AddSingleton<IShareLinkPasswordHasher, Pbkdf2ShareLinkPasswordHasher>();
         services.AddSingleton<ISystemClock, SystemClock>();

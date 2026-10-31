@@ -26,7 +26,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "job:expire-stale-meetings": "tsx src/jobs/expire-stale-meetings.ts",
-    "job:backfill-participant-customer-id": "tsx src/jobs/backfill-participant-customer-id.ts"
+    "job:backfill-participant-customer-id": "tsx src/jobs/backfill-participant-customer-id.ts",
+    "job:backfill-chat-content": "tsx src/jobs/backfill-chat-content.ts"
   },
   "dependencies": {
     "@fastify/cors": "10.0.1",

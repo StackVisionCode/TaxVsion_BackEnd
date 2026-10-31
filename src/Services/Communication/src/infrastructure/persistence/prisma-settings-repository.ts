@@ -30,6 +30,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
       ScreenshotsEnabled: s.screenshotsEnabled,
       EmployeeToEmployeeChatEnabled: s.employeeToEmployeeChatEnabled,
       RestrictCustomerChatToAssignedPreparer: s.restrictCustomerChatToAssignedPreparer,
+      GroupsAllowMultipleClients: s.groupsAllowMultipleClients,
       DefaultCameraOff: s.defaultCameraOff,
       DefaultMicrophoneOff: s.defaultMicrophoneOff,
       PersistChatOnEnd: s.persistChatOnEnd,
@@ -62,6 +63,11 @@ export class PrismaSettingsRepository implements SettingsRepository {
       GuestsWaitingRoom: s.guestsWaitingRoom,
       TranscriptPrompt: s.transcriptPrompt,
       VoiceNoteTranscriptEnabled: s.voiceNoteTranscriptEnabled,
+      ChatEditWindowMinutesDirect: s.chatEditWindowMinutesDirect,
+      ChatEditWindowMinutesGroup: s.chatEditWindowMinutesGroup,
+      ChatEditWindowMinutesSupport: s.chatEditWindowMinutesSupport,
+      ChatEditWindowMinutesMeeting: s.chatEditWindowMinutesMeeting,
+      ChatMaxEditsPerMessage: s.chatMaxEditsPerMessage,
     };
     await this.prisma.tenantCommunicationSettings.upsert({
       where: { TenantId: s.tenantId },
@@ -88,6 +94,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
     ScreenshotsEnabled: boolean;
     EmployeeToEmployeeChatEnabled: boolean;
     RestrictCustomerChatToAssignedPreparer: boolean;
+    GroupsAllowMultipleClients: boolean;
     DefaultCameraOff: boolean;
     DefaultMicrophoneOff: boolean;
     PersistChatOnEnd: boolean;
@@ -120,6 +127,11 @@ export class PrismaSettingsRepository implements SettingsRepository {
     GuestsWaitingRoom: boolean | null;
     TranscriptPrompt: string | null;
     VoiceNoteTranscriptEnabled: boolean | null;
+    ChatEditWindowMinutesDirect: number | null;
+    ChatEditWindowMinutesGroup: number | null;
+    ChatEditWindowMinutesSupport: number | null;
+    ChatEditWindowMinutesMeeting: number | null;
+    ChatMaxEditsPerMessage: number | null;
     CreatedAtUtc: Date;
     UpdatedAtUtc: Date;
   }): TenantCommunicationSettingsSnapshot {
@@ -133,6 +145,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
       screenshotsEnabled: row.ScreenshotsEnabled,
       employeeToEmployeeChatEnabled: row.EmployeeToEmployeeChatEnabled,
       restrictCustomerChatToAssignedPreparer: row.RestrictCustomerChatToAssignedPreparer,
+      groupsAllowMultipleClients: row.GroupsAllowMultipleClients,
       defaultCameraOff: row.DefaultCameraOff,
       defaultMicrophoneOff: row.DefaultMicrophoneOff,
       persistChatOnEnd: row.PersistChatOnEnd,
@@ -167,6 +180,11 @@ export class PrismaSettingsRepository implements SettingsRepository {
       guestsWaitingRoom: row.GuestsWaitingRoom,
       transcriptPrompt: row.TranscriptPrompt,
       voiceNoteTranscriptEnabled: row.VoiceNoteTranscriptEnabled,
+      chatEditWindowMinutesDirect: row.ChatEditWindowMinutesDirect,
+      chatEditWindowMinutesGroup: row.ChatEditWindowMinutesGroup,
+      chatEditWindowMinutesSupport: row.ChatEditWindowMinutesSupport,
+      chatEditWindowMinutesMeeting: row.ChatEditWindowMinutesMeeting,
+      chatMaxEditsPerMessage: row.ChatMaxEditsPerMessage,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
     };

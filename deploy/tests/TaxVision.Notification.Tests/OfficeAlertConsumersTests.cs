@@ -87,6 +87,52 @@ public sealed class OfficeAlertConsumersTests
     }
 
     [Fact]
+    public async Task Pending_review_notifies_only_the_uploader_without_the_internal_reason()
+    {
+        var uploader = Guid.NewGuid();
+        var harness = new NotificationDispatcherHarness();
+
+        await FilePendingReviewConsumer.Handle(
+            new FilePendingReviewIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = Guid.NewGuid(),
+                ObjectKey = "k",
+                Reason = "Possible sexual content (score 0.700).",
+                CreatedBy = uploader,
+            },
+            harness.Dispatcher,
+            AlwaysOnInAppSource.Instance,
+            new TestCorrelationContext(),
+            CancellationToken.None
+        );
+
+        AssertRecipients(harness, uploader);
+        var row = harness.Publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>().Single();
+        Assert.Equal(NotificationKinds.CloudStorageFilePendingReview, row.Kind);
+        Assert.DoesNotContain("score", System.Text.Json.JsonSerializer.Serialize(row));
+    }
+
+    [Fact]
+    public async Task Pending_review_is_suppressed_without_uploader_or_when_the_gate_points_to_Communication()
+    {
+        var harness = new NotificationDispatcherHarness();
+        var evt = new FilePendingReviewIntegrationEvent
+        {
+            TenantId = TenantId,
+            FileId = Guid.NewGuid(),
+            ObjectKey = "k",
+            Reason = "x",
+            CreatedBy = Guid.NewGuid(),
+        };
+
+        await FilePendingReviewConsumer.Handle(evt, harness.Dispatcher, new StubInAppSource(publishes: false), new TestCorrelationContext(), CancellationToken.None);
+        await FilePendingReviewConsumer.Handle(evt with { CreatedBy = null }, harness.Dispatcher, AlwaysOnInAppSource.Instance, new TestCorrelationContext(), CancellationToken.None);
+
+        Assert.Empty(harness.Publisher.Published);
+    }
+
+    [Fact]
     public async Task Dmca_takedown_resolves_by_legal_manage_capability_and_excludes_uploader()
     {
         var owner = Guid.NewGuid();

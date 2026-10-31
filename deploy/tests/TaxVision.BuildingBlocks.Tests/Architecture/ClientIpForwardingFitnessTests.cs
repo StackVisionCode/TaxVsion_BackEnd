@@ -16,6 +16,16 @@ namespace TaxVision.BuildingBlocks.Tests.Architecture;
 /// </summary>
 public sealed class ClientIpForwardingFitnessTests
 {
+    /// <summary>
+    /// Hosts internos sin tráfico de usuarios: no pasan por el Gateway y no guardan IPs. Cada entrada
+    /// lleva su motivo; agregar una exige el mismo argumento.
+    /// </summary>
+    private static readonly string[] InternalOnlyHosts =
+    [
+        // T-20: solo lo llama CloudStorage por la red interna de Docker; no expone puertos ni registra IPs.
+        "src/Services/ContentScanner/TaxVision.ContentScanner/Program.cs",
+    ];
+
     [Fact]
     public void Every_web_host_resolves_the_real_client_ip()
     {
@@ -56,6 +66,9 @@ public sealed class ClientIpForwardingFitnessTests
                     file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
                     || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
                 )
+                    continue;
+
+                if (InternalOnlyHosts.Contains(RelativePath(file).Replace(Path.DirectorySeparatorChar, '/'), StringComparer.Ordinal))
                     continue;
 
                 // Solo puntos de entrada web reales (los que arrancan un WebApplication).

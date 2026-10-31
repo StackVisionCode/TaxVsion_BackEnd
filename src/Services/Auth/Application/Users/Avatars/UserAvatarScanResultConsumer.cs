@@ -85,6 +85,7 @@ public static class UserAvatarScanResultConsumer
             ct
         );
 
+    // T-20: bloqueada por contenido. Se descarta igual que un rechazo, pero queda constancia para el mensaje.
     public static Task Handle(
         FileBlockedByPolicyIntegrationEvent msg,
         IUserRepository users,
@@ -93,9 +94,30 @@ public static class UserAvatarScanResultConsumer
         ILogger<User> logger,
         CancellationToken ct
     ) =>
-        DiscardAsync(
+        ModerateAsync(
             new ScanFailure(msg.TenantId, msg.FileId, msg.OwnerType, msg.OwnerId, msg.FolderType, "blocked_by_policy"),
             CorrelationOf(msg.CorrelationId, msg.EventId),
+            (user, fileId) => user.RejectPendingAvatarForPolicy(fileId),
+            users,
+            unitOfWork,
+            correlation,
+            logger,
+            ct
+        );
+
+    // T-20: en revisión humana. La pendiente no vence; si el revisor aprueba, llega FileAvailable.
+    public static Task Handle(
+        FilePendingReviewIntegrationEvent msg,
+        IUserRepository users,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<User> logger,
+        CancellationToken ct
+    ) =>
+        ModerateAsync(
+            new ScanFailure(msg.TenantId, msg.FileId, msg.OwnerType, msg.OwnerId, msg.FolderType, "pending_review"),
+            CorrelationOf(msg.CorrelationId, msg.EventId),
+            (user, fileId) => user.HoldPendingAvatarForReview(fileId),
             users,
             unitOfWork,
             correlation,
@@ -121,9 +143,30 @@ public static class UserAvatarScanResultConsumer
             ct
         );
 
-    private static async Task DiscardAsync(
+    private static Task DiscardAsync(
         ScanFailure failure,
         string correlationId,
+        IUserRepository users,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<User> logger,
+        CancellationToken ct
+    ) =>
+        ModerateAsync(
+            failure,
+            correlationId,
+            (user, fileId) => user.DiscardPendingAvatar(fileId),
+            users,
+            unitOfWork,
+            correlation,
+            logger,
+            ct
+        );
+
+    private static async Task ModerateAsync(
+        ScanFailure failure,
+        string correlationId,
+        Func<User, Guid, bool> apply,
         IUserRepository users,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -137,12 +180,12 @@ public static class UserAvatarScanResultConsumer
         using var _ = correlation.Push(correlationId);
 
         var user = await FindOwnerAsync(users, failure.TenantId, failure.OwnerId!.Value, failure.FileId, logger, ct);
-        if (user is null || !user.DiscardPendingAvatar(failure.FileId))
+        if (user is null || !apply(user, failure.FileId))
             return;
 
         await unitOfWork.SaveChangesAsync(ct);
         logger.LogWarning(
-            "User {UserId} avatar file {FileId} rejected by CloudStorage ({Reason}); discarded.",
+            "User {UserId} avatar file {FileId} moderated by CloudStorage ({Reason}).",
             user.Id,
             failure.FileId,
             failure.Reason

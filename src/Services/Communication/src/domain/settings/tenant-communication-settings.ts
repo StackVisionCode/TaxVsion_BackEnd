@@ -37,6 +37,8 @@ export interface TenantCommunicationSettingsSnapshot {
    * (CustomerPreparerAssignment). Default false, opt-in por tenant.
    */
   readonly restrictCustomerChatToAssignedPreparer: boolean;
+  /** F8b (D-20): la oficina permite varios clientes en un mismo grupo (se verán entre sí). */
+  readonly groupsAllowMultipleClients: boolean;
   readonly defaultCameraOff: boolean;
   readonly defaultMicrophoneOff: boolean;
   readonly persistChatOnEnd: boolean;
@@ -78,6 +80,12 @@ export interface TenantCommunicationSettingsSnapshot {
   // F7: vocabulario de la oficina para el transcript (T-30) y notas de voz transcritas (null = hereda).
   readonly transcriptPrompt: string | null;
   readonly voiceNoteTranscriptEnabled: boolean | null;
+  // F8 (null = hereda la plataforma): la oficina puede acortar la ventana de edición, nunca alargarla.
+  readonly chatEditWindowMinutesDirect: number | null;
+  readonly chatEditWindowMinutesGroup: number | null;
+  readonly chatEditWindowMinutesSupport: number | null;
+  readonly chatEditWindowMinutesMeeting: number | null;
+  readonly chatMaxEditsPerMessage: number | null;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
 }
@@ -96,7 +104,12 @@ type OfficeNumericKey =
   | 'ringingTimeoutSeconds'
   | 'meetingChatAttachmentsPerMinute'
   | 'meetingChatAttachmentsPerMeeting'
-  | 'meetingReminderMinutesBefore';
+  | 'meetingReminderMinutesBefore'
+  | 'chatEditWindowMinutesDirect'
+  | 'chatEditWindowMinutesGroup'
+  | 'chatEditWindowMinutesSupport'
+  | 'chatEditWindowMinutesMeeting'
+  | 'chatMaxEditsPerMessage';
 
 /** Claves numericas opcionales de la oficina y el rango tecnico que las acota. */
 const OFFICE_NUMERIC_RANGES: Record<OfficeNumericKey, TechnicalLimitKey> = {
@@ -110,6 +123,11 @@ const OFFICE_NUMERIC_RANGES: Record<OfficeNumericKey, TechnicalLimitKey> = {
   meetingChatAttachmentsPerMinute: 'meetingChatAttachmentsPerMinute',
   meetingChatAttachmentsPerMeeting: 'meetingChatAttachmentsPerMeeting',
   meetingReminderMinutesBefore: 'meetingReminderMinutesBefore',
+  chatEditWindowMinutesDirect: 'chatEditWindowMinutesDirect',
+  chatEditWindowMinutesGroup: 'chatEditWindowMinutesGroup',
+  chatEditWindowMinutesSupport: 'chatEditWindowMinutesSupport',
+  chatEditWindowMinutesMeeting: 'chatEditWindowMinutesMeeting',
+  chatMaxEditsPerMessage: 'chatMaxEditsPerMessage',
 };
 
 type CeilingedKey = Exclude<OfficeNumericKey, 'ringingTimeoutSeconds' | 'meetingReminderMinutesBefore'>;
@@ -127,6 +145,11 @@ const CEILING_OF: Record<CeilingedKey, NumericCeilingKey> = {
   maxRecordingMinutesVideoCall: 'maxRecordingMinutesVideoCall',
   meetingChatAttachmentsPerMinute: 'meetingChatAttachmentsPerMinute',
   meetingChatAttachmentsPerMeeting: 'meetingChatAttachmentsPerMeeting',
+  chatEditWindowMinutesDirect: 'chatEditWindowMinutesDirect',
+  chatEditWindowMinutesGroup: 'chatEditWindowMinutesGroup',
+  chatEditWindowMinutesSupport: 'chatEditWindowMinutesSupport',
+  chatEditWindowMinutesMeeting: 'chatEditWindowMinutesMeeting',
+  chatMaxEditsPerMessage: 'chatMaxEditsPerMessage',
 };
 
 /** whisper.cpp toma el prompt como contexto inicial: corto, solo nombres y vocabulario. */
@@ -150,6 +173,7 @@ export class TenantCommunicationSettings {
       screenshotsEnabled: true,
       employeeToEmployeeChatEnabled: false,
       restrictCustomerChatToAssignedPreparer: false,
+      groupsAllowMultipleClients: false,
       defaultCameraOff: true,
       defaultMicrophoneOff: false,
       persistChatOnEnd: false,
@@ -182,6 +206,11 @@ export class TenantCommunicationSettings {
       guestsWaitingRoom: null,
       transcriptPrompt: null,
       voiceNoteTranscriptEnabled: null,
+      chatEditWindowMinutesDirect: null,
+      chatEditWindowMinutesGroup: null,
+      chatEditWindowMinutesSupport: null,
+      chatEditWindowMinutesMeeting: null,
+      chatMaxEditsPerMessage: null,
       createdAtUtc: now,
       updatedAtUtc: now,
     });

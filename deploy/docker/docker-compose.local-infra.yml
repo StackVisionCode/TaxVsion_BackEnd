@@ -98,6 +98,36 @@
       start_period: 120s
 
 
+  # T-20: moderación de contenido (imágenes y videos). Lo llama CloudStorage local en
+  # http://localhost:5540 con la misma clave (user-secrets ContentScanner:ApiKey).
+  # El modelo va dentro de la imagen: se descarga y verifica por SHA-256 en el build.
+  content-scanner:
+    build:
+      context: ../..
+      dockerfile: src/Services/ContentScanner/Dockerfile
+    image: taxvision/content-scanner:local
+    container_name: taxvision-content-scanner
+
+    environment:
+      ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
+
+    ports:
+      - "127.0.0.1:5540:8080"
+
+    mem_limit: 768m
+    cpus: 1.0
+
+    networks:
+      - taxvision-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+
 volumes:
   rabbitmq-data:
   redis-data:

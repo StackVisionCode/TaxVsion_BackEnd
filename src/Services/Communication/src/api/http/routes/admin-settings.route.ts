@@ -42,6 +42,12 @@ const PlatformPatchBody = z.object({
   meetingChatAttachmentsPerMinute: PositiveInt.optional(),
   meetingChatAttachmentsPerMeeting: PositiveInt.optional(),
   maxReactionsPerMessage: PositiveInt.optional(),
+  // F8: ventana de edición por tipo de chat (0 = no se edita) y tope de ediciones; el rango lo valida el dominio.
+  chatEditWindowMinutesDirect: z.number().int().min(0).optional(),
+  chatEditWindowMinutesGroup: z.number().int().min(0).optional(),
+  chatEditWindowMinutesSupport: z.number().int().min(0).optional(),
+  chatEditWindowMinutesMeeting: z.number().int().min(0).optional(),
+  chatMaxEditsPerMessage: PositiveInt.optional(),
   meetingSoundsPolicy: z.enum(MEETING_SOUNDS_POLICIES).optional(),
   transcriptDefaultLanguage: z.string().min(2).max(16).optional(),
   outboxRetentionDays: PositiveInt.optional(),

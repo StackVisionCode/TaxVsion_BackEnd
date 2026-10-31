@@ -196,12 +196,41 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
-    public Result MarkPendingReview(string report, string detectedContentType, DateTime nowUtc)
+    /// <summary>Guarda el checksum ya calculado: si el revisor aprueba, el archivo pasa a Available sin volver a leerlo.</summary>
+    public Result MarkPendingReview(
+        string report,
+        string detectedContentType,
+        ChecksumSha256 checksum,
+        DateTime nowUtc
+    )
     {
         if (Status != FileStatus.Scanning)
             return Result.Failure(FileErrors.InvalidTransition);
         Status = FileStatus.PendingReview;
         DetectedContentType = detectedContentType;
+        ChecksumSha256 = checksum.Value;
+        ScanReport = report;
+        ScannedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Revisión humana: el revisor de plataforma confirma que el contenido es apto.</summary>
+    public Result ApproveReview(DateTime nowUtc)
+    {
+        if (Status != FileStatus.PendingReview || ChecksumSha256 is null)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.Available;
+        ScanReport = "Approved after content review.";
+        ScannedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Revisión humana: el revisor confirma que viola la política; queda bloqueado en cuarentena.</summary>
+    public Result RejectReview(string report, DateTime nowUtc)
+    {
+        if (Status != FileStatus.PendingReview)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.BlockedByPolicy;
         ScanReport = report;
         ScannedAtUtc = nowUtc;
         return Result.Success();

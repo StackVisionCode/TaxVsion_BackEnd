@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>TaxVision.ContentScanner</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Motor de inferencia en CPU (x64 y arm64); el modelo se descarga en el build de la imagen. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TaxVision.ContentScanner.Tests" />
+  </ItemGroup>
+
+</Project>

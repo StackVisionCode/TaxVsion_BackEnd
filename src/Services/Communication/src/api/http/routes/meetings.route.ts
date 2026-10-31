@@ -14,6 +14,7 @@ import { rescheduleMeeting } from '../../../application/use-cases/reschedule-mee
 import { continueMeeting } from '../../../application/use-cases/continue-meeting.js';
 import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
 import { getMeetingSummary } from '../../../application/use-cases/get-meeting-summary.js';
+import { getMeetingChatHistory } from '../../../application/use-cases/get-meeting-chat-history.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 import { requirePermission } from '../plugins/require-permission.js';
 import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
@@ -43,6 +44,10 @@ const EventsQuery = z.object({
   take: z.coerce.number().int().min(1).max(500).default(200),
   // Ficha: solo la actividad legible (sin voz, calidad ni media).
   activity: z.enum(['true', 'false']).optional(),
+});
+const MeetingChatQuery = z.object({
+  before: z.string().datetime().optional(),
+  take: z.coerce.number().int().min(1).max(100).default(50),
 });
 const HistoryQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -292,6 +297,35 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         !isPortal || (await container.effectiveSettings.resolve(principal.tenantId)).recording.visibleInPortal;
       const result = await getMeetingSummary(
         { tenantId: principal.tenantId, meetingId: params.id, userId: principal.userId, isPortal, recordingVisible },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Meeting.NotFound' ? 404 : 403;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // F8a (D-01): chat de la sala en la ficha del meeting (solo lectura tras el End), para quien participó.
+  app.get(
+    '/communication/meetings/:id/chat',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+      const params = IdParams.parse(request.params);
+      const query = MeetingChatQuery.parse(request.query);
+      const result = await getMeetingChatHistory(
+        {
+          tenantId: principal.tenantId,
+          meetingId: params.id,
+          userId: principal.userId,
+          ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
+          take: query.take,
+        },
         container,
       );
       if (!result.isSuccess) {

@@ -5,10 +5,12 @@ import type { MeetingEventLogRepository } from '../../application/ports/meeting-
 /**
  * El `seq` se calcula dentro del mismo INSERT con UPDLOCK+HOLDLOCK sobre el rango del scope: dos escritores
  * de la misma reunión se serializan (antes leían el mismo MAX y uno chocaba con el índice único y se perdía,
- * p. ej. un `speaker.stopped`). Otras reuniones no se bloquean. Reintento corto por si SQL Server elige
- * este INSERT como víctima de un deadlock.
+ * p. ej. un `speaker.stopped`). Otras reuniones no se bloquean. Si SQL Server elige este INSERT como víctima
+ * de un deadlock (los bloqueos de rango de dos reuniones vecinas pueden cruzarse) se reintenta con una espera
+ * breve, exponencial y aleatoria: reintentar al instante volvía a chocar y con carga se perdían eventos.
  */
-const APPEND_RETRIES = 3;
+const APPEND_RETRIES = 6;
+const BACKOFF_BASE_MS = 15;
 const DEADLOCK_VICTIM = 1205;
 
 export class PrismaMeetingEventLogRepository implements MeetingEventLogRepository {
@@ -32,6 +34,7 @@ export class PrismaMeetingEventLogRepository implements MeetingEventLogRepositor
         return { ...entry, seq };
       } catch (err) {
         if (!isRetryable(err) || attempt >= APPEND_RETRIES) throw err;
+        await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * BACKOFF_BASE_MS));
       }
     }
   }
@@ -84,4 +87,8 @@ function isRetryable(err: unknown): boolean {
     if (err.code === 'P2010' && meta?.code === String(DEADLOCK_VICTIM)) return true;
   }
   return err instanceof Error && /deadlock/i.test(err.message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -37,6 +37,7 @@ export class RedisCachedTenantSettingsProvider implements TenantSettingsProvider
           chatEnabled: row.ChatEnabled,
           employeeToEmployeeChatEnabled: row.EmployeeToEmployeeChatEnabled,
           restrictCustomerChatToAssignedPreparer: row.RestrictCustomerChatToAssignedPreparer,
+          groupsAllowMultipleClients: row.GroupsAllowMultipleClients,
           screenshotsEnabled: row.ScreenshotsEnabled,
           messageRetentionDays: row.MessageRetentionDays,
         }
@@ -45,6 +46,7 @@ export class RedisCachedTenantSettingsProvider implements TenantSettingsProvider
           chatEnabled: true,
           employeeToEmployeeChatEnabled: false,
           restrictCustomerChatToAssignedPreparer: false,
+          groupsAllowMultipleClients: false,
           screenshotsEnabled: true,
           messageRetentionDays: 365,
         };

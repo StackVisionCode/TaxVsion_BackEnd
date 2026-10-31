@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../shared/result.js';
+import { isReactionEmoji } from './reaction-emoji.js';
 
 /**
  * Reaction a un Message (Fase Backend 9). Entidad hija NO administrada por el
@@ -39,6 +40,10 @@ export class MessageReaction {
     const trimmed = input.emoji.trim();
     if (trimmed.length === 0) {
       return Result.fail(makeError('Chat.Reaction.EmptyEmoji', 'Emoji is required.'));
+    }
+    // F8d (T-25): un solo emoji (grafema); nunca texto ni varios.
+    if (trimmed.length <= EMOJI_MAX_LENGTH && !isReactionEmoji(trimmed)) {
+      return Result.fail(makeError('Chat.Reaction.InvalidEmoji', 'Reactions must be a single emoji.'));
     }
     if (trimmed.length > EMOJI_MAX_LENGTH) {
       return Result.fail(

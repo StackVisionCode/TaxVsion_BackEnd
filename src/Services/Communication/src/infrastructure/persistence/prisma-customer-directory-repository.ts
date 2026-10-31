@@ -1,10 +1,11 @@
-import type { CustomerDirectoryEntry, PrismaClient } from '@prisma/client';
+import { Prisma, type CustomerDirectoryEntry, type PrismaClient } from '@prisma/client';
+import type { CustomerDirectoryPager, DirectoryCursor } from '../../application/ports/directory-pager.js';
 import type {
   CustomerDirectoryRepository,
   CustomerDirectoryEntrySnapshot,
 } from '../../application/ports/customer-directory-repository.js';
 
-export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepository {
+export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepository, CustomerDirectoryPager {
   constructor(private readonly prisma: PrismaClient) {}
 
   async upsert(snapshot: {
@@ -72,6 +73,48 @@ export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepos
     });
     return rows.map(toSnapshot);
   }
+
+  /**
+   * F8c (T-14): página del rail Clients por cursor (DisplayName, CustomerId). Con `assignedToUserId` el ABAC va
+   * en la misma consulta (EXISTS sobre la proyección de asignaciones), así la página trae `take` filas visibles.
+   * Los opcionales se agregan como fragmentos, nunca como parámetro NULL (Prisma los tipa int en SQL Server).
+   */
+  async pageCustomers(input: {
+    tenantId: string;
+    query: string | null;
+    take: number;
+    after: DirectoryCursor | null;
+    assignedToUserId: string | null;
+  }): Promise<CustomerDirectoryEntrySnapshot[]> {
+    const conditions: Prisma.Sql[] = [Prisma.sql`d.[TenantId] = ${input.tenantId}`, Prisma.sql`d.[IsActive] = 1`];
+    if (input.query) {
+      const like = `%${escapeLike(input.query)}%`;
+      conditions.push(Prisma.sql`(d.[DisplayName] LIKE ${like} OR d.[Email] LIKE ${like})`);
+    }
+    if (input.after) {
+      conditions.push(
+        Prisma.sql`(d.[DisplayName] > ${input.after.displayName} OR (d.[DisplayName] = ${input.after.displayName} AND d.[CustomerId] > ${input.after.id}))`,
+      );
+    }
+    if (input.assignedToUserId) {
+      conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM [dbo].[CustomerAssignmentProjection] a
+        WHERE a.[TenantId] = d.[TenantId] AND a.[CustomerId] = d.[CustomerId] AND a.[UserId] = ${input.assignedToUserId})`);
+    }
+    const rows = await this.prisma.$queryRaw<CustomerDirectoryEntry[]>`
+      SELECT TOP (${input.take}) d.[CustomerId], d.[TenantId], d.[DisplayName], d.[Email], d.[IsActive], d.[AvatarFileId], d.[UpdatedAtUtc]
+      FROM [dbo].[CustomerDirectoryEntry] d
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      ORDER BY d.[DisplayName] ASC, d.[CustomerId] ASC`;
+    return rows.map((row) => ({
+      customerId: row.CustomerId,
+      tenantId: row.TenantId,
+      displayName: row.DisplayName,
+      email: row.Email,
+      isActive: Boolean(row.IsActive),
+      avatarFileId: row.AvatarFileId,
+      updatedAtUtc: row.UpdatedAtUtc,
+    }));
+  }
 }
 
 function toSnapshot(row: CustomerDirectoryEntry): CustomerDirectoryEntrySnapshot {
@@ -84,4 +127,9 @@ function toSnapshot(row: CustomerDirectoryEntry): CustomerDirectoryEntrySnapshot
     avatarFileId: row.AvatarFileId ?? null,
     updatedAtUtc: row.UpdatedAtUtc,
   };
+}
+
+/** LIKE de SQL Server: `%`, `_` y `[` del término se buscan literales. */
+function escapeLike(value: string): string {
+  return value.replace(/[[%_]/g, (ch) => `[${ch}]`);
 }

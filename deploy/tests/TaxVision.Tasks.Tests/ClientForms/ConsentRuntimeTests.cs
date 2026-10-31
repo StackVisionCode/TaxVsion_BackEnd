@@ -278,6 +278,47 @@ public sealed class ConsentRuntimeTests
         Assert.Null(other.RevisionNumber);
     }
 
+    // E2E F8: el portal solo escribe en la respuesta los archivos disponibles, así que uno en revisión no aparecía en
+    // ella y el servidor dejaba enviar el formulario.
+    [Fact]
+    public async Task Submit_is_blocked_while_an_uploaded_file_is_under_review_even_if_the_answer_omits_it()
+    {
+        var fixture = Fixture("beforeSubmit");
+        fixture.Request.SaveDraft(
+            new ProtectedAnswers("{\"schemaVersion\":1,\"values\":{\"fd_personal1\":\"Alice\"}}", 1),
+            50,
+            fixture.Context.Actor,
+            Now
+        );
+        fixture.Records.Add(Accepted(fixture));
+        var fileId = Guid.NewGuid();
+        fixture.Request.RegisterAttachment(new FormAnswerAddress("fd_upload001", null), fileId, "id.png", "image/png", 2048, 5, 20, null, Now);
+        fixture.Request.ApplyFileVerdict(fileId, new FormFileVerdict(FormFileVerdictStatus.PendingReview, null, null, null, Now), Now);
+
+        var result = await SubmitPortalFormRequestHandler.Handle(
+            new SubmitPortalFormRequestCommand(fixture.Context, fixture.Request.Id, [], Now),
+            fixture.Requests,
+            fixture.Versions,
+            fixture.Engine,
+            new PlainProtector(),
+            new ActiveCustomers(),
+            new NoIntakeLinks(),
+            new FormConsentGate(fixture.Notices, fixture.Records),
+            fixture.Records,
+            FormActionTestDoubles.Planner(fixture.Versions, fixture.Engine),
+            Options.Create(new ClientFormsOptions()),
+            fixture.Audit,
+            fixture.UnitOfWork,
+            new FakeMessageBus(),
+            new FixedCorrelation(),
+            new RecordingClientFormsMetrics(),
+            default
+        );
+
+        Assert.False(result.Value.Submitted);
+        Assert.Contains(result.Value.Issues, issue => issue.Code == "answer.attachment_under_review" && issue.ComponentId == "fd_upload001");
+    }
+
     [Fact]
     public async Task Revision_shows_only_evidence_bound_up_to_that_revision()
     {

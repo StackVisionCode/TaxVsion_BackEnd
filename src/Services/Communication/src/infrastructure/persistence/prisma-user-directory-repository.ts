@@ -1,10 +1,11 @@
+import type { DirectoryCursor, StaffDirectoryPager } from '../../application/ports/directory-pager.js';
 import type { PrismaClient, UserDirectoryEntry } from '@prisma/client';
 import type {
   UserDirectoryRepository,
   UserDirectoryEntrySnapshot,
 } from '../../application/ports/user-directory-repository.js';
 
-export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
+export class PrismaUserDirectoryRepository implements UserDirectoryRepository, StaffDirectoryPager {
   constructor(private readonly prisma: PrismaClient) {}
 
   async upsert(snapshot: {
@@ -86,6 +87,34 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
       },
       orderBy: { DisplayName: 'asc' },
       take: limit,
+    });
+    return rows.map(toSnapshot);
+  }
+
+  /** F8c (T-14): página del rail Team por cursor (DisplayName, UserId); mismo filtro de staff que el buscador. */
+  async pageStaff(input: {
+    tenantId: string;
+    query: string | null;
+    excludeUserId: string;
+    take: number;
+    after: DirectoryCursor | null;
+  }): Promise<UserDirectoryEntrySnapshot[]> {
+    const { query, after } = input;
+    const rows = await this.prisma.userDirectoryEntry.findMany({
+      where: {
+        TenantId: input.tenantId,
+        IsActive: true,
+        ActorType: { notIn: ['CustomerPortal', 'Guest'] },
+        UserId: { not: input.excludeUserId },
+        AND: [
+          ...(query ? [{ OR: [{ DisplayName: { contains: query } }, { Email: { contains: query } }] }] : []),
+          ...(after
+            ? [{ OR: [{ DisplayName: { gt: after.displayName } }, { DisplayName: after.displayName, UserId: { gt: after.id } }] }]
+            : []),
+        ],
+      },
+      orderBy: [{ DisplayName: 'asc' }, { UserId: 'asc' }],
+      take: input.take,
     });
     return rows.map(toSnapshot);
   }

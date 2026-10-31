@@ -63,11 +63,21 @@ public sealed class ClientRequestDocument
 
     internal bool MarkAvailable(DateTime nowUtc)
     {
-        if (Status != AttachmentStatus.Pending)
+        if (Status is not (AttachmentStatus.Pending or AttachmentStatus.UnderReview))
             return false;
 
         Status = AttachmentStatus.Available;
         ResolvedAtUtc = nowUtc;
+        return true;
+    }
+
+    /// <summary>T-20: solo desde Pending (un veredicto final no vuelve atrás). Idempotente.</summary>
+    internal bool MarkUnderReview()
+    {
+        if (Status != AttachmentStatus.Pending)
+            return false;
+
+        Status = AttachmentStatus.UnderReview;
         return true;
     }
 

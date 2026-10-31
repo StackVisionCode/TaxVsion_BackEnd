@@ -61,6 +61,13 @@ public sealed class NoteAttachment
         Status = NoteAttachmentStatus.Available;
     }
 
+    /// <summary>T-20: solo desde Pending (un veredicto final no vuelve atrás). Idempotente.</summary>
+    internal void MarkUnderReview()
+    {
+        if (Status == NoteAttachmentStatus.Pending)
+            Status = NoteAttachmentStatus.UnderReview;
+    }
+
     /// <summary>Idempotente: no-op si ya está <see cref="NoteAttachmentStatus.Rejected"/> con la misma razón.</summary>
     internal void MarkRejected(string reason)
     {

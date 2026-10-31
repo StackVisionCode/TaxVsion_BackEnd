@@ -75,7 +75,7 @@ describe('getSupportAgentMessages', () => {
       findById: vi.fn().mockResolvedValue(ticket),
     } as unknown as SupportTicketRepository;
     const conversations = {
-      findById: vi.fn().mockResolvedValue({ isParticipant: (userId: string) => userId === agentTenantId }),
+      findById: vi.fn().mockResolvedValue({ isParticipant: (userId: string) => userId === agentTenantId, historyVisibleFrom: () => null }),
       listMessages: vi.fn().mockResolvedValue([
         message({ tenantId, conversationId, senderId: openedByUserId, senderDisplayName: openedByUserId }),
         message({

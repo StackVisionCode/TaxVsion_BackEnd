@@ -14,6 +14,7 @@ using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Permissions;
 using TaxVision.CloudStorage.Domain.Providers;
+using TaxVision.CloudStorage.Domain.Moderation;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Domain.RateLimiting;
 using TaxVision.CloudStorage.Domain.Sharing;
@@ -47,6 +48,10 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     // Topes de tamaño administrados por PlatformAdmin (D-33). No tenant-owned: fuera del filtro fail-closed.
     public DbSet<UploadSizePolicy> UploadSizePolicies => Set<UploadSizePolicy>();
     public DbSet<UploadSizePolicyAudit> UploadSizePolicyAudits => Set<UploadSizePolicyAudit>();
+
+    // Política de moderación de contenido (T-20): una fila de plataforma, fuera del filtro fail-closed.
+    public DbSet<ContentModerationPolicy> ContentModerationPolicies => Set<ContentModerationPolicy>();
+    public DbSet<ContentModerationPolicyAudit> ContentModerationPolicyAudits => Set<ContentModerationPolicyAudit>();
 
     // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida por
     // TenantPlanCodeProjectionConsumer.

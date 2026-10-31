@@ -623,6 +623,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     /// </summary>
     public bool MarkAttachmentAvailable(Guid fileId) => FindActive(fileId)?.MarkAvailable() ?? false;
 
+    public bool MarkAttachmentUnderReview(Guid fileId) => FindActive(fileId)?.MarkUnderReview() ?? false;
+
     public bool MarkAttachmentRejected(Guid fileId, string reason, DateTime nowUtc)
     {
         if (FindActive(fileId) is not { } attachment || !attachment.MarkRejected(reason, nowUtc))

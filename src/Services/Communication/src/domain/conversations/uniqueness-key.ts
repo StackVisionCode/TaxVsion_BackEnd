@@ -43,6 +43,16 @@ export function extractDirectParticipants(uniquenessKey: string): [string, strin
 /**
  * Helper de guarda para uso en factories del aggregate.
  */
+/** F8a: meeting dueño de un chat `meeting:{id}`; null para otros tipos. */
+export function extractMeetingId(uniquenessKey: string): string | null {
+  return uniquenessKey.startsWith('meeting:') ? uniquenessKey.slice('meeting:'.length) || null : null;
+}
+
+/** F8a: ticket dueño de un chat `support:{ticketId}`; null para otros tipos. */
+export function extractSupportTicketId(uniquenessKey: string): string | null {
+  return uniquenessKey.startsWith('support:') ? uniquenessKey.slice('support:'.length) || null : null;
+}
+
 export function assertKindMatchesKey(kind: ConversationKind, key: string): void {
   if (kind === 'Direct' && !key.startsWith('direct:')) throw new Error('Direct kind requires direct: key.');
   if (kind === 'Group' && !key.startsWith('group:')) throw new Error('Group kind requires group: key.');

@@ -44,6 +44,8 @@ model TenantCommunicationSettings {
   // Default false: mismo criterio que EmployeeToEmployeeChatEnabled, opt-in
   // explicito del tenant admin, no rompe el comportamiento actual de nadie.
   RestrictCustomerChatToAssignedPreparer Boolean  @default(false)
+  // F8b (D-20): varios clientes en un mismo grupo (se ven entre sí). Default: uno solo.
+  GroupsAllowMultipleClients             Boolean  @default(false)
   // Meeting UX defaults (cierran fricción detectada en el frontend cliente).
   DefaultCameraOff                       Boolean  @default(true)
   DefaultMicrophoneOff                   Boolean  @default(false)
@@ -89,6 +91,12 @@ model TenantCommunicationSettings {
   // F7 (null = hereda): vocabulario del transcript (T-30) y notas de voz transcritas (D-27).
   TranscriptPrompt                       String?  @db.NVarChar(500)
   VoiceNoteTranscriptEnabled             Boolean?
+  // F8: ventana de edición de la oficina (minutos por tipo de chat; NULL = hereda la plataforma, nunca la supera).
+  ChatEditWindowMinutesDirect           Int?
+  ChatEditWindowMinutesGroup            Int?
+  ChatEditWindowMinutesSupport          Int?
+  ChatEditWindowMinutesMeeting          Int?
+  ChatMaxEditsPerMessage                 Int?
   // Auditoría.
   CreatedAtUtc                           DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                           DateTime @default(now()) @updatedAt @db.DateTime2
@@ -155,6 +163,12 @@ model PlatformCommunicationSettings {
   MeetingChatAttachmentsPerMinute       Int      @default(5)
   MeetingChatAttachmentsPerMeeting      Int      @default(20)
   MaxReactionsPerMessage                Int      @default(3)
+  // F8: techo de la ventana de edición por tipo de chat (0 = no se edita) y tope de ediciones por mensaje.
+  ChatEditWindowMinutesDirect          Int      @default(15)
+  ChatEditWindowMinutesGroup           Int      @default(15)
+  ChatEditWindowMinutesSupport         Int      @default(5)
+  ChatEditWindowMinutesMeeting         Int      @default(15)
+  ChatMaxEditsPerMessage                Int      @default(5)
   // Sonidos (D-02) y transcript (D-26).
   MeetingSoundsPolicy                   String   @default("all") @db.NVarChar(16)
   TranscriptDefaultLanguage             String   @default("auto") @db.NVarChar(16)
@@ -362,6 +376,8 @@ model UserDirectoryEntry {
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
+  // F8c (T-14): rail Team paginado por nombre.
+  @@index([TenantId, IsActive, DisplayName])
 }
 
 // -----------------------------------------------------------------------------
@@ -386,6 +402,8 @@ model CustomerDirectoryEntry {
 
   @@index([TenantId, IsActive])
   @@index([TenantId, DisplayName])
+  // F8c (T-14): rail Clients paginado por nombre.
+  @@index([TenantId, IsActive, DisplayName])
 }
 
 // -----------------------------------------------------------------------------
@@ -429,6 +447,8 @@ model CustomerAssignmentProjection {
 
   @@unique([TenantId, CustomerId, UserId])
   @@index([TenantId, CustomerId])
+  // F8c: "mis clientes asignados" (ABAC dentro de la consulta del rail).
+  @@index([TenantId, UserId])
 }
 
 // -----------------------------------------------------------------------------
@@ -448,12 +468,18 @@ model AttachmentTracking {
   MessageId      String   @db.UniqueIdentifier
   ConversationId String   @db.UniqueIdentifier
   TenantId       String   @db.UniqueIdentifier
-  Status         String   @default("Pending") @db.NVarChar(16) // Pending | Available | Infected | Deleted | BlockedByPolicy
+  Status         String   @default("Pending") @db.NVarChar(16) // Pending | Available | Infected | Deleted | BlockedByPolicy | PendingReview
+  // F8d (ADD-01): tipo real (detectado por CloudStorage), categoría y datos para las pestañas de Info.
+  Category       String?  @db.NVarChar(16)
+  ContentType    String?  @db.NVarChar(128)
+  FileName       String?  @db.NVarChar(260)
+  SizeBytes      BigInt?
   CreatedAtUtc   DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc   DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([MessageId])
   @@index([TenantId, Status])
+  @@index([ConversationId, Category, CreatedAtUtc(sort: Desc)])
 }
 
 // -----------------------------------------------------------------------------
@@ -535,7 +561,14 @@ model Conversation {
   // Group: `group:{groupId}`. Support: `support:{ticketId}`.
   UniquenessKey    String    @db.NVarChar(256)
   IsArchived       Boolean   @default(false)
+  // F8a: dueño derivado de la clave (meeting:{id} / support:{ticketId}) para listar y archivar sin parsear.
+  MeetingId        String?   @db.UniqueIdentifier
+  SupportTicketId  String?   @db.UniqueIdentifier
   LastMessageAtUtc DateTime? @db.DateTime2
+  // F8b (T-21, D-23): datos del grupo y modo anuncio (solo Owner/Admin escriben).
+  Description      String?   @db.NVarChar(500)
+  AvatarFileId     String?   @db.UniqueIdentifier
+  AdminsOnlyWrite  Boolean   @default(false)
   CreatedByUserId  String    @db.UniqueIdentifier
   CreatedAtUtc     DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc     DateTime  @default(now()) @updatedAt @db.DateTime2
@@ -545,6 +578,10 @@ model Conversation {
 
   @@unique([TenantId, UniquenessKey])
   @@index([TenantId, IsArchived, LastMessageAtUtc(sort: Desc)])
+  // F8a: listado separado por tipo (Chat = Direct,Group; Support aparte; Meeting en la ficha).
+  @@index([TenantId, Kind, IsArchived, LastMessageAtUtc(sort: Desc)])
+  @@index([TenantId, MeetingId])
+  @@index([TenantId, SupportTicketId])
 }
 
 model ConversationParticipant {
@@ -554,9 +591,11 @@ model ConversationParticipant {
   UserId            String    @db.UniqueIdentifier
   DisplayName       String    @db.NVarChar(120)
   ActorType         String    @db.NVarChar(32)
-  // "Owner" | "Member" — Owner es quien creo la conversacion; para Direct,
-  // ambos son Members salvo Group/Support. No confundir con rol Auth.
+  // "Owner" | "Admin" | "Member" — Owner es quien creo la conversacion; Admin solo en Group (F8b, D-22).
+  // Direct: ambos Members. No confundir con rol Auth.
   Role              String    @default("Member") @db.NVarChar(32)
+  // F8b (D-58): cliente detrás de la cuenta de portal; null para staff.
+  CustomerId        String?   @db.UniqueIdentifier
   // Cierre del "Only Owner for now" del frontend cliente: marca al preparador
   // principal asignado al customer (Customer.PortalOwner). El FE puede elegir
   // multi-thread cuando exista, sin cambio de schema.
@@ -572,6 +611,24 @@ model ConversationParticipant {
 
   @@unique([ConversationId, UserId])
   @@index([TenantId, UserId, IsRemoved])
+  @@index([TenantId, CustomerId])
+}
+
+// F8b (T-22): auditoría de administración de grupos (alta, baja, roles, datos, modo anuncio).
+// Consultable por Tenant Admin / PlatformAdmin; no se borra con los mensajes.
+model ConversationAudit {
+  Id             String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  ConversationId String   @db.UniqueIdentifier
+  // MemberAdded | MemberRemoved | MemberLeft | RoleChanged | OwnershipTransferred | InfoUpdated | AdminsOnlyChanged | Archived
+  Action         String   @db.NVarChar(48)
+  ActorUserId    String?  @db.UniqueIdentifier
+  TargetUserId   String?  @db.UniqueIdentifier
+  // JSON corto con el detalle (rol nuevo, nombre anterior, etc.).
+  Metadata       String?  @db.NVarChar(2000)
+  OccurredAtUtc  DateTime @default(now()) @db.DateTime2
+
+  @@index([TenantId, ConversationId, OccurredAtUtc(sort: Desc)])
 }
 
 // Kind del mensaje:
@@ -601,6 +658,8 @@ model Message {
   // (support cross-tenant), y una FK duro cascadearia deletes cross-tenant.
   ForwardedFromMessageId String?   @db.UniqueIdentifier
   IsEdited               Boolean   @default(false)
+  // F8: cuántas veces se editó (tope por política); cada versión anterior queda en MessageEdit.
+  EditCount              Int       @default(0)
   IsDeleted              Boolean   @default(false)
   // Fase Backend 9 — pinned messages. Solo host/cohost puede pinear en groups;
   // ambos participantes pueden en Direct/Meeting/Support (autorizacion en el
@@ -623,6 +682,8 @@ model Message {
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]
   Reactions    MessageReaction[]
+  Edits        MessageEdit[]
+  Links        MessageLink[]
 
   @@index([ConversationId, CreatedAtUtc])
   @@index([TenantId, SenderId, CreatedAtUtc])
@@ -630,6 +691,23 @@ model Message {
   // permite WHERE clause en indices no-clustered, es mucho mas barato que un
   // full scan filtrando IsPinned=true de una conversation con miles de msgs.
   @@index([ConversationId, PinnedAtUtc(sort: Desc)])
+}
+
+// F8 — historial de ediciones: el texto que había antes de cada edición. Lo ven los participantes
+// ("Edited" → versiones), nunca en un mensaje borrado. Revision 1 = el texto original.
+model MessageEdit {
+  Id             String   @id @default(uuid()) @db.UniqueIdentifier
+  MessageId      String   @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  Revision       Int
+  PreviousBody   String   @db.NVarChar(4000)
+  EditedByUserId String   @db.UniqueIdentifier
+  EditedAtUtc    DateTime @db.DateTime2
+
+  Message Message @relation(fields: [MessageId], references: [Id], onDelete: Cascade)
+
+  @@unique([MessageId, Revision])
+  @@index([TenantId, MessageId])
 }
 
 // -----------------------------------------------------------------------------
@@ -1145,3 +1223,19 @@ model CustomerPortalAccount {
   @@index([UserId])
 }
 
+// F8d (T-16): enlaces de los mensajes de texto para la pestaña "Links" de Info. Se reescriben al editar y se
+// ocultan con el mensaje borrado (JOIN con IsDeleted = 0).
+model MessageLink {
+  Id             String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  ConversationId String   @db.UniqueIdentifier
+  MessageId      String   @db.UniqueIdentifier
+  Url            String   @db.NVarChar(2048)
+  Domain         String   @db.NVarChar(255)
+  CreatedAtUtc   DateTime @db.DateTime2
+
+  Message Message @relation(fields: [MessageId], references: [Id], onDelete: Cascade)
+
+  @@index([ConversationId, CreatedAtUtc(sort: Desc)])
+  @@index([MessageId])
+}

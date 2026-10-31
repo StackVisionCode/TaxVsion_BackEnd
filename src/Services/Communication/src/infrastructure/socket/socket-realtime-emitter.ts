@@ -46,6 +46,14 @@ export class SocketRealtimeEmitter implements RealtimeEmitter {
     (input.volatile ? room.volatile : room).emit(input.event, input.envelope);
   }
 
+  removeUserFromConversation(input: { tenantId: string; userId: string; conversationId: string }): void {
+    this.io.in(`t:${input.tenantId}:u:${input.userId}`).socketsLeave(`t:${input.tenantId}:c:${input.conversationId}`);
+  }
+
+  addUserToConversation(input: { tenantId: string; userId: string; conversationId: string }): void {
+    this.io.in(`t:${input.tenantId}:u:${input.userId}`).socketsJoin(`t:${input.tenantId}:c:${input.conversationId}`);
+  }
+
   emitToUser<T>(input: {
     tenantId: string;
     userId: string;

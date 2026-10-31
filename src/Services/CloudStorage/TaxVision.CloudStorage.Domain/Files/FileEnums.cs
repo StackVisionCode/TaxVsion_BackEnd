@@ -13,10 +13,8 @@ public enum FileStatus
     // Content moderation (no antivirus): IContentScanner.Verdict == PolicyViolation.
     BlockedByPolicy,
 
-    // Content moderation: IContentScanner.Verdict == Uncertain — requiere revision
-    // humana antes de decidir Available vs BlockedByPolicy. Sin flujo de reviewer
-    // en este MVP (NoOpContentScanner nunca devuelve Uncertain); el estado existe
-    // para que un scanner real no necesite una migracion nueva al enchufarse.
+    // Content moderation: IContentScanner.Verdict == Uncertain — espera revision humana
+    // (storage/admin/content-review) que decide Available vs BlockedByPolicy.
     PendingReview,
 }
 

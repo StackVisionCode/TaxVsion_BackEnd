@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Attachments.Abstractions;
 using TaxVision.Tasks.Application.ClientRequests.Abstractions;
 using TaxVision.Tasks.Domain.ClientRequests;
 using Wolverine;
@@ -31,6 +32,7 @@ public static class SubmitClientDocumentHandler
     public static async Task<Result<PortalClientRequestResponse>> Handle(
         SubmitClientDocumentCommand command,
         IClientRequestRepository requests,
+        ITaskFileScanStatusClient files,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -57,10 +59,33 @@ public static class SubmitClientDocumentHandler
         if (submitted.IsFailure)
             return Result.Failure<PortalClientRequestResponse>(submitted.Error);
 
+        // El portal registra el documento cuando el escaneo ya terminó: ese veredicto se publicó antes
+        // y no se republica, así que sin preguntarlo el documento quedaba esperando para siempre.
+        await ApplyKnownVerdictAsync(request, command.FileId, files, ct);
+
         await bus.PublishAsync(BuildEvent(request, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(PortalClientRequestResponse.From(request));
+    }
+
+    private static async Task ApplyKnownVerdictAsync(
+        ClientRequest request,
+        Guid fileId,
+        ITaskFileScanStatusClient files,
+        CancellationToken ct
+    )
+    {
+        var now = DateTime.UtcNow;
+        _ = await files.GetStatusAsync(request.TenantId, fileId, ct) switch
+        {
+            RemoteFileScanStatus.Available => request.MarkDocumentAvailable(fileId, now),
+            RemoteFileScanStatus.PendingReview => request.MarkDocumentUnderReview(fileId),
+            RemoteFileScanStatus.Infected => request.MarkDocumentRejected(fileId, "infected", now),
+            RemoteFileScanStatus.BlockedByPolicy => request.MarkDocumentRejected(fileId, "blocked-by-policy", now),
+            // Sigue escaneando o no se pudo preguntar: lo resuelve el evento de CloudStorage.
+            _ => false,
+        };
     }
 
     private static ClientRequestFulfilledIntegrationEvent BuildEvent(ClientRequest request, string correlationId) =>

@@ -69,6 +69,18 @@ function Wait-Port($port, $timeoutSec) {
   return $false
 }
 
+# 0) content-scanner (T-20) en Docker, en el mismo compose/proyecto que rabbitmq, redis, minio y clamav.
+#    `up -d content-scanner` es idempotente y no toca a los demás; la primera vez construye la imagen
+#    (descarga y verifica el modelo). Si no sube, CloudStorage falla cerrado: las imágenes quedan en revisión.
+$infraCompose = Join-Path $root "deploy\docker\docker-compose.local-infra.yml"
+$docker = Get-Command docker -ErrorAction SilentlyContinue
+if (-not $docker) { Write-Host "SKIP content-scanner: docker not in PATH." }
+else {
+  & $docker.Source compose -f $infraCompose --env-file (Join-Path $root ".env") up -d content-scanner *> (Join-Path $logs "content-scanner.compose.log")
+  if ($LASTEXITCODE -eq 0) { Write-Host "UP content-scanner (Docker) :5540" }
+  else { Write-Host "content-scanner did not start (see logs\content-scanner.compose.log) - continuing" }
+}
+
 # 1) Auth alone first: let it apply/validate migrations and warm SQL with no competition.
 Start-One $fleet[0]
 if (Wait-Port 5124 45) { Write-Host "Auth listening :5124"; Start-Sleep -Seconds 5 }

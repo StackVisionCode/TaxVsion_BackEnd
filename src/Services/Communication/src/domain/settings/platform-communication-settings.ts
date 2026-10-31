@@ -42,6 +42,12 @@ export interface PlatformCommunicationSettingsSnapshot {
   readonly meetingChatAttachmentsPerMinute: number;
   readonly meetingChatAttachmentsPerMeeting: number;
   readonly maxReactionsPerMessage: number;
+  // F8: ventana de edición por tipo de chat (techo de la plataforma) y tope de ediciones.
+  readonly chatEditWindowMinutesDirect: number;
+  readonly chatEditWindowMinutesGroup: number;
+  readonly chatEditWindowMinutesSupport: number;
+  readonly chatEditWindowMinutesMeeting: number;
+  readonly chatMaxEditsPerMessage: number;
   readonly meetingSoundsPolicy: MeetingSoundsPolicy;
   readonly transcriptDefaultLanguage: string;
   readonly outboxRetentionDays: number;
@@ -148,6 +154,11 @@ export const PLATFORM_NUMERIC_RANGES: Record<Exclude<NumericKey, 'version'>, Tec
   meetingChatAttachmentsPerMinute: 'meetingChatAttachmentsPerMinute',
   meetingChatAttachmentsPerMeeting: 'meetingChatAttachmentsPerMeeting',
   maxReactionsPerMessage: 'maxReactionsPerMessage',
+  chatEditWindowMinutesDirect: 'chatEditWindowMinutesDirect',
+  chatEditWindowMinutesGroup: 'chatEditWindowMinutesGroup',
+  chatEditWindowMinutesSupport: 'chatEditWindowMinutesSupport',
+  chatEditWindowMinutesMeeting: 'chatEditWindowMinutesMeeting',
+  chatMaxEditsPerMessage: 'chatMaxEditsPerMessage',
   outboxRetentionDays: 'outboxRetentionDays',
   processedEventRetentionDays: 'processedEventRetentionDays',
   idempotencyRetentionDays: 'idempotencyRetentionDays',
@@ -230,6 +241,11 @@ export class PlatformCommunicationSettings {
       meetingChatAttachmentsPerMinute: TECHNICAL_LIMITS.meetingChatAttachmentsPerMinute.fallback,
       meetingChatAttachmentsPerMeeting: TECHNICAL_LIMITS.meetingChatAttachmentsPerMeeting.fallback,
       maxReactionsPerMessage: TECHNICAL_LIMITS.maxReactionsPerMessage.fallback,
+      chatEditWindowMinutesDirect: TECHNICAL_LIMITS.chatEditWindowMinutesDirect.fallback,
+      chatEditWindowMinutesGroup: TECHNICAL_LIMITS.chatEditWindowMinutesGroup.fallback,
+      chatEditWindowMinutesSupport: TECHNICAL_LIMITS.chatEditWindowMinutesSupport.fallback,
+      chatEditWindowMinutesMeeting: TECHNICAL_LIMITS.chatEditWindowMinutesMeeting.fallback,
+      chatMaxEditsPerMessage: TECHNICAL_LIMITS.chatMaxEditsPerMessage.fallback,
       meetingSoundsPolicy: 'all',
       transcriptDefaultLanguage: 'auto',
       outboxRetentionDays: TECHNICAL_LIMITS.outboxRetentionDays.fallback,

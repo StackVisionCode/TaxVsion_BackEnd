@@ -1,6 +1,9 @@
+import { recordAttachmentMetadata } from '../use-cases/record-attachment-metadata.js';
+import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 import { randomUUID } from 'node:crypto';
 import { pushAndEmitNotification } from '../use-cases/push-notification.js';
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
+import type { MessageRepository } from '../ports/message-repository.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
@@ -21,11 +24,10 @@ import { ChatSocketEvents, type AttachmentFlaggedDto } from '../../contracts/soc
  * solo admite un handler por `eventType`: el handler de attachment-tracking ya
  * es dueño del evento.
  *
- * `cloudstorage.file.pending_review.v1` (verdict Uncertain de IContentScanner)
- * NO se consume aca a proposito — es un estado de compliance interno sin
- * flujo de reviewer todavia (ver docblock de FilePendingReviewIntegrationEvent
- * en CloudStorage); no hay nada util que reflejar en el chat con el adjunto
- * todavia en revision, y el NoOpContentScanner de MVP nunca lo dispara.
+ * `cloudstorage.file.pending_review.v1` (T-20, moderación de contenido): el adjunto
+ * pasa a `PendingReview` ("Under review" en el chat) y se avisa al uploader. Si el
+ * revisor lo aprueba llega `available` y se emite `Available` para volver a mostrarlo;
+ * si lo rechaza llega `blocked_by_policy`.
  */
 export function bindCloudStorageConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
@@ -38,6 +40,10 @@ export function bindCloudStorageConsumers(
     inAppSourcePolicy: 'Communication' | 'Notification';
     /** F7 (T-34): el archivo de una grabacion disponible o rechazado mueve su sesion a Ready/Failed. */
     recordingFiles?: RecordingFileStatusHandler | undefined;
+    /** F8d: al quedar disponible se guarda el tipo DETECTADO y la categoría del adjunto. */
+    cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
+    /** Para avisar a quien mandó el adjunto: el archivo lo crea la cuenta de servicio de Communication. */
+    messages?: Pick<MessageRepository, 'findById'> | undefined;
   },
 ): void {
   register('cloudstorage.file.available.v1', async (env) => {
@@ -51,7 +57,10 @@ export function bindCloudStorageConsumers(
     // que no fuera un adjunto trackeado. findByFileId() evita el update fallido.
     const tracked = await deps.attachmentTracking.findByFileId(fileId);
     if (tracked) {
-      await deps.attachmentTracking.markStatus({ fileId, status: 'Available' });
+      // Los clientes que mostraban "Scanning…" o "Under review" se enteran en vivo (E2E F8: quedaba
+      // "Scanning…" hasta reabrir el hilo). Un evento repetido sobre uno ya disponible no avisa.
+      if (tracked.status !== 'Available') await flagAttachment(env, 'Available', deps);
+      await recordAttachmentMetadata({ tenantId: env.tenantId, fileId }, deps).catch(() => undefined);
     }
     if (isRecordingFolder(env)) await deps.recordingFiles?.onAvailable(env.tenantId, fileId, env.correlationId ?? null);
   });
@@ -66,6 +75,12 @@ export function bindCloudStorageConsumers(
     await rejectRecording(env, 'BlockedByPolicy', deps.recordingFiles);
     if (deps.inAppSourcePolicy === 'Communication') {
       await notifyFileBlockedByPolicy(env, deps);
+    }
+  });
+  register('cloudstorage.file.pending_review.v1', async (env) => {
+    await flagAttachment(env, 'PendingReview', deps);
+    if (deps.inAppSourcePolicy === 'Communication') {
+      await notifyFilePendingReview(env, deps);
     }
   });
   // Solo grabaciones: un adjunto de chat con escaneo fallido sigue su camino de siempre (sin cambio).
@@ -93,11 +108,12 @@ async function rejectRecording(env: IncomingEnvelope, reason: string, handler: R
 
 async function notifyFileBlockedByPolicy(
   env: IncomingEnvelope,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: NotifyDeps,
 ): Promise<void> {
   const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
-  const createdBy = getString(env.payload, 'createdBy') ?? getString(env.payload, 'CreatedBy');
-  if (!fileId || !createdBy) return;
+  if (!fileId) return;
+  const createdBy = await resolveUploader(env, fileId, deps);
+  if (!createdBy) return;
   // Policy B del contrato Actor/Resource/Action: no mandamos actorDisplayName
   // (el front lo resuelve de su directory cache), ni titleKey/bodyKey (el front
   // tiene fallback por `kind` en notification-i18n.ts). Sí llenamos los campos
@@ -109,8 +125,8 @@ async function notifyFileBlockedByPolicy(
       userId: createdBy,
       kind: 'cloudstorage.file.blocked_by_policy',
       priority: 'High',
-      title: 'File blocked by moderation',
-      body: 'One of your files was blocked by the content moderation review.',
+      title: 'File blocked',
+      body: 'One of your files was blocked because it goes against our content policy.',
       metadata: { fileId },
       category: 'DocumentsStorage',
       actorUserId: null,
@@ -125,9 +141,58 @@ async function notifyFileBlockedByPolicy(
   );
 }
 
+/** T-20: el archivo espera revisión humana; se avisa a quien lo subió. */
+async function notifyFilePendingReview(
+  env: IncomingEnvelope,
+  deps: NotifyDeps,
+): Promise<void> {
+  const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
+  if (!fileId) return;
+  const createdBy = await resolveUploader(env, fileId, deps);
+  if (!createdBy) return;
+  await pushAndEmitNotification(
+    env,
+    {
+      userId: createdBy,
+      kind: 'cloudstorage.file.pending_review',
+      priority: 'Normal',
+      title: 'File under review',
+      body: 'One of your files is being reviewed against our content policy. It will be available once approved.',
+      metadata: { fileId },
+      category: 'DocumentsStorage',
+      actorUserId: null,
+      actorType: 'System',
+      resourceType: 'file',
+      resourceId: fileId,
+      action: 'review',
+      occurredAtUtc: envOccurredAt(env),
+    },
+    deps,
+  );
+}
+
+type NotifyDeps = {
+  notifications: NotificationRepository;
+  emitter: RealtimeEmitter;
+  attachmentTracking: AttachmentTrackingRepository;
+  messages?: Pick<MessageRepository, 'findById'> | undefined;
+};
+
+/**
+ * Quién subió el archivo. Un adjunto de chat lo crea Communication con su token M2M, así que
+ * `CreatedBy` es la cuenta de servicio (E2E F8: la campana no le llegaba a nadie): manda el remitente.
+ */
+async function resolveUploader(env: IncomingEnvelope, fileId: string, deps: NotifyDeps): Promise<string | undefined> {
+  const createdBy = getString(env.payload, 'createdBy') ?? getString(env.payload, 'CreatedBy');
+  const tracked = deps.messages ? await deps.attachmentTracking.findByFileId(fileId) : null;
+  if (!tracked || !deps.messages) return createdBy;
+  const message = await deps.messages.findById(tracked.tenantId, tracked.messageId);
+  return message?.senderId ?? createdBy;
+}
+
 async function flagAttachment(
   env: IncomingEnvelope,
-  status: 'Infected' | 'Deleted' | 'BlockedByPolicy',
+  status: AttachmentFlaggedDto['status'],
   deps: { attachmentTracking: AttachmentTrackingRepository; emitter: RealtimeEmitter },
 ): Promise<void> {
   const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');

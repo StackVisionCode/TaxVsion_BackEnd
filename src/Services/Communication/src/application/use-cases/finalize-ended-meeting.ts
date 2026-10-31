@@ -22,6 +22,8 @@ import { RecordingScope } from '../../domain/recording/recording-session-state.j
 import { stopMeetingRecording } from './stop-meeting-recording.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
 import { closeMeetingInvitations } from './close-meeting-invitations.js';
+import { setConversationArchived, type SetConversationArchivedDeps } from './set-conversation-archived.js';
+import { computeMeetingUniquenessKey } from '../../domain/conversations/uniqueness-key.js';
 
 export interface FinalizeEndedMeetingDeps extends MeetingEventLogDeps, Omit<RecordingLifecycleOptionalDeps, 'meetings'> {
   readonly meetings: MeetingRepository;
@@ -36,6 +38,8 @@ export interface FinalizeEndedMeetingDeps extends MeetingEventLogDeps, Omit<Reco
   readonly qualityAggregator?: MeetingQualityAggregator | undefined;
   /** F5 (D-50): minuto abierto de reacciones -> ultima fila `reaction.summary`. */
   readonly reactionAggregator?: MeetingReactionAggregator | undefined;
+  /** F8a (D-01): el chat de la sala queda en solo lectura; el historial se ve en la ficha. */
+  readonly conversations?: SetConversationArchivedDeps['conversations'] | undefined;
 }
 
 export interface FinalizeEndedMeetingInput {
@@ -108,6 +112,13 @@ export async function finalizeEndedMeeting(input: FinalizeEndedMeetingInput, dep
       endedAtUtc: endedAt.toISOString(),
     };
     await deps.publisher.enqueue(summary).catch(() => undefined);
+  }
+  // F8a (D-01): el chat de la sala queda en solo lectura (nadie escribe ni edita tras el End).
+  if (deps.conversations) {
+    await setConversationArchived(
+      { tenantId: input.tenantId, archived: true, uniquenessKey: computeMeetingUniquenessKey(snapshot.id), now: endedAt },
+      { conversations: deps.conversations, emitter: deps.emitter },
+    );
   }
   // F6 (D-48): las invitaciones que seguian abiertas se cierran con la reunion.
   await closeMeetingInvitations(

@@ -39,6 +39,7 @@ export async function createAttachmentUpload(
     contentType: command.contentType,
     sizeBytes: command.sizeBytes,
     conversationId: command.conversationId,
+    uploadedByUserId: command.userId,
   });
   return Result.ok(initiated);
 }

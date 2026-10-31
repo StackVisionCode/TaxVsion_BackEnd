@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Customer.Application.Customers.Avatars;
+using TaxVision.Customer.Domain.Customers;
 using static TaxVision.Customer.Tests.Application.CustomerAvatarTestDoubles;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -210,6 +211,48 @@ public sealed class CustomerAvatarScanResultConsumerTests
         );
 
         AssertDiscarded(customer, current, unitOfWork);
+        // T-20: queda constancia para que el front diga "va contra la política", no "falló".
+        Assert.Equal(pending, customer.ProfilePictureModerationFileId);
+        Assert.Equal(ProfilePictureModerationState.Blocked, customer.ProfilePictureModerationState);
+        var status = CustomerAvatarStatus.Of(null, null, Now, customer.ProfilePictureModerationFileId, customer.ProfilePictureModerationState);
+        Assert.Equal(("blocked", (Guid?)pending), (status.ModerationStatus, status.ModerationFileId));
+    }
+
+    [Fact]
+    public async Task Pending_picture_under_review_never_expires_and_is_confirmed_when_approved()
+    {
+        var customer = WithPicture(out _);
+        var pending = Begin(customer);
+        var bus = new FakeMessageBus();
+
+        await CustomerAvatarScanResultConsumer.Handle(
+            new FilePendingReviewIntegrationEvent
+            {
+                TenantId = TenantId,
+                FileId = pending,
+                ObjectKey = "k",
+                Reason = "Possible sexual content (score 0.700).",
+                CreatedBy = Uploader,
+                OwnerType = "Customer",
+                OwnerId = customer.Id,
+                FolderType = "Avatars",
+            },
+            Repo(customer),
+            new RecordingUnitOfWork(bus),
+            new FixedCorrelationContext(),
+            NullLogger<DomainCustomer>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(customer.IsPendingProfilePictureUnderReview);
+        Assert.False(customer.IsPendingProfilePictureExpired(Now.AddDays(3)));
+        var status = CustomerAvatarStatus.Of(pending, Now, Now.AddDays(3), customer.ProfilePictureModerationFileId, customer.ProfilePictureModerationState);
+        Assert.Equal(("processing", "under_review"), (status.UploadStatus, status.ModerationStatus));
+
+        await AvailableAsync(customer, pending, bus, new RecordingUnitOfWork(bus));
+
+        Assert.Equal(pending, customer.ProfilePictureFileId);
+        Assert.Null(customer.ProfilePictureModerationState);
     }
 
     [Fact]

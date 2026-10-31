@@ -286,6 +286,8 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
+    conversations: container.conversations,
+    conversationAudit: container.conversationAudit,
   });
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
@@ -299,6 +301,8 @@ async function main(): Promise<void> {
     meetings: container.meetings,
     publisher: container.publisher,
     emitter,
+    conversations: container.conversations,
+    conversationAudit: container.conversationAudit,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
@@ -359,6 +363,8 @@ async function main(): Promise<void> {
     notifications: container.notifications,
     emitter,
     inAppSourcePolicy: config.inAppSource.cloudStoragePolicy,
+    cloudStorageMetadata: container.cloudStorageMetadata,
+    messages: container.messages,
     recordingFiles: {
       onAvailable: (tenantId, fileId, correlationId) =>
         markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),
@@ -399,6 +405,7 @@ async function main(): Promise<void> {
     userPermissions: container.userPermissions,
     emitter,
     inAppSource: config.inAppSource.support,
+    conversations: container.conversations,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });
   bindTranscriptConsumers(consumers.register.bind(consumers), {

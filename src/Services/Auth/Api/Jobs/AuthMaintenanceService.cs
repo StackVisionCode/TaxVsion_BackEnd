@@ -125,7 +125,15 @@ public sealed class AuthMaintenanceService(
         var staleBefore = now - User.AvatarPendingTimeout;
         var users = await db
             .Users.IgnoreQueryFilters()
-            .Where(user => user.PendingAvatarRequestedAtUtc != null && user.PendingAvatarRequestedAtUtc < staleBefore)
+            .Where(user =>
+                user.PendingAvatarRequestedAtUtc != null
+                && user.PendingAvatarRequestedAtUtc < staleBefore
+                // En revisión de contenido espera al revisor: no es un antivirus que no respondió.
+                && !(
+                    user.AvatarModerationState == AvatarModerationState.UnderReview
+                    && user.AvatarModerationFileId == user.PendingAvatarFileId
+                )
+            )
             .ToListAsync(ct);
 
         foreach (var user in users)

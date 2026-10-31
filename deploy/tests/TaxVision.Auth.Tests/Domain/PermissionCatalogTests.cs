@@ -955,6 +955,7 @@ public sealed class PermissionCatalogTests
     [InlineData(PermissionCatalog.CommunicationConstraintsManage)]
     [InlineData(PermissionCatalog.CommunicationPlatformAnalyticsRead)]
     [InlineData(PermissionCatalog.CloudStorageUploadPolicyManage)]
+    [InlineData(PermissionCatalog.CloudStorageModerationManage)]
     public void Platform_configuration_permissions_are_platform_only_and_never_reach_a_tenant_role(string code)
     {
         var definition = PermissionCatalog.All.Single(d => d.Code == code);

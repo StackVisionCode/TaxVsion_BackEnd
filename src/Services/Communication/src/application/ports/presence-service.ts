@@ -1,4 +1,4 @@
-import type { BusyReason } from '../../domain/presence/presence-status.js';
+import type { BusyReason, PresenceStatus } from '../../domain/presence/presence-status.js';
 
 /**
  * Presence service — Redis con lease TTL (30s) y heartbeat. Al desconectar,
@@ -23,6 +23,8 @@ export interface PresenceService {
   unregister(input: { tenantId: string; userId: string; sessionId: string }): Promise<void>;
   isOnline(tenantId: string, userId: string): Promise<boolean>;
   listOnline(tenantId: string, userIds: readonly string[]): Promise<readonly string[]>;
+  /** F8c: estado actual (Online/Busy/Offline) de varios usuarios para `chat.presence.query`. Ausente = solo online/offline. */
+  snapshot?(tenantId: string, userIds: readonly string[]): Promise<ReadonlyArray<{ userId: string; status: PresenceStatus; busyReason: BusyReason | null }>>;
   markBusy(input: {
     tenantId: string;
     userId: string;

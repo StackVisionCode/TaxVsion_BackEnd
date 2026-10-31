@@ -138,6 +138,38 @@ public sealed class InitiateUploadHandlerTests
         Assert.True(result.IsSuccess);
     }
 
+    private static InitiateUploadRequest ChatAttachment(Guid? onBehalfOf) =>
+        new("w2.png", "image/png", 2048, OwnerType.Communication, Guid.NewGuid(), FolderType.Other, null, onBehalfOf);
+
+    [Fact]
+    public async Task A_service_upload_on_behalf_of_a_person_records_that_person_as_the_author()
+    {
+        var fixture = new Fixture();
+        var person = Guid.NewGuid();
+
+        // E2E F8: con la cuenta de servicio como autora, el aviso "File under review" no le llegaba a nadie.
+        var result = await fixture.InitiateAsync(
+            new StorageActorScope(false, null) { IsService = true },
+            ChatAttachment(person),
+            actorId: Guid.NewGuid()
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(person, Assert.Single(fixture.Files.All()).CreatedBy);
+    }
+
+    [Fact]
+    public async Task A_user_cannot_upload_on_behalf_of_someone_else()
+    {
+        var fixture = new Fixture();
+        var me = Guid.NewGuid();
+
+        var result = await fixture.InitiateAsync(new StorageActorScope(false, null), ChatAttachment(Guid.NewGuid()), actorId: me);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(me, Assert.Single(fixture.Files.All()).CreatedBy);
+    }
+
     [Fact]
     public void FolderReserved_maps_to_403()
     {
@@ -161,10 +193,11 @@ public sealed class InitiateUploadHandlerTests
 
         public Task<BuildingBlocks.Results.Result<InitiatedUploadResponse>> InitiateAsync(
             StorageActorScope scope,
-            InitiateUploadRequest request
+            InitiateUploadRequest request,
+            Guid? actorId = null
         ) =>
             InitiateUploadHandler.Handle(
-                new InitiateUploadCommand(TenantId, Guid.NewGuid(), scope, request, new(null, null, "corr-1")),
+                new InitiateUploadCommand(TenantId, actorId ?? Guid.NewGuid(), scope, request, new(null, null, "corr-1")),
                 Files,
                 new FakeFolderRepository(),
                 Limits,

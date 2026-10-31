@@ -44,6 +44,12 @@ class FakeConversationRepository implements ConversationRepository {
     return [];
   }
 
+  async countUnreadByKind(): Promise<{ Direct: number; Group: number; Support: number; Meeting: number }> {
+
+    return { Direct: 0, Group: 0, Support: 0, Meeting: 0 };
+
+  }
+
   async countForUser(): Promise<number> {
     return 0;
   }
@@ -62,6 +68,13 @@ class FakeMessageRepository implements MessageRepository {
     return null;
   }
   async update(): Promise<void> {}
+  async recordEdit(): Promise<void> {}
+  async countAttachmentsBySender(): Promise<number> {
+    return 0;
+  }
+  async listEdits(): Promise<[]> {
+    return [];
+  }
   async insertForwarded(): Promise<void> {}
   async markBatchRead(): Promise<{ markedCount: number }> {
     return { markedCount: 1 };

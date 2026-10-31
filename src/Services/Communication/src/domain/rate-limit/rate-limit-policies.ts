@@ -26,11 +26,15 @@
 export const CommunicationRateLimitPolicyNames = {
   ChatSend: 'communication.o.chat_send',
   ChatEdit: 'communication.o.chat_edit',
+  // F8d: reacciones del chat (agregar/quitar) por persona.
+  ChatReaction: 'communication.o.chat_reaction',
   ChatTyping: 'communication.o.chat_typing',
   ChatVoiceRecording: 'communication.o.chat_voice_recording',
   CallInitiate: 'communication.o.call_initiate',
   CallSignal: 'communication.o.call_signal',
   MeetingChatSend: 'communication.o.meeting_chat_send',
+  // F8a (D-15): adjuntos del chat de la sala por minuto (el tope sale de la configuración).
+  MeetingChatAttachment: 'communication.o.meeting_chat_attachment',
   MeetingJoinByToken: 'communication.d.meeting_join_by_token',
   MeetingJoinByCode: 'communication.d.meeting_join_by_code',
 } as const;

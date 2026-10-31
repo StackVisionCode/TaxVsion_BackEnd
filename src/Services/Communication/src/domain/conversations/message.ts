@@ -46,6 +46,21 @@ export interface MessageSnapshot {
   readonly transcriptText?: string | null;
   readonly transcriptState?: MessageTranscriptState | null;
   readonly transcriptLanguage?: string | null;
+  /** F8: cuántas veces se editó. Ausente = 0 (mensajes anteriores a F8). */
+  readonly editCount?: number;
+}
+
+/** F8: política vigente para editar un mensaje propio (minutos desde el envío; 0 = no se edita). */
+export interface MessageEditPolicy {
+  readonly windowMinutes: number;
+  readonly maxEdits: number;
+}
+
+/** F8: resultado de una edición: el texto nuevo, el que se reemplazó (historial) y su número de versión. */
+export interface MessageEditOutcome {
+  readonly body: MessageBody;
+  readonly previousBody: string;
+  readonly revision: number;
 }
 
 /** F7 (D-27): estado del transcript de una nota de voz. `Skipped` = fuera de politica (duracion, plan). */
@@ -271,7 +286,11 @@ export class Message {
     return Result.ok({ requested: true });
   }
 
-  editText(newBody: string, editorUserId: string, now: Date = new Date()): Result<MessageBody> {
+  /**
+   * F8: solo el remitente, solo texto, dentro de la ventana del tipo de chat y hasta el tope de ediciones
+   * (por seguridad: lo que el otro ya leyó no cambia para siempre). Devuelve el texto reemplazado para el historial.
+   */
+  editText(newBody: string, editorUserId: string, policy: MessageEditPolicy, now: Date = new Date()): Result<MessageEditOutcome> {
     if (this.state.isDeleted) {
       return Result.fail(makeError('Chat.Message.EditDeleted', 'Cannot edit a deleted message.'));
     }
@@ -281,16 +300,38 @@ export class Message {
     if (this.state.kind !== MessageKind.Text) {
       return Result.fail(makeError('Chat.Message.EditNotText', 'Only Text messages can be edited.'));
     }
+    if (policy.windowMinutes <= 0) {
+      return Result.fail(makeError('Chat.Message.EditDisabled', 'Messages in this chat cannot be edited.'));
+    }
+    const until = this.editableUntil(policy);
+    if (until && now.getTime() > until.getTime()) {
+      return Result.fail(makeError('Chat.Message.EditWindowExpired', 'This message can no longer be edited.'));
+    }
+    const editCount = this.state.editCount ?? 0;
+    if (editCount >= policy.maxEdits) {
+      return Result.fail(makeError('Chat.Message.EditLimitReached', 'This message was edited too many times.'));
+    }
     const bodyResult = makeMessageBody(newBody);
     if (!bodyResult.isSuccess) return Result.fail(bodyResult.error);
+    const previousBody = this.state.body ?? '';
+    if (bodyResult.value.value === previousBody) {
+      return Result.fail(makeError('Chat.Message.EditUnchanged', 'The message text did not change.'));
+    }
 
     this.state = {
       ...this.state,
       body: bodyResult.value.value,
       isEdited: true,
       editedAtUtc: now,
+      editCount: editCount + 1,
     };
-    return Result.ok(bodyResult.value);
+    return Result.ok({ body: bodyResult.value, previousBody, revision: editCount + 1 });
+  }
+
+  /** F8: hasta cuándo se puede editar con esta política; null = el mensaje no es editable (no es texto, borrado, ventana 0). */
+  editableUntil(policy: MessageEditPolicy): Date | null {
+    if (this.state.kind !== MessageKind.Text || this.state.isDeleted || policy.windowMinutes <= 0) return null;
+    return new Date(this.state.createdAtUtc.getTime() + policy.windowMinutes * 60_000);
   }
 
   softDelete(actorUserId: string, actorCanModerate: boolean, now: Date = new Date()): Result<void> {

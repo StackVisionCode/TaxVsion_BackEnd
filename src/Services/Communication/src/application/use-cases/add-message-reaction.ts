@@ -4,6 +4,7 @@ import { MessageReaction } from '../../domain/conversations/message-reaction.js'
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import {
   ChatSocketEvents,
   type MessageReactionAddedDto,
@@ -21,6 +22,8 @@ export interface AddMessageReactionDeps {
   readonly messages: MessageRepository;
   readonly conversations: ConversationRepository;
   readonly emitter: RealtimeEmitter;
+  /** F8d (D-24): tope de emojis distintos por persona y mensaje (resolver). Sin resolver no hay tope. */
+  readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
 }
 
 /**
@@ -59,6 +62,15 @@ export async function addMessageReaction(
     now,
   });
   if (!reactionResult.isSuccess) return Result.fail(reactionResult.error);
+
+  // F8d (D-24): como mucho N emojis distintos por persona y mensaje (repetir uno ya puesto no cuenta).
+  if (deps.effectiveSettings) {
+    const limit = (await deps.effectiveSettings.resolve(cmd.tenantId)).chat.maxReactionsPerMessage;
+    const mine = (await deps.messages.listReactionsByMessage(cmd.tenantId, cmd.messageId)).filter((r) => r.userId === cmd.userId);
+    if (!mine.some((r) => r.emoji === reactionResult.value.emoji) && mine.length >= limit) {
+      return Result.fail(makeError('Chat.Reaction.LimitReached', `You can add up to ${limit} reactions to a message.`));
+    }
+  }
 
   const { wasNew } = await deps.messages.addReaction(reactionResult.value);
   if (!wasNew) return Result.ok({ wasNew: false });

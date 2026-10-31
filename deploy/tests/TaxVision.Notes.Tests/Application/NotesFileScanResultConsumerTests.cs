@@ -116,6 +116,29 @@ public sealed class NotesFileScanResultConsumerTests
         Assert.Equal("blocked-by-policy", attachment.RejectionReason);
     }
 
+    // T-20: en revisión queda retenido; si el revisor aprueba pasa a Available, y un veredicto final no vuelve atrás.
+    [Fact]
+    public async Task FilePendingReview_holds_the_attachment_until_the_reviewer_decides()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = new FakeNoteRepository();
+        var (note, fileId) = SeedNoteWithAttachment(repo, tenantId);
+        var review = new FilePendingReviewIntegrationEvent
+        {
+            TenantId = tenantId,
+            FileId = fileId,
+            ObjectKey = "key",
+            Reason = "Possible sexual content (score 0.700).",
+        };
+
+        await NotesFileScanResultConsumer.Handle(review, repo, new NoOpUnitOfWork(), new NoOpCorrelationContext(), NullLogger<Note>.Instance, CancellationToken.None);
+        Assert.Equal(NoteAttachmentStatus.UnderReview, note.Attachments.Single().Status);
+
+        note.MarkAttachmentAvailable(fileId);
+        await NotesFileScanResultConsumer.Handle(review, repo, new NoOpUnitOfWork(), new NoOpCorrelationContext(), NullLogger<Note>.Instance, CancellationToken.None);
+        Assert.Equal(NoteAttachmentStatus.Available, note.Attachments.Single().Status);
+    }
+
     [Fact]
     public async Task FileDeleted_detaches_matching_attachment_and_publishes_detached_event()
     {

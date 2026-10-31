@@ -29,6 +29,12 @@ export const TECHNICAL_LIMITS = {
   meetingChatAttachmentsPerMinute: { min: 1, max: 60, fallback: 5 },
   meetingChatAttachmentsPerMeeting: { min: 1, max: 500, fallback: 20 },
   maxReactionsPerMessage: { min: 1, max: 10, fallback: 3 },
+  // F8: minutos para editar un mensaje propio por tipo de chat (0 = no se edita) y tope de ediciones.
+  chatEditWindowMinutesDirect: { min: 0, max: 10080, fallback: 15 },
+  chatEditWindowMinutesGroup: { min: 0, max: 10080, fallback: 15 },
+  chatEditWindowMinutesSupport: { min: 0, max: 10080, fallback: 5 },
+  chatEditWindowMinutesMeeting: { min: 0, max: 10080, fallback: 15 },
+  chatMaxEditsPerMessage: { min: 1, max: 20, fallback: 5 },
   outboxRetentionDays: { min: 1, max: 90, fallback: 7 },
   processedEventRetentionDays: { min: 1, max: 180, fallback: 14 },
   idempotencyRetentionDays: { min: 1, max: 180, fallback: 30 },

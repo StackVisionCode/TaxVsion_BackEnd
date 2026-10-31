@@ -77,6 +77,7 @@ function conversationsRepo(snapshots: ConversationSnapshot[]): ConversationRepos
     listForUser: async () => snapshots,
     countForUser: async () => snapshots.length,
     countUnreadForUser: async () => 0,
+    countUnreadByKind: async () => ({ Direct: 0, Group: 0, Support: 0, Meeting: 0 }),
   } as unknown as ConversationRepository;
 }
 
@@ -98,7 +99,7 @@ describe('listConversations — avatarFileId de los participantes', () => {
     expect(avatars.resolve).toHaveBeenCalledTimes(1);
     expect(avatars.resolve.mock.calls[0]![0]).toEqual([ME, PREPARER, ME, CLIENT]);
     const [first, second] = result.value.items;
-    expect(first!.participants).toEqual([
+    expect(first?.participants).toMatchObject([
       { userId: ME, displayName: ME, isPrimaryPreparer: false, avatarFileId: null },
       { userId: PREPARER, displayName: PREPARER, isPrimaryPreparer: true, avatarFileId: 'f-prep' },
     ]);
@@ -156,7 +157,7 @@ function message(id: string, senderId: string): MessageSnapshot {
 describe('getMessages — senderAvatarFileId en el historial', () => {
   it('agrega la foto de cada remitente con una sola consulta', async () => {
     const conversations = {
-      findById: async () => ({ isParticipant: () => true }),
+      findById: async () => ({ isParticipant: () => true, historyVisibleFrom: () => null }),
       listMessages: async () => [message('m-1', PREPARER), message('m-2', ME), message('m-3', PREPARER)],
     } as unknown as ConversationRepository;
     const messages = { receiptsForOwnMessages: async () => new Map() } as unknown as MessageRepository;
@@ -186,7 +187,7 @@ describe('getMessages — transcript de notas de voz (F7)', () => {
       transcriptText: text,
     });
     const conversations = {
-      findById: async () => ({ isParticipant: () => true }),
+      findById: async () => ({ isParticipant: () => true, historyVisibleFrom: () => null }),
       listMessages: async () => [voice('v-1', 'NotRequested', null), voice('v-2', 'Ready', 'Hola')],
     } as unknown as ConversationRepository;
     const messages = { receiptsForOwnMessages: async () => new Map() } as unknown as MessageRepository;

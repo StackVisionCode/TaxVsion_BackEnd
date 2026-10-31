@@ -46,5 +46,8 @@ public sealed record CustomerDetailResponse(
     // ("processing" | "failed"; "failed" = pendiente vencida). URL: /storage/avatars/{id}.
     Guid? AvatarFileId = null,
     Guid? PendingAvatarFileId = null,
-    string? AvatarUploadStatus = null
+    string? AvatarUploadStatus = null,
+    // T-20: "under_review" | "blocked" para AvatarModerationFileId (la última foto subida), o null.
+    string? AvatarModerationStatus = null,
+    Guid? AvatarModerationFileId = null
 );
