@@ -1,5 +1,5 @@
-import type { ConsumeMessage } from 'amqplib';
-import { getRabbitContext } from './rabbit-connection.js';
+import type { Channel, ConsumeMessage } from 'amqplib';
+import { getRabbitContext, onRabbitReconnected } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { TranscriptInbox } from '../redis/transcript-inbox.js';
@@ -96,18 +96,28 @@ export async function startConsumer(
   handler: (event: RecordingReadyEvent) => Promise<void>,
   deps: { inbox: TranscriptInbox },
 ): Promise<ConsumerHandle> {
-  const rabbit = getRabbitContext();
-  await rabbit.channel.prefetch(config.concurrency);
-  const { consumerTag } = await rabbit.channel.consume(config.rabbitmq.queue, (msg) => {
-    if (!msg) return;
-    void dispatch(msg, handler, deps);
-  });
-  logger.info({ queue: config.rabbitmq.queue }, 'transcript worker consumer started');
+  let stopped = false;
+  let current: { channel: Channel; consumerTag: string } | undefined;
+  // Se vuelve a llamar tras cada reconexión: el canal nuevo no hereda el `consume` del viejo.
+  const subscribe = async (): Promise<void> => {
+    if (stopped) return;
+    const { channel } = getRabbitContext();
+    await channel.prefetch(config.concurrency);
+    const { consumerTag } = await channel.consume(config.rabbitmq.queue, (msg) => {
+      if (!msg) return;
+      void dispatch(channel, msg, handler, deps);
+    });
+    current = { channel, consumerTag };
+    logger.info({ queue: config.rabbitmq.queue }, 'transcript worker consumer started');
+  };
+  await subscribe();
+  onRabbitReconnected(subscribe);
 
   return {
     async stop(drainTimeoutMs = 60_000): Promise<void> {
+      stopped = true;
       try {
-        await rabbit.channel.cancel(consumerTag);
+        if (current) await current.channel.cancel(current.consumerTag);
       } catch (err) {
         logger.warn({ err: (err as Error).message }, 'consumer.stop: channel.cancel failed');
       }
@@ -128,30 +138,58 @@ export async function startConsumer(
 }
 
 async function dispatch(
+  channel: Channel,
   msg: ConsumeMessage,
   handler: (event: RecordingReadyEvent) => Promise<void>,
   deps: { inbox: TranscriptInbox },
 ): Promise<void> {
   inFlightCount += 1;
   try {
-    await dispatchInner(msg, handler, deps);
+    await dispatchInner(new MessageSettler(channel, msg), msg, handler, deps);
   } finally {
     inFlightCount -= 1;
   }
 }
 
+/**
+ * Ack/nack en el canal que ENTREGÓ el mensaje: el delivery tag no vale en otro canal (el broker lo
+ * cierra con 406). Si ese canal ya cayó, el broker reencola solo y el inbox evita reprocesar.
+ */
+class MessageSettler {
+  constructor(
+    private readonly channel: Channel,
+    private readonly msg: ConsumeMessage,
+  ) {}
+
+  ack(): void {
+    this.settle(() => this.channel.ack(this.msg));
+  }
+
+  deadLetter(): void {
+    this.settle(() => this.channel.nack(this.msg, false, false));
+  }
+
+  private settle(action: () => void): void {
+    try {
+      action();
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, 'channel closed before settling; broker will redeliver');
+    }
+  }
+}
+
 async function dispatchInner(
+  settler: MessageSettler,
   msg: ConsumeMessage,
   handler: (event: RecordingReadyEvent) => Promise<void>,
   deps: { inbox: TranscriptInbox },
 ): Promise<void> {
-  const rabbit = getRabbitContext();
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(msg.content.toString('utf-8')) as Record<string, unknown>;
   } catch (err) {
     logger.warn({ err: (err as Error).message }, 'unparseable message; ack to skip');
-    rabbit.channel.ack(msg);
+    settler.ack();
     return;
   }
 
@@ -159,27 +197,27 @@ async function dispatchInner(
   const mapping = eventType ? eventTypeToKind.get(eventType) : undefined;
   if (!mapping) {
     // No es un trigger de transcripcion (chat, presence, etc.) — no nos interesa.
-    rabbit.channel.ack(msg);
+    settler.ack();
     return;
   }
 
   const event = toRecordingReadyEvent(mapping, parsed);
   if (!event) {
     logger.warn({ eventType }, 'trigger event missing required fields; ack to skip');
-    rabbit.channel.ack(msg);
+    settler.ack();
     return;
   }
 
   const fresh = await deps.inbox.tryMarkProcessed(event.eventId);
   if (!fresh) {
     logger.info({ eventId: event.eventId, targetId: event.targetId }, 'inbox: duplicate; skip');
-    rabbit.channel.ack(msg);
+    settler.ack();
     return;
   }
 
   try {
     await handler(event);
-    rabbit.channel.ack(msg);
+    settler.ack();
   } catch (err) {
     // Fase Transcript 2 — este catch generico NO cambio: sigue haciendo
     // exactamente log + inbox.unmark + nack a DLQ, sin reintentos in-worker
@@ -199,7 +237,7 @@ async function dispatchInner(
       .catch((unmarkErr: unknown) =>
         logger.warn({ err: (unmarkErr as Error).message }, 'inbox unmark after failure failed'),
       );
-    rabbit.channel.nack(msg, false, false);
+    settler.deadLetter();
   }
 }
 
